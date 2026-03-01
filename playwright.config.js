@@ -8,13 +8,18 @@ module.exports = defineConfig({
   workers: 1,
   reporter: 'list',
   use: {
-    baseURL: 'http://localhost:4000',
+    baseURL: 'http://localhost:4100',
     actionTimeout: 5000,
   },
   webServer: {
     command: 'node server/index.js',
-    port: 4000,
-    reuseExistingServer: !process.env.CI,
+    env: {
+      ...process.env,
+      E2E_TEST_MODE: '1',
+      PORT: '4100',
+    },
+    port: 4100,
+    reuseExistingServer: false,
   },
   projects: [
     {

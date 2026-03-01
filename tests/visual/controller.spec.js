@@ -1,298 +1,177 @@
 // @ts-check
 const { test, expect } = require('@playwright/test');
+const {
+  applyScenario,
+  createRoom,
+  delayNextJoin,
+  joinController,
+  resetTestServer,
+  waitForControllerGame,
+  waitForControllerResults,
+  waitForFont,
+} = require('./helpers');
 
-// Stub WebSocket so the controller doesn't auto-connect and change DOM state
-const WS_STUB_SCRIPT = `
-  window._OriginalWebSocket = window.WebSocket;
-  window.WebSocket = function(url) {
-    this.url = url;
-    this.readyState = 0;
-    this.send = function() {};
-    this.close = function() {};
-    // Don't fire onopen/onclose/onerror — keep UI in its initial state
-  };
-`;
+async function setupJoinedRoom(displayPage, context, names) {
+  const { roomCode } = await createRoom(displayPage);
+  const controllers = [];
 
-// Wait for Orbitron font to load
-async function waitForFont(page) {
-  await page.evaluate(() => document.fonts.ready);
-  await page.waitForTimeout(100);
+  for (const name of names) {
+    controllers.push(await joinController(context, roomCode, name));
+  }
+
+  return { roomCode, controllers };
 }
 
-// Helper: set up the controller lobby state via DOM manipulation
-async function setupLobbyState(page, { isHost, playerColor, playerName, playerCount }) {
-  await page.evaluate(({ isHost, playerColor, playerName, playerCount }) => {
-    // Show lobby elements
-    document.getElementById('lobby-title').classList.remove('hidden');
-    document.getElementById('status-text').textContent = isHost ? '' : 'Waiting for host to start...';
-    document.getElementById('status-detail').textContent = '';
+test.beforeEach(async ({ request }) => {
+  await resetTestServer(request);
+});
 
-    // Player identity card
-    const identity = document.getElementById('player-identity');
-    identity.classList.remove('hidden');
-    identity.style.setProperty('--id-color', playerColor);
-    document.getElementById('player-identity-name').textContent = playerName;
-
-    // Start button (host only)
-    const startBtn = document.getElementById('start-btn');
-    if (isHost) {
-      startBtn.classList.remove('hidden');
-      startBtn.disabled = false;
-      startBtn.textContent = `START (${playerCount} player${playerCount > 1 ? 's' : ''})`;
-    } else {
-      startBtn.classList.add('hidden');
-    }
-
-    // Hide rejoin
-    document.getElementById('rejoin-btn').classList.add('hidden');
-  }, { isHost, playerColor, playerName, playerCount });
-}
-
-// Helper: set up the game screen via DOM manipulation
-async function setupGameState(page, { playerColor, playerName, isHost }) {
-  await page.evaluate(({ playerColor, playerName, isHost }) => {
-    // Switch screens
-    document.getElementById('waiting-screen').classList.add('hidden');
-    document.getElementById('game-screen').classList.remove('hidden');
-    document.getElementById('gameover-screen').classList.add('hidden');
-
-    const gameScreen = document.getElementById('game-screen');
-    gameScreen.style.setProperty('--player-color', playerColor);
-    gameScreen.classList.remove('dead', 'paused');
-    document.getElementById('player-name').textContent = playerName;
-
-    // Pause button (host only)
-    document.getElementById('pause-btn').classList.toggle('hidden', !isHost);
-
-    // Hide overlays
-    document.getElementById('pause-overlay').classList.add('hidden');
-    const ko = document.getElementById('ko-overlay');
-    if (ko) ko.remove();
-  }, { playerColor, playerName, isHost });
-}
-
-// Helper: set up results screen
-async function setupResultsState(page, { isHost, results, meId, playerColor }) {
-  await page.evaluate(({ isHost, results, meId, playerColor }) => {
-    // Switch screens
-    document.getElementById('waiting-screen').classList.add('hidden');
-    document.getElementById('game-screen').classList.add('hidden');
-    document.getElementById('gameover-screen').classList.remove('hidden');
-
-    document.getElementById('gameover-title').textContent = 'RESULTS';
-
-    const COLORS = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#A78BFA'];
-    const NAMES = ['Player 1', 'Player 2', 'Player 3', 'Player 4'];
-
-    // Winner glow
-    const gameoverScreen = document.getElementById('gameover-screen');
-    if (results.length > 0) {
-      const wc = COLORS[(results[0].playerId - 1) % COLORS.length];
-      gameoverScreen.style.setProperty('--winner-glow', `color-mix(in srgb, ${wc} 8%, transparent)`);
-    }
-    if (playerColor) {
-      gameoverScreen.style.setProperty('--me-color', playerColor);
-    }
-
-    // Buttons
-    document.getElementById('gameover-buttons').classList.toggle('hidden', !isHost);
-    document.getElementById('gameover-status').textContent = isHost ? '' : 'Waiting for host...';
-
-    // Results list
-    const resultsList = document.getElementById('results-list');
-    resultsList.innerHTML = '';
-    for (let i = 0; i < results.length; i++) {
-      const r = results[i];
-      const pColor = COLORS[(r.playerId - 1) % COLORS.length];
-      const row = document.createElement('div');
-      row.className = `result-row rank-${r.rank}`;
-      row.style.setProperty('--row-delay', `${0.2 + i * 0.08}s`);
-      if (r.playerId === meId) row.classList.add('is-me');
-
-      const rankEl = document.createElement('span');
-      rankEl.className = 'result-rank';
-      rankEl.textContent = r.rank <= 3 ? ['', '1st', '2nd', '3rd'][r.rank] : `${r.rank}th`;
-
-      const info = document.createElement('div');
-      info.className = 'result-info';
-      const nameEl = document.createElement('span');
-      nameEl.className = 'result-name';
-      nameEl.textContent = NAMES[r.playerId - 1] || `Player ${r.playerId}`;
-      nameEl.style.color = pColor;
-      const scoreEl = document.createElement('span');
-      scoreEl.className = 'result-score';
-      scoreEl.textContent = `${(r.score || 0).toLocaleString()} pts`;
-      info.appendChild(nameEl);
-      info.appendChild(scoreEl);
-      row.appendChild(rankEl);
-      row.appendChild(info);
-      resultsList.appendChild(row);
-    }
-  }, { isHost, results, meId, playerColor });
-}
-
-const mockResults = [
-  { rank: 1, playerId: 1, score: 24800 },
-  { rank: 2, playerId: 2, score: 18200 },
-  { rank: 3, playerId: 3, score: 12100 },
-  { rank: 4, playerId: 4, score: 5400 },
-];
-
-// --- Controller page tests (phone viewport: 390x844) ---
+test.afterEach(async ({ request }) => {
+  await resetTestServer(request);
+});
 
 test.describe('Controller', () => {
+  test('connecting screen', async ({ page, request }) => {
+    const displayPage = page;
+    const { roomCode } = await createRoom(displayPage);
 
-  test('connecting screen', async ({ page }) => {
-    await page.addInitScript(WS_STUB_SCRIPT);
-    await page.goto('/TESTROOM');
-    await waitForFont(page);
-    await expect(page).toHaveScreenshot('controller-connecting.png');
+    await delayNextJoin(request, 1500);
+
+    const controller = await displayPage.context().newPage();
+    await controller.goto(`/${roomCode}`);
+    await waitForFont(controller);
+    await controller.fill('#name-input', 'Player 1');
+    await controller.click('#name-join-btn');
+    await controller.waitForFunction(() => {
+      return document.getElementById('name-form').classList.contains('hidden')
+        && document.getElementById('status-text').textContent === 'Connecting...';
+    });
+    await expect(controller).toHaveScreenshot('controller-connecting.png');
+    await controller.waitForSelector('#player-identity:not(.hidden)');
   });
 
-  test('lobby - host view', async ({ page }) => {
-    await page.addInitScript(WS_STUB_SCRIPT);
-    await page.goto('/TESTROOM');
-    await waitForFont(page);
-    await setupLobbyState(page, {
-      isHost: true,
-      playerColor: '#FF6B6B',
-      playerName: 'Player 1',
-      playerCount: 2,
-    });
-    await page.waitForTimeout(100);
-    await expect(page).toHaveScreenshot('controller-lobby-host.png');
+  test('lobby - host view', async ({ page, context }) => {
+    const { controllers } = await setupJoinedRoom(page, context, ['Player 1', 'Player 2']);
+    const host = controllers[0];
+    await host.waitForFunction(() => document.getElementById('start-btn').textContent.includes('2 players'));
+    await expect(host).toHaveScreenshot('controller-lobby-host.png');
   });
 
-  test('lobby - non-host view', async ({ page }) => {
-    await page.addInitScript(WS_STUB_SCRIPT);
-    await page.goto('/TESTROOM');
-    await waitForFont(page);
-    await setupLobbyState(page, {
-      isHost: false,
-      playerColor: '#4ECDC4',
-      playerName: 'Player 2',
-      playerCount: 2,
-    });
-    await page.waitForTimeout(100);
-    await expect(page).toHaveScreenshot('controller-lobby-nonhost.png');
+  test('lobby - non-host view', async ({ page, context }) => {
+    const { controllers } = await setupJoinedRoom(page, context, ['Player 1', 'Player 2']);
+    const nonHost = controllers[1];
+    await nonHost.waitForFunction(() => document.getElementById('status-text').textContent.includes('Waiting for host'));
+    await expect(nonHost).toHaveScreenshot('controller-lobby-nonhost.png');
   });
 
-  test('game screen - host', async ({ page }) => {
-    await page.addInitScript(WS_STUB_SCRIPT);
-    await page.goto('/TESTROOM');
-    await waitForFont(page);
-    await setupGameState(page, {
-      playerColor: '#FF6B6B',
-      playerName: 'Player 1',
-      isHost: true,
-    });
-    await page.waitForTimeout(100);
-    await expect(page).toHaveScreenshot('controller-game-host.png');
+  test('game screen - host', async ({ page, context, request }) => {
+    const { roomCode, controllers } = await setupJoinedRoom(page, context, ['Player 1', 'Player 2']);
+    const host = controllers[0];
+    await applyScenario(request, roomCode, 'game');
+    await waitForControllerGame(host);
+    await expect(host).toHaveScreenshot('controller-game-host.png');
   });
 
-  test('game screen - non-host', async ({ page }) => {
-    await page.addInitScript(WS_STUB_SCRIPT);
-    await page.goto('/TESTROOM');
-    await waitForFont(page);
-    await setupGameState(page, {
-      playerColor: '#4ECDC4',
-      playerName: 'Player 2',
-      isHost: false,
-    });
-    await page.waitForTimeout(100);
-    await expect(page).toHaveScreenshot('controller-game-nonhost.png');
+  test('game screen - non-host', async ({ page, context, request }) => {
+    const { roomCode, controllers } = await setupJoinedRoom(page, context, ['Player 1', 'Player 2']);
+    const nonHost = controllers[1];
+    await applyScenario(request, roomCode, 'game');
+    await waitForControllerGame(nonHost);
+    await expect(nonHost).toHaveScreenshot('controller-game-nonhost.png');
   });
 
-  test('game screen - paused (host)', async ({ page }) => {
-    await page.addInitScript(WS_STUB_SCRIPT);
-    await page.goto('/TESTROOM');
-    await waitForFont(page);
-    await setupGameState(page, {
-      playerColor: '#FF6B6B',
-      playerName: 'Player 1',
-      isHost: true,
-    });
-
-    // Show pause overlay
-    await page.evaluate(() => {
-      document.getElementById('game-screen').classList.add('paused');
-      document.getElementById('pause-overlay').classList.remove('hidden');
-      document.getElementById('pause-btn').classList.add('hidden');
-      document.getElementById('pause-buttons').classList.remove('hidden');
-      document.getElementById('pause-status').textContent = '';
-    });
-    await page.waitForTimeout(100);
-    await expect(page).toHaveScreenshot('controller-pause-host.png');
+  test('game screen - paused (host)', async ({ page, context, request }) => {
+    const { roomCode, controllers } = await setupJoinedRoom(page, context, ['Player 1', 'Player 2']);
+    const host = controllers[0];
+    await applyScenario(request, roomCode, 'pause');
+    await host.waitForSelector('#pause-overlay:not(.hidden)');
+    await host.waitForTimeout(150);
+    await expect(host).toHaveScreenshot('controller-pause-host.png');
   });
 
-  test('game screen - paused (non-host)', async ({ page }) => {
-    await page.addInitScript(WS_STUB_SCRIPT);
-    await page.goto('/TESTROOM');
-    await waitForFont(page);
-    await setupGameState(page, {
-      playerColor: '#4ECDC4',
-      playerName: 'Player 2',
-      isHost: false,
-    });
-
-    await page.evaluate(() => {
-      document.getElementById('game-screen').classList.add('paused');
-      document.getElementById('pause-overlay').classList.remove('hidden');
-      document.getElementById('pause-buttons').classList.add('hidden');
-      document.getElementById('pause-status').textContent = 'Game paused by host';
-    });
-    await page.waitForTimeout(100);
-    await expect(page).toHaveScreenshot('controller-pause-nonhost.png');
+  test('game screen - paused (non-host)', async ({ page, context, request }) => {
+    const { roomCode, controllers } = await setupJoinedRoom(page, context, ['Player 1', 'Player 2']);
+    const nonHost = controllers[1];
+    await applyScenario(request, roomCode, 'pause');
+    await nonHost.waitForSelector('#pause-overlay:not(.hidden)');
+    await nonHost.waitForTimeout(150);
+    await expect(nonHost).toHaveScreenshot('controller-pause-nonhost.png');
   });
 
-  test('game screen - KO', async ({ page }) => {
-    await page.addInitScript(WS_STUB_SCRIPT);
-    await page.goto('/TESTROOM');
-    await waitForFont(page);
-    await setupGameState(page, {
-      playerColor: '#FF6B6B',
-      playerName: 'Player 1',
-      isHost: false,
-    });
-
-    await page.evaluate(() => {
-      document.getElementById('game-screen').classList.add('dead');
-      const ko = document.createElement('div');
-      ko.id = 'ko-overlay';
-      ko.textContent = 'KO';
-      document.getElementById('touch-area').appendChild(ko);
-    });
-    await page.waitForTimeout(100);
-    await expect(page).toHaveScreenshot('controller-ko.png');
+  test('game screen - KO', async ({ page, context, request }) => {
+    const { roomCode, controllers } = await setupJoinedRoom(page, context, ['Player 1', 'Player 2']);
+    const knockedOut = controllers[1];
+    await applyScenario(request, roomCode, 'ko', { deadPlayerId: 2 });
+    await knockedOut.waitForFunction(() => document.getElementById('game-screen').classList.contains('dead'));
+    await knockedOut.waitForSelector('#ko-overlay');
+    await expect(knockedOut).toHaveScreenshot('controller-ko.png');
   });
 
-  test('results - host view', async ({ page }) => {
-    await page.addInitScript(WS_STUB_SCRIPT);
-    await page.goto('/TESTROOM');
-    await waitForFont(page);
-    await setupResultsState(page, {
-      isHost: true,
-      results: mockResults,
-      meId: 1,
-      playerColor: '#FF6B6B',
-    });
-    // Wait for row animations
-    await page.waitForTimeout(600);
-    await expect(page).toHaveScreenshot('controller-results-host.png');
+  test('results - host view', async ({ page, context, request }) => {
+    const { roomCode, controllers } = await setupJoinedRoom(page, context, ['Player 1', 'Player 2', 'Player 3', 'Player 4']);
+    const host = controllers[0];
+    await applyScenario(request, roomCode, 'results');
+    await waitForControllerResults(host);
+    await expect(host).toHaveScreenshot('controller-results-host.png');
   });
 
-  test('results - non-host view', async ({ page }) => {
-    await page.addInitScript(WS_STUB_SCRIPT);
-    await page.goto('/TESTROOM');
-    await waitForFont(page);
-    await setupResultsState(page, {
-      isHost: false,
-      results: mockResults,
-      meId: 3,
-      playerColor: '#FFE66D',
-    });
-    await page.waitForTimeout(600);
-    await expect(page).toHaveScreenshot('controller-results-nonhost.png');
+  test('results - non-host view', async ({ page, context, request }) => {
+    const { roomCode, controllers } = await setupJoinedRoom(page, context, ['Player 1', 'Player 2', 'Player 3', 'Player 4']);
+    const nonHost = controllers[1];
+    await applyScenario(request, roomCode, 'results');
+    await waitForControllerResults(nonHost);
+    await expect(nonHost).toHaveScreenshot('controller-results-nonhost.png');
   });
 
+  test('error - room not found', async ({ page }) => {
+    await page.goto('/ZZZZ');
+    await waitForFont(page);
+    await page.fill('#name-input', 'Player 1');
+    await page.click('#name-join-btn');
+    await page.waitForFunction(() => {
+      return document.getElementById('status-text').textContent === 'Game Over'
+        && document.getElementById('status-detail').textContent === 'Room not found.';
+    });
+    await expect(page).toHaveScreenshot('controller-error-room-notfound.png');
+  });
+
+  test('error - host disconnected', async ({ page, context }) => {
+    const { controllers } = await setupJoinedRoom(page, context, ['Player 1', 'Player 2']);
+    const host = controllers[0];
+    const nonHost = controllers[1];
+    await host.click('#disconnect-btn');
+    await nonHost.waitForFunction(() => {
+      return document.getElementById('status-text').textContent === 'Game Cancelled'
+        && document.getElementById('status-detail').textContent === 'Host disconnected.'
+        && !document.getElementById('rejoin-btn').classList.contains('hidden');
+    });
+    await expect(nonHost).toHaveScreenshot('controller-error-host-disconnected.png');
+  });
+
+  test('error - room reset', async ({ page, context, request }) => {
+    const { controllers } = await setupJoinedRoom(page, context, ['Player 1']);
+    const controller = controllers[0];
+    await resetTestServer(request);
+    await controller.waitForFunction(() => {
+      return document.getElementById('status-text').textContent === 'Game Over'
+        && document.getElementById('status-detail').textContent === '';
+    });
+    await expect(controller).toHaveScreenshot('controller-error-room-reset.png');
+  });
+
+  test('error - reconnection failed', async ({ page, context }) => {
+    const { roomCode } = await createRoom(page);
+    const controller = await context.newPage();
+    await controller.addInitScript(([key, value]) => {
+      sessionStorage.setItem(key, value);
+    }, [`reconnectToken_${roomCode}`, 'invalid-token']);
+    await controller.goto(`/${roomCode}`);
+    await waitForFont(controller);
+    await controller.waitForFunction(() => {
+      return document.getElementById('status-text').textContent === 'Error'
+        && document.getElementById('status-detail').textContent === 'Reconnection failed'
+        && !document.getElementById('rejoin-btn').classList.contains('hidden');
+    });
+    await expect(controller).toHaveScreenshot('controller-error-reconnection-failed.png');
+  });
 });

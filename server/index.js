@@ -7,11 +7,13 @@ const os = require('os');
 const { WebSocketServer } = require('ws');
 const Room = require('./Room.js');
 const { MSG } = require('../public/shared/protocol.js');
+const { applyVisualScenario } = require('./visualTestScenarios.js');
 
 const PORT = parseInt(process.env.PORT, 10) || 4000;
 const PUBLIC_URL = process.env.PUBLIC_URL || ''; // e.g. https://main.tetris-party.duckdns.org
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const APP_VERSION = require('../package.json').version;
+const E2E_TEST_MODE = process.env.E2E_TEST_MODE === '1';
 
 // --- MIME types ---
 const MIME_TYPES = {
@@ -27,9 +29,92 @@ const MIME_TYPES = {
   '.woff2': 'font/woff2'
 };
 
+const testState = {
+  nextJoinDelayMs: 0
+};
+
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let raw = '';
+    req.on('data', (chunk) => {
+      raw += chunk;
+      if (raw.length > 1e6) {
+        reject(new Error('Request body too large'));
+      }
+    });
+    req.on('end', () => {
+      if (!raw) {
+        resolve({});
+        return;
+      }
+      try {
+        resolve(JSON.parse(raw));
+      } catch (err) {
+        reject(err);
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+function destroyAllRooms() {
+  for (const room of rooms.values()) {
+    room.destroy();
+  }
+  rooms.clear();
+}
+
+function sendJson(res, statusCode, payload) {
+  res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(payload));
+}
+
+function extractRoomCode(urlPath) {
+  const match = urlPath.match(/^\/api\/test\/room\/([A-Z]{4})\/scenario$/);
+  return match ? match[1] : null;
+}
+
 // --- HTTP Static Server ---
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   let urlPath = req.url.split('?')[0]; // strip query params
+
+  if (E2E_TEST_MODE && req.method === 'POST' && urlPath === '/api/test/reset') {
+    destroyAllRooms();
+    testState.nextJoinDelayMs = 0;
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  if (E2E_TEST_MODE && req.method === 'POST' && urlPath === '/api/test/delay-next-join') {
+    try {
+      const body = await readJsonBody(req);
+      testState.nextJoinDelayMs = Math.max(0, Number(body.ms) || 0);
+      sendJson(res, 200, { ok: true, nextJoinDelayMs: testState.nextJoinDelayMs });
+    } catch (err) {
+      sendJson(res, 400, { ok: false, error: err.message });
+    }
+    return;
+  }
+
+  if (E2E_TEST_MODE && req.method === 'POST') {
+    const roomCode = extractRoomCode(urlPath);
+    if (roomCode) {
+      const room = rooms.get(roomCode);
+      if (!room) {
+        sendJson(res, 404, { ok: false, error: 'Room not found' });
+        return;
+      }
+
+      try {
+        const body = await readJsonBody(req);
+        applyVisualScenario(room, body.scenario, body.options || {});
+        sendJson(res, 200, { ok: true });
+      } catch (err) {
+        sendJson(res, 400, { ok: false, error: err.message });
+      }
+      return;
+    }
+  }
 
   // Health check endpoint
   if (urlPath === '/health') {
@@ -226,46 +311,16 @@ async function handleNewConnection(ws, msg) {
     console.log(`Room ${roomCode} created. Join: ${joinUrl}`);
 
   } else if (msg.type === MSG.JOIN) {
-    const room = rooms.get(msg.roomCode);
-    if (!room) {
-      send(ws, MSG.ERROR, { message: 'Room not found' });
-      return;
-    }
+    const delayMs = E2E_TEST_MODE ? testState.nextJoinDelayMs : 0;
+    testState.nextJoinDelayMs = 0;
 
-    // Rejoin: player has ?player=playerId (from QR code or URL persistence)
-    if (msg.rejoinId) {
-      const result = room.rejoinById(parseInt(msg.rejoinId), ws);
-      if (result) {
-        clientInfo.set(ws, { roomCode: msg.roomCode, playerId: result.playerId, type: 'controller' });
-        send(ws, MSG.JOINED, {
-          playerId: result.playerId,
-          playerName: result.name,
-          playerColor: result.color,
-          reconnectToken: result.reconnectToken,
-          isHost: result.isHost,
-          reconnected: true,
-          playerCount: room.players.size,
-          roomState: room.state,
-          ...room.getReconnectState(result.playerId)
-        });
-        console.log(`Player ${result.playerId} rejoined room ${msg.roomCode} via QR`);
-        return;
-      }
-      // Fall through to normal addPlayer if rejoin failed
-    }
-
-    const result = room.addPlayer(ws, msg.name);
-    if (result) {
-      clientInfo.set(ws, { roomCode: msg.roomCode, playerId: result.playerId, type: 'controller' });
-      send(ws, MSG.JOINED, {
-        playerId: result.playerId,
-        playerName: result.name,
-        playerColor: result.color,
-        reconnectToken: result.reconnectToken,
-        isHost: result.isHost,
-        playerCount: room.players.size
-      });
-      console.log(`Player ${result.playerId} (${result.name}) joined room ${msg.roomCode}`);
+    if (delayMs > 0) {
+      setTimeout(() => {
+        if (ws.readyState !== 1) return;
+        processJoinMessage(ws, msg);
+      }, delayMs);
+    } else {
+      processJoinMessage(ws, msg);
     }
 
   } else if (msg.type === MSG.REJOIN) {
@@ -293,6 +348,48 @@ async function handleNewConnection(ws, msg) {
     } else {
       send(ws, MSG.ERROR, { message: 'Reconnection failed' });
     }
+  }
+}
+
+function processJoinMessage(ws, msg) {
+  const room = rooms.get(msg.roomCode);
+  if (!room) {
+    send(ws, MSG.ERROR, { message: 'Room not found' });
+    return;
+  }
+
+  if (msg.rejoinId) {
+    const result = room.rejoinById(parseInt(msg.rejoinId), ws);
+    if (result) {
+      clientInfo.set(ws, { roomCode: msg.roomCode, playerId: result.playerId, type: 'controller' });
+      send(ws, MSG.JOINED, {
+        playerId: result.playerId,
+        playerName: result.name,
+        playerColor: result.color,
+        reconnectToken: result.reconnectToken,
+        isHost: result.isHost,
+        reconnected: true,
+        playerCount: room.players.size,
+        roomState: room.state,
+        ...room.getReconnectState(result.playerId)
+      });
+      console.log(`Player ${result.playerId} rejoined room ${msg.roomCode} via QR`);
+      return;
+    }
+  }
+
+  const result = room.addPlayer(ws, msg.name);
+  if (result) {
+    clientInfo.set(ws, { roomCode: msg.roomCode, playerId: result.playerId, type: 'controller' });
+    send(ws, MSG.JOINED, {
+      playerId: result.playerId,
+      playerName: result.name,
+      playerColor: result.color,
+      reconnectToken: result.reconnectToken,
+      isHost: result.isHost,
+      playerCount: room.players.size
+    });
+    console.log(`Player ${result.playerId} (${result.name}) joined room ${msg.roomCode}`);
   }
 }
 
