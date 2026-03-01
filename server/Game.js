@@ -2,7 +2,7 @@
 
 const { PlayerBoard } = require('./PlayerBoard.js');
 const { GarbageManager } = require('./GarbageManager.js');
-const { LOGIC_TICK_MS, BROADCAST_TICK_MS } = require('./constants.js');
+const { LOGIC_TICK_MS } = require('./constants.js');
 
 class Game {
   constructor(players, callbacks) {
@@ -11,8 +11,8 @@ class Game {
     this.playerIds = [];
     this.startTime = null;
     this.logicInterval = null;
-    this.broadcastInterval = null;
     this.ended = false;
+    this.dirty = false;
     this.paused = false;
     this.pausedAt = null;
 
@@ -39,17 +39,12 @@ class Game {
     }
 
     this.logicInterval = setInterval(() => this.logicTick(), LOGIC_TICK_MS);
-    this.broadcastInterval = setInterval(() => this.broadcastTick(), BROADCAST_TICK_MS);
   }
 
   stop() {
     if (this.logicInterval) {
       clearInterval(this.logicInterval);
       this.logicInterval = null;
-    }
-    if (this.broadcastInterval) {
-      clearInterval(this.broadcastInterval);
-      this.broadcastInterval = null;
     }
   }
 
@@ -68,32 +63,36 @@ class Game {
     this.paused = false;
     this.pausedAt = null;
     this.logicInterval = setInterval(() => this.logicTick(), LOGIC_TICK_MS);
-    this.broadcastInterval = setInterval(() => this.broadcastTick(), BROADCAST_TICK_MS);
   }
 
   processInput(playerId, action) {
     const board = this.boards.get(playerId);
     if (!board || !board.alive || this.ended) return;
 
-    let result = null;
     switch (action) {
       case 'left':
         board.moveLeft();
+        this.dirty = true;
         break;
       case 'right':
         board.moveRight();
+        this.dirty = true;
         break;
       case 'rotate_cw':
         board.rotateCW();
+        this.dirty = true;
         break;
-      case 'hard_drop':
-        result = board.hardDrop();
+      case 'hard_drop': {
+        const result = board.hardDrop();
         if (result && result.linesCleared > 0) {
           this.handleLineClear(playerId, result);
         }
+        this.dirty = true;
         break;
+      }
       case 'hold':
         board.hold();
+        this.dirty = true;
         break;
     }
   }
@@ -102,12 +101,14 @@ class Game {
     const board = this.boards.get(playerId);
     if (!board || !board.alive || this.ended) return;
     board.softDropStart(speed);
+    this.dirty = true;
   }
 
   handleSoftDropEnd(playerId) {
     const board = this.boards.get(playerId);
     if (!board || !board.alive || this.ended) return;
     board.softDropEnd();
+    this.dirty = true;
   }
 
   logicTick() {
@@ -116,15 +117,24 @@ class Game {
     for (const [id, board] of this.boards) {
       if (!board.alive) continue;
 
+      const prevY = board.currentPiece ? board.currentPiece.y : null;
+      const wasClearing = board.clearingRows;
       const result = board.tick(LOGIC_TICK_MS);
+      const curY = board.currentPiece ? board.currentPiece.y : null;
 
-      if (result && result.linesCleared > 0) {
-        this.handleLineClear(id, result);
+      if (result) {
+        this.dirty = true;
+        if (result.linesCleared > 0) {
+          this.handleLineClear(id, result);
+        }
+      } else if (prevY !== curY || (wasClearing && !board.clearingRows)) {
+        this.dirty = true;
       }
 
       // Apply pending garbage
       const incoming = this.garbageManager.getIncomingGarbage(id);
       if (incoming && incoming.length > 0) {
+        this.dirty = true;
         for (const g of incoming) {
           board.addPendingGarbage(g.lines, g.gapColumn);
           this.callbacks.onEvent({
@@ -139,6 +149,7 @@ class Game {
 
       // Check if player just died
       if (!board.alive) {
+        this.dirty = true;
         this.callbacks.onEvent({
           type: 'player_ko',
           playerId: id
@@ -147,6 +158,11 @@ class Game {
     }
 
     this.checkWinCondition();
+
+    if (this.dirty) {
+      this.broadcastTick();
+      this.dirty = false;
+    }
   }
 
   broadcastTick() {
