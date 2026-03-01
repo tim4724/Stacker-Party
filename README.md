@@ -2,7 +2,7 @@
 
 Browser-based multiplayer Tetris where phones become controllers and a shared screen shows the action.
 
-**Play now at [tetris-party.com](https://tetris-party.com)**
+**Play now at [tetris.party](https://tetris.party)**
 
 ## Overview
 
@@ -91,7 +91,7 @@ Unit tests use Node.js's built-in `node:test` runner with `node:assert/strict` -
 docker compose up
 ```
 
-The app is available at `http://localhost:4000/display/`. Production is at [tetris-party.com](https://tetris-party.com).
+The app is available at `http://localhost:4000/display/`. Production is at [tetris.party](https://tetris.party).
 
 ## Tech Stack
 
