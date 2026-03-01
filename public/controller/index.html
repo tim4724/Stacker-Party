@@ -37,10 +37,10 @@
         </div>
       </div>
       <div class="controller-shell__actions controller-shell__actions--waiting">
-        <button id="name-join-btn">JOIN</button>
+        <button id="name-join-btn" class="btn btn-primary">JOIN</button>
         <p id="waiting-action-text" class="hidden"></p>
-        <button id="start-btn" class="hidden" disabled>START</button>
-        <button id="rejoin-btn" class="hidden">Rejoin</button>
+        <button id="start-btn" class="btn btn-primary hidden" disabled>START</button>
+        <button id="rejoin-btn" class="btn btn-secondary hidden">Rejoin</button>
         <button id="disconnect-btn" class="hidden">DISCONNECT</button>
       </div>
     </div>
@@ -56,8 +56,8 @@
     <div id="pause-overlay" class="hidden">
       <h1>PAUSED</h1>
       <div id="pause-buttons">
-        <button id="pause-continue-btn">CONTINUE</button>
-        <button id="pause-newgame-btn">NEW GAME</button>
+        <button id="pause-continue-btn" class="btn btn-primary">CONTINUE</button>
+        <button id="pause-newgame-btn" class="btn btn-secondary">NEW GAME</button>
       </div>
       <p id="pause-status"></p>
     </div>
@@ -83,11 +83,13 @@
       </div>
       <div class="controller-shell__body controller-shell__body--results">
         <div id="results-list"></div>
-        <p id="gameover-status"></p>
       </div>
-      <div id="gameover-buttons" class="controller-shell__actions hidden">
-        <button id="play-again-btn">PLAY AGAIN</button>
-        <button id="new-game-btn">NEW GAME</button>
+      <div id="gameover-actions" class="controller-shell__actions">
+        <p id="gameover-status"></p>
+        <div id="gameover-buttons" class="hidden">
+          <button id="play-again-btn" class="btn btn-primary">PLAY AGAIN</button>
+          <button id="new-game-btn" class="btn btn-secondary">NEW GAME</button>
+        </div>
       </div>
     </div>
   </div>
