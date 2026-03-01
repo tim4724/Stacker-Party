@@ -338,10 +338,8 @@ html, body {
 
 #pause-btn .pause-icon::before,
 #pause-btn .pause-icon::after {
-  content: '';
   width: clamp(3px, 0.4vh, 5px);
   height: clamp(12px, 1.6vh, 18px);
-  background: rgba(255, 255, 255, 0.5);
   border-radius: 1px;
 }
 

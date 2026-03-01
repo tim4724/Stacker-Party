@@ -9,11 +9,6 @@
   50% { box-shadow: 0 0 36px rgba(0, 255, 136, 0.5); }
 }
 
-@keyframes resultsTitleIn {
-  from { opacity: 0; transform: translateY(-12px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
 @keyframes resultRowIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
@@ -22,18 +17,6 @@
 @keyframes resultsBtnIn {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
-}
-
-/* --- Gradient title --- */
-
-.results-title {
-  font-family: 'Orbitron', sans-serif;
-  font-weight: 900;
-  background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan), var(--accent-green));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  animation: resultsTitleIn 0.5s 0.1s ease-out both;
 }
 
 /* --- Result rows --- */
