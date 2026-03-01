@@ -25,12 +25,12 @@ Tetris Party supports 1--4 players on a single shared display. One browser windo
 - QR code join -- scan and play, no app install
 - SRS rotation system with wall kicks
 - 7-bag randomizer for fair piece distribution
-- Competitive mode with garbage lines
+- Competitive mode with garbage lines (attacker-colored indicator on incoming garbage)
 - Race mode (40-line sprint)
 - Touch gesture controls with haptic feedback
 - Canvas rendering at 60 fps
 - 20 Hz state broadcast to all clients
-- 30-second reconnection grace period
+- 30-second reconnection grace period with paused/KO state restored on rejoin
 - T-spin and back-to-back bonus scoring
 
 ## Quick Start
@@ -95,6 +95,7 @@ public/
     BoardRenderer.js # Canvas rendering of player boards
     UIRenderer.js    # HUD, scores, countdown, results overlay
     Animations.js    # Line clear and garbage animations
+    Music.js         # Background music and sound effect playback
     display.css      # Display layout styles
   controller/
     index.html       # Controller page entry point
@@ -102,8 +103,13 @@ public/
     TouchInput.js    # Touch gesture recognition engine
     controller.css   # Controller layout styles
   shared/
-    protocol.js      # Message types and constants (server + client)
-    colors.js        # Piece color definitions
+    protocol.js           # Message types and constants (server + client)
+    colors.js             # Piece color definitions
+    theme.css             # Shared design tokens and UI components
+    theme.js              # Theme constants exposed to JavaScript
+    WelcomeBackground.js  # Animated particle background
+    CanvasUtils.js        # Shared canvas drawing utilities
+    results.css           # Results screen styles
 ```
 
 ## Tech Stack
