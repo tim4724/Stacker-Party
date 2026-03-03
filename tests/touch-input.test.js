@@ -97,8 +97,8 @@ describe('TouchInput gesture sessions', () => {
     touchInput._onPointerMove(pointerEvent({ clientX: 120, clientY: 120, timeStamp: 220 }));
 
     assert.deepEqual(actions.map(entry => entry.action), [
-      INPUT.RIGHT,
       'soft_drop_start',
+      INPUT.RIGHT,
       INPUT.RIGHT,
       'soft_drop_start'
     ]);
@@ -122,12 +122,12 @@ describe('TouchInput gesture sessions', () => {
     assert.deepEqual(actions.map(entry => entry.action), [INPUT.HOLD]);
   });
 
-  test('release flick is blocked after horizontal input was recognized', () => {
+  test('release flick still fires after horizontal input', () => {
     touchInput._onPointerDown(pointerEvent({ clientX: 0, clientY: 0, timeStamp: 0 }));
     touchInput._onPointerMove(pointerEvent({ clientX: 60, clientY: 10, timeStamp: 40 }));
     touchInput._onPointerUp(pointerEvent({ clientX: 60, clientY: -120, timeStamp: 80 }));
 
-    assert.deepEqual(actions.map(entry => entry.action), [INPUT.RIGHT]);
+    assert.deepEqual(actions.map(entry => entry.action), [INPUT.RIGHT, INPUT.HOLD]);
   });
 
   test('release hard drop is blocked after soft drop was recognized', () => {
