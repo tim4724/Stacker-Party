@@ -17,32 +17,49 @@
 <body>
   <canvas id="bg-canvas"></canvas>
 
-  <!-- Lobby / waiting screen -->
-  <div id="waiting-screen" class="screen controller-shell hidden">
-    <div class="controller-shell__frame controller-shell__frame--waiting">
+  <!-- Name input screen -->
+  <div id="name-screen" class="screen controller-shell hidden">
+    <div class="controller-shell__frame controller-shell__frame--name">
       <div class="controller-shell__brand">
-        <h1 id="lobby-title" class="controller-shell__title gradient-title">TETRIS PARTY</h1>
+        <h1 class="controller-shell__title gradient-title">TETRIS PARTY</h1>
       </div>
       <div class="controller-shell__body">
         <div id="name-form">
           <input id="name-input" type="text" maxlength="16" autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" placeholder="Enter name...">
         </div>
-        <div id="player-identity" class="hidden">
+        <div class="controller-shell__copy">
+          <p id="name-status-text"></p>
+          <p id="name-status-detail"></p>
+        </div>
+      </div>
+      <div class="controller-shell__actions controller-shell__actions--name">
+        <button id="name-join-btn" class="btn btn-primary">JOIN</button>
+        <button id="rejoin-btn" class="btn btn-secondary hidden">Rejoin</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lobby screen -->
+  <div id="lobby-screen" class="screen controller-shell hidden">
+    <div class="controller-shell__frame controller-shell__frame--lobby">
+      <div class="controller-shell__brand">
+        <button id="lobby-back-btn" class="nav-back-btn" aria-label="Back"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4L6 10L14 16"/></svg></button>
+        <h1 id="lobby-title" class="controller-shell__title gradient-title">TETRIS PARTY</h1>
+      </div>
+      <div class="controller-shell__body">
+        <div id="player-identity">
           <div id="player-identity-card" class="player-card">
             <span id="player-identity-name"></span>
           </div>
         </div>
         <div class="controller-shell__copy">
-          <p id="status-text">Connecting...</p>
+          <p id="status-text"></p>
           <p id="status-detail"></p>
         </div>
       </div>
-      <div class="controller-shell__actions controller-shell__actions--waiting">
-        <button id="name-join-btn" class="btn btn-primary">JOIN</button>
+      <div class="controller-shell__actions controller-shell__actions--lobby">
         <p id="waiting-action-text" class="hidden"></p>
         <button id="start-btn" class="btn btn-primary hidden" disabled>START</button>
-        <button id="rejoin-btn" class="btn btn-secondary hidden">Rejoin</button>
-        <button id="disconnect-btn" class="hidden">DISCONNECT</button>
       </div>
     </div>
   </div>

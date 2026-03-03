@@ -119,11 +119,36 @@ html, body {
   margin-top: auto;
 }
 
-.controller-shell__actions--waiting {
+.controller-shell__actions--name {
   padding-top: 8px;
 }
 
-body.keyboard-open .controller-shell__frame--waiting {
+.controller-shell__frame--lobby .controller-shell__brand {
+  justify-content: flex-start;
+  gap: 12px;
+}
+
+.nav-back-btn {
+  width: 44px;
+  height: 44px;
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.7);
+  transition: all 0.2s ease;
+}
+
+.nav-back-btn:active {
+  background: rgba(255, 255, 255, 0.15);
+  transform: scale(0.92);
+}
+
+body.keyboard-open .controller-shell__frame--name {
   gap: 16px;
 }
 
@@ -136,7 +161,7 @@ body.keyboard-open .controller-shell__body {
   padding-bottom: clamp(12px, 3vh, 28px);
 }
 
-body.keyboard-open .controller-shell__actions--waiting {
+body.keyboard-open .controller-shell__actions--name {
   margin-top: 0;
   padding-top: 0;
 }
@@ -256,7 +281,8 @@ body.keyboard-open #name-form {
   animation: lobbyFadeUp 0.5s 0.35s ease-out both;
 }
 
-#status-text {
+#status-text,
+#name-status-text {
   font-family: 'Orbitron', sans-serif;
   font-size: clamp(1.2rem, 5.8vw, 1.85rem);
   font-weight: 700;
@@ -266,7 +292,8 @@ body.keyboard-open #name-form {
   text-align: center;
 }
 
-#status-detail {
+#status-detail,
+#name-status-detail {
   font-size: clamp(0.85rem, 3.5vw, 1rem);
   color: rgba(160, 160, 200, 0.7);
   letter-spacing: 0.02em;
@@ -278,6 +305,8 @@ body.keyboard-open #name-form {
 
 #status-text:empty,
 #status-detail:empty,
+#name-status-text:empty,
+#name-status-detail:empty,
 #gameover-status:empty {
   display: none;
 }
@@ -294,26 +323,6 @@ body.keyboard-open #name-form {
 
 #rejoin-btn:active {
   background: rgba(0, 200, 255, 0.1);
-}
-
-#disconnect-btn {
-  width: 100%;
-  padding: 0.85rem 1.5rem;
-  border: 1.5px solid rgba(255, 80, 80, 0.5);
-  border-radius: var(--radius-md);
-  background: transparent;
-  font-family: 'Orbitron', sans-serif;
-  font-size: 0.85rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: rgba(255, 80, 80, 0.9);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-#disconnect-btn:active {
-  background: rgba(255, 80, 80, 0.1);
-  transform: scale(0.95);
 }
 
 /* Game screen */
