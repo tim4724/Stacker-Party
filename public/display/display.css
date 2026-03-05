@@ -473,49 +473,48 @@ html, body {
   z-index: 100;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: clamp(0.8rem, 2vh, 1.5rem);
   background:
-    radial-gradient(ellipse at 50% 40%, rgba(68, 68, 255, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse at 50% 30%, rgba(68, 68, 255, 0.06) 0%, transparent 50%),
     var(--bg-primary);
   text-align: center;
-  padding: 2rem;
+  padding: 64px 2rem 2rem;
 }
 
-#mobile-hint .mobile-hint-icon {
-  font-size: 3rem;
-  line-height: 1;
+#mobile-hint h1 {
+  font-size: clamp(1.4rem, 7vw, 2.2rem);
+  filter: drop-shadow(0 0 8px rgba(0, 200, 255, 0.15));
 }
 
-#mobile-hint h2 {
-  font-size: clamp(1.3rem, 5vw, 2rem);
-  letter-spacing: 0.06em;
+#mobile-hint-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
-#mobile-hint p {
-  font-size: clamp(0.85rem, 3vw, 1rem);
-  color: var(--text-secondary);
-  line-height: 1.6;
-}
-
-#mobile-hint button {
-  margin-top: 1rem;
-  padding: 0.5rem 1.5rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-secondary);
+#mobile-hint-heading {
   font-family: 'Orbitron', sans-serif;
-  font-size: 0.7rem;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  cursor: pointer;
-  transition: all 0.2s ease;
+  font-size: clamp(1.2rem, 5.8vw, 1.85rem);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: rgba(0, 200, 255, 0.9);
 }
 
-#mobile-hint button:hover {
-  border-color: rgba(68, 68, 255, 0.4);
-  color: var(--text-primary);
+#mobile-hint-detail {
+  font-size: clamp(1rem, 4.5vw, 1.2rem);
+  color: rgba(160, 180, 210, 0.56);
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+  max-width: 28ch;
+}
+
+#mobile-hint .btn {
+  font-size: 0.9rem;
+  padding: 14px 24px;
+  letter-spacing: 0.1em;
+  margin-bottom: 2rem;
 }
 
 /* Show only on phone-sized screens */

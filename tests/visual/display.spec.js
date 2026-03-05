@@ -21,18 +21,26 @@ test.afterEach(async ({ request }) => {
 });
 
 test.describe('Display', () => {
+  test('mobile hint screen', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+    await waitForFont(page);
+    await stopDisplayBackground(page);
+    await expect(page).toHaveScreenshot('01-mobile-hint.png');
+  });
+
   test('welcome screen', async ({ page }) => {
     await page.goto('/');
     await waitForFont(page);
     await stopDisplayBackground(page);
-    await expect(page).toHaveScreenshot('display-welcome.png');
+    await expect(page).toHaveScreenshot('02-welcome.png');
   });
 
   test('lobby screen - empty', async ({ page }) => {
     await createRoom(page);
     await page.waitForTimeout(200);
     await stopDisplayBackground(page);
-    await expect(page).toHaveScreenshot('display-lobby-empty.png', {
+    await expect(page).toHaveScreenshot('03-lobby-empty.png', {
       mask: [page.locator('#qr-container')],
       maxDiffPixelRatio: 0.02,
     });
@@ -45,7 +53,7 @@ test.describe('Display', () => {
     await waitForDisplayPlayers(page, 2);
     await page.waitForTimeout(200);
     await stopDisplayBackground(page);
-    await expect(page).toHaveScreenshot('display-lobby-players.png', {
+    await expect(page).toHaveScreenshot('04-lobby-players.png', {
       mask: [page.locator('#qr-container')],
       maxDiffPixelRatio: 0.02,
     });
@@ -57,7 +65,7 @@ test.describe('Display', () => {
     await waitForDisplayPlayers(page, 1);
     await applyScenario(request, roomCode, 'game');
     await waitForDisplayGame(page);
-    await expect(page).toHaveScreenshot('display-game-1p.png');
+    await expect(page).toHaveScreenshot('05-game-1p.png');
   });
 
   test('game screen - 2 players', async ({ page, context, request }) => {
@@ -67,7 +75,7 @@ test.describe('Display', () => {
     await waitForDisplayPlayers(page, 2);
     await applyScenario(request, roomCode, 'game');
     await waitForDisplayGame(page);
-    await expect(page).toHaveScreenshot('display-game-2p.png');
+    await expect(page).toHaveScreenshot('06-game-2p.png');
   });
 
   test('game screen - 4 players', async ({ page, context, request }) => {
@@ -79,7 +87,7 @@ test.describe('Display', () => {
     await waitForDisplayPlayers(page, 4);
     await applyScenario(request, roomCode, 'game');
     await waitForDisplayGame(page);
-    await expect(page).toHaveScreenshot('display-game-4p.png');
+    await expect(page).toHaveScreenshot('07-game-4p.png');
   });
 
   test('game screen - with KO', async ({ page, context, request }) => {
@@ -89,7 +97,7 @@ test.describe('Display', () => {
     await waitForDisplayPlayers(page, 2);
     await applyScenario(request, roomCode, 'ko');
     await waitForDisplayGame(page);
-    await expect(page).toHaveScreenshot('display-game-ko.png');
+    await expect(page).toHaveScreenshot('08-game-ko.png');
   });
 
   test('pause overlay', async ({ page, context, request }) => {
@@ -99,7 +107,7 @@ test.describe('Display', () => {
     await applyScenario(request, roomCode, 'pause');
     await page.waitForSelector('#pause-overlay:not(.hidden)');
     await page.waitForTimeout(150);
-    await expect(page).toHaveScreenshot('display-pause.png');
+    await expect(page).toHaveScreenshot('09-pause.png');
   });
 
   test('results screen', async ({ page, context, request }) => {
@@ -111,6 +119,6 @@ test.describe('Display', () => {
     await waitForDisplayPlayers(page, 4);
     await applyScenario(request, roomCode, 'results');
     await waitForDisplayResults(page);
-    await expect(page).toHaveScreenshot('display-results.png');
+    await expect(page).toHaveScreenshot('10-results.png');
   });
 });
