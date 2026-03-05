@@ -271,22 +271,20 @@ class UIRenderer {
     const ctx = this.ctx;
 
     // Darken the board
-    ctx.fillStyle = `rgba(0, 0, 0, ${THEME.opacity.overlay})`;
+    ctx.fillStyle = `rgba(0, 0, 0, ${THEME.opacity.label})`;
     ctx.fillRect(this.boardX, this.boardY, this.boardWidth, this.boardHeight);
 
-    // KO text — subtle white, matching controller style
+    // KO text — subtle, matching controller style
     const koSize = Math.max(28, this.cellSize * 2.2);
-    ctx.font = `900 ${koSize}px ${this._labelFont}`;
+    ctx.font = `900 ${koSize}px Orbitron, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
-    ctx.letterSpacing = '0.1em';
     ctx.fillText(
       'KO',
       this.boardX + this.boardWidth / 2,
       this.boardY + this.boardHeight / 2
     );
-    ctx.letterSpacing = '0px';
   }
 
   drawMiniPiece(centerX, centerY, pieceType, size) {
