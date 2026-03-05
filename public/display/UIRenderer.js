@@ -284,23 +284,19 @@ class UIRenderer {
     ctx.fillStyle = grad;
     ctx.fillRect(this.boardX, this.boardY, this.boardWidth, this.boardHeight);
 
-    // KO text with glow
+    // KO text — subtle white, matching controller style
     const koSize = Math.max(28, this.cellSize * 2.2);
     ctx.font = `900 ${koSize}px ${this._labelFont}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-
-    // Red glow
-    ctx.shadowColor = THEME.color.ko.glow;
-    ctx.shadowBlur = 20;
-    ctx.fillStyle = THEME.color.ko.text;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.letterSpacing = '0.1em';
     ctx.fillText(
-      'K.O.',
+      'KO',
       this.boardX + this.boardWidth / 2,
       this.boardY + this.boardHeight / 2
     );
-    ctx.shadowColor = 'transparent';
-    ctx.shadowBlur = 0;
+    ctx.letterSpacing = '0px';
 
     // Scanlines over the darkened board
     ctx.fillStyle = `rgba(0, 0, 0, ${THEME.opacity.subtle})`;
