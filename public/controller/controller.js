@@ -394,12 +394,15 @@
     }, PING_INTERVAL_MS);
     pongCheckTimer = setInterval(function () {
       if (Date.now() - lastPongTime > PONG_TIMEOUT_MS) {
+        // Stop ping/pong and force reconnect through normal attempt cycle
+        stopPing();
         if (currentScreen === 'game') {
           reconnectOverlay.classList.remove('hidden');
-          reconnectHeading.textContent = 'CONNECTION LOST';
+          reconnectHeading.textContent = 'RECONNECTING';
           reconnectStatus.textContent = 'Display not responding';
-          reconnectRejoinBtn.classList.remove('hidden');
+          reconnectRejoinBtn.classList.add('hidden');
         }
+        party.reconnectNow();
       }
     }, 1000);
   }
