@@ -36,7 +36,7 @@ var goTimeout = null;
 var softDropTimers = new Map();
 
 // Controller liveness (5s without ping -> show disconnect QR)
-var LIVENESS_TIMEOUT_MS = 5000;
+var LIVENESS_TIMEOUT_MS = 3000;
 var livenessInterval = null;
 
 // Grace period timers for disconnected players in lobby
@@ -560,7 +560,7 @@ function startLivenessCheck() {
         }
       }
     }
-  }, 2000);
+  }, 1000);
 }
 
 function stopLivenessCheck() {

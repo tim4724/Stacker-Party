@@ -17,8 +17,8 @@
   var lastGameResults = null;
 
   // Ping/pong
-  var PING_INTERVAL_MS = 2000;
-  var PONG_TIMEOUT_MS = 5000;
+  var PING_INTERVAL_MS = 1000;
+  var PONG_TIMEOUT_MS = 3000;
   var pingTimer = null;
   var pongCheckTimer = null;
   var lastPongTime = 0;
