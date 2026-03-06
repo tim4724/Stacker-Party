@@ -533,6 +533,11 @@ function getBaseUrl() {
 }
 
 function fetchBaseUrl() {
+  // Only fetch LAN IP override when running on localhost (dev mode).
+  // In production, window.location.origin is already the correct public URL.
+  var host = window.location.hostname;
+  if (host !== 'localhost' && host !== '127.0.0.1') return;
+
   fetch('/api/baseurl')
     .then(function(r) { return r.json(); })
     .then(function(data) {
