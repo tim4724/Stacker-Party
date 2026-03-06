@@ -6,18 +6,19 @@ Browser-based multiplayer Tetris where phones become controllers and a shared sc
 
 ## Overview
 
-Tetris Party supports 1 to 4 players on a single shared display. One browser window acts as the game screen (TV, monitor, or laptop), while each player joins by scanning a QR code with their phone. The phone becomes a touch-based controller with gesture input and haptic feedback. All game logic runs on a server-authoritative Node.js backend communicating over WebSockets.
+Tetris Party supports 1 to 4 players on a single shared display. One browser window acts as the game screen (TV, monitor, or laptop), while each player joins by scanning a QR code with their phone. The phone becomes a touch-based controller with gesture input and haptic feedback. The display client runs the authoritative game engine at 60 Hz, communicating with controllers through a lightweight WebSocket relay.
 
 ## Architecture
 
-```
-[Phone 1] ──ws──┐
-[Phone 2] ──ws──┤
-[Phone 3] ──ws──┼──> [Node.js Server] ──ws──> [Display Browser]
-[Phone 4] ──ws──┘    (authoritative)          (shared screen)
+```mermaid
+graph LR
+    P[Phone Controllers] -- input --> R[Party-Sockets Relay]
+    R -- input --> D[Display Browser]
+    D -- game events --> R
+    R -- game events --> P
 ```
 
-Server-authoritative game logic with WebSocket connections to all clients. The shared screen renders game state while phones send player input.
+The display browser runs the game engine and renders all player boards. Controllers send input through a [Party-Sockets](https://github.com/tim4724/Party-Sockets) WebSocket relay. The Node.js server only serves static files and a QR code API.
 
 ## Features
 
@@ -35,15 +36,15 @@ npm install
 node server/index.js
 ```
 
-1. Open `http://localhost:4000/display/` on a big screen (TV, monitor, or projector).
+1. Open `http://localhost:4000` on a big screen (TV, monitor, or projector).
 2. Scan the QR code shown on the display with your phone.
-3. Once players have joined, start the game from the display screen.
+3. Once players have joined, the host starts the game from their phone.
 
 ## How to Play
 
 1. **Set up the display.** Open the display URL in a browser on a large screen visible to all players.
 2. **Join the game.** Each player scans the QR code with their phone. The phone browser opens a controller page automatically.
-3. **Start.** The display host starts the match. A 3-second countdown begins.
+3. **Start.** The first player to join is the host. The host starts the match from their phone. A 3-second countdown begins.
 4. **Play.** Use touch gestures on your phone to control your falling pieces. Your board is shown on the shared display alongside other players.
 5. **Win.** The last player standing wins.
 
@@ -62,21 +63,29 @@ All gestures provide haptic feedback on supported devices. The controller uses a
 ## Project Structure
 
 ```
-server/      # Authoritative game logic (60 Hz tick, 20 Hz broadcast)
+server/      # Game engine modules (isomorphic UMD, used by display + tests)
 public/
-  display/   # Shared-screen Canvas renderer
+  display/   # Display client: game authority, Canvas renderer
   controller/# Phone touch controller
-  shared/    # Protocol, colors, theme, shared UI
+  shared/    # Protocol, relay connection, colors, theme, shared UI
 tests/       # Unit tests (node:test) and Playwright visual snapshots
+```
+
+## Configuration
+
+The display and controllers connect to a WebSocket relay (Party-Server) for message forwarding. By default this is `wss://ws.tetris.party`. To use a custom relay, set the `RELAY_URL` environment variable:
+
+```bash
+RELAY_URL=wss://your-relay.example.com node server/index.js
 ```
 
 ## Testing
 
 ```bash
-# Unit tests (184 tests across 8 files)
+# Unit tests (148 tests across 7 files)
 npm test
 
-# Visual snapshot tests (26 Playwright tests)
+# Visual snapshot tests (25 Playwright tests)
 npm run test:visual
 
 # Update visual snapshots after intentional UI changes
@@ -91,15 +100,15 @@ Unit tests use Node.js's built-in `node:test` runner with `node:assert/strict` -
 docker compose up
 ```
 
-The app is available at `http://localhost:4000/display/`. Production is at [tetris.party](https://tetris.party).
+The app is available at `http://localhost:4000`. Production is at [tetris.party](https://tetris.party).
 
 ## Tech Stack
 
 - **Runtime**: Node.js
-- **WebSocket**: [ws](https://github.com/websockets/ws)
+- **Relay**: [Party-Sockets](https://github.com/tim4724/Party-Sockets) WebSocket relay
 - **QR codes**: [qrcode](https://github.com/soldair/node-qrcode)
 - **Frontend**: Vanilla JavaScript, Canvas API
 - **Testing**: Node.js built-in test runner + Playwright
-- **Production deps**: 2 npm packages (`ws`, `qrcode`)
+- **Production deps**: 1 npm package (`qrcode`)
 
 No build step. No bundler. No framework. Serve and play.
