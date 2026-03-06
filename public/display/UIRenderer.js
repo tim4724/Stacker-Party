@@ -153,7 +153,7 @@ class UIRenderer {
 
     // Panel background
     const nextCount = playerState.nextPieces ? Math.min(playerState.nextPieces.length, 5) : 0;
-    const boxHeight = pieceSpacing * Math.max(nextCount, 1);
+    const boxHeight = pieceSpacing * Math.max(nextCount, 5);
     this._drawPanel(panelX, startY, boxWidth, boxHeight);
 
     // Next pieces

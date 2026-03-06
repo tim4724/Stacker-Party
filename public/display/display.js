@@ -80,7 +80,7 @@ var reconnectOverlay = document.getElementById('reconnect-overlay');
 var reconnectHeading = document.getElementById('reconnect-heading');
 var reconnectStatus = document.getElementById('reconnect-status');
 var muteBtn = document.getElementById('mute-btn');
-var muted = false;
+var muted = localStorage.getItem('tetris_muted') === '1';
 
 // --- Screen Management ---
 function showScreen(name) {
@@ -1346,8 +1346,10 @@ newGameResultsBtn.addEventListener('click', function() {
 });
 
 // --- Mute ---
+if (muted) muteBtn.querySelector('.sound-waves').style.display = 'none';
 muteBtn.addEventListener('click', function() {
   muted = !muted;
+  localStorage.setItem('tetris_muted', muted ? '1' : '0');
   muteBtn.querySelector('.sound-waves').style.display = muted ? 'none' : '';
   if (music && music.masterGain) {
     music.masterGain.gain.cancelScheduledValues(music.ctx.currentTime);
