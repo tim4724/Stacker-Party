@@ -1,24 +1,16 @@
 // @ts-check
 const { test, expect } = require('@playwright/test');
 const {
-  applyScenario,
-  createRoom,
-  joinController,
-  resetTestServer,
+  gotoDisplayTest,
+  injectGameState,
+  injectGarbageSent,
+  injectKO,
+  injectPause,
+  injectPlayers,
+  injectResults,
   stopDisplayBackground,
-  waitForDisplayGame,
-  waitForDisplayPlayers,
-  waitForDisplayResults,
   waitForFont,
 } = require('./helpers');
-
-test.beforeEach(async ({ request }) => {
-  await resetTestServer(request);
-});
-
-test.afterEach(async ({ request }) => {
-  await resetTestServer(request);
-});
 
 test.describe('Display', () => {
   test('mobile hint screen', async ({ page }) => {
@@ -37,7 +29,13 @@ test.describe('Display', () => {
   });
 
   test('lobby screen - empty', async ({ page }) => {
-    await createRoom(page);
+    await gotoDisplayTest(page);
+    // Simulate room created by showing lobby
+    await page.evaluate(() => {
+      document.getElementById('join-url').textContent = 'http://localhost:4100/TEST';
+      document.getElementById('lobby-screen').classList.remove('hidden');
+      document.getElementById('welcome-screen').classList.add('hidden');
+    });
     await page.waitForTimeout(200);
     await stopDisplayBackground(page);
     await expect(page).toHaveScreenshot('03-lobby-empty.png', {
@@ -46,11 +44,14 @@ test.describe('Display', () => {
     });
   });
 
-  test('lobby screen - with players', async ({ page, context }) => {
-    const { roomCode } = await createRoom(page);
-    await joinController(context, roomCode, 'Player 1');
-    await joinController(context, roomCode, 'Player 2');
-    await waitForDisplayPlayers(page, 2);
+  test('lobby screen - with players', async ({ page }) => {
+    await gotoDisplayTest(page);
+    await page.evaluate(() => {
+      document.getElementById('join-url').textContent = 'http://localhost:4100/TEST';
+      document.getElementById('lobby-screen').classList.remove('hidden');
+      document.getElementById('welcome-screen').classList.add('hidden');
+    });
+    await injectPlayers(page, 2);
     await page.waitForTimeout(200);
     await stopDisplayBackground(page);
     await expect(page).toHaveScreenshot('04-lobby-players.png', {
@@ -59,87 +60,76 @@ test.describe('Display', () => {
     });
   });
 
-  // Falling pieces across 1P/2P/4P show all 7 tetromino types for ghost review:
-  // 1P: I | 2P: T, J | 4P: S, Z, L, O
-  test('game screen - 1 player', async ({ page, context, request }) => {
-    const { roomCode } = await createRoom(page);
-    await joinController(context, roomCode, 'Player 1');
-    await waitForDisplayPlayers(page, 1);
-    await applyScenario(request, roomCode, 'game', {
+  test('game screen - 1 player', async ({ page }) => {
+    await gotoDisplayTest(page);
+    await injectPlayers(page, 1);
+    await injectGameState(page, 1, {
       pieces: [
-        { typeId: 1, x: 3, y: 2, blocks: [[0, 1], [1, 1], [2, 1], [3, 1]] }  // I
+        { typeId: 1, x: 3, y: 2, blocks: [[0, 1], [1, 1], [2, 1], [3, 1]] }
       ],
       ghostYs: [13]
     });
-    await waitForDisplayGame(page);
+    await page.waitForTimeout(150);
     await expect(page).toHaveScreenshot('05-game-1p.png');
   });
 
-  test('game screen - 2 players', async ({ page, context, request }) => {
-    const { roomCode } = await createRoom(page);
-    await joinController(context, roomCode, 'Player 1');
-    await joinController(context, roomCode, 'Player 2');
-    await waitForDisplayPlayers(page, 2);
-    await applyScenario(request, roomCode, 'game', {
+  test('game screen - 2 players', async ({ page }) => {
+    await gotoDisplayTest(page);
+    await injectPlayers(page, 2);
+    await injectGameState(page, 2, {
       pieces: [
-        { typeId: 6, x: 4, y: 2, blocks: [[1, 0], [0, 1], [1, 1], [2, 1]] },  // T
-        { typeId: 2, x: 3, y: 3, blocks: [[0, 0], [0, 1], [1, 1], [2, 1]] }   // J
+        { typeId: 6, x: 4, y: 2, blocks: [[1, 0], [0, 1], [1, 1], [2, 1]] },
+        { typeId: 2, x: 3, y: 3, blocks: [[0, 0], [0, 1], [1, 1], [2, 1]] }
       ],
       ghostYs: [14, 14]
     });
-    await waitForDisplayGame(page);
+    await page.waitForTimeout(150);
     await expect(page).toHaveScreenshot('06-game-2p.png');
   });
 
-  test('game screen - 4 players', async ({ page, context, request }) => {
-    const { roomCode } = await createRoom(page);
-    await joinController(context, roomCode, 'Player 1');
-    await joinController(context, roomCode, 'Player 2');
-    await joinController(context, roomCode, 'Player 3');
-    await joinController(context, roomCode, 'Player 4');
-    await waitForDisplayPlayers(page, 4);
-    await applyScenario(request, roomCode, 'game', {
+  test('game screen - 4 players', async ({ page }) => {
+    await gotoDisplayTest(page);
+    await injectPlayers(page, 4);
+    await injectGameState(page, 4, {
       pieces: [
-        { typeId: 5, x: 4, y: 2, blocks: [[1, 0], [2, 0], [0, 1], [1, 1]] },  // S
-        { typeId: 7, x: 3, y: 3, blocks: [[0, 0], [1, 0], [1, 1], [2, 1]] },  // Z
-        { typeId: 3, x: 3, y: 4, blocks: [[2, 0], [0, 1], [1, 1], [2, 1]] },  // L
-        { typeId: 4, x: 5, y: 3, blocks: [[1, 0], [2, 0], [1, 1], [2, 1]] }   // O
+        { typeId: 5, x: 4, y: 2, blocks: [[1, 0], [2, 0], [0, 1], [1, 1]] },
+        { typeId: 7, x: 3, y: 3, blocks: [[0, 0], [1, 0], [1, 1], [2, 1]] },
+        { typeId: 3, x: 3, y: 4, blocks: [[2, 0], [0, 1], [1, 1], [2, 1]] },
+        { typeId: 4, x: 5, y: 3, blocks: [[1, 0], [2, 0], [1, 1], [2, 1]] }
       ],
       ghostYs: [14, 14, 14, 14]
     });
-    await waitForDisplayGame(page);
+    await page.waitForTimeout(150);
     await expect(page).toHaveScreenshot('07-game-4p.png');
   });
 
-  test('game screen - with KO', async ({ page, context, request }) => {
-    const { roomCode } = await createRoom(page);
-    await joinController(context, roomCode, 'Player 1');
-    await joinController(context, roomCode, 'Player 2');
-    await waitForDisplayPlayers(page, 2);
-    await applyScenario(request, roomCode, 'ko');
-    await waitForDisplayGame(page);
+  test('game screen - with KO', async ({ page }) => {
+    await gotoDisplayTest(page);
+    await injectPlayers(page, 2);
+    await injectGameState(page, 2, { deadPlayerIds: ['player2'] });
+    await page.evaluate(() => {
+      window.__TEST__.injectKO('player2');
+    });
+    await page.waitForTimeout(150);
     await expect(page).toHaveScreenshot('08-game-ko.png');
   });
 
-  test('pause overlay', async ({ page, context, request }) => {
-    const { roomCode } = await createRoom(page);
-    await joinController(context, roomCode, 'Player 1');
-    await waitForDisplayPlayers(page, 1);
-    await applyScenario(request, roomCode, 'pause');
+  test('pause overlay', async ({ page }) => {
+    await gotoDisplayTest(page);
+    await injectPlayers(page, 1);
+    await injectGameState(page, 1, {});
+    await injectPause(page);
     await page.waitForSelector('#pause-overlay:not(.hidden)');
     await page.waitForTimeout(150);
     await expect(page).toHaveScreenshot('09-pause.png');
   });
 
-  test('results screen', async ({ page, context, request }) => {
-    const { roomCode } = await createRoom(page);
-    await joinController(context, roomCode, 'Player 1');
-    await joinController(context, roomCode, 'Player 2');
-    await joinController(context, roomCode, 'Player 3');
-    await joinController(context, roomCode, 'Player 4');
-    await waitForDisplayPlayers(page, 4);
-    await applyScenario(request, roomCode, 'results');
-    await waitForDisplayResults(page);
+  test('results screen', async ({ page }) => {
+    await gotoDisplayTest(page);
+    await injectPlayers(page, 4);
+    await injectResults(page, 4);
+    await page.waitForSelector('#results-screen:not(.hidden)');
+    await page.waitForTimeout(1100);
     await expect(page).toHaveScreenshot('10-results.png');
   });
 });

@@ -1,62 +1,40 @@
 'use strict';
 
-// Message types for WebSocket communication
-const MSG = {
-  // Controller → Server
-  JOIN: 'join',
-  REJOIN: 'rejoin',
+// Party-Server relay URL
+var RELAY_URL = 'wss://party-sockets.duckdns.org';
+
+// Message types for game communication (inside Party-Server data field)
+var MSG = {
+  // Controller -> Display
+  HELLO: 'hello',
   INPUT: 'input',
-  SOFT_DROP_START: 'soft_drop_start',
-  SOFT_DROP_END: 'soft_drop_end',
-  HEARTBEAT: 'heartbeat',
-  LEAVE: 'leave',
-
-  // Server → Controller
-  JOINED: 'joined',
-  INPUT_ACK: 'input_ack',
-  LOBBY_UPDATE: 'lobby_update',
-  GAME_START: 'game_start',
-  COUNTDOWN: 'countdown',
-  PLAYER_STATE: 'player_state',
-  GAME_OVER: 'game_over',
-  GAME_END: 'game_end',
-  ERROR: 'error',
-
-  // Display / Controller (host) → Server
-  CREATE_ROOM: 'create_room',
+  SOFT_DROP: 'soft_drop',
   START_GAME: 'start_game',
-  RETURN_TO_LOBBY: 'return_to_lobby',
   PLAY_AGAIN: 'play_again',
+  RETURN_TO_LOBBY: 'return_to_lobby',
   PAUSE_GAME: 'pause_game',
   RESUME_GAME: 'resume_game',
+  LEAVE: 'leave',
+  PING: 'ping',
 
-  // Server → Display (local game)
-  RUN_GAME_LOCALLY: 'run_game_locally',
-  RELAY_INPUT: 'relay_input',
-  RELAY_SOFT_DROP_START: 'relay_soft_drop_start',
-  RELAY_SOFT_DROP_END: 'relay_soft_drop_end',
+  // Display -> Specific Controller
+  WELCOME: 'welcome',
+  GAME_OVER: 'game_over',
+  LOBBY_UPDATE: 'lobby_update',
+  PONG: 'pong',
+  PLAYER_STATE: 'player_state',
 
-  // Display → Server (relay to controllers)
-  RELAY_TO_PLAYER: 'relay_to_player',
-  RELAY_TO_CONTROLLERS: 'relay_to_controllers',
-
-  // Server → Display
-  ROOM_CREATED: 'room_created',
-  ROOM_RESET: 'room_reset',
-  PLAYER_JOINED: 'player_joined',
-  PLAYER_LEFT: 'player_left',
-  GAME_STATE: 'game_state',
-  LINE_CLEAR: 'line_clear',
-  GARBAGE_SENT: 'garbage_sent',
-  PLAYER_KO: 'player_ko',
-  PLAYER_DISCONNECTED: 'player_disconnected',
-  PLAYER_RECONNECTED: 'player_reconnected',
+  // Display -> All Controllers (broadcast)
+  COUNTDOWN: 'countdown',
+  GAME_START: 'game_start',
+  GAME_END: 'game_end',
   GAME_PAUSED: 'game_paused',
-  GAME_RESUMED: 'game_resumed'
+  GAME_RESUMED: 'game_resumed',
+  ERROR: 'error'
 };
 
 // Input action types
-const INPUT = {
+var INPUT = {
   LEFT: 'left',
   RIGHT: 'right',
   ROTATE_CW: 'rotate_cw',
@@ -64,8 +42,8 @@ const INPUT = {
   HOLD: 'hold'
 };
 
-// Room states
-const ROOM_STATE = {
+// Room states (display-side)
+var ROOM_STATE = {
   LOBBY: 'lobby',
   COUNTDOWN: 'countdown',
   PLAYING: 'playing',
@@ -74,5 +52,5 @@ const ROOM_STATE = {
 
 // Export for both Node.js and browser
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { MSG, INPUT, ROOM_STATE };
+  module.exports = { MSG, INPUT, ROOM_STATE, RELAY_URL };
 }

@@ -2,23 +2,26 @@
 
 (function () {
   // State
-  let ws = null;
-  let playerId = null;
-  let playerColor = null;
-  let playerName = null;
-  let roomCode = null;
-  let inputSeq = 0;
-  let touchInput = null;
-  let currentScreen = 'name';
-  let reconnectAttempts = 0;
-  const MAX_RECONNECT_ATTEMPTS = 5;
-  const RECONNECT_INTERVAL = 2000;
-  let reconnectTimer = null;
-  let isHost = false;
-  let playerCount = 0;
-  let gameCancelled = false;
-  let lastLines = 0;
-  let lastGameResults = null;
+  var party = null;
+  var clientId = null;
+  var playerColor = null;
+  var playerName = null;
+  var roomCode = null;
+  var inputSeq = 0;
+  var touchInput = null;
+  var currentScreen = 'name';
+  var isHost = false;
+  var playerCount = 0;
+  var gameCancelled = false;
+  var lastLines = 0;
+  var lastGameResults = null;
+
+  // Ping/pong
+  var PING_INTERVAL_MS = 2000;
+  var PONG_TIMEOUT_MS = 5000;
+  var pingTimer = null;
+  var pongCheckTimer = null;
+  var lastPongTime = 0;
 
   function getViewportMetrics() {
     if (window.visualViewport) {
@@ -28,7 +31,6 @@
         offsetTop: Math.round(window.visualViewport.offsetTop || 0),
       };
     }
-
     return {
       width: window.innerWidth,
       height: window.innerHeight,
@@ -37,9 +39,9 @@
   }
 
   function syncViewportLayout() {
-    const metrics = getViewportMetrics();
-    const keyboardInset = Math.max(0, window.innerHeight - metrics.height - metrics.offsetTop);
-    const keyboardOpen = keyboardInset > 120
+    var metrics = getViewportMetrics();
+    var keyboardInset = Math.max(0, window.innerHeight - metrics.height - metrics.offsetTop);
+    var keyboardOpen = keyboardInset > 120
       && currentScreen === 'name'
       && document.activeElement === nameInput;
 
@@ -53,11 +55,11 @@
   }
 
   // Falling tetromino background
-  const bgCanvas = document.getElementById('bg-canvas');
-  let welcomeBg = null;
+  var bgCanvas = document.getElementById('bg-canvas');
+  var welcomeBg = null;
   if (bgCanvas) {
     welcomeBg = new WelcomeBackground(bgCanvas, 8);
-    const metrics = getViewportMetrics();
+    var metrics = getViewportMetrics();
     welcomeBg.resize(metrics.width, metrics.height);
     welcomeBg.start();
   }
@@ -68,46 +70,46 @@
   }
 
   // DOM refs
-  const nameForm = document.getElementById('name-form');
-  const nameInput = document.getElementById('name-input');
-  const nameJoinBtn = document.getElementById('name-join-btn');
-  const nameStatusText = document.getElementById('name-status-text');
-  const nameStatusDetail = document.getElementById('name-status-detail');
-  const roomGoneMessage = document.getElementById('room-gone-message');
-  const roomGoneHeading = document.getElementById('room-gone-heading');
-  const roomGoneDetail = document.getElementById('room-gone-detail');
-  const nameScreen = document.getElementById('name-screen');
-  const lobbyScreen = document.getElementById('lobby-screen');
-  const lobbyBackBtn = document.getElementById('lobby-back-btn');
-  const lobbyTitle = document.getElementById('lobby-title');
-  const waitingActionText = document.getElementById('waiting-action-text');
-  const gameScreen = document.getElementById('game-screen');
-  const gameoverScreen = document.getElementById('gameover-screen');
-  const playerIdentity = document.getElementById('player-identity');
-  const startBtn = document.getElementById('start-btn');
-  const statusText = document.getElementById('status-text');
-  const statusDetail = document.getElementById('status-detail');
-  const playerNameEl = document.getElementById('player-name');
-  const playerIdentityName = document.getElementById('player-identity-name');
-  const touchArea = document.getElementById('touch-area');
-  const feedbackLayer = document.getElementById('feedback-layer');
-  const resultsList = document.getElementById('results-list');
-  const gameoverButtons = document.getElementById('gameover-buttons');
-  const playAgainBtn = document.getElementById('play-again-btn');
-  const newGameBtn = document.getElementById('new-game-btn');
-  const gameoverStatus = document.getElementById('gameover-status');
-  const pauseBtn = document.getElementById('pause-btn');
-  const pauseOverlay = document.getElementById('pause-overlay');
-  const pauseContinueBtn = document.getElementById('pause-continue-btn');
-  const pauseNewGameBtn = document.getElementById('pause-newgame-btn');
-  const pauseStatus = document.getElementById('pause-status');
-  const pauseButtons = document.getElementById('pause-buttons');
-  const reconnectOverlay = document.getElementById('reconnect-overlay');
-  const reconnectHeading = document.getElementById('reconnect-heading');
-  const reconnectStatus = document.getElementById('reconnect-status');
-  const reconnectRejoinBtn = document.getElementById('reconnect-rejoin-btn');
-  const muteBtn = document.getElementById('mute-btn');
-  let muted = localStorage.getItem('tetris_muted') === '1';
+  var nameForm = document.getElementById('name-form');
+  var nameInput = document.getElementById('name-input');
+  var nameJoinBtn = document.getElementById('name-join-btn');
+  var nameStatusText = document.getElementById('name-status-text');
+  var nameStatusDetail = document.getElementById('name-status-detail');
+  var roomGoneMessage = document.getElementById('room-gone-message');
+  var roomGoneHeading = document.getElementById('room-gone-heading');
+  var roomGoneDetail = document.getElementById('room-gone-detail');
+  var nameScreen = document.getElementById('name-screen');
+  var lobbyScreen = document.getElementById('lobby-screen');
+  var lobbyBackBtn = document.getElementById('lobby-back-btn');
+  var lobbyTitle = document.getElementById('lobby-title');
+  var waitingActionText = document.getElementById('waiting-action-text');
+  var gameScreen = document.getElementById('game-screen');
+  var gameoverScreen = document.getElementById('gameover-screen');
+  var playerIdentity = document.getElementById('player-identity');
+  var startBtn = document.getElementById('start-btn');
+  var statusText = document.getElementById('status-text');
+  var statusDetail = document.getElementById('status-detail');
+  var playerNameEl = document.getElementById('player-name');
+  var playerIdentityName = document.getElementById('player-identity-name');
+  var touchArea = document.getElementById('touch-area');
+  var feedbackLayer = document.getElementById('feedback-layer');
+  var resultsList = document.getElementById('results-list');
+  var gameoverButtons = document.getElementById('gameover-buttons');
+  var playAgainBtn = document.getElementById('play-again-btn');
+  var newGameBtn = document.getElementById('new-game-btn');
+  var gameoverStatus = document.getElementById('gameover-status');
+  var pauseBtn = document.getElementById('pause-btn');
+  var pauseOverlay = document.getElementById('pause-overlay');
+  var pauseContinueBtn = document.getElementById('pause-continue-btn');
+  var pauseNewGameBtn = document.getElementById('pause-newgame-btn');
+  var pauseStatus = document.getElementById('pause-status');
+  var pauseButtons = document.getElementById('pause-buttons');
+  var reconnectOverlay = document.getElementById('reconnect-overlay');
+  var reconnectHeading = document.getElementById('reconnect-heading');
+  var reconnectStatus = document.getElementById('reconnect-status');
+  var reconnectRejoinBtn = document.getElementById('reconnect-rejoin-btn');
+  var muteBtn = document.getElementById('mute-btn');
+  var muted = localStorage.getItem('tetris_muted') === '1';
 
   // Apply initial mute state
   if (muted) {
@@ -134,7 +136,6 @@
     gameScreen.classList.toggle('hidden', name !== 'game');
     gameoverScreen.classList.toggle('hidden', name !== 'gameover');
 
-    // Falling blocks on name and lobby screens
     if (welcomeBg) {
       if (name === 'name' || name === 'lobby') {
         bgCanvas.classList.remove('hidden');
@@ -145,7 +146,6 @@
       }
     }
 
-    // Push browser history on forward transitions
     if ((SCREEN_ORDER[name] || 0) > (SCREEN_ORDER[prev] || 0)) {
       history.pushState({ screen: name }, '');
     }
@@ -153,13 +153,33 @@
     syncViewportLayout();
   }
 
-  // Extract room code and optional rejoin ID from URL
+  // Extract room code from URL path
   roomCode = location.pathname.split('/').filter(Boolean)[0] || null;
-  let rejoinId = new URLSearchParams(location.search).get('rejoin')
-    || new URLSearchParams(location.search).get('player');
+  var rejoinId = new URLSearchParams(location.search).get('rejoin');
   if (!roomCode) {
     showRoomGone();
     return;
+  }
+
+  // Generate or restore clientId
+  function generateClientId() {
+    var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    var id = '';
+    for (var i = 0; i < 12; i++) {
+      id += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return id;
+  }
+
+  // Check for stored clientId BEFORE generating a new one (used for auto-reconnect)
+  var hadStoredId = sessionStorage.getItem('clientId_' + roomCode);
+
+  if (rejoinId) {
+    // QR-based rejoin — use the clientId from the URL to reclaim the slot
+    clientId = rejoinId;
+  } else {
+    clientId = hadStoredId || generateClientId();
+    sessionStorage.setItem('clientId_' + roomCode, clientId);
   }
 
   // --- Name input ---
@@ -195,8 +215,8 @@
     navigator.vibrate(pattern);
   }
 
-  // --- Web Audio sound effects (works on iOS where vibrate doesn't) ---
-  let audioCtx = null;
+  // --- Web Audio sound effects ---
+  var audioCtx = null;
 
   function getAudioCtx() {
     if (!audioCtx) {
@@ -208,7 +228,6 @@
     return audioCtx;
   }
 
-  // Short tactile tick — supplements vibrate for haptic-like feedback
   function playTick() {
     if (muted) return;
     var ctx = getAudioCtx();
@@ -224,7 +243,6 @@
     osc.stop(ctx.currentTime + 0.04);
   }
 
-  // Line clear chime — pitch and duration scale with lines cleared
   function playLineClear(count) {
     if (muted) return;
     var ctx = getAudioCtx();
@@ -243,12 +261,10 @@
     osc.stop(ctx.currentTime + duration);
   }
 
-  // Hard drop — punchy impact with noise burst
   function playDrop() {
     if (muted) return;
     var ctx = getAudioCtx();
     var t = ctx.currentTime;
-    // Low thud
     var osc = ctx.createOscillator();
     var gain = ctx.createGain();
     osc.connect(gain);
@@ -260,7 +276,6 @@
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
     osc.start(t);
     osc.stop(t + 0.1);
-    // Noise snap layer
     var buf = ctx.createBuffer(1, ctx.sampleRate * 0.05, ctx.sampleRate);
     var data = buf.getChannelData(0);
     for (var i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
@@ -274,7 +289,6 @@
     noise.start(t);
   }
 
-  // Hold — quick two-tone swoosh (high→low)
   function playHold() {
     if (muted) return;
     var ctx = getAudioCtx();
@@ -292,9 +306,8 @@
     osc.stop(t + 0.08);
   }
 
-  // Prime audio context + vibration on first user interaction (required by iOS)
-  let audioPrimed = false;
-
+  // Prime audio on first interaction
+  var audioPrimed = false;
   function primeAudio() {
     if (audioPrimed) return;
     audioPrimed = true;
@@ -306,110 +319,107 @@
     src.connect(ctx.destination);
     src.start(0);
   }
-
-  // Capture-phase listener so it fires before any other pointer handler.
   document.addEventListener('pointerdown', function onFirstPointer() {
     primeAudio();
     document.removeEventListener('pointerdown', onFirstPointer, true);
   }, { capture: true, passive: true });
 
-  // WebSocket connection
+  // =====================================================================
+  // Party-Server Connection
+  // =====================================================================
+
   function connect() {
-    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(protocol + '//' + location.host);
+    if (party) party.close();
 
-    ws.onopen = function () {
-      startHeartbeat();
-      // Best-effort "connected" haptic feedback.
-      vibrate(10);
-      const token = sessionStorage.getItem('reconnectToken_' + roomCode);
-      if (token) {
-        send(MSG.REJOIN, { roomCode: roomCode, reconnectToken: token });
-      } else if (rejoinId) {
-        send(MSG.JOIN, { roomCode: roomCode, rejoinId: rejoinId, name: playerName });
-      } else {
-        send(MSG.JOIN, { roomCode: roomCode, name: playerName });
+    party = new PartyConnection(RELAY_URL, { clientId: clientId });
+
+    party.onOpen = function () {
+      party.join(roomCode);
+    };
+
+    party.onProtocol = function (type, msg) {
+      if (type === 'joined') {
+        // Successfully joined room — send hello to display
+        startPing();
+        vibrate(10);
+        party.sendTo('display', {
+          type: MSG.HELLO,
+          name: playerName
+        });
+      } else if (type === 'peer_left') {
+        if (msg.clientId === 'display') {
+          // Display disconnected — show error
+          showErrorState('', 'Host disconnected');
+        }
+      } else if (type === 'error') {
+        showRoomGone();
       }
     };
 
-    ws.onmessage = function (e) {
-      let data;
-      try {
-        data = JSON.parse(e.data);
-      } catch (_) {
-        return;
+    party.onMessage = function (from, data) {
+      if (from === 'display') {
+        handleMessage(data);
       }
-      handleMessage(data);
     };
 
-    ws.onclose = function () {
-      stopHeartbeat();
+    party.onClose = function () {
+      stopPing();
       if (gameCancelled) return;
-      attemptReconnect();
+      if (currentScreen === 'game') {
+        reconnectOverlay.classList.remove('hidden');
+        reconnectHeading.textContent = 'RECONNECTING';
+        reconnectStatus.textContent = 'Reconnecting...';
+        reconnectRejoinBtn.classList.add('hidden');
+      }
     };
 
-    ws.onerror = function () {
-      // onclose will fire after this
-    };
+    party.connect();
   }
 
-  // Heartbeat — send keepalive if no message sent recently
-  var HEARTBEAT_MS = 2000;
-  var lastSendTime = 0;
-  var heartbeatTimer = null;
+  // =====================================================================
+  // Ping / Pong
+  // =====================================================================
 
-  function startHeartbeat() {
-    stopHeartbeat();
-    heartbeatTimer = setInterval(function () {
-      if (Date.now() - lastSendTime >= HEARTBEAT_MS) {
-        send(MSG.HEARTBEAT);
+  function startPing() {
+    stopPing();
+    lastPongTime = Date.now();
+    pingTimer = setInterval(function () {
+      party.sendTo('display', { type: MSG.PING, t: Date.now() });
+    }, PING_INTERVAL_MS);
+    pongCheckTimer = setInterval(function () {
+      if (Date.now() - lastPongTime > PONG_TIMEOUT_MS) {
+        if (currentScreen === 'game') {
+          reconnectOverlay.classList.remove('hidden');
+          reconnectHeading.textContent = 'RECONNECTING';
+          reconnectStatus.textContent = 'Connection lost...';
+          reconnectRejoinBtn.classList.remove('hidden');
+        }
       }
-    }, HEARTBEAT_MS);
+    }, 1000);
   }
 
-  function stopHeartbeat() {
-    if (heartbeatTimer) {
-      clearInterval(heartbeatTimer);
-      heartbeatTimer = null;
-    }
+  function stopPing() {
+    if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+    if (pongCheckTimer) { clearInterval(pongCheckTimer); pongCheckTimer = null; }
   }
 
-  function send(type, payload) {
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    lastSendTime = Date.now();
-    ws.send(JSON.stringify(Object.assign({ type: type }, payload)));
+  // =====================================================================
+  // Send Helper
+  // =====================================================================
+
+  function sendToDisplay(type, payload) {
+    if (!party) return;
+    party.sendTo('display', Object.assign({ type: type }, payload));
   }
 
-  function attemptReconnect() {
-    if (currentScreen === 'game') {
-      // Show reconnect overlay on game screen
-      reconnectOverlay.classList.remove('hidden');
+  // =====================================================================
+  // Message Handling
+  // =====================================================================
 
-      if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-        reconnectHeading.textContent = 'DISCONNECTED';
-        reconnectStatus.textContent = 'Could not reconnect.';
-        reconnectRejoinBtn.classList.remove('hidden');
-        return;
-      }
-
-      reconnectAttempts++;
-      reconnectHeading.textContent = 'RECONNECTING';
-      reconnectStatus.textContent = 'Attempt ' + reconnectAttempts + ' of ' + MAX_RECONNECT_ATTEMPTS;
-      reconnectRejoinBtn.classList.add('hidden');
-
-      clearTimeout(reconnectTimer);
-      reconnectTimer = setTimeout(connect, RECONNECT_INTERVAL);
-    } else {
-      // Pre-game screens: go straight to name screen with error
-      showErrorState('Disconnected', 'Connection lost.');
-    }
-  }
-
-  // Message handling
   function handleMessage(data) {
     switch (data.type) {
-      case MSG.JOINED:
-        onJoined(data);
+      case MSG.WELCOME:
+        onWelcome(data);
         break;
       case MSG.LOBBY_UPDATE:
         onLobbyUpdate(data);
@@ -419,7 +429,6 @@
         break;
       case MSG.COUNTDOWN:
         removeKoOverlay();
-        // Show game screen in muted state during countdown (no overlay)
         if (currentScreen !== 'game') {
           gameScreen.classList.remove('dead');
           gameScreen.classList.remove('paused');
@@ -435,7 +444,6 @@
         onPlayerState(data);
         break;
       case MSG.GAME_OVER:
-        // Player KO'd mid-game — wait for GAME_END for results
         break;
       case MSG.GAME_END:
         onGameEnd(data);
@@ -452,11 +460,9 @@
         gameScreen.classList.remove('paused');
         showLobbyUI();
         break;
-      case MSG.ROOM_RESET:
-        showRoomGone();
-        break;
-      case MSG.INPUT_ACK:
-        // Could track unacked inputs here for prediction rollback
+      case MSG.PONG:
+        lastPongTime = Date.now();
+        reconnectOverlay.classList.add('hidden');
         break;
       case MSG.ERROR:
         onError(data);
@@ -464,42 +470,25 @@
     }
   }
 
-  function onJoined(data) {
-    playerId = data.playerId;
-    playerColor = data.playerColor || PLAYER_COLORS[playerId - 1] || PLAYER_COLORS[0];
+  function onWelcome(data) {
+    playerColor = data.playerColor || PLAYER_COLORS[0];
     isHost = !!data.isHost;
     playerCount = data.playerCount || 1;
     gameCancelled = false;
-    reconnectAttempts = 0;
-    clearTimeout(reconnectTimer);
 
-    if (data.reconnectToken) {
-      sessionStorage.setItem('reconnectToken_' + roomCode, data.reconnectToken);
-    }
-    sessionStorage.setItem('playerId_' + roomCode, data.playerId);
+    reconnectOverlay.classList.add('hidden');
 
-    // Persist player ID in URL so refreshes/reconnects can rejoin by ID
-    rejoinId = String(data.playerId);
-    var params = new URLSearchParams(location.search);
-    params.delete('rejoin');
-    params.set('player', data.playerId);
-    history.replaceState(null, '', location.pathname + '?' + params.toString());
-
-    // Use server-confirmed name, falling back to local name or generic
-    if (data.playerName) playerName = data.playerName;
-    if (!playerName) playerName = PLAYER_NAMES[playerId - 1] || ('Player ' + playerId);
-
+    // Use the name we sent
+    if (!playerName) playerName = 'Player';
     playerNameEl.textContent = playerName;
 
-    // Reconnected into an active game — jump straight to game screen
-    if (data.reconnected && (data.roomState === 'playing' || data.roomState === 'countdown')) {
-      reconnectOverlay.classList.add('hidden');
+    // Reconnected into active game
+    if (data.roomState === 'playing' || data.roomState === 'countdown') {
       gameScreen.classList.remove('dead');
       gameScreen.classList.remove('paused');
       gameScreen.style.setProperty('--player-color', playerColor);
       removeKoOverlay();
 
-      // Restore paused state
       if (data.paused) {
         onGamePaused();
       } else {
@@ -507,7 +496,6 @@
         pauseBtn.classList.toggle('hidden', !isHost);
       }
 
-      // Restore KO state
       if (data.alive === false) {
         gameScreen.classList.add('dead');
         showKoOverlay();
@@ -518,8 +506,8 @@
       return;
     }
 
-    // Reconnected into results — re-show gameover screen
-    if (data.reconnected && data.roomState === 'results' && lastGameResults) {
+    // Reconnected into results
+    if (data.roomState === 'results' && lastGameResults) {
       renderGameResults(lastGameResults);
       showScreen('gameover');
       return;
@@ -546,28 +534,23 @@
   }
 
   function performDisconnect() {
-    stopHeartbeat();
-    if (ws) {
-      try { ws.send(JSON.stringify({ type: MSG.LEAVE })); } catch (_) {}
-      ws.onclose = null;
-      ws.onerror = null;
-      try { ws.close(); } catch (_) {}
-      ws = null;
+    stopPing();
+    if (party) {
+      try { party.sendTo('display', { type: MSG.LEAVE }); } catch (_) {}
+      party.close();
+      party = null;
     }
-    sessionStorage.removeItem('reconnectToken_' + roomCode);
-    sessionStorage.removeItem('playerId_' + roomCode);
+    sessionStorage.removeItem('clientId_' + roomCode);
     var params = new URLSearchParams(location.search);
-    params.delete('player');
     params.delete('rejoin');
     var qs = params.toString();
     history.replaceState(null, '', location.pathname + (qs ? '?' + qs : ''));
     rejoinId = null;
-    playerId = null;
+    clientId = generateClientId();
+    sessionStorage.setItem('clientId_' + roomCode, clientId);
     playerColor = null;
     isHost = false;
     gameCancelled = false;
-    reconnectAttempts = 0;
-    clearTimeout(reconnectTimer);
     nameInput.value = playerName || '';
     nameJoinBtn.disabled = false;
     nameJoinBtn.textContent = 'JOIN';
@@ -581,11 +564,8 @@
   }
 
   function showRoomGone() {
-    sessionStorage.removeItem('reconnectToken_' + roomCode);
-    sessionStorage.removeItem('playerId_' + roomCode);
+    sessionStorage.removeItem('clientId_' + roomCode);
     gameCancelled = true;
-    reconnectAttempts = 0;
-    clearTimeout(reconnectTimer);
     nameForm.classList.add('hidden');
     nameJoinBtn.classList.add('hidden');
     nameStatusText.textContent = '';
@@ -597,16 +577,10 @@
   }
 
   function showErrorState(heading, detail) {
-    // Clear session tokens — every pre-game error means session is done
-    sessionStorage.removeItem('reconnectToken_' + roomCode);
-    sessionStorage.removeItem('playerId_' + roomCode);
-
-    // Reset reconnect state
+    sessionStorage.removeItem('clientId_' + roomCode);
     gameCancelled = true;
-    reconnectAttempts = 0;
-    clearTimeout(reconnectTimer);
+    stopPing();
 
-    // Re-enable form with player name preserved
     nameJoinBtn.disabled = false;
     nameJoinBtn.textContent = 'JOIN';
     nameInput.disabled = false;
@@ -619,7 +593,7 @@
 
   function showLobbyUI() {
     playerIdentity.style.setProperty('--player-color', playerColor);
-    playerIdentityName.textContent = playerName || ('Player ' + playerId);
+    playerIdentityName.textContent = playerName || 'Player';
 
     if (isHost) {
       startBtn.classList.remove('hidden');
@@ -656,7 +630,6 @@
   }
 
   function onPlayerState(data) {
-    // Fallback: if GAME_START was missed, init touch on first state update
     if (!touchInput) {
       gameScreen.classList.remove('countdown');
       pauseBtn.disabled = false;
@@ -681,23 +654,19 @@
 
   function renderGameResults(results) {
     resultsList.innerHTML = '';
-
-    // Show buttons for host, status text for others
     gameoverButtons.classList.toggle('hidden', !isHost);
     gameoverStatus.textContent = isHost ? '' : 'Waiting for host...';
 
-    // Set winner glow color on the screen
     var winnerColor = 'rgba(255, 215, 0, 0.06)';
     if (results && results.length) {
       var winner = results.find(function(r) { return r.rank === 1; });
       if (winner) {
-        var wc = PLAYER_COLORS[(winner.playerId - 1) % PLAYER_COLORS.length];
+        var wc = winner.playerColor || PLAYER_COLORS[0];
         winnerColor = 'color-mix(in srgb, ' + wc + ' 8%, transparent)';
       }
     }
     gameoverScreen.style.setProperty('--winner-glow', winnerColor);
 
-    // Set player's own color for highlight
     if (playerColor) {
       gameoverScreen.style.setProperty('--me-color', playerColor);
     }
@@ -708,12 +677,12 @@
     var solo = sorted.length === 1;
     for (var i = 0; i < sorted.length; i++) {
       var r = sorted[i];
-      var pColor = PLAYER_COLORS[(r.playerId - 1) % PLAYER_COLORS.length];
+      var pColor = r.playerColor || PLAYER_COLORS[i % PLAYER_COLORS.length];
 
       var row = document.createElement('div');
       row.className = solo ? 'result-row' : 'result-row rank-' + r.rank;
       row.style.setProperty('--row-delay', (0.2 + i * 0.08) + 's');
-      if (r.playerId === playerId) row.classList.add('is-me');
+      if (r.playerId === clientId) row.classList.add('is-me');
 
       if (!solo) {
         var rankEl = document.createElement('span');
@@ -727,7 +696,7 @@
 
       var nameEl = document.createElement('span');
       nameEl.className = 'result-name';
-      nameEl.textContent = r.playerName || ('Player ' + r.playerId);
+      nameEl.textContent = r.playerName || 'Player';
       nameEl.style.color = pColor;
 
       var stats = document.createElement('div');
@@ -746,7 +715,7 @@
       showErrorState('', 'Host disconnected');
       return;
     }
-    if (data.message === 'Room not found') {
+    if (data.message === 'Room not found' || data.message === 'Room is full') {
       showRoomGone();
       return;
     }
@@ -778,42 +747,42 @@
   pauseBtn.addEventListener('click', function () {
     if (!isHost) return;
     vibrate(10);
-    send(MSG.PAUSE_GAME);
+    sendToDisplay(MSG.PAUSE_GAME);
   });
 
   pauseContinueBtn.addEventListener('click', function () {
     if (!isHost) return;
     vibrate(10);
-    send(MSG.RESUME_GAME);
+    sendToDisplay(MSG.RESUME_GAME);
   });
 
   pauseNewGameBtn.addEventListener('click', function () {
     if (!isHost) return;
     vibrate(10);
-    send(MSG.RETURN_TO_LOBBY);
+    sendToDisplay(MSG.RETURN_TO_LOBBY);
   });
 
   // KO overlay
   function showKoOverlay() {
     removeKoOverlay();
-    const ko = document.createElement('div');
+    var ko = document.createElement('div');
     ko.id = 'ko-overlay';
     ko.textContent = 'KO';
     touchArea.appendChild(ko);
   }
 
   function removeKoOverlay() {
-    const el = document.getElementById('ko-overlay');
+    var el = document.getElementById('ko-overlay');
     if (el) el.remove();
   }
 
   // Gesture feedback
-  let lastTouchX = 0, lastTouchY = 0;
-  let coordTracker = null;
-  let softDropActive = false;
-  let softDropWash = null;
-  let buildupEl = null;
-  let buildupDir = null;
+  var lastTouchX = 0, lastTouchY = 0;
+  var coordTracker = null;
+  var softDropActive = false;
+  var softDropWash = null;
+  var buildupEl = null;
+  var buildupDir = null;
 
   function createFeedback(type, x, y) {
     var el = document.createElement('div');
@@ -834,7 +803,6 @@
     el.addEventListener('animationend', function () { el.remove(); });
   }
 
-  // Buildup wash manager
   function removeBuildupEl() {
     if (buildupEl) {
       buildupEl.remove();
@@ -858,11 +826,8 @@
       removeBuildupEl();
       return;
     }
-
-    // Direction changed — recreate element
     if (buildupDir !== direction) {
       removeBuildupEl();
-      // Map drag direction to wash gradient (drag right = wash from left edge)
       var washDir = direction;
       if (direction === 'left') washDir = 'right';
       else if (direction === 'right') washDir = 'left';
@@ -873,7 +838,6 @@
       feedbackLayer.appendChild(buildupEl);
       buildupDir = direction;
     }
-
     buildupEl.style.opacity = progress * 0.15;
   }
 
@@ -883,7 +847,6 @@
       touchInput.destroy();
     }
 
-    // Track pointer coordinates for positioned feedback (remove previous to avoid leak)
     if (coordTracker) touchArea.removeEventListener('pointerdown', coordTracker);
     coordTracker = function (e) {
       lastTouchX = e.clientX;
@@ -892,13 +855,12 @@
     touchArea.addEventListener('pointerdown', coordTracker, { passive: true });
 
     touchInput = new TouchInput(touchArea, function (action, data) {
-      // Gesture feedback — audio + visual
+      // Gesture feedback
       if (action === 'rotate_cw') {
         playTick();
         createFeedback('ripple', lastTouchX, lastTouchY);
       } else if (action === 'left' || action === 'right') {
         playTick();
-        // Flash the horizontal buildup wash on ratchet step
         if (buildupEl) {
           flashBuildup();
         } else {
@@ -914,7 +876,7 @@
         createWash('down');
       }
 
-      if (action === 'soft_drop_start') {
+      if (action === 'soft_drop') {
         if (!softDropActive) {
           softDropActive = true;
           playTick();
@@ -923,8 +885,9 @@
           softDropWash.className = 'feedback-wash feedback-wash-up feedback-wash-hold';
           feedbackLayer.appendChild(softDropWash);
         }
-        send(MSG.SOFT_DROP_START, { speed: data.speed });
+        sendToDisplay(MSG.SOFT_DROP);
       } else if (action === 'soft_drop_end') {
+        // Local visual cleanup only — no network message sent
         softDropActive = false;
         if (softDropWash) {
           var el = softDropWash;
@@ -932,22 +895,21 @@
           el.classList.add('fade-out');
           el.addEventListener('animationend', function () { el.remove(); });
         }
-        send(MSG.SOFT_DROP_END);
-      } else {
+      } else if (action !== 'soft_drop') {
         // Regular input: left, right, rotate_cw, hard_drop, hold
-        send(MSG.INPUT, { action: action, seq: inputSeq++ });
+        sendToDisplay(MSG.INPUT, { action: action, seq: inputSeq++ });
       }
     }, onDragProgress);
   }
 
-  // Reconnect overlay rejoin button — give up and go to name screen
+  // Reconnect overlay rejoin button
   reconnectRejoinBtn.addEventListener('click', function () {
     vibrate(10);
     reconnectOverlay.classList.add('hidden');
     performDisconnect();
   });
 
-  // Lobby back button — disconnect and return to name input
+  // Lobby back button
   lobbyBackBtn.addEventListener('click', function () {
     vibrate(10);
     performDisconnect();
@@ -957,59 +919,49 @@
   startBtn.addEventListener('click', function () {
     if (!isHost || startBtn.disabled) return;
     vibrate(10);
-    send(MSG.START_GAME);
+    sendToDisplay(MSG.START_GAME);
   });
 
-  // Play Again button (host only, on gameover screen)
+  // Play Again button (host only)
   playAgainBtn.addEventListener('click', function () {
     if (!isHost) return;
     vibrate(10);
-    send(MSG.PLAY_AGAIN);
+    sendToDisplay(MSG.PLAY_AGAIN);
   });
 
-  // New Game button (host only, returns to lobby)
+  // New Game button (host only)
   newGameBtn.addEventListener('click', function () {
     if (!isHost) return;
     vibrate(10);
-    send(MSG.RETURN_TO_LOBBY);
+    sendToDisplay(MSG.RETURN_TO_LOBBY);
   });
 
-  // When the phone locks, the browser freezes the page and the WebSocket
-  // goes stale.  Messages sent while frozen (like GAME_START) are lost.
-  // Force a fresh reconnection when the page becomes visible again so the
-  // controller picks up the current room state.
+  // Visibility change — force reconnection when page becomes visible
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState !== 'visible') return;
     if (gameCancelled) return;
-    // Don't reconnect if on name screen with no active connection (pre-join)
-    if (currentScreen === 'name' && !playerId) return;
-    // Tear down the (possibly stale) connection and reconnect immediately.
-    reconnectAttempts = 0;
-    clearTimeout(reconnectTimer);
-    if (ws) {
-      // Suppress the onclose→attemptReconnect chain; we're reconnecting ourselves.
-      ws.onclose = null;
-      ws.onerror = null;
-      try { ws.close(); } catch (_) {}
-      ws = null;
+    if (currentScreen === 'name' && !playerColor) return;
+
+    // Tear down stale connection and reconnect
+    stopPing();
+    if (party) {
+      party.close();
+      party = null;
     }
     connect();
   });
 
-  // Browser back button support
+  // Browser back button
   window.addEventListener('popstate', function () {
     if (currentScreen === 'lobby') {
       performDisconnect();
     } else if (currentScreen === 'game' || currentScreen === 'gameover') {
-      // Block back during game/results — re-push current state
       history.pushState({ screen: currentScreen }, '');
     }
   });
 
-  // Always start on the name screen
-  var hasToken = sessionStorage.getItem('reconnectToken_' + roomCode);
-  if (hasToken || rejoinId) {
-    // Reconnect — disable form, show connecting status
+  // --- Initialization ---
+  if ((hadStoredId || rejoinId) && savedName) {
     playerName = savedName || null;
     nameInput.value = savedName;
     nameJoinBtn.disabled = true;
@@ -1020,7 +972,6 @@
     showScreen('name');
     connect();
   } else {
-    // Fresh join — show name form
     nameInput.value = savedName;
     nameStatusText.textContent = '';
     nameStatusDetail.textContent = '';

@@ -97,10 +97,10 @@ describe('TouchInput gesture sessions', () => {
     touchInput._onPointerMove(pointerEvent({ clientX: 120, clientY: 120, timeStamp: 220 }));
 
     assert.deepEqual(actions.map(entry => entry.action), [
-      'soft_drop_start',
+      'soft_drop',
       INPUT.RIGHT,
       INPUT.RIGHT,
-      'soft_drop_start'
+      'soft_drop'
     ]);
   });
 
@@ -135,7 +135,7 @@ describe('TouchInput gesture sessions', () => {
     touchInput._onPointerMove(pointerEvent({ clientX: 0, clientY: 100, timeStamp: 140 }));
     touchInput._onPointerUp(pointerEvent({ clientX: 0, clientY: 180, timeStamp: 180 }));
 
-    assert.deepEqual(actions.map(entry => entry.action), ['soft_drop_start', 'soft_drop_end']);
+    assert.deepEqual(actions.map(entry => entry.action), ['soft_drop', 'soft_drop_end']);
   });
 
   test('slower downward drag still becomes soft drop instead of hard drop', () => {
@@ -144,6 +144,6 @@ describe('TouchInput gesture sessions', () => {
     touchInput._onPointerMove(pointerEvent({ clientX: 0, clientY: 90, timeStamp: 180 }));
     touchInput._onPointerUp(pointerEvent({ clientX: 0, clientY: 140, timeStamp: 260 }));
 
-    assert.deepEqual(actions.map(entry => entry.action), ['soft_drop_start', 'soft_drop_end']);
+    assert.deepEqual(actions.map(entry => entry.action), ['soft_drop', 'soft_drop_end']);
   });
 });

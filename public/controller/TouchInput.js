@@ -217,7 +217,7 @@ class TouchInput {
         this.hasSoftDropped = true;
         this._haptic(15);
       }
-      this.onInput('soft_drop_start', { speed: this._calcSoftDropSpeed(dyFromStart) });
+      this.onInput('soft_drop');
     } else if (this.isSoftDropping) {
       this.isSoftDropping = false;
       this.onInput('soft_drop_end');

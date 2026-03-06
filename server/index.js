@@ -4,17 +4,11 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { WebSocketServer } = require('ws');
-const Room = require('./Room.js');
-const { MSG } = require('../public/shared/protocol.js');
-const { applyVisualScenario } = require('./visualTestScenarios.js');
-const { send } = require('./send.js');
+const QRCode = require('qrcode');
 
 const PORT = parseInt(process.env.PORT, 10) || 4000;
-const PUBLIC_URL = process.env.PUBLIC_URL || ''; // e.g. https://main.tetris-party.duckdns.org
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const APP_VERSION = require('../package.json').version;
-const E2E_TEST_MODE = process.env.E2E_TEST_MODE === '1';
 
 // --- MIME types ---
 const MIME_TYPES = {
@@ -30,91 +24,45 @@ const MIME_TYPES = {
   '.woff2': 'font/woff2'
 };
 
-const testState = {
-  nextJoinDelayMs: 0
-};
-
-function readJsonBody(req) {
-  return new Promise((resolve, reject) => {
-    let raw = '';
-    req.on('data', (chunk) => {
-      raw += chunk;
-      if (raw.length > 1e6) {
-        reject(new Error('Request body too large'));
-      }
-    });
-    req.on('end', () => {
-      if (!raw) {
-        resolve({});
-        return;
-      }
-      try {
-        resolve(JSON.parse(raw));
-      } catch (err) {
-        reject(err);
-      }
-    });
-    req.on('error', reject);
-  });
-}
-
-function destroyAllRooms() {
-  for (const room of rooms.values()) {
-    room.destroy();
-  }
-  rooms.clear();
-}
-
 function sendJson(res, statusCode, payload) {
   res.writeHead(statusCode, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(payload));
 }
 
-function extractRoomCode(urlPath) {
-  const match = urlPath.match(/^\/api\/test\/room\/([A-Z]{4})\/scenario$/);
-  return match ? match[1] : null;
+function generateQRMatrix(text) {
+  const qr = QRCode.create(text, { errorCorrectionLevel: 'M' });
+  const size = qr.modules.size;
+  const modules = Array.from(qr.modules.data);
+  const quiet = 1;
+  const padded = size + quiet * 2;
+  const paddedModules = new Array(padded * padded).fill(0);
+  for (let row = 0; row < size; row++) {
+    for (let col = 0; col < size; col++) {
+      paddedModules[(row + quiet) * padded + (col + quiet)] = modules[row * size + col];
+    }
+  }
+  return { size: padded, modules: paddedModules };
 }
 
-// --- HTTP Static Server ---
-const server = http.createServer(async (req, res) => {
-  let urlPath = req.url.split('?')[0]; // strip query params
+// --- HTTP Server ---
+const server = http.createServer((req, res) => {
+  let urlPath = req.url.split('?')[0];
 
-  if (E2E_TEST_MODE && req.method === 'POST' && urlPath === '/api/test/reset') {
-    destroyAllRooms();
-    testState.nextJoinDelayMs = 0;
-    sendJson(res, 200, { ok: true });
-    return;
-  }
-
-  if (E2E_TEST_MODE && req.method === 'POST' && urlPath === '/api/test/delay-next-join') {
-    try {
-      const body = await readJsonBody(req);
-      testState.nextJoinDelayMs = Math.max(0, Number(body.ms) || 0);
-      sendJson(res, 200, { ok: true, nextJoinDelayMs: testState.nextJoinDelayMs });
-    } catch (err) {
-      sendJson(res, 400, { ok: false, error: err.message });
-    }
-    return;
-  }
-
-  if (E2E_TEST_MODE && req.method === 'POST') {
-    const roomCode = extractRoomCode(urlPath);
-    if (roomCode) {
-      const room = rooms.get(roomCode);
-      if (!room) {
-        sendJson(res, 404, { ok: false, error: 'Room not found' });
-        return;
-      }
-
-      try {
-        const body = await readJsonBody(req);
-        applyVisualScenario(room, body.scenario, body.options || {});
-        sendJson(res, 200, { ok: true });
-      } catch (err) {
-        sendJson(res, 400, { ok: false, error: err.message });
-      }
+  // QR code endpoint
+  if (urlPath === '/api/qr' && req.method === 'GET') {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const text = url.searchParams.get('text');
+    if (!text) {
+      sendJson(res, 400, { error: 'Missing text parameter' });
       return;
     }
+    try {
+      const qrMatrix = generateQRMatrix(text);
+      sendJson(res, 200, qrMatrix);
+    } catch (err) {
+      sendJson(res, 500, { error: 'QR generation failed' });
+    }
+    return;
   }
 
   // Serve game engine modules to browser
@@ -139,15 +87,13 @@ const server = http.createServer(async (req, res) => {
 
   // Health check endpoint
   if (urlPath === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok' }));
+    sendJson(res, 200, { status: 'ok' });
     return;
   }
 
   // Version endpoint
   if (urlPath === '/api/version') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ version: APP_VERSION }));
+    sendJson(res, 200, { version: APP_VERSION });
     return;
   }
 
@@ -155,7 +101,7 @@ const server = http.createServer(async (req, res) => {
   if (urlPath === '/') {
     urlPath = '/display/index.html';
   } else if (urlPath.length > 1 && !urlPath.includes('.') && urlPath.split('/').filter(Boolean).length === 1) {
-    // Single path segment with no file extension → room code → serve controller
+    // Single path segment with no file extension -> room code -> serve controller
     urlPath = '/controller/index.html';
   }
 
@@ -179,7 +125,6 @@ const server = http.createServer(async (req, res) => {
     const contentType = MIME_TYPES[ext] || 'application/octet-stream';
     const headers = { 'Content-Type': contentType };
 
-    // Prevent mobile browsers from serving stale controller/display code.
     if (ext === '.html' || ext === '.js' || ext === '.css') {
       headers['Cache-Control'] = 'no-store, no-cache, must-revalidate';
       headers['Pragma'] = 'no-cache';
@@ -202,304 +147,6 @@ function getLocalIP() {
     }
   }
   return 'localhost';
-}
-
-// --- Room management ---
-const rooms = new Map(); // roomCode -> Room
-
-// Track which ws belongs to which room/player
-const clientInfo = new WeakMap(); // ws -> { roomCode, playerId, type }
-
-// --- WebSocket Server ---
-const wss = new WebSocketServer({ server });
-
-// --- Controller liveness check ---
-// Controllers send heartbeats every 2s. The server marks isAlive=true on any
-// incoming message and periodically checks that controllers are still alive.
-// Display connections (stable desktop browsers) are not checked.
-const LIVENESS_CHECK_MS = 5000;
-
-const livenessInterval = setInterval(() => {
-  for (const ws of wss.clients) {
-    const info = clientInfo.get(ws);
-    if (!info || info.type !== 'controller') continue;
-    if (ws.isAlive === false) {
-      ws.terminate();
-      continue;
-    }
-    ws.isAlive = false;
-  }
-}, LIVENESS_CHECK_MS);
-
-wss.on('close', () => clearInterval(livenessInterval));
-
-wss.on('connection', (ws) => {
-  ws.isAlive = true;
-  ws.on('message', (raw) => {
-    ws.isAlive = true;
-    let msg;
-    try {
-      msg = JSON.parse(raw);
-    } catch (e) {
-      return;
-    }
-
-    const info = clientInfo.get(ws);
-
-    // --- First message: identify client type ---
-    if (!info) {
-      handleNewConnection(ws, msg);
-      return;
-    }
-
-    // --- Subsequent messages: route to room ---
-    const room = rooms.get(info.roomCode);
-    if (!room) return;
-
-    if (info.type === 'display') {
-      handleDisplayMessage(room, msg);
-    } else if (info.type === 'controller') {
-      handleControllerMessage(room, info.playerId, msg);
-    }
-  });
-
-  ws.on('close', () => {
-    const info = clientInfo.get(ws);
-    if (!info) return;
-
-    const room = rooms.get(info.roomCode);
-    if (!room) return;
-
-    if (info.type === 'display') {
-      console.log(`Display disconnected from room ${info.roomCode}`);
-      room.displayWs = null;
-      room._displayGraceTimer = setTimeout(() => {
-        room._displayGraceTimer = null;
-        room.destroy();
-        rooms.delete(info.roomCode);
-        console.log(`Room ${info.roomCode} destroyed (display timeout)`);
-      }, 15000);
-    } else if (info.type === 'controller') {
-      // Skip if this is a stale ws replaced by a reconnect
-      const player = room.players.get(info.playerId);
-      if (player && player.ws !== ws) return;
-      console.log(`Player ${info.playerId} disconnected from room ${info.roomCode}`);
-      room.removePlayer(info.playerId);
-    }
-  });
-
-  ws.on('error', (err) => {
-    console.error('WebSocket error:', err.message);
-  });
-});
-
-// --- Handle new connections ---
-async function handleNewConnection(ws, msg) {
-  if (msg.type === MSG.CREATE_ROOM) {
-    // Display reconnecting to an existing room during grace period
-    if (msg.roomCode && rooms.has(msg.roomCode)) {
-      const room = rooms.get(msg.roomCode);
-      if (room._displayGraceTimer) {
-        clearTimeout(room._displayGraceTimer);
-        room._displayGraceTimer = null;
-        room.displayWs = ws;
-        clientInfo.set(ws, { roomCode: msg.roomCode, type: 'display' });
-        room.resyncDisplay();
-        console.log(`Display reconnected to room ${msg.roomCode}`);
-        return;
-      }
-    }
-
-    const roomCode = (msg.roomCode && !rooms.has(msg.roomCode))
-      ? msg.roomCode
-      : Room.generateRoomCode();
-    const room = new Room(roomCode, ws);
-    rooms.set(roomCode, room);
-
-    clientInfo.set(ws, { roomCode, type: 'display' });
-
-    let joinUrl;
-    if (PUBLIC_URL) {
-      joinUrl = `${PUBLIC_URL}/${roomCode}`;
-    } else {
-      const localIP = getLocalIP();
-      joinUrl = `http://${localIP}:${PORT}/${roomCode}`;
-    }
-    room.joinUrl = joinUrl;
-    const qrMatrix = room.getQRMatrix(joinUrl);
-
-    send(ws, MSG.ROOM_CREATED, { roomCode, qrMatrix, joinUrl });
-    console.log(`Room ${roomCode} created. Join: ${joinUrl}`);
-
-  } else if (msg.type === MSG.JOIN) {
-    const delayMs = E2E_TEST_MODE ? testState.nextJoinDelayMs : 0;
-    testState.nextJoinDelayMs = 0;
-
-    if (delayMs > 0) {
-      setTimeout(() => {
-        if (ws.readyState !== 1) return;
-        processJoinMessage(ws, msg);
-      }, delayMs);
-    } else {
-      processJoinMessage(ws, msg);
-    }
-
-  } else if (msg.type === MSG.REJOIN) {
-    const room = rooms.get(msg.roomCode);
-    if (!room) {
-      send(ws, MSG.ERROR, { message: 'Room not found' });
-      return;
-    }
-
-    const playerId = room.reconnectByToken(ws, msg.reconnectToken);
-    if (playerId !== null) {
-      const player = room.players.get(playerId);
-      clientInfo.set(ws, { roomCode: msg.roomCode, playerId, type: 'controller' });
-      send(ws, MSG.JOINED, {
-        playerId,
-        playerName: player.name,
-        playerColor: player.color,
-        reconnected: true,
-        isHost: playerId === room.hostId,
-        playerCount: room.players.size,
-        roomState: room.state,
-        ...room.getReconnectState(playerId)
-      });
-      console.log(`Player ${playerId} reconnected to room ${msg.roomCode}`);
-    } else {
-      send(ws, MSG.ERROR, { message: 'Reconnection failed' });
-    }
-  }
-}
-
-function processJoinMessage(ws, msg) {
-  const room = rooms.get(msg.roomCode);
-  if (!room) {
-    send(ws, MSG.ERROR, { message: 'Room not found' });
-    return;
-  }
-
-  if (msg.rejoinId) {
-    const result = room.rejoinById(parseInt(msg.rejoinId), ws);
-    if (result) {
-      clientInfo.set(ws, { roomCode: msg.roomCode, playerId: result.playerId, type: 'controller' });
-      send(ws, MSG.JOINED, {
-        playerId: result.playerId,
-        playerName: result.name,
-        playerColor: result.color,
-        reconnectToken: result.reconnectToken,
-        isHost: result.isHost,
-        reconnected: true,
-        playerCount: room.players.size,
-        roomState: room.state,
-        ...room.getReconnectState(result.playerId)
-      });
-      console.log(`Player ${result.playerId} rejoined room ${msg.roomCode} via QR`);
-      return;
-    }
-  }
-
-  const result = room.addPlayer(ws, msg.name);
-  if (result) {
-    clientInfo.set(ws, { roomCode: msg.roomCode, playerId: result.playerId, type: 'controller' });
-    send(ws, MSG.JOINED, {
-      playerId: result.playerId,
-      playerName: result.name,
-      playerColor: result.color,
-      reconnectToken: result.reconnectToken,
-      isHost: result.isHost,
-      playerCount: room.players.size
-    });
-    console.log(`Player ${result.playerId} (${result.name}) joined room ${msg.roomCode}`);
-  }
-}
-
-// --- Handle display messages ---
-function handleDisplayMessage(room, msg) {
-  switch (msg.type) {
-    case MSG.START_GAME:
-      room.startGame();
-      break;
-    case MSG.RETURN_TO_LOBBY:
-      room.returnToLobby();
-      break;
-    case MSG.PLAY_AGAIN:
-      room.playAgain();
-      break;
-    case MSG.PAUSE_GAME:
-      room.pauseGame();
-      break;
-    case MSG.RESUME_GAME:
-      room.resumeGame();
-      break;
-    case MSG.RELAY_TO_PLAYER:
-      if (msg.playerId != null && msg.msg) {
-        // Cache alive status for reconnect
-        if (msg.msg.type === MSG.PLAYER_STATE && msg.msg.alive != null) {
-          if (!room._lastAliveState) room._lastAliveState = {};
-          room._lastAliveState[msg.playerId] = msg.msg.alive;
-        }
-        room.sendToPlayer(msg.playerId, msg.msg.type, msg.msg);
-      }
-      break;
-    case MSG.RELAY_TO_CONTROLLERS:
-      if (msg.msg) {
-        // Detect game end for room state transition
-        if (msg.msg.type === MSG.GAME_END) {
-          const { type: _t, ...results } = msg.msg;
-          room.onGameEnd(results);
-        } else {
-          room.broadcastToControllers(msg.msg.type, msg.msg);
-        }
-      }
-      break;
-  }
-}
-
-// --- Handle controller messages ---
-function handleControllerMessage(room, playerId, msg) {
-  switch (msg.type) {
-    case MSG.INPUT:
-      room.handleInput(playerId, msg.action, msg.seq);
-      break;
-    case MSG.SOFT_DROP_START:
-      room.handleSoftDropStart(playerId, msg.speed);
-      break;
-    case MSG.SOFT_DROP_END:
-      room.handleSoftDropEnd(playerId);
-      break;
-    case MSG.START_GAME:
-      if (playerId === room.hostId) {
-        room.startGame();
-      }
-      break;
-    case MSG.PLAY_AGAIN:
-      if (playerId === room.hostId) {
-        room.playAgain();
-      }
-      break;
-    case MSG.RETURN_TO_LOBBY:
-      if (playerId === room.hostId) {
-        room.returnToLobby();
-      }
-      break;
-    case MSG.PAUSE_GAME:
-      if (playerId === room.hostId) {
-        room.pauseGame();
-      }
-      break;
-    case MSG.RESUME_GAME:
-      if (playerId === room.hostId) {
-        room.resumeGame();
-      }
-      break;
-    case MSG.HEARTBEAT:
-      // Keepalive — isAlive already set on message receipt
-      break;
-    case MSG.LEAVE:
-      room.removePlayer(playerId, true);
-      break;
-  }
 }
 
 // --- Start server ---

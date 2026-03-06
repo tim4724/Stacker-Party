@@ -1,85 +1,98 @@
 'use strict';
 
 // --- State ---
-let currentScreen = 'welcome';
-let gameState = null;
-let ws = null;
-let players = new Map(); // playerId -> { playerName, playerColor, playerIndex }
-let playerOrder = [];    // ordered player IDs for layout
-let boardRenderers = [];
-let uiRenderers = [];
-let animations = null;
-let music = null;
-let canvas = null;
-let ctx = null;
-let lastFrameTime = null;
-let playerIndexCounter = 0;
-let disconnectedQRs = new Map(); // playerId -> Canvas
-let garbageIndicatorEffects = new Map(); // playerId -> transient attacker-colored meter block overlays
-let lastRoomCode = null; // remember room code for reconnect
-let welcomeBg = null;
-// History navigation state:
-//   popstateNavigating — set true when popstate fires from game/results;
-//     cleared in the RETURN_TO_LOBBY handler after the server round-trip
-//     completes. Prevents double history.back().
-//   suppressPopstate — set true immediately before a programmatic
-//     history.back() call; the resulting popstate is ignored and the flag
-//     is cleared. Prevents the compensating back() from being treated as
-//     a new user navigation.
-let popstateNavigating = false;
-let suppressPopstate = false;
-let displayGame = null;
+var currentScreen = 'welcome';
+var party = null;
+var roomCode = null;
+var joinUrl = null;
+var lastRoomCode = null;
+var gameState = null;
+var players = new Map();       // clientId -> { playerName, playerColor, playerIndex }
+var playerOrder = [];          // ordered clientIds for layout
+var hostId = null;             // clientId of host (first joiner)
+var roomState = ROOM_STATE.LOBBY;
+var paused = false;
+var boardRenderers = [];
+var uiRenderers = [];
+var animations = null;
+var music = null;
+var canvas = null;
+var ctx = null;
+var lastFrameTime = null;
+var playerIndexCounter = 0;
+var disconnectedQRs = new Map();
+var garbageIndicatorEffects = new Map();
+var welcomeBg = null;
+var displayGame = null;
+
+// Countdown state (display manages countdown since server no longer does)
+var countdownTimer = null;
+var countdownRemaining = 0;
+var countdownCallback = null;
+var goTimeout = null;
+
+// Soft drop auto-timeout (200ms without a soft_drop message ends soft drop)
+var softDropTimers = new Map();
+
+// Controller liveness (5s without ping -> show disconnect QR)
+var LIVENESS_TIMEOUT_MS = 5000;
+var livenessInterval = null;
+
+// Grace period timers for disconnected players in lobby
+var graceTimers = new Map();
+
+// Last alive state per player (for reconnect)
+var lastAliveState = {};
+
+// Last results (for reconnect)
+var lastResults = null;
+
+// Browser history navigation state
+var popstateNavigating = false;
+var suppressPopstate = false;
 
 // --- DOM References ---
-const welcomeScreen = document.getElementById('welcome-screen');
-const newGameBtn = document.getElementById('new-game-btn');
-const lobbyScreen = document.getElementById('lobby-screen');
-const gameScreen = document.getElementById('game-screen');
-const resultsScreen = document.getElementById('results-screen');
-const qrCode = document.getElementById('qr-code');
-const joinUrlEl = document.getElementById('join-url');
-const playerListEl = document.getElementById('player-list');
-const startBtn = document.getElementById('start-btn');
-const countdownOverlay = document.getElementById('countdown-overlay');
-const resultsList = document.getElementById('results-list');
-const playAgainBtn = document.getElementById('play-again-btn');
-const newGameResultsBtn = document.getElementById('new-game-results-btn');
-const gameToolbar = document.getElementById('game-toolbar');
-const fullscreenBtn = document.getElementById('fullscreen-btn');
-const pauseBtn = document.getElementById('pause-btn');
-const pauseOverlay = document.getElementById('pause-overlay');
-const pauseContinueBtn = document.getElementById('pause-continue-btn');
-const pauseNewGameBtn = document.getElementById('pause-newgame-btn');
-const muteBtn = document.getElementById('mute-btn');
-let muted = false;
+var welcomeScreen = document.getElementById('welcome-screen');
+var newGameBtn = document.getElementById('new-game-btn');
+var lobbyScreen = document.getElementById('lobby-screen');
+var gameScreen = document.getElementById('game-screen');
+var resultsScreen = document.getElementById('results-screen');
+var qrCode = document.getElementById('qr-code');
+var joinUrlEl = document.getElementById('join-url');
+var playerListEl = document.getElementById('player-list');
+var startBtn = document.getElementById('start-btn');
+var countdownOverlay = document.getElementById('countdown-overlay');
+var resultsList = document.getElementById('results-list');
+var playAgainBtn = document.getElementById('play-again-btn');
+var newGameResultsBtn = document.getElementById('new-game-results-btn');
+var gameToolbar = document.getElementById('game-toolbar');
+var fullscreenBtn = document.getElementById('fullscreen-btn');
+var pauseBtn = document.getElementById('pause-btn');
+var pauseOverlay = document.getElementById('pause-overlay');
+var pauseContinueBtn = document.getElementById('pause-continue-btn');
+var pauseNewGameBtn = document.getElementById('pause-newgame-btn');
+var muteBtn = document.getElementById('mute-btn');
+var muted = false;
 
 // --- Screen Management ---
 function showScreen(name) {
   currentScreen = name;
   welcomeScreen.classList.toggle('hidden', name !== 'welcome');
   lobbyScreen.classList.toggle('hidden', name !== 'lobby');
-  // Keep game screen visible behind results and pause overlays
   gameScreen.classList.toggle('hidden', name !== 'game' && name !== 'results');
   resultsScreen.classList.toggle('hidden', name !== 'results');
-  // Keep fullscreen available after entering the display flow; pause remains game-only.
   gameToolbar.classList.toggle('hidden', name === 'welcome');
   pauseBtn.classList.toggle('hidden', name !== 'game');
-  // Hide pause overlay when switching away from game
   if (name !== 'game') {
     pauseOverlay.classList.add('hidden');
   }
-
   if (name === 'game' || name === 'results') {
     initCanvas();
     calculateLayout();
   }
-
-  // Ensure player slots are visible as soon as the lobby appears
   if (name === 'lobby') {
     updatePlayerList();
   }
-
-  // Manage falling tetromino background (shared across welcome + lobby)
   if (welcomeBg) {
     if (name === 'welcome' || name === 'lobby') welcomeBg.start();
     else welcomeBg.stop();
@@ -95,13 +108,12 @@ function initCanvas() {
 
 function resizeCanvas() {
   if (!canvas) return;
-  const dpr = window.devicePixelRatio || 1;
+  var dpr = window.devicePixelRatio || 1;
   canvas.width = window.innerWidth * dpr;
   canvas.height = window.innerHeight * dpr;
   canvas.style.width = window.innerWidth + 'px';
   canvas.style.height = window.innerHeight + 'px';
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
   if (currentScreen === 'game') {
     calculateLayout();
   }
@@ -111,29 +123,24 @@ function resizeCanvas() {
 function calculateLayout() {
   if (!ctx || playerOrder.length === 0) return;
 
-  const n = playerOrder.length;
-  const w = window.innerWidth;
-  const h = window.innerHeight;
-  const padding = THEME.size.canvasPad;
+  var n = playerOrder.length;
+  var w = window.innerWidth;
+  var h = window.innerHeight;
+  var padding = THEME.size.canvasPad;
+  var totalCellsWide = 10 + 3 + 3;
+  var totalCellsTall = 20 + 3.6;
 
-  // Each player needs: board (10 cells wide, 20 tall) + side panels (~3 cells each side)
-  const totalCellsWide = 10 + 3 + 3; // board + hold panel + next panel
-  const totalCellsTall = 20 + 3.6;       // board + name + score + bottom breathing room
-
-  // Compute cell size for a given grid arrangement
   function cellSizeFor(cols, rows) {
-    const aw = (w - padding * (cols + 1)) / cols;
-    const ah = (h - padding * (rows + 1)) / rows;
+    var aw = (w - padding * (cols + 1)) / cols;
+    var ah = (h - padding * (rows + 1)) / rows;
     return Math.floor(Math.min(aw / totalCellsWide, ah / totalCellsTall));
   }
 
-  // Determine grid arrangement — pick layout that maximizes cell size
-  let gridCols, gridRows;
+  var gridCols, gridRows;
   if (n === 1) { gridCols = 1; gridRows = 1; }
   else if (n === 2) { gridCols = 2; gridRows = 1; }
   else if (n === 3) { gridCols = 3; gridRows = 1; }
   else {
-    // 4 players: compare 4x1 row vs 2x2 grid
     if (cellSizeFor(4, 1) >= cellSizeFor(2, 2)) {
       gridCols = 4; gridRows = 1;
     } else {
@@ -141,241 +148,672 @@ function calculateLayout() {
     }
   }
 
-  const cellSize = cellSizeFor(gridCols, gridRows);
-
-  const boardWidthPx = 10 * cellSize;
-  const boardHeightPx = 20 * cellSize;
+  var cellSize = cellSizeFor(gridCols, gridRows);
+  var boardWidthPx = 10 * cellSize;
+  var boardHeightPx = 20 * cellSize;
 
   boardRenderers = [];
   uiRenderers = [];
-
-  // Create Animations instance with the current context
   animations = new Animations(ctx);
 
-  for (let i = 0; i < n; i++) {
-    const col = i % gridCols;
-    const row = Math.floor(i / gridCols);
-
-    // Center each player's area within its grid cell
-    const cellAreaW = w / gridCols;
-    const cellAreaH = h / gridRows;
-    const boardX = cellAreaW * col + (cellAreaW - boardWidthPx) / 2;
-    const boardY = cellAreaH * row + (cellAreaH - boardHeightPx) / 2 + 10; // offset for name
-
-    const playerIndex = players.get(playerOrder[i])?.playerIndex ?? i;
-
+  for (var i = 0; i < n; i++) {
+    var col = i % gridCols;
+    var row = Math.floor(i / gridCols);
+    var cellAreaW = w / gridCols;
+    var cellAreaH = h / gridRows;
+    var boardX = cellAreaW * col + (cellAreaW - boardWidthPx) / 2;
+    var boardY = cellAreaH * row + (cellAreaH - boardHeightPx) / 2 + 10;
+    var playerIndex = players.get(playerOrder[i])?.playerIndex ?? i;
     boardRenderers.push(new BoardRenderer(ctx, boardX, boardY, cellSize, playerIndex));
     uiRenderers.push(new UIRenderer(ctx, boardX, boardY, cellSize, boardWidthPx, boardHeightPx, playerIndex));
   }
 }
 
-// --- WebSocket ---
-function connect() {
-  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(`${protocol}//${location.host}`);
+// =====================================================================
+// Party-Server Connection
+// =====================================================================
 
-  ws.onopen = function() {
-    ws.send(JSON.stringify({ type: MSG.CREATE_ROOM, roomCode: lastRoomCode }));
-  };
+function connectParty() {
+  if (party) party.close();
 
-  ws.onmessage = function(event) {
-    let msg;
-    try {
-      msg = JSON.parse(event.data);
-    } catch (_) {
-      return;
+  party = new PartyConnection(RELAY_URL, { clientId: 'display' });
+
+  party.onOpen = function() {
+    if (lastRoomCode) {
+      party.join(lastRoomCode);
+    } else {
+      party.create(5);
     }
-    handleMessage(msg);
   };
 
-  ws.onclose = function() {
-    // Attempt reconnect after delay
-    setTimeout(connect, 2000);
+  party.onProtocol = function(type, msg) {
+    switch (type) {
+      case 'created':
+        onRoomCreated(msg.room);
+        break;
+      case 'joined':
+        onDisplayRejoined(msg.room, msg.clients);
+        break;
+      case 'peer_joined':
+        // Ignore — wait for hello message to register players
+        break;
+      case 'peer_left':
+        onPeerLeft(msg.clientId);
+        break;
+      case 'error':
+        console.error('Party-Server error:', msg.message);
+        break;
+    }
   };
+
+  party.onMessage = function(from, data) {
+    handleControllerMessage(from, data);
+  };
+
+  party.connect();
 }
 
-function send(type, data) {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type, ...data }));
+// =====================================================================
+// Party-Server Protocol Handlers
+// =====================================================================
+
+function onRoomCreated(partyRoomCode) {
+  roomCode = partyRoomCode;
+  lastRoomCode = partyRoomCode;
+  roomState = ROOM_STATE.LOBBY;
+
+  // Generate join URL from current browser location
+  var baseUrl = window.location.origin;
+  joinUrl = baseUrl + '/' + roomCode;
+  joinUrlEl.textContent = joinUrl;
+
+  // Reset local state
+  if (music) music.stop();
+  players.clear();
+  playerOrder = [];
+  playerIndexCounter = 0;
+  hostId = null;
+  paused = false;
+  gameState = null;
+  boardRenderers = [];
+  uiRenderers = [];
+  disconnectedQRs.clear();
+  garbageIndicatorEffects.clear();
+  lastAliveState = {};
+  lastResults = null;
+
+  showScreen('lobby');
+  updateStartButton();
+  startLivenessCheck();
+
+  // Fetch QR from HTTP server
+  fetchQR(joinUrl, function(qrMatrix) {
+    requestAnimationFrame(function() { renderTetrisQR(qrCode, qrMatrix); });
+  });
+}
+
+function onDisplayRejoined(partyRoomCode, clients) {
+  // Display reconnected to existing room — resync state
+  roomCode = partyRoomCode;
+  lastRoomCode = partyRoomCode;
+
+  var baseUrl = window.location.origin;
+  joinUrl = baseUrl + '/' + roomCode;
+  joinUrlEl.textContent = joinUrl;
+
+  startLivenessCheck();
+
+  // Players will re-send hello to re-register
+  // Show lobby while waiting for players to reconnect
+  if (roomState === ROOM_STATE.LOBBY) {
+    showScreen('lobby');
+    updateStartButton();
+    fetchQR(joinUrl, function(qrMatrix) {
+      requestAnimationFrame(function() { renderTetrisQR(qrCode, qrMatrix); });
+    });
   }
 }
 
-// --- Message Handlers ---
-function handleMessage(msg) {
+function onPeerLeft(clientId) {
+  if (!players.has(clientId)) return;
+
+  // Clear soft drop timer
+  if (softDropTimers.has(clientId)) {
+    clearTimeout(softDropTimers.get(clientId));
+    softDropTimers.delete(clientId);
+    if (displayGame) displayGame.handleSoftDropEnd(clientId);
+  }
+
+  if (roomState === ROOM_STATE.LOBBY) {
+    // Grace period: hold slot for 5s so reconnecting controller can rejoin
+    var timer = setTimeout(function() {
+      graceTimers.delete(clientId);
+      if (!players.has(clientId)) return;
+      removeLobbyPlayer(clientId);
+    }, 5000);
+    graceTimers.set(clientId, timer);
+  } else if (roomState === ROOM_STATE.RESULTS) {
+    // Results screen — return to lobby
+    var wasHost = clientId === hostId;
+    stopDisplayGame();
+    lastResults = null;
+    roomState = ROOM_STATE.LOBBY;
+    removeLobbyPlayer(clientId);
+    if (!wasHost) {
+      party.broadcast({ type: MSG.RETURN_TO_LOBBY, playerCount: players.size });
+      returnToLobbyUI();
+    }
+  } else {
+    // In game/countdown — show disconnect QR overlay
+    showDisconnectQR(clientId);
+  }
+}
+
+function removeLobbyPlayer(clientId) {
+  if (clientId === hostId) {
+    // Host disconnected — kick everyone back
+    hostId = null;
+    party.broadcast({ type: MSG.ERROR, code: 'HOST_DISCONNECTED', message: 'Host disconnected' });
+    players.clear();
+    playerOrder = [];
+    playerIndexCounter = 0;
+    garbageIndicatorEffects.clear();
+    updatePlayerList();
+    updateStartButton();
+  } else {
+    players.delete(clientId);
+    playerOrder = playerOrder.filter(function(id) { return id !== clientId; });
+    garbageIndicatorEffects.delete(clientId);
+    updatePlayerList();
+    updateStartButton();
+    broadcastLobbyUpdate();
+  }
+}
+
+// =====================================================================
+// Controller Message Handlers
+// =====================================================================
+
+function handleControllerMessage(fromId, msg) {
+  if (!msg || !msg.type) return;
+
   switch (msg.type) {
-    case MSG.ROOM_CREATED:
-      onRoomCreated(msg);
+    case MSG.HELLO:
+      onHello(fromId, msg);
       break;
-    case MSG.PLAYER_JOINED:
-      onPlayerJoined(msg);
+    case MSG.INPUT:
+      onInput(fromId, msg);
       break;
-    case MSG.PLAYER_LEFT:
-      onPlayerLeft(msg);
+    case MSG.SOFT_DROP:
+      onSoftDrop(fromId);
       break;
-    case MSG.ROOM_RESET:
-      onRoomReset();
+    case MSG.START_GAME:
+      if (fromId === hostId) startGame();
       break;
-    case MSG.COUNTDOWN:
-      onCountdown(msg);
+    case MSG.PLAY_AGAIN:
+      if (fromId === hostId) playAgain();
       break;
-    case MSG.GAME_STATE:
-      onGameState(msg);
+    case MSG.RETURN_TO_LOBBY:
+      if (fromId === hostId) returnToLobby();
       break;
-    case MSG.LINE_CLEAR:
-      onLineClear(msg);
+    case MSG.PAUSE_GAME:
+      if (fromId === hostId) pauseGame();
       break;
-    case MSG.GARBAGE_SENT:
-      onGarbageSent(msg);
+    case MSG.RESUME_GAME:
+      if (fromId === hostId) resumeGame();
       break;
-    case MSG.PLAYER_KO:
-      onPlayerKO(msg);
+    case MSG.LEAVE:
+      removePlayer(fromId, true);
       break;
-    case MSG.GAME_END:
-      onGameEnd(msg);
+    case MSG.PING:
+      party.sendTo(fromId, { type: MSG.PONG, t: msg.t });
+      var player = players.get(fromId);
+      if (player) player.lastPingTime = Date.now();
       break;
-    case MSG.PLAYER_DISCONNECTED:
-      onPlayerDisconnected(msg);
-      break;
-    case MSG.PLAYER_RECONNECTED:
-      onPlayerReconnected(msg);
-      break;
-    case MSG.GAME_PAUSED:
-      onGamePaused();
-      break;
-    case MSG.GAME_RESUMED:
-      onGameResumed();
-      break;
-    case MSG.RUN_GAME_LOCALLY:
-      onRunGameLocally(msg);
-      break;
-    case MSG.RELAY_INPUT:
-      if (displayGame) displayGame.processInput(msg.playerId, msg.action);
-      break;
-    case MSG.RELAY_SOFT_DROP_START:
-      if (displayGame) displayGame.handleSoftDropStart(msg.playerId, msg.speed);
-      break;
-    case MSG.RELAY_SOFT_DROP_END:
-      if (displayGame) displayGame.handleSoftDropEnd(msg.playerId);
-      break;
-    case MSG.RETURN_TO_LOBBY: {
-      // popstateNavigating is true when the browser back button triggered this
-      // return — the history entry is already consumed, so we skip history.back().
-      // For all other triggers (button clicks, server-initiated reset), we call
-      // history.back() to consume the game history entry.
-      if (music) music.stop();
-      stopDisplayGame();
-      const wasInGame = currentScreen === 'game' || currentScreen === 'results';
-      gameState = null;
-      disconnectedQRs.clear();
-      garbageIndicatorEffects.clear();
-      showScreen('lobby');
-      updateStartButton();
-      if (wasInGame && !popstateNavigating) {
-        suppressPopstate = true;
-        history.back();
-      }
-      popstateNavigating = false;
-      break;
-    }
   }
 }
 
-// --- Tetris QR Helpers (standalone, renders to separate canvas) ---
+function onHello(fromId, msg) {
+  var name = typeof msg.name === 'string' ? msg.name.trim().slice(0, 16) : '';
+  var playerName = name || 'Player';
+
+  // Reconnecting player
+  if (players.has(fromId)) {
+    var existing = players.get(fromId);
+    existing.lastPingTime = Date.now();
+
+    // Clear grace timer if any
+    if (graceTimers.has(fromId)) {
+      clearTimeout(graceTimers.get(fromId));
+      graceTimers.delete(fromId);
+    }
+
+    // Remove disconnect QR overlay
+    disconnectedQRs.delete(fromId);
+
+    // Send welcome with current state
+    party.sendTo(fromId, {
+      type: MSG.WELCOME,
+      playerColor: existing.playerColor,
+      isHost: fromId === hostId,
+      playerCount: players.size,
+      roomState: roomState,
+      alive: lastAliveState[fromId] != null ? lastAliveState[fromId] : true,
+      paused: paused
+    });
+    return;
+  }
+
+  // New player joining
+  if (roomState !== ROOM_STATE.LOBBY) {
+    party.sendTo(fromId, { type: MSG.ERROR, message: 'Game already in progress' });
+    return;
+  }
+
+  if (players.size >= GameConstants.MAX_PLAYERS) {
+    party.sendTo(fromId, { type: MSG.ERROR, message: 'Room is full' });
+    return;
+  }
+
+  var index = playerIndexCounter++;
+  var color = PLAYER_COLORS[index % PLAYER_COLORS.length];
+  var isHost = hostId === null;
+  if (isHost) hostId = fromId;
+
+  players.set(fromId, {
+    playerName: playerName,
+    playerColor: color,
+    playerIndex: index,
+    lastPingTime: Date.now()
+  });
+  playerOrder.push(fromId);
+
+  // Send welcome to new player
+  party.sendTo(fromId, {
+    type: MSG.WELCOME,
+    playerColor: color,
+    isHost: isHost,
+    playerCount: players.size,
+    roomState: roomState
+  });
+
+  // Update all controllers with new player count
+  broadcastLobbyUpdate();
+
+  // Update display UI
+  updatePlayerList();
+  updateStartButton();
+}
+
+function onInput(fromId, msg) {
+  if (roomState !== ROOM_STATE.PLAYING || paused) return;
+  if (!displayGame) return;
+  displayGame.processInput(fromId, msg.action);
+}
+
+function onSoftDrop(fromId) {
+  if (roomState !== ROOM_STATE.PLAYING || paused) return;
+  if (!displayGame) return;
+
+  // Start or continue soft drop
+  displayGame.handleSoftDropStart(fromId);
+
+  // Reset auto-end timeout
+  if (softDropTimers.has(fromId)) {
+    clearTimeout(softDropTimers.get(fromId));
+  }
+  softDropTimers.set(fromId, setTimeout(function() {
+    softDropTimers.delete(fromId);
+    if (displayGame) displayGame.handleSoftDropEnd(fromId);
+  }, 200));
+}
+
+function removePlayer(clientId, immediate) {
+  if (!players.has(clientId)) return;
+
+  if (roomState === ROOM_STATE.LOBBY) {
+    if (immediate) {
+      removeLobbyPlayer(clientId);
+    } else {
+      onPeerLeft(clientId);
+    }
+  } else {
+    onPeerLeft(clientId);
+  }
+}
+
+// =====================================================================
+// Lobby Update Broadcast
+// =====================================================================
+
+function broadcastLobbyUpdate() {
+  for (var entry of players) {
+    var id = entry[0];
+    party.sendTo(id, {
+      type: MSG.LOBBY_UPDATE,
+      playerCount: players.size,
+      isHost: id === hostId
+    });
+  }
+}
+
+// =====================================================================
+// Controller Liveness Check
+// =====================================================================
+
+function startLivenessCheck() {
+  stopLivenessCheck();
+  livenessInterval = setInterval(function() {
+    var now = Date.now();
+    for (var entry of players) {
+      var id = entry[0];
+      var player = entry[1];
+      if (player.lastPingTime && (now - player.lastPingTime > LIVENESS_TIMEOUT_MS)) {
+        // Controller hasn't pinged recently — show disconnect QR
+        if (roomState !== ROOM_STATE.LOBBY && !disconnectedQRs.has(id)) {
+          showDisconnectQR(id);
+        }
+      }
+    }
+  }, 2000);
+}
+
+function stopLivenessCheck() {
+  if (livenessInterval) {
+    clearInterval(livenessInterval);
+    livenessInterval = null;
+  }
+}
+
+// =====================================================================
+// QR Code Helpers
+// =====================================================================
+
+function fetchQR(text, callback) {
+  fetch('/api/qr?text=' + encodeURIComponent(text))
+    .then(function(r) { return r.json(); })
+    .then(callback)
+    .catch(function(err) { console.error('QR fetch failed:', err); });
+}
+
+function showDisconnectQR(clientId) {
+  if (!joinUrl) {
+    disconnectedQRs.set(clientId, null);
+    return;
+  }
+  var rejoinUrl = joinUrl + '?rejoin=' + clientId;
+  fetchQR(rejoinUrl, function(qrMatrix) {
+    // Only apply if player is still disconnected
+    if (!players.has(clientId)) return;
+    var offscreen = document.createElement('canvas');
+    renderTetrisQR(offscreen, qrMatrix);
+    disconnectedQRs.set(clientId, offscreen);
+  });
+}
+
 function renderTetrisQR(canvas, qrMatrix) {
   if (!qrMatrix || !qrMatrix.modules) return;
-  const { size, modules } = qrMatrix;
+  var size = qrMatrix.size;
+  var modules = qrMatrix.modules;
 
-  const dpr = window.devicePixelRatio || 1;
-  const cssSize = canvas.parentElement
+  var dpr = window.devicePixelRatio || 1;
+  var cssSize = canvas.parentElement
     ? Math.min(canvas.parentElement.clientWidth, canvas.parentElement.clientHeight, 280)
     : 280;
-  const cellPx = Math.floor((cssSize * dpr) / size);
-  const totalPx = cellPx * size;
+  var cellPx = Math.floor((cssSize * dpr) / size);
+  var totalPx = cellPx * size;
 
   canvas.width = totalPx;
   canvas.height = totalPx;
   canvas.style.width = (totalPx / dpr) + 'px';
   canvas.style.height = (totalPx / dpr) + 'px';
 
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, totalPx, totalPx);
+  var qrCtx = canvas.getContext('2d');
+  qrCtx.clearRect(0, 0, totalPx, totalPx);
 
-  // White background
-  ctx.fillStyle = THEME.color.text.white;
-  ctx.fillRect(0, 0, totalPx, totalPx);
+  qrCtx.fillStyle = THEME.color.text.white;
+  qrCtx.fillRect(0, 0, totalPx, totalPx);
 
-  const color = THEME.color.bg.card; // #12122a — dark navy from UI theme
-  const inset = Math.max(0.5, cellPx * 0.03);
-  const radius = Math.max(1, cellPx * 0.15);
+  var color = THEME.color.bg.card;
+  var inset = Math.max(0.5, cellPx * 0.03);
+  var radius = Math.max(1, cellPx * 0.15);
 
-  for (let row = 0; row < size; row++) {
-    for (let col = 0; col < size; col++) {
-      const idx = row * size + col;
-      const isDark = modules[idx] & 1;
+  for (var row = 0; row < size; row++) {
+    for (var col = 0; col < size; col++) {
+      var idx = row * size + col;
+      var isDark = modules[idx] & 1;
       if (!isDark) continue;
 
-      const x = col * cellPx;
-      const y = row * cellPx;
-      const s = cellPx;
+      var x = col * cellPx;
+      var y = row * cellPx;
+      var s = cellPx;
 
-      // Rounded rect with vertical gradient
-      const grad = ctx.createLinearGradient(x, y, x, y + s);
+      var grad = qrCtx.createLinearGradient(x, y, x, y + s);
       grad.addColorStop(0, lightenColor(color, 15));
       grad.addColorStop(1, darkenColor(color, 10));
 
-      ctx.fillStyle = grad;
-      roundRect(ctx, x + inset, y + inset, s - inset * 2, s - inset * 2, radius);
-      ctx.fill();
+      qrCtx.fillStyle = grad;
+      roundRect(qrCtx, x + inset, y + inset, s - inset * 2, s - inset * 2, radius);
+      qrCtx.fill();
 
-      // Top highlight
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
-      ctx.fillRect(x + inset + radius, y + inset, s - inset * 2 - radius * 2, Math.max(1, s * 0.08));
+      qrCtx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+      qrCtx.fillRect(x + inset + radius, y + inset, s - inset * 2 - radius * 2, Math.max(1, s * 0.08));
 
-      // Left highlight
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
-      ctx.fillRect(x + inset, y + inset + radius, Math.max(1, s * 0.07), s - inset * 2 - radius * 2);
+      qrCtx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+      qrCtx.fillRect(x + inset, y + inset + radius, Math.max(1, s * 0.07), s - inset * 2 - radius * 2);
 
-      // Bottom shadow
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
-      ctx.fillRect(x + inset + radius, y + s - inset - Math.max(1, s * 0.08), s - inset * 2 - radius * 2, Math.max(1, s * 0.08));
+      qrCtx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+      qrCtx.fillRect(x + inset + radius, y + s - inset - Math.max(1, s * 0.08), s - inset * 2 - radius * 2, Math.max(1, s * 0.08));
 
-      // Inner shine
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
-      const shineSize = s * 0.25;
-      ctx.fillRect(x + s * 0.25, y + s * 0.2, shineSize, shineSize * 0.5);
+      qrCtx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+      var shineSize = s * 0.25;
+      qrCtx.fillRect(x + s * 0.25, y + s * 0.2, shineSize, shineSize * 0.5);
     }
   }
 }
+
+// =====================================================================
+// Game Management
+// =====================================================================
+
+function startGame() {
+  if (roomState !== ROOM_STATE.LOBBY) return;
+  if (players.size < 1) return;
+  startNewGame();
+}
+
+function playAgain() {
+  if (roomState !== ROOM_STATE.RESULTS) return;
+  startNewGame();
+}
+
+function startNewGame() {
+  stopDisplayGame();
+  paused = false;
+  lastResults = null;
+  lastAliveState = {};
+  roomState = ROOM_STATE.COUNTDOWN;
+
+  startCountdown(function() {
+    roomState = ROOM_STATE.PLAYING;
+    party.broadcast({ type: MSG.GAME_START });
+    runGameLocally();
+
+    // Show disconnect QR for any players that disconnected during countdown
+    for (var entry of players) {
+      if (entry[1].lastPingTime && Date.now() - entry[1].lastPingTime > LIVENESS_TIMEOUT_MS) {
+        showDisconnectQR(entry[0]);
+      }
+    }
+  });
+}
+
+function startCountdown(onComplete, startFrom) {
+  var count = startFrom || GameConstants.COUNTDOWN_SECONDS;
+  countdownCallback = onComplete;
+  countdownRemaining = count;
+
+  // Broadcast to controllers
+  party.broadcast({ type: MSG.COUNTDOWN, value: count });
+  // Handle locally on display
+  onCountdownDisplay(count);
+
+  countdownTimer = setInterval(function() {
+    count--;
+    countdownRemaining = count;
+    if (count > 0) {
+      party.broadcast({ type: MSG.COUNTDOWN, value: count });
+      onCountdownDisplay(count);
+    } else {
+      clearInterval(countdownTimer);
+      countdownTimer = null;
+      countdownRemaining = 0;
+      party.broadcast({ type: MSG.COUNTDOWN, value: 'GO' });
+      onCountdownDisplay('GO');
+      goTimeout = setTimeout(function() {
+        goTimeout = null;
+        onComplete();
+      }, 500);
+    }
+  }, 1000);
+}
+
+function pauseGame() {
+  if (paused) return;
+  if (roomState !== ROOM_STATE.PLAYING && roomState !== ROOM_STATE.COUNTDOWN) return;
+  paused = true;
+  if (roomState === ROOM_STATE.COUNTDOWN) {
+    if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+    if (goTimeout) { clearTimeout(goTimeout); goTimeout = null; }
+  }
+  party.broadcast({ type: MSG.GAME_PAUSED });
+  onGamePaused();
+}
+
+function resumeGame() {
+  if (!paused) return;
+  if (roomState !== ROOM_STATE.PLAYING && roomState !== ROOM_STATE.COUNTDOWN) return;
+  paused = false;
+  if (roomState === ROOM_STATE.COUNTDOWN && countdownCallback) {
+    party.broadcast({ type: MSG.GAME_RESUMED });
+    onGameResumed();
+    if (countdownRemaining === 0) {
+      party.broadcast({ type: MSG.COUNTDOWN, value: 'GO' });
+      onCountdownDisplay('GO');
+      goTimeout = setTimeout(function() {
+        goTimeout = null;
+        countdownCallback();
+      }, 500);
+    } else {
+      startCountdown(countdownCallback, countdownRemaining);
+    }
+    return;
+  }
+  party.broadcast({ type: MSG.GAME_RESUMED });
+  onGameResumed();
+}
+
+function returnToLobby() {
+  // Clear countdown state
+  if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+  if (goTimeout) { clearTimeout(goTimeout); goTimeout = null; }
+  countdownCallback = null;
+  countdownRemaining = 0;
+  paused = false;
+
+  if (music) music.stop();
+  stopDisplayGame();
+
+  // Remove disconnected players
+  var disconnectedIds = [];
+  for (var entry of players) {
+    if (entry[1].lastPingTime && Date.now() - entry[1].lastPingTime > LIVENESS_TIMEOUT_MS) {
+      disconnectedIds.push(entry[0]);
+    }
+  }
+
+  if (hostId !== null && disconnectedIds.indexOf(hostId) >= 0) {
+    roomState = ROOM_STATE.LOBBY;
+    party.broadcast({ type: MSG.ERROR, code: 'HOST_DISCONNECTED', message: 'Host disconnected' });
+    players.clear();
+    playerOrder = [];
+    playerIndexCounter = 0;
+    hostId = null;
+    lastAliveState = {};
+    updatePlayerList();
+    updateStartButton();
+    returnToLobbyUI();
+    return;
+  }
+
+  for (var i = 0; i < disconnectedIds.length; i++) {
+    players.delete(disconnectedIds[i]);
+    playerOrder = playerOrder.filter(function(id) { return id !== disconnectedIds[i]; });
+  }
+
+  lastResults = null;
+  lastAliveState = {};
+  roomState = ROOM_STATE.LOBBY;
+
+  broadcastLobbyUpdate();
+  party.broadcast({ type: MSG.RETURN_TO_LOBBY, playerCount: players.size });
+
+  returnToLobbyUI();
+}
+
+function returnToLobbyUI() {
+  var wasInGame = currentScreen === 'game' || currentScreen === 'results';
+  gameState = null;
+  disconnectedQRs.clear();
+  garbageIndicatorEffects.clear();
+  showScreen('lobby');
+  updateStartButton();
+  if (wasInGame && !popstateNavigating) {
+    suppressPopstate = true;
+    history.back();
+  }
+  popstateNavigating = false;
+}
+
+// =====================================================================
+// Local Game Engine
+// =====================================================================
 
 function stopDisplayGame() {
   if (displayGame) {
     displayGame.stop();
     displayGame = null;
   }
+  // Clear all soft drop timers
+  for (var entry of softDropTimers) {
+    clearTimeout(entry[1]);
+  }
+  softDropTimers.clear();
 }
 
-function onRunGameLocally(msg) {
+function runGameLocally() {
   stopDisplayGame();
 
   var Game = window.GameEngine.Game;
   var gamePlayers = new Map();
-  for (var i = 0; i < msg.playerIds.length; i++) {
-    gamePlayers.set(msg.playerIds[i], {});
+  for (var i = 0; i < playerOrder.length; i++) {
+    gamePlayers.set(playerOrder[i], {});
   }
+
+  var seed = (Math.random() * 0xFFFFFFFF) >>> 0;
 
   displayGame = new Game(gamePlayers, {
     onGameState: function(state) {
-      // Call the existing display onGameState directly
       onGameState(state);
-      // Relay per-player state to controllers via server
+      // Relay per-player state to controllers
       if (state.players) {
         for (var k = 0; k < state.players.length; k++) {
           var p = state.players[k];
-          send(MSG.RELAY_TO_PLAYER, { playerId: p.id, msg: {
+          party.sendTo(p.id, {
             type: MSG.PLAYER_STATE,
             score: p.score, level: p.level, lines: p.lines,
             alive: p.alive, garbageIncoming: p.pendingGarbage || 0
-          }});
+          });
         }
       }
     },
@@ -384,9 +822,8 @@ function onRunGameLocally(msg) {
         onLineClear(event);
       } else if (event.type === 'player_ko') {
         onPlayerKO(event);
-        send(MSG.RELAY_TO_PLAYER, { playerId: event.playerId, msg: {
-          type: MSG.GAME_OVER, playerId: event.playerId
-        }});
+        lastAliveState[event.playerId] = false;
+        party.sendTo(event.playerId, { type: MSG.GAME_OVER });
       } else if (event.type === 'garbage_sent') {
         onGarbageSent(event);
       }
@@ -400,91 +837,35 @@ function onRunGameLocally(msg) {
           if (pInfo) r.playerName = pInfo.playerName;
         }
       }
-      send(MSG.RELAY_TO_CONTROLLERS, { msg: { type: MSG.GAME_END, ...results } });
+      roomState = ROOM_STATE.RESULTS;
+      lastResults = results;
+      party.broadcast({ type: MSG.GAME_END, elapsed: results.elapsed, results: results.results });
       onGameEnd(results);
     }
-  }, msg.seed);
+  }, seed);
 
   displayGame.start();
 }
 
-function onRoomCreated(msg) {
-  // Reset local state — new room has no players
-  if (music) music.stop();
-  players.clear();
-  playerOrder = [];
-  playerIndexCounter = 0;
-  gameState = null;
-  boardRenderers = [];
-  uiRenderers = [];
-  disconnectedQRs.clear();
-  garbageIndicatorEffects.clear();
+// =====================================================================
+// Display-side Event Handlers (rendering)
+// =====================================================================
 
-  lastRoomCode = msg.roomCode;
-  joinUrlEl.textContent = msg.joinUrl;
-  showScreen('lobby');
-  updateStartButton();
-  requestAnimationFrame(() => renderTetrisQR(qrCode, msg.qrMatrix));
-}
-
-function onPlayerJoined(msg) {
-  const index = playerIndexCounter++;
-  players.set(msg.playerId, {
-    playerName: msg.playerName,
-    playerColor: msg.playerColor,
-    playerIndex: index
-  });
-  playerOrder.push(msg.playerId);
-  updatePlayerList();
-  updateStartButton();
-}
-
-function onPlayerLeft(msg) {
-  players.delete(msg.playerId);
-  playerOrder = playerOrder.filter(id => id !== msg.playerId);
-  garbageIndicatorEffects.delete(msg.playerId);
-  updatePlayerList();
-  updateStartButton();
-}
-
-function onRoomReset() {
-  if (music) music.stop();
-  stopDisplayGame();
-  const wasInGame = currentScreen === 'game' || currentScreen === 'results';
-  gameState = null;
-  boardRenderers = [];
-  uiRenderers = [];
-  playerIndexCounter = 0;
-  players.clear();
-  playerOrder = [];
-  garbageIndicatorEffects.clear();
-  updatePlayerList();
-  updateStartButton();
-  showScreen('lobby');
-  if (wasInGame && !popstateNavigating) {
-    suppressPopstate = true;
-    history.back();
-  }
-  popstateNavigating = false;
-}
-
-function onCountdown(msg) {
+function onCountdownDisplay(value) {
   gameState = null;
   if (currentScreen !== 'game') {
     history.pushState({ screen: 'game' }, '');
   }
   showScreen('game');
   countdownOverlay.classList.remove('hidden');
-  countdownOverlay.textContent = msg.value;
-
-  playCountdownBeep(msg.value === 'GO');
-
-  if (msg.value === 'GO') {
+  countdownOverlay.textContent = value;
+  playCountdownBeep(value === 'GO');
+  if (value === 'GO') {
     if (music && !music.playing) {
       music.start();
       if (muted) music.masterGain.gain.setValueAtTime(0, music.ctx.currentTime);
     }
-    setTimeout(() => {
+    setTimeout(function() {
       countdownOverlay.classList.add('hidden');
       countdownOverlay.textContent = '';
     }, 400);
@@ -493,65 +874,45 @@ function onCountdown(msg) {
 
 function onGameState(msg) {
   gameState = msg;
-
-  // Ensure player order matches game state players
   if (msg.players) {
-    for (const p of msg.players) {
-      if (!playerOrder.includes(p.id)) {
+    for (var i = 0; i < msg.players.length; i++) {
+      var p = msg.players[i];
+      if (playerOrder.indexOf(p.id) < 0) {
         playerOrder.push(p.id);
       }
     }
   }
-
-  // Recalculate layout if renderers don't match player count
   if (msg.players && boardRenderers.length !== msg.players.length) {
     calculateLayout();
   }
-
-  // Speed up music with the highest player level
   if (music && music.playing && msg.players && msg.players.length > 0) {
-    const maxLevel = Math.max(...msg.players.map(p => p.level || 1));
+    var maxLevel = Math.max.apply(null, msg.players.map(function(p) { return p.level || 1; }));
     music.setSpeed(maxLevel);
   }
 }
 
 function onLineClear(msg) {
   if (!animations || !boardRenderers.length) return;
-  const idx = playerOrder.indexOf(msg.playerId);
+  var idx = playerOrder.indexOf(msg.playerId);
   if (idx < 0 || !boardRenderers[idx]) return;
-
-  const br = boardRenderers[idx];
-  const isTetris = msg.lines === 4;
-  animations.addLineClear(
-    br.x, br.y, br.cellSize,
-    msg.rows || [], isTetris, msg.isTSpin
-  );
-
+  var br = boardRenderers[idx];
+  var isTetris = msg.lines === 4;
+  animations.addLineClear(br.x, br.y, br.cellSize, msg.rows || [], isTetris, msg.isTSpin);
   if (msg.combo >= 2) {
-    animations.addCombo(
-      br.x + br.boardWidth / 2,
-      br.y + br.boardHeight / 2 - 30,
-      msg.combo
-    );
+    animations.addCombo(br.x + br.boardWidth / 2, br.y + br.boardHeight / 2 - 30, msg.combo);
   }
 }
 
 function onGarbageSent(msg) {
   if (!animations || !boardRenderers.length) return;
-  const idx = playerOrder.indexOf(msg.toId);
+  var idx = playerOrder.indexOf(msg.toId);
   if (idx < 0 || !boardRenderers[idx]) return;
-
-  const br = boardRenderers[idx];
-  const attackerColor = players.get(msg.senderId)?.playerColor || '#ffffff';
+  var br = boardRenderers[idx];
+  var attackerColor = players.get(msg.senderId)?.playerColor || '#ffffff';
   animations.addGarbageShake(br.x, br.y);
-
-  const shifted = (garbageIndicatorEffects.get(msg.toId) || [])
-    .map((effect) => ({
-      ...effect,
-      rowStart: effect.rowStart - msg.lines
-    }))
-    .filter((effect) => effect.rowStart + effect.lines > 0);
-
+  var shifted = (garbageIndicatorEffects.get(msg.toId) || [])
+    .map(function(effect) { return { ...effect, rowStart: effect.rowStart - msg.lines }; })
+    .filter(function(effect) { return effect.rowStart + effect.lines > 0; });
   shifted.push({
     startTime: performance.now(),
     duration: 1000,
@@ -560,16 +921,14 @@ function onGarbageSent(msg) {
     lines: msg.lines,
     rowStart: Math.max(0, 20 - msg.lines)
   });
-
   garbageIndicatorEffects.set(msg.toId, shifted);
 }
 
 function onPlayerKO(msg) {
   if (!animations || !boardRenderers.length) return;
-  const idx = playerOrder.indexOf(msg.playerId);
+  var idx = playerOrder.indexOf(msg.playerId);
   if (idx < 0 || !boardRenderers[idx]) return;
-
-  const br = boardRenderers[idx];
+  var br = boardRenderers[idx];
   animations.addKO(br.x, br.y, br.boardWidth, br.boardHeight);
 }
 
@@ -579,280 +938,12 @@ function onGameEnd(msg) {
   disconnectedQRs.clear();
   garbageIndicatorEffects.clear();
   showScreen('results');
-  // Retrigger fade-in animation
   resultsScreen.style.animation = 'none';
   resultsScreen.offsetHeight;
   resultsScreen.style.animation = '';
   renderResults(msg.results);
 }
 
-function onPlayerDisconnected(msg) {
-  if (msg.qrMatrix) {
-    const offscreen = document.createElement('canvas');
-    renderTetrisQR(offscreen, msg.qrMatrix);
-    disconnectedQRs.set(msg.playerId, offscreen);
-  } else {
-    disconnectedQRs.set(msg.playerId, null);
-  }
-}
-
-function onPlayerReconnected(msg) {
-  disconnectedQRs.delete(msg.playerId);
-}
-
-// --- Lobby UI ---
-const SLOT_LABELS = ['P1', 'P2', 'P3', 'P4'];
-const MAX_SLOTS = 4;
-
-function updatePlayerList() {
-  // Create 4 permanent slot elements on first call
-  if (playerListEl.children.length === 0) {
-    for (let i = 0; i < MAX_SLOTS; i++) {
-      const card = document.createElement('div');
-      card.className = 'player-card empty';
-
-      const name = document.createElement('span');
-      name.textContent = SLOT_LABELS[i];
-
-      card.appendChild(name);
-      playerListEl.appendChild(card);
-    }
-  }
-
-  // Reconcile each slot in place
-  for (let i = 0; i < MAX_SLOTS; i++) {
-    const card = playerListEl.children[i];
-    const nameEl = card.querySelector('span');
-    const playerId = playerOrder[i];
-    const info = playerId ? players.get(playerId) : null;
-    const wasEmpty = card.classList.contains('empty');
-
-    if (info) {
-      const color = info.playerColor || PLAYER_COLORS[info.playerIndex] || '#fff';
-      card.style.setProperty('--player-color', color);
-      nameEl.textContent = info.playerName || PLAYER_NAMES[info.playerIndex] || 'Player';
-      card.classList.remove('empty');
-      card.dataset.playerId = playerId;
-
-      // Trigger join celebration only on empty-to-filled transition
-      if (wasEmpty) {
-        card.classList.remove('join-pop');
-        void card.offsetWidth; // force reflow to restart animation
-        card.classList.add('join-pop');
-      }
-    } else {
-      card.style.removeProperty('--player-color');
-      nameEl.textContent = SLOT_LABELS[i];
-      card.classList.add('empty');
-      card.classList.remove('join-pop');
-      delete card.dataset.playerId;
-    }
-  }
-}
-
-function updateStartButton() {
-  const hasPlayers = players.size > 0;
-  startBtn.disabled = !hasPlayers;
-  startBtn.textContent = hasPlayers
-    ? `START (${players.size} player${players.size > 1 ? 's' : ''})`
-    : 'Waiting for players...';
-}
-
-// Init music helper
-function initMusic() {
-  if (!music) {
-    music = new Music();
-  }
-  music.init();
-}
-
-// Countdown beep using Web Audio API
-function playCountdownBeep(isGo) {
-  if (muted) return;
-  if (!music || !music.ctx) return;
-  const actx = music.ctx;
-  if (actx.state === 'suspended') actx.resume();
-
-  const osc = actx.createOscillator();
-  const gain = actx.createGain();
-  osc.connect(gain);
-  gain.connect(actx.destination);
-
-  if (isGo) {
-    // Higher pitch, longer sweep for "GO"
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(600, actx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(1200, actx.currentTime + 0.15);
-    gain.gain.setValueAtTime(0.18, actx.currentTime);
-    gain.gain.linearRampToValueAtTime(0, actx.currentTime + 0.3);
-    osc.start(actx.currentTime);
-    osc.stop(actx.currentTime + 0.3);
-  } else {
-    // Short tick for 3, 2, 1
-    osc.type = 'square';
-    osc.frequency.value = 440;
-    gain.gain.setValueAtTime(0.15, actx.currentTime);
-    gain.gain.linearRampToValueAtTime(0, actx.currentTime + 0.12);
-    osc.start(actx.currentTime);
-    osc.stop(actx.currentTime + 0.12);
-  }
-}
-
-// Welcome screen button: unlocks audio, enters fullscreen, connects, enters lobby
-function resetToWelcome() {
-  if (ws) {
-    ws.onclose = null;
-    ws.onerror = null;
-    try { ws.close(); } catch (_) {}
-    ws = null;
-  }
-  lastRoomCode = null;
-  players.clear();
-  playerOrder = [];
-  playerIndexCounter = 0;
-  gameState = null;
-  boardRenderers = [];
-  uiRenderers = [];
-  disconnectedQRs.clear();
-  garbageIndicatorEffects.clear();
-  showScreen('welcome');
-}
-
-newGameBtn.addEventListener('click', () => {
-  initMusic();
-  if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen().catch(() => {});
-  }
-  connect();
-  history.pushState({ screen: 'lobby' }, '');
-  showScreen('lobby');
-});
-
-window.addEventListener('popstate', (e) => {
-  if (suppressPopstate) {
-    suppressPopstate = false;
-    return;
-  }
-
-  const target = e.state && e.state.screen;
-
-  if (currentScreen === 'welcome' && target === 'lobby') {
-    // Forward: welcome → lobby
-    connect();
-    showScreen('lobby');
-  } else if (currentScreen === 'lobby') {
-    if (target === 'game') {
-      // Block forward from lobby to abandoned game
-      suppressPopstate = true;
-      history.back();
-    } else {
-      // Back: lobby → welcome
-      resetToWelcome();
-    }
-  } else if (currentScreen === 'game' || currentScreen === 'results') {
-    // Back: game/results → lobby (same room, same players)
-    // Transition immediately so a second back press can't escape the site.
-    // The server response handles remaining cleanup.
-    popstateNavigating = true;
-    if (music) music.stop();
-    showScreen('lobby');
-    send(MSG.RETURN_TO_LOBBY);
-  }
-});
-
-// Start button
-startBtn.addEventListener('click', () => {
-  if (startBtn.disabled) return;
-  initMusic(); // safety net
-  send(MSG.START_GAME);
-});
-
-// --- Results UI ---
-function renderResults(results) {
-  resultsList.innerHTML = '';
-  if (!results) return;
-
-  const sorted = [...results].sort((a, b) => a.rank - b.rank);
-
-  // Set winner glow color from 1st-place player
-  const winner = sorted[0];
-  if (winner) {
-    const wInfo = players.get(winner.playerId);
-    const winnerColor = wInfo?.playerColor || PLAYER_COLORS[wInfo?.playerIndex] || '#ffd700';
-    const r = parseInt(winnerColor.slice(1, 3), 16) || 255;
-    const g = parseInt(winnerColor.slice(3, 5), 16) || 215;
-    const b = parseInt(winnerColor.slice(5, 7), 16) || 0;
-    resultsScreen.style.setProperty('--winner-glow', `rgba(${r}, ${g}, ${b}, 0.08)`);
-  }
-
-  const solo = sorted.length === 1;
-
-  sorted.forEach((res, i) => {
-    const row = document.createElement('div');
-    row.className = solo ? 'result-row' : `result-row rank-${res.rank}`;
-    row.style.setProperty('--row-delay', `${0.2 + i * 0.08}s`);
-
-    if (!solo) {
-      const rank = document.createElement('span');
-      rank.className = 'result-rank';
-      rank.textContent = res.rank <= 3 ? ['', '1st', '2nd', '3rd'][res.rank] : `${res.rank}th`;
-      row.appendChild(rank);
-    }
-
-    const info = document.createElement('div');
-    info.className = 'result-info';
-
-    const nameEl = document.createElement('span');
-    nameEl.className = 'result-name';
-    const pInfo = players.get(res.playerId);
-    nameEl.textContent = res.playerName || pInfo?.playerName || `Player ${res.playerId}`;
-    if (pInfo) {
-      nameEl.style.color = pInfo.playerColor || PLAYER_COLORS[pInfo.playerIndex];
-    }
-
-    const stats = document.createElement('div');
-    stats.className = 'result-stats';
-    stats.innerHTML = `<span>${(res.score || 0).toLocaleString()} points</span><span>${res.lines || 0} lines</span><span>Lv ${res.level || 1}</span>`;
-
-    info.appendChild(nameEl);
-    info.appendChild(stats);
-    row.appendChild(info);
-    resultsList.appendChild(row);
-  });
-}
-
-// Play Again — restart with same players
-playAgainBtn.addEventListener('click', () => {
-  initMusic();
-  send(MSG.PLAY_AGAIN);
-});
-
-// New Game — return to lobby so new players can join
-newGameResultsBtn.addEventListener('click', () => {
-  send(MSG.RETURN_TO_LOBBY);
-});
-
-// --- Mute ---
-muteBtn.addEventListener('click', () => {
-  muted = !muted;
-  muteBtn.querySelector('.sound-waves').style.display = muted ? 'none' : '';
-  if (music && music.masterGain) {
-    music.masterGain.gain.cancelScheduledValues(music.ctx.currentTime);
-    music.masterGain.gain.setValueAtTime(music.masterGain.gain.value, music.ctx.currentTime);
-    music.masterGain.gain.linearRampToValueAtTime(muted ? 0 : 0.12, music.ctx.currentTime + 0.05);
-  }
-});
-
-// --- Fullscreen ---
-fullscreenBtn.addEventListener('click', () => {
-  if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen().catch(() => {});
-  } else {
-    document.exitFullscreen().catch(() => {});
-  }
-});
-
-// --- Pause ---
 function onGamePaused() {
   if (displayGame) displayGame.pause();
   pauseOverlay.classList.remove('hidden');
@@ -866,45 +957,295 @@ function onGameResumed() {
   if (currentScreen === 'game') {
     gameToolbar.classList.remove('hidden');
   }
-  // If paused mid-countdown, the overlay still has content — show it again
   if (countdownOverlay.textContent) {
     countdownOverlay.classList.remove('hidden');
   } else if (music) {
-    // Only restart music when resuming actual gameplay, not mid-countdown
     music.start();
     if (muted) music.masterGain.gain.setValueAtTime(0, music.ctx.currentTime);
   }
 }
 
-pauseBtn.addEventListener('click', () => {
-  send(MSG.PAUSE_GAME);
+// =====================================================================
+// Lobby UI
+// =====================================================================
+
+var SLOT_LABELS = ['P1', 'P2', 'P3', 'P4'];
+var MAX_SLOTS = 4;
+
+function updatePlayerList() {
+  if (playerListEl.children.length === 0) {
+    for (var i = 0; i < MAX_SLOTS; i++) {
+      var card = document.createElement('div');
+      card.className = 'player-card empty';
+      var name = document.createElement('span');
+      name.textContent = SLOT_LABELS[i];
+      card.appendChild(name);
+      playerListEl.appendChild(card);
+    }
+  }
+
+  for (var i = 0; i < MAX_SLOTS; i++) {
+    var card = playerListEl.children[i];
+    var nameEl = card.querySelector('span');
+    var playerId = playerOrder[i];
+    var info = playerId ? players.get(playerId) : null;
+    var wasEmpty = card.classList.contains('empty');
+
+    if (info) {
+      var color = info.playerColor || PLAYER_COLORS[info.playerIndex] || '#fff';
+      card.style.setProperty('--player-color', color);
+      nameEl.textContent = info.playerName || PLAYER_NAMES[info.playerIndex] || 'Player';
+      card.classList.remove('empty');
+      card.dataset.playerId = playerId;
+      if (wasEmpty) {
+        card.classList.remove('join-pop');
+        void card.offsetWidth;
+        card.classList.add('join-pop');
+      }
+    } else {
+      card.style.removeProperty('--player-color');
+      nameEl.textContent = SLOT_LABELS[i];
+      card.classList.add('empty');
+      card.classList.remove('join-pop');
+      delete card.dataset.playerId;
+    }
+  }
+}
+
+function updateStartButton() {
+  var hasPlayers = players.size > 0;
+  startBtn.disabled = !hasPlayers;
+  startBtn.textContent = hasPlayers
+    ? 'START (' + players.size + ' player' + (players.size > 1 ? 's' : '') + ')'
+    : 'Waiting for players...';
+}
+
+// =====================================================================
+// Results UI
+// =====================================================================
+
+function renderResults(results) {
+  resultsList.innerHTML = '';
+  if (!results) return;
+
+  var sorted = results.slice().sort(function(a, b) { return a.rank - b.rank; });
+
+  var winner = sorted[0];
+  if (winner) {
+    var wInfo = players.get(winner.playerId);
+    var winnerColor = wInfo?.playerColor || PLAYER_COLORS[wInfo?.playerIndex] || '#ffd700';
+    var r = parseInt(winnerColor.slice(1, 3), 16) || 255;
+    var g = parseInt(winnerColor.slice(3, 5), 16) || 215;
+    var b = parseInt(winnerColor.slice(5, 7), 16) || 0;
+    resultsScreen.style.setProperty('--winner-glow', 'rgba(' + r + ', ' + g + ', ' + b + ', 0.08)');
+  }
+
+  var solo = sorted.length === 1;
+
+  for (var i = 0; i < sorted.length; i++) {
+    var res = sorted[i];
+    var row = document.createElement('div');
+    row.className = solo ? 'result-row' : 'result-row rank-' + res.rank;
+    row.style.setProperty('--row-delay', (0.2 + i * 0.08) + 's');
+
+    if (!solo) {
+      var rank = document.createElement('span');
+      rank.className = 'result-rank';
+      rank.textContent = res.rank <= 3 ? ['', '1st', '2nd', '3rd'][res.rank] : res.rank + 'th';
+      row.appendChild(rank);
+    }
+
+    var info = document.createElement('div');
+    info.className = 'result-info';
+
+    var nameEl = document.createElement('span');
+    nameEl.className = 'result-name';
+    var pInfo = players.get(res.playerId);
+    nameEl.textContent = res.playerName || pInfo?.playerName || 'Player';
+    if (pInfo) {
+      nameEl.style.color = pInfo.playerColor || PLAYER_COLORS[pInfo.playerIndex];
+    }
+
+    var stats = document.createElement('div');
+    stats.className = 'result-stats';
+    stats.innerHTML = '<span>' + (res.score || 0).toLocaleString() + ' points</span><span>' + (res.lines || 0) + ' lines</span><span>Lv ' + (res.level || 1) + '</span>';
+
+    info.appendChild(nameEl);
+    info.appendChild(stats);
+    row.appendChild(info);
+    resultsList.appendChild(row);
+  }
+}
+
+// =====================================================================
+// Music & Audio
+// =====================================================================
+
+function initMusic() {
+  if (!music) {
+    music = new Music();
+  }
+  music.init();
+}
+
+function playCountdownBeep(isGo) {
+  if (muted) return;
+  if (!music || !music.ctx) return;
+  var actx = music.ctx;
+  if (actx.state === 'suspended') actx.resume();
+
+  var osc = actx.createOscillator();
+  var gain = actx.createGain();
+  osc.connect(gain);
+  gain.connect(actx.destination);
+
+  if (isGo) {
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(600, actx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(1200, actx.currentTime + 0.15);
+    gain.gain.setValueAtTime(0.18, actx.currentTime);
+    gain.gain.linearRampToValueAtTime(0, actx.currentTime + 0.3);
+    osc.start(actx.currentTime);
+    osc.stop(actx.currentTime + 0.3);
+  } else {
+    osc.type = 'square';
+    osc.frequency.value = 440;
+    gain.gain.setValueAtTime(0.15, actx.currentTime);
+    gain.gain.linearRampToValueAtTime(0, actx.currentTime + 0.12);
+    osc.start(actx.currentTime);
+    osc.stop(actx.currentTime + 0.12);
+  }
+}
+
+// =====================================================================
+// Welcome / UI Buttons
+// =====================================================================
+
+function resetToWelcome() {
+  if (party) {
+    party.close();
+    party = null;
+  }
+  stopLivenessCheck();
+  lastRoomCode = null;
+  roomCode = null;
+  joinUrl = null;
+  hostId = null;
+  paused = false;
+  roomState = ROOM_STATE.LOBBY;
+  players.clear();
+  playerOrder = [];
+  playerIndexCounter = 0;
+  gameState = null;
+  boardRenderers = [];
+  uiRenderers = [];
+  disconnectedQRs.clear();
+  garbageIndicatorEffects.clear();
+  lastAliveState = {};
+  lastResults = null;
+  showScreen('welcome');
+}
+
+newGameBtn.addEventListener('click', function() {
+  initMusic();
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(function() {});
+  }
+  connectParty();
+  history.pushState({ screen: 'lobby' }, '');
+  showScreen('lobby');
 });
 
-pauseContinueBtn.addEventListener('click', () => {
-  send(MSG.RESUME_GAME);
+window.addEventListener('popstate', function(e) {
+  if (suppressPopstate) {
+    suppressPopstate = false;
+    return;
+  }
+  var target = e.state && e.state.screen;
+  if (currentScreen === 'welcome' && target === 'lobby') {
+    connectParty();
+    showScreen('lobby');
+  } else if (currentScreen === 'lobby') {
+    if (target === 'game') {
+      suppressPopstate = true;
+      history.back();
+    } else {
+      resetToWelcome();
+    }
+  } else if (currentScreen === 'game' || currentScreen === 'results') {
+    popstateNavigating = true;
+    if (music) music.stop();
+    showScreen('lobby');
+    returnToLobby();
+  }
 });
 
-pauseNewGameBtn.addEventListener('click', () => {
-  send(MSG.RETURN_TO_LOBBY);
+startBtn.addEventListener('click', function() {
+  if (startBtn.disabled) return;
+  initMusic();
+  startGame();
 });
 
-// --- Render Loop ---
+playAgainBtn.addEventListener('click', function() {
+  initMusic();
+  playAgain();
+});
+
+newGameResultsBtn.addEventListener('click', function() {
+  returnToLobby();
+});
+
+// --- Mute ---
+muteBtn.addEventListener('click', function() {
+  muted = !muted;
+  muteBtn.querySelector('.sound-waves').style.display = muted ? 'none' : '';
+  if (music && music.masterGain) {
+    music.masterGain.gain.cancelScheduledValues(music.ctx.currentTime);
+    music.masterGain.gain.setValueAtTime(music.masterGain.gain.value, music.ctx.currentTime);
+    music.masterGain.gain.linearRampToValueAtTime(muted ? 0 : 0.12, music.ctx.currentTime + 0.05);
+  }
+});
+
+// --- Fullscreen ---
+fullscreenBtn.addEventListener('click', function() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(function() {});
+  } else {
+    document.exitFullscreen().catch(function() {});
+  }
+});
+
+// --- Pause (display-side buttons) ---
+pauseBtn.addEventListener('click', function() {
+  pauseGame();
+});
+
+pauseContinueBtn.addEventListener('click', function() {
+  resumeGame();
+});
+
+pauseNewGameBtn.addEventListener('click', function() {
+  returnToLobby();
+});
+
+// =====================================================================
+// Render Loop
+// =====================================================================
+
 function renderLoop(timestamp) {
   requestAnimationFrame(renderLoop);
 
   if ((currentScreen !== 'game' && currentScreen !== 'results') || !ctx) return;
 
   if (lastFrameTime === null) lastFrameTime = timestamp;
-  const deltaMs = timestamp - lastFrameTime;
+  var deltaMs = timestamp - lastFrameTime;
   lastFrameTime = timestamp;
 
-  // Clear canvas — deep space background with subtle radial vignette
-  const w = window.innerWidth;
-  const h = window.innerHeight;
+  var w = window.innerWidth;
+  var h = window.innerHeight;
   ctx.fillStyle = THEME.color.bg.primary;
   ctx.fillRect(0, 0, w, h);
 
-  // Subtle vignette (cached)
   if (!renderLoop._vignette || renderLoop._vw !== w || renderLoop._vh !== h) {
     renderLoop._vignette = ctx.createRadialGradient(w / 2, h / 2, h * 0.2, w / 2, h / 2, h * 0.8);
     renderLoop._vignette.addColorStop(0, 'rgba(15, 15, 40, 0.3)');
@@ -915,17 +1256,14 @@ function renderLoop(timestamp) {
   ctx.fillStyle = renderLoop._vignette;
   ctx.fillRect(0, 0, w, h);
 
-  // No game state yet (e.g. during countdown) — render empty boards
   if (!gameState) {
-    for (let i = 0; i < playerOrder.length; i++) {
+    for (var i = 0; i < playerOrder.length; i++) {
       if (!boardRenderers[i] || !uiRenderers[i]) continue;
-      const pInfo = players.get(playerOrder[i]);
-      const empty = {
+      var pInfo = players.get(playerOrder[i]);
+      var empty = {
         id: playerOrder[i],
         alive: true,
-        score: 0,
-        lines: 0,
-        level: 1,
+        score: 0, lines: 0, level: 1,
         garbageIndicatorEffects: [],
         playerName: pInfo?.playerName || PLAYER_NAMES[i],
         playerColor: pInfo?.playerColor || PLAYER_COLORS[i]
@@ -936,14 +1274,12 @@ function renderLoop(timestamp) {
     return;
   }
 
-  // Render each player
   if (gameState.players) {
-    for (let i = 0; i < gameState.players.length; i++) {
-      const playerData = gameState.players[i];
+    for (var i = 0; i < gameState.players.length; i++) {
+      var playerData = gameState.players[i];
       if (!boardRenderers[i] || !uiRenderers[i]) continue;
 
-      // Apply shake offset if active
-      const shake = animations
+      var shake = animations
         ? animations.getShakeOffsetForBoard(boardRenderers[i].x, boardRenderers[i].y)
         : { x: 0, y: 0 };
 
@@ -952,75 +1288,67 @@ function renderLoop(timestamp) {
         ctx.translate(shake.x, shake.y);
       }
 
-      // Augment player data with name info from our players map
-      const pInfo = players.get(playerData.id);
-      const now = performance.now();
-      const activeGarbageIndicatorEffects = (garbageIndicatorEffects.get(playerData.id) || [])
-        .filter((effect) => now - effect.startTime < effect.duration);
+      var pInfo = players.get(playerData.id);
+      var now = performance.now();
+      var activeGarbageIndicatorEffects = (garbageIndicatorEffects.get(playerData.id) || [])
+        .filter(function(effect) { return now - effect.startTime < effect.duration; });
       if (activeGarbageIndicatorEffects.length > 0) {
         garbageIndicatorEffects.set(playerData.id, activeGarbageIndicatorEffects);
       } else {
         garbageIndicatorEffects.delete(playerData.id);
       }
-      const enriched = {
-        ...playerData,
+      var enriched = Object.assign({}, playerData, {
         garbageIndicatorEffects: activeGarbageIndicatorEffects,
         playerName: pInfo?.playerName || PLAYER_NAMES[i],
         playerColor: pInfo?.playerColor || PLAYER_COLORS[i]
-      };
+      });
 
       boardRenderers[i].render(enriched);
       uiRenderers[i].render(enriched);
 
       // Draw QR overlay for disconnected players
       if (disconnectedQRs.has(playerData.id)) {
-        const br = boardRenderers[i];
-        const bx = br.x;
-        const by = br.y;
-        const bw = 10 * br.cellSize;
-        const bh = 20 * br.cellSize;
+        var br = boardRenderers[i];
+        var bx = br.x;
+        var by = br.y;
+        var bw = 10 * br.cellSize;
+        var bh = 20 * br.cellSize;
 
-        // Semi-transparent dark overlay
-        ctx.fillStyle = `rgba(0, 0, 0, ${THEME.opacity.overlay})`;
+        ctx.fillStyle = 'rgba(0, 0, 0, ' + THEME.opacity.overlay + ')';
         ctx.fillRect(bx, by, bw, bh);
 
-        const qrImg = disconnectedQRs.get(playerData.id);
-        const labelSize = Math.max(10, br.cellSize * THEME.font.cellScale.name);
-        const labelGap = labelSize * 1.2;
-        const qrSize = Math.min(bw, bh) * 0.5;
-        const radius = qrSize * 0.08;
-        const pad = qrSize * 0.06;
-        const outerSize = qrSize + pad * 2;
-        // Center QR + label group vertically
-        const totalH = outerSize + labelGap + labelSize;
-        const groupY = by + (bh - totalH) / 2;
-        const outerX = bx + (bw - outerSize) / 2;
-        const outerY = groupY;
+        var qrImg = disconnectedQRs.get(playerData.id);
+        var labelSize = Math.max(10, br.cellSize * THEME.font.cellScale.name);
+        var labelGap = labelSize * 1.2;
+        var qrSize = Math.min(bw, bh) * 0.5;
+        var qrRadius = qrSize * 0.08;
+        var pad = qrSize * 0.06;
+        var outerSize = qrSize + pad * 2;
+        var totalH = outerSize + labelGap + labelSize;
+        var groupY = by + (bh - totalH) / 2;
+        var outerX = bx + (bw - outerSize) / 2;
+        var outerY = groupY;
 
-        // Rounded white background (matches lobby QR style)
         ctx.fillStyle = THEME.color.text.white;
         ctx.beginPath();
-        ctx.roundRect(outerX, outerY, outerSize, outerSize, radius);
+        ctx.roundRect(outerX, outerY, outerSize, outerSize, qrRadius);
         ctx.fill();
 
-        // Subtle border
         ctx.strokeStyle = 'rgba(0, 200, 255, 0.15)';
         ctx.lineWidth = 1;
         ctx.stroke();
 
-        // Draw QR image clipped to rounded rect
         if (qrImg) {
           ctx.save();
           ctx.beginPath();
-          ctx.roundRect(outerX + pad, outerY + pad, qrSize, qrSize, Math.max(1, radius - pad));
+          ctx.roundRect(outerX + pad, outerY + pad, qrSize, qrSize, Math.max(1, qrRadius - pad));
           ctx.clip();
           ctx.drawImage(qrImg, outerX + pad, outerY + pad, qrSize, qrSize);
           ctx.restore();
         }
 
-        // "Scan to rejoin" label directly below QR (in player color)
         ctx.fillStyle = enriched.playerColor || 'rgba(0, 200, 255, 0.7)';
-        ctx.font = `600 ${labelSize}px sans-serif`;
+        ctx.font = '600 ' + labelSize + 'px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         ctx.letterSpacing = '0.1em';
@@ -1034,67 +1362,66 @@ function renderLoop(timestamp) {
     }
   }
 
-  // Update and render animations
   if (animations) {
     animations.update(deltaMs);
     animations.render();
   }
 
-  // Draw game timer
   if (gameState.elapsed != null) {
     drawTimer(gameState.elapsed);
   }
 }
 
-let _timerFontReady = false;
+var _timerFontReady = false;
 function drawTimer(elapsedMs) {
-  const totalSeconds = Math.floor(elapsedMs / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  const timeStr = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  var totalSeconds = Math.floor(elapsedMs / 1000);
+  var minutes = Math.floor(totalSeconds / 60);
+  var seconds = totalSeconds % 60;
+  var timeStr = String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
 
   if (!_timerFontReady) {
     _timerFontReady = document.fonts?.check?.('14px Orbitron') ?? false;
   }
-  const font = _timerFontReady ? 'Orbitron' : '"Courier New", monospace';
+  var font = _timerFontReady ? 'Orbitron' : '"Courier New", monospace';
 
-  // Size to match toolbar button height: clamp(36px, 4vh, 52px)
-  const btnH = Math.min(52, Math.max(36, window.innerHeight * 0.04));
-  const labelSize = Math.round(btnH * 0.6);
-  const digitAdvance = labelSize * 0.92;
-  const colonAdvance = labelSize * 0.52;
-  const advances = [];
-  let timerWidth = 0;
-  for (let i = 0; i < timeStr.length; i++) {
-    const advance = timeStr[i] === ':' ? colonAdvance : digitAdvance;
+  var btnH = Math.min(52, Math.max(36, window.innerHeight * 0.04));
+  var labelSize = Math.round(btnH * 0.6);
+  var digitAdvance = labelSize * 0.92;
+  var colonAdvance = labelSize * 0.52;
+  var advances = [];
+  var timerWidth = 0;
+  for (var i = 0; i < timeStr.length; i++) {
+    var advance = timeStr[i] === ':' ? colonAdvance : digitAdvance;
     advances.push(advance);
     timerWidth += advance;
   }
-  const startX = window.innerWidth / 2 - timerWidth / 2;
-  // Vertically center with toolbar buttons: top offset + half button height
-  const btnTop = Math.min(20, Math.max(10, window.innerHeight * 0.015));
-  const y = btnTop + (btnH - labelSize) / 2;
+  var startX = window.innerWidth / 2 - timerWidth / 2;
+  var btnTop = Math.min(20, Math.max(10, window.innerHeight * 0.015));
+  var y = btnTop + (btnH - labelSize) / 2;
 
-  ctx.fillStyle = `rgba(255, 255, 255, ${THEME.opacity.label})`;
-  ctx.font = `700 ${labelSize}px ${font}`;
+  ctx.fillStyle = 'rgba(255, 255, 255, ' + THEME.opacity.label + ')';
+  ctx.font = '700 ' + labelSize + 'px ' + font;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   ctx.letterSpacing = '0.15em';
-  let cursorX = startX;
-  for (let i = 0; i < timeStr.length; i++) {
-    const charX = cursorX + advances[i] / 2;
+  var cursorX = startX;
+  for (var i = 0; i < timeStr.length; i++) {
+    var charX = cursorX + advances[i] / 2;
     ctx.fillText(timeStr[i], charX, y);
     cursorX += advances[i];
   }
   ctx.letterSpacing = '0px';
 }
 
-// --- Cursor Auto-Hide ---
-let cursorTimer = null;
+// =====================================================================
+// Cursor Auto-Hide
+// =====================================================================
+
+var cursorTimer = null;
 function showCursor() {
   document.body.classList.remove('cursor-hidden');
   clearTimeout(cursorTimer);
-  cursorTimer = setTimeout(() => {
+  cursorTimer = setTimeout(function() {
     document.body.classList.add('cursor-hidden');
   }, 3000);
 }
@@ -1102,19 +1429,76 @@ document.addEventListener('mousemove', showCursor);
 showCursor();
 
 // --- Window Resize ---
-window.addEventListener('resize', () => {
+window.addEventListener('resize', function() {
   resizeCanvas();
   if (welcomeBg) welcomeBg.resize(window.innerWidth, window.innerHeight);
 });
 
-// --- Initialize ---
-// Fetch and display version
-fetch('/api/version').then(r => r.json()).then(data => {
-  document.getElementById('version-label').textContent = `v${data.version}`;
-}).catch(() => {});
+// =====================================================================
+// Test Mode API (window.__TEST__)
+// =====================================================================
 
-// Falling tetromino background (shared across welcome + lobby screens)
-const bgCanvas = document.getElementById('bg-canvas');
+if (new URLSearchParams(window.location.search).get('test') === '1') {
+  window.__TEST__ = {
+    addPlayers: function(playerList) {
+      for (var i = 0; i < playerList.length; i++) {
+        var p = playerList[i];
+        var index = playerIndexCounter++;
+        var color = PLAYER_COLORS[index % PLAYER_COLORS.length];
+        players.set(p.id, {
+          playerName: p.name,
+          playerColor: color,
+          playerIndex: index
+        });
+        playerOrder.push(p.id);
+        if (!hostId) hostId = p.id;
+      }
+      updatePlayerList();
+      updateStartButton();
+    },
+
+    injectGameState: function(state) {
+      roomState = ROOM_STATE.PLAYING;
+      gameState = state;
+      countdownOverlay.classList.add('hidden');
+      showScreen('game');
+      calculateLayout();
+    },
+
+    injectResults: function(results) {
+      roomState = ROOM_STATE.RESULTS;
+      lastResults = results;
+      onGameEnd(results);
+    },
+
+    injectPause: function() {
+      onGamePaused();
+    },
+
+    injectKO: function(playerId) {
+      onPlayerKO({ playerId: playerId });
+    },
+
+    injectGarbageSent: function(data) {
+      onGarbageSent(data);
+    },
+
+    injectCountdownGo: function() {
+      // Simulate countdown reaching GO (for entering game screen)
+      onCountdownDisplay('GO');
+    }
+  };
+}
+
+// =====================================================================
+// Initialize
+// =====================================================================
+
+fetch('/api/version').then(function(r) { return r.json(); }).then(function(data) {
+  document.getElementById('version-label').textContent = 'v' + data.version;
+}).catch(function() {});
+
+var bgCanvas = document.getElementById('bg-canvas');
 if (bgCanvas) {
   welcomeBg = new WelcomeBackground(bgCanvas);
   welcomeBg.resize(window.innerWidth, window.innerHeight);

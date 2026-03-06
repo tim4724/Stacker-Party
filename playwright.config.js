@@ -15,7 +15,6 @@ module.exports = defineConfig({
     command: 'node server/index.js',
     env: {
       ...process.env,
-      E2E_TEST_MODE: '1',
       PORT: '4100',
     },
     port: 4100,
