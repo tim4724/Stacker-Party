@@ -57,6 +57,9 @@ function connectAndCreateRoom() {
         break;
       case 'error':
         console.error('Party-Server error:', msg.message);
+        if (msg.message === 'Room not found' || msg.message === 'Room is full') {
+          resetToWelcome();
+        }
         break;
     }
   };
