@@ -642,7 +642,11 @@ if (new URLSearchParams(window.location.search).get('test') === '1') {
 // =====================================================================
 
 fetch('/api/version').then(function(r) { return r.json(); }).then(function(data) {
-  document.getElementById('version-label').textContent = 'v' + data.version;
+  var label = 'v' + data.version;
+  if (!data.isProduction && data.commit) {
+    label += ' (#' + data.commit + ')';
+  }
+  document.getElementById('version-label').textContent = label;
 }).catch(function() {});
 
 var bgCanvas = document.getElementById('bg-canvas');

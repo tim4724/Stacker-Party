@@ -33,6 +33,7 @@ jobs:
       - name: Deploy to production
         env:
           TAG: ${{ github.ref_name }}
+          GIT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
@@ -41,6 +42,9 @@ jobs:
           echo "Deploying ${TAG} to production"
           kubectl set image deployment/tetris \
             tetris="${IMAGE}" -n default
+          kubectl set env deployment/tetris \
+            APP_ENV=production \
+            GIT_SHA="${GIT_SHA}" -n default
           kubectl rollout status deployment/tetris -n default --timeout=120s
 
           {

@@ -9,6 +9,12 @@ const QRCode = require('qrcode');
 const PORT = parseInt(process.env.PORT, 10) || 4000;
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const APP_VERSION = require('../package.json').version;
+const APP_ENV = String(process.env.APP_ENV || (process.env.NODE_ENV === 'production' ? 'production' : 'development')).toLowerCase();
+const GIT_SHA = String(process.env.GIT_SHA || '').trim();
+
+function getShortSha(sha) {
+  return sha ? sha.slice(0, 7) : null;
+}
 
 // Explicit allowlist of engine modules serveable via /engine/ route
 const ENGINE_FILES = new Set([
@@ -101,7 +107,12 @@ const server = http.createServer((req, res) => {
 
   // Version endpoint
   if (urlPath === '/api/version') {
-    sendJson(res, 200, { version: APP_VERSION });
+    sendJson(res, 200, {
+      version: APP_VERSION,
+      env: APP_ENV,
+      isProduction: APP_ENV === 'production',
+      commit: getShortSha(GIT_SHA)
+    });
     return;
   }
 
