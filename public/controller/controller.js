@@ -837,7 +837,7 @@
         }
         sendToDisplay(MSG.SOFT_DROP, { speed: data && data.speed });
       } else if (action === 'soft_drop_end') {
-        // Local visual cleanup only — no network message sent
+        sendToDisplay(MSG.SOFT_DROP_END);
         softDropActive = false;
         if (softDropWash) {
           var el = softDropWash;

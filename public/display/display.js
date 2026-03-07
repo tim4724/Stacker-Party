@@ -28,6 +28,9 @@ function handleControllerMessage(fromId, msg) {
     case MSG.SOFT_DROP:
       onSoftDrop(fromId, msg.speed);
       break;
+    case MSG.SOFT_DROP_END:
+      onSoftDropEnd(fromId);
+      break;
     case MSG.START_GAME:
       if (fromId === hostId) startGame();
       break;
@@ -148,6 +151,17 @@ function onSoftDrop(fromId, speed) {
     softDropTimers.delete(fromId);
     if (displayGame) displayGame.handleSoftDropEnd(fromId);
   }, 300));
+}
+
+function onSoftDropEnd(fromId) {
+  if (roomState !== ROOM_STATE.PLAYING || paused) return;
+  if (!displayGame) return;
+
+  if (softDropTimers.has(fromId)) {
+    clearTimeout(softDropTimers.get(fromId));
+    softDropTimers.delete(fromId);
+  }
+  displayGame.handleSoftDropEnd(fromId);
 }
 
 function removePlayer(clientId, immediate) {
