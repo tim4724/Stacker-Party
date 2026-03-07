@@ -145,7 +145,7 @@ test.describe('Display', () => {
     await page.evaluate(() => {
       document.getElementById('reconnect-overlay').classList.remove('hidden');
       document.getElementById('reconnect-heading').textContent = 'DISCONNECTED';
-      document.getElementById('reconnect-status').textContent = 'Attempt 5 of 5';
+      document.getElementById('reconnect-status').textContent = '';
       document.getElementById('reconnect-btn').classList.remove('hidden');
     });
     await page.waitForTimeout(150);

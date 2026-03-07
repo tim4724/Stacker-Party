@@ -25,12 +25,13 @@ function connectAndCreateRoom() {
       if (!paused) pauseGame();
       pauseOverlay.classList.add('hidden');
     }
-    reconnectStatus.textContent = 'Attempt ' + attempt + ' of ' + maxAttempts;
     if (attempt >= maxAttempts) {
       reconnectHeading.textContent = 'DISCONNECTED';
+      reconnectStatus.textContent = '';
       reconnectBtn.classList.remove('hidden');
     } else {
       reconnectHeading.textContent = 'RECONNECTING';
+      reconnectStatus.textContent = 'Attempt ' + attempt + ' of ' + maxAttempts;
       reconnectBtn.classList.add('hidden');
     }
   };

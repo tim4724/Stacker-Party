@@ -269,9 +269,15 @@
       if (gameCancelled) return;
       if (currentScreen === 'game') {
         reconnectOverlay.classList.remove('hidden');
-        reconnectHeading.textContent = 'RECONNECTING';
-        reconnectStatus.textContent = 'Attempt ' + attempt + ' of ' + maxAttempts;
-        reconnectRejoinBtn.classList.toggle('hidden', attempt < maxAttempts);
+        if (attempt >= maxAttempts) {
+          reconnectHeading.textContent = 'DISCONNECTED';
+          reconnectStatus.textContent = '';
+          reconnectRejoinBtn.classList.remove('hidden');
+        } else {
+          reconnectHeading.textContent = 'RECONNECTING';
+          reconnectStatus.textContent = 'Attempt ' + attempt + ' of ' + maxAttempts;
+          reconnectRejoinBtn.classList.add('hidden');
+        }
       }
     };
 
