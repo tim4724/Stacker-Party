@@ -371,6 +371,8 @@ function renderLoop(timestamp) {
   var hasAnimations = animations && animations.active.length > 0;
   var hasGarbageEffects = garbageIndicatorEffects.size > 0;
   if ((paused || currentScreen === 'results') && !hasAnimations && !hasGarbageEffects) {
+    // First idle frame is intentionally skipped (delta=0 < 250ms);
+    // the results DOM overlay is already visible via showScreen().
     if (!lastThrottled) lastThrottled = timestamp;
     if (timestamp - lastThrottled < 250) return;
     lastThrottled = timestamp;

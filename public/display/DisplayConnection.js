@@ -329,7 +329,7 @@ function showDisconnectQR(clientId) {
     disconnectedQRs.set(clientId, null);
     return;
   }
-  var rejoinUrl = joinUrl + '?rejoin=' + clientId;
+  var rejoinUrl = joinUrl + '?rejoin=' + encodeURIComponent(clientId);
   fetchQR(rejoinUrl, function(qrMatrix) {
     if (!players.has(clientId)) return;
     var offscreen = document.createElement('canvas');
