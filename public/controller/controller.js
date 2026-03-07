@@ -77,7 +77,8 @@ function handleMessage(data) {
 roomCode = location.pathname.split('/').filter(Boolean)[0] || null;
 if (!roomCode) {
   showRoomGone();
-} else {
+  return;
+}
 
 // Check for stored clientId BEFORE generating a new one (used for auto-reconnect)
 var hadStoredId = sessionStorage.getItem('clientId_' + roomCode);
@@ -245,7 +246,5 @@ if (hadStoredId || rejoinId) {
 }
 
 syncViewportLayout();
-
-} // end if (roomCode)
 
 })(); // end Controller IIFE (opened in ControllerState.js)
