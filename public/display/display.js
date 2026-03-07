@@ -80,6 +80,7 @@ function onHello(fromId, msg) {
       alive: lastAliveState[fromId] != null ? lastAliveState[fromId] : true,
       paused: paused
     };
+    // lastResults is { elapsed, results: [...] } — send the results array
     if (roomState === ROOM_STATE.RESULTS && lastResults) {
       welcomeMsg.results = lastResults.results;
     }

@@ -167,8 +167,8 @@ function onDisplayRejoined(partyRoomCode, clients) {
 
   // Re-send WELCOME to all known players so controllers clear their reconnect overlay
   for (const entry of players) {
-    var id = entry[0];
-    var info = entry[1];
+    const id = entry[0];
+    const info = entry[1];
     var welcomeMsg = {
       type: MSG.WELCOME,
       playerName: info.playerName,
@@ -179,6 +179,7 @@ function onDisplayRejoined(partyRoomCode, clients) {
       alive: lastAliveState[id] != null ? lastAliveState[id] : true,
       paused: paused
     };
+    // lastResults is { elapsed, results: [...] } — send the results array
     if (roomState === ROOM_STATE.RESULTS && lastResults) {
       welcomeMsg.results = lastResults.results;
     }
@@ -280,7 +281,7 @@ function removeLobbyPlayer(clientId) {
 
 function broadcastLobbyUpdate() {
   for (const entry of players) {
-    var id = entry[0];
+    const id = entry[0];
     party.sendTo(id, {
       type: MSG.LOBBY_UPDATE,
       playerCount: players.size,
@@ -332,8 +333,8 @@ function startLivenessCheck() {
 
     // Check individual controller liveness
     for (const entry of players) {
-      var id = entry[0];
-      var player = entry[1];
+      const id = entry[0];
+      const player = entry[1];
       if (player.lastPingTime && (now - player.lastPingTime > GameConstants.LIVENESS_TIMEOUT_MS)) {
         if (roomState !== ROOM_STATE.LOBBY && !disconnectedQRs.has(id)) {
           showDisconnectQR(id);

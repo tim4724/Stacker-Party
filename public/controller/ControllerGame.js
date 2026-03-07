@@ -93,6 +93,7 @@ function onWelcome(data) {
       showScreen('gameover');
       return;
     }
+    // No results available (e.g. fresh controller joining mid-results) — fall through to lobby
   }
 
   showLobbyUI();
