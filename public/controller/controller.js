@@ -221,7 +221,7 @@
 
   function getAudioCtx() {
     if (!audioCtx) {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      audioCtx = new AudioContext();
     }
     if (audioCtx.state === 'suspended') {
       audioCtx.resume();

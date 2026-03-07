@@ -1220,6 +1220,7 @@ function initMusic() {
     music = new Music();
   }
   music.init();
+  music.muted = muted;
 }
 
 function playCountdownBeep(isGo) {
@@ -1351,10 +1352,13 @@ muteBtn.addEventListener('click', function() {
   muted = !muted;
   localStorage.setItem('tetris_muted', muted ? '1' : '0');
   muteBtn.querySelector('.sound-waves').style.display = muted ? 'none' : '';
-  if (music && music.masterGain) {
-    music.masterGain.gain.cancelScheduledValues(music.ctx.currentTime);
-    music.masterGain.gain.setValueAtTime(music.masterGain.gain.value, music.ctx.currentTime);
-    music.masterGain.gain.linearRampToValueAtTime(muted ? 0 : 0.12, music.ctx.currentTime + 0.05);
+  if (music) {
+    music.muted = muted;
+    if (music.masterGain) {
+      music.masterGain.gain.cancelScheduledValues(music.ctx.currentTime);
+      music.masterGain.gain.setValueAtTime(music.masterGain.gain.value, music.ctx.currentTime);
+      music.masterGain.gain.linearRampToValueAtTime(muted ? 0 : Music.MASTER_VOLUME, music.ctx.currentTime + 0.05);
+    }
   }
 });
 

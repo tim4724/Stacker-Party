@@ -1,11 +1,14 @@
 'use strict';
 
+const MASTER_VOLUME = 0.12;
+
 class Music {
   constructor() {
     this.ctx = null;
     this.playing = false;
+    this.muted = false;
     this.bpm = 150;
-    this.scheduledSources = [];
+    this.scheduledSources = new Set();
     this.nextMelodyTime = 0;
     this.nextBassTime = 0;
     this.melodyIndex = 0;
@@ -70,10 +73,15 @@ class Music {
 
   init() {
     if (this.ctx) return;
-    this.ctx = new AudioContext();
+    try {
+      this.ctx = new AudioContext();
+    } catch (e) {
+      console.warn('Failed to create AudioContext:', e);
+      return;
+    }
 
     this.masterGain = this.ctx.createGain();
-    this.masterGain.gain.value = 0.12;
+    this.masterGain.gain.value = MASTER_VOLUME;
     this.masterGain.connect(this.ctx.destination);
 
     this.melodyGain = this.ctx.createGain();
@@ -107,9 +115,9 @@ class Music {
     this.melodyIndex = 0;
     this.bassIndex = 0;
     this.passCount = 0;
-    this.scheduledSources = [];
+    this.scheduledSources = new Set();
     this.masterGain.gain.cancelScheduledValues(this.ctx.currentTime);
-    this.masterGain.gain.setValueAtTime(0.12, this.ctx.currentTime);
+    this.masterGain.gain.setValueAtTime(MASTER_VOLUME, this.ctx.currentTime);
 
     // Start bass and octave doubling silent — they fade in on later passes
     this.bassGain.gain.cancelScheduledValues(this.ctx.currentTime);
@@ -145,7 +153,7 @@ class Music {
       for (const src of this.scheduledSources) {
         try { src.stop(); } catch (e) { /* already stopped */ }
       }
-      this.scheduledSources = [];
+      this.scheduledSources.clear();
     }, 450);
   }
 
@@ -174,7 +182,7 @@ class Music {
       const [freq, eighths] = this.melody[idx];
       const duration = eighths * eighthDuration;
 
-      if (freq > 0) {
+      if (freq > 0 && !this.muted) {
         const waveform = this.getMelodyWaveform();
         const gate = this.getGateLength();
         this._playOsc(freq, this.nextMelodyTime, duration * gate, this.melodyGain, waveform);
@@ -198,7 +206,7 @@ class Music {
         const [freq, eighths] = this.bass[idx];
         const duration = eighths * eighthDuration;
 
-        if (freq > 0) {
+        if (freq > 0 && !this.muted) {
           const bassWaveform = this.getBassWaveform();
           this._playOsc(freq, this.nextBassTime, duration * 0.85, this.bassGain, bassWaveform);
         }
@@ -230,11 +238,10 @@ class Music {
     osc.start(time);
     osc.stop(time + duration + 0.01);
 
-    this.scheduledSources.push(osc);
+    this.scheduledSources.add(osc);
     osc.onended = () => {
       noteGain.disconnect();
-      const idx = this.scheduledSources.indexOf(osc);
-      if (idx > -1) this.scheduledSources.splice(idx, 1);
+      this.scheduledSources.delete(osc);
     };
   }
 
@@ -281,4 +288,5 @@ class Music {
   }
 }
 
+Music.MASTER_VOLUME = MASTER_VOLUME;
 window.Music = Music;
