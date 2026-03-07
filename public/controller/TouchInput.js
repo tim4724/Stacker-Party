@@ -222,7 +222,7 @@ class TouchInput {
     const absDxFromAnchor = Math.abs(dxFromAnchor);
     const absDyFromStart = Math.abs(dyFromStart);
     const steps = Math.trunc(dxFromAnchor / this.RATCHET_THRESHOLD);
-    if (steps !== 0 && absDxFromAnchor >= absDyFromStart) {
+    if (steps !== 0 && (this.isSoftDropping || absDxFromAnchor >= absDyFromStart)) {
       const action = steps > 0 ? INPUT.RIGHT : INPUT.LEFT;
       for (let i = 0, n = Math.abs(steps); i < n; i++) {
         this.onInput(action);
