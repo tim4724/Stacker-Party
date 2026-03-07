@@ -10,10 +10,16 @@ const PORT = parseInt(process.env.PORT, 10) || 4000;
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const APP_VERSION = require('../package.json').version;
 
-// Scan engine directory at startup for serveable JS modules (excludes index.js)
-const ENGINE_FILES = new Set(
-  fs.readdirSync(__dirname).filter(f => f.endsWith('.js') && f !== 'index.js')
-);
+// Explicit allowlist of engine modules serveable via /engine/ route
+const ENGINE_FILES = new Set([
+  'constants.js',
+  'Game.js',
+  'GarbageManager.js',
+  'Piece.js',
+  'PlayerBoard.js',
+  'Randomizer.js',
+  'Scoring.js',
+]);
 
 // --- MIME types ---
 const MIME_TYPES = {
