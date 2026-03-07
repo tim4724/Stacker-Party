@@ -354,6 +354,13 @@ pauseNewGameBtn.addEventListener('click', function() {
   returnToLobby();
 });
 
+reconnectBtn.addEventListener('click', function() {
+  reconnectBtn.classList.add('hidden');
+  reconnectHeading.textContent = 'RECONNECTING';
+  reconnectStatus.textContent = 'Connecting...';
+  party.reconnectNow();
+});
+
 // =====================================================================
 // Render Loop
 // =====================================================================

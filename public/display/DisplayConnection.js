@@ -20,11 +20,18 @@ function connectAndCreateRoom() {
   };
 
   party.onClose = function(attempt, maxAttempts) {
+    reconnectOverlay.classList.remove('hidden');
     if (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN) {
       if (!paused) pauseGame();
-      reconnectOverlay.classList.remove('hidden');
       pauseOverlay.classList.add('hidden');
-      reconnectStatus.textContent = 'Attempt ' + attempt + ' of ' + maxAttempts;
+    }
+    reconnectStatus.textContent = 'Attempt ' + attempt + ' of ' + maxAttempts;
+    if (attempt >= maxAttempts) {
+      reconnectHeading.textContent = 'DISCONNECTED';
+      reconnectBtn.classList.remove('hidden');
+    } else {
+      reconnectHeading.textContent = 'RECONNECTING';
+      reconnectBtn.classList.add('hidden');
     }
   };
 
@@ -126,6 +133,7 @@ function onDisplayRejoined(partyRoomCode, clients) {
 
   // Clear reconnect overlay — connection restored
   reconnectOverlay.classList.add('hidden');
+  reconnectBtn.classList.add('hidden');
   if (paused && (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN)) {
     // Clear any surviving countdown interval to prevent duplicates
     if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }

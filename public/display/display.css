@@ -291,10 +291,15 @@ html, body {
 }
 
 #pause-continue-btn,
-#pause-newgame-btn {
+#pause-newgame-btn,
+#reconnect-btn {
   padding: clamp(0.6rem, 1.2vh, 1.2rem) clamp(2rem, 4vw, 4rem);
   font-size: clamp(0.85rem, 1.6vh, 1.2rem);
   letter-spacing: 0.06em;
+}
+
+#reconnect-btn.hidden {
+  display: none;
 }
 
 /* ============================================

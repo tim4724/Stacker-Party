@@ -132,9 +132,24 @@ test.describe('Display', () => {
       document.getElementById('reconnect-overlay').classList.remove('hidden');
       document.getElementById('reconnect-heading').textContent = 'RECONNECTING';
       document.getElementById('reconnect-status').textContent = 'Attempt 1 of 5';
+      document.getElementById('reconnect-btn').classList.add('hidden');
     });
     await page.waitForTimeout(150);
     await expect(page).toHaveScreenshot('09a-reconnect.png');
+  });
+
+  test('disconnected overlay - reconnect button', async ({ page }) => {
+    await gotoDisplayTest(page);
+    await injectPlayers(page, 2);
+    await injectGameState(page, 2, {});
+    await page.evaluate(() => {
+      document.getElementById('reconnect-overlay').classList.remove('hidden');
+      document.getElementById('reconnect-heading').textContent = 'DISCONNECTED';
+      document.getElementById('reconnect-status').textContent = 'Attempt 5 of 5';
+      document.getElementById('reconnect-btn').classList.remove('hidden');
+    });
+    await page.waitForTimeout(150);
+    await expect(page).toHaveScreenshot('09b-disconnected.png');
   });
 
   test('results screen', async ({ page }) => {

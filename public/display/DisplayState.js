@@ -108,6 +108,7 @@ var pauseNewGameBtn = document.getElementById('pause-newgame-btn');
 var reconnectOverlay = document.getElementById('reconnect-overlay');
 var reconnectHeading = document.getElementById('reconnect-heading');
 var reconnectStatus = document.getElementById('reconnect-status');
+var reconnectBtn = document.getElementById('reconnect-btn');
 var muteBtn = document.getElementById('mute-btn');
 
 // --- Screen Management ---
