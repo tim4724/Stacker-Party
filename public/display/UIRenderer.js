@@ -23,8 +23,7 @@ for (const [type, blocks] of Object.entries(MINI_PIECES)) {
   MINI_BOUNDS[type] = { minX, maxX, minY, maxY, w: maxX - minX + 1, h: maxY - minY + 1 };
 }
 
-// Map piece type string to typeId for color lookup
-const PIECE_TYPE_TO_ID = { I: 1, J: 2, L: 3, O: 4, S: 5, T: 6, Z: 7 };
+const PIECE_TYPE_TO_ID = GameConstants.PIECE_TYPE_TO_ID;
 
 class UIRenderer {
   constructor(ctx, boardX, boardY, cellSize, boardWidthPx, boardHeightPx, playerIndex) {
@@ -39,17 +38,9 @@ class UIRenderer {
     this.panelWidth = cellSize * THEME.size.panelWidth;
     this.miniSize = cellSize * THEME.font.cellScale.mini;
     this.panelGap = Math.max(THEME.size.panelGapMin, cellSize * THEME.size.panelGap);
-    this._fontLoaded = document.fonts?.check?.('12px Orbitron') ?? false;
-    this._labelFont = this._fontLoaded ? 'Orbitron' : '"Courier New", monospace';
   }
 
   render(playerState) {
-    // Re-check font availability (it may load after first render)
-    if (!this._fontLoaded) {
-      this._fontLoaded = document.fonts?.check?.('12px Orbitron') ?? false;
-      if (this._fontLoaded) this._labelFont = 'Orbitron';
-    }
-
     // 1. Player name + accent stripe above board
     this.drawPlayerName(playerState);
 
@@ -86,7 +77,7 @@ class UIRenderer {
 
     // Name text
     ctx.fillStyle = playerState.playerColor || THEME.color.text.white;
-    ctx.font = `700 ${fontSize}px ${this._labelFont}`;
+    ctx.font = `700 ${fontSize}px ${getDisplayFont()}`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
     ctx.fillText(name, this.boardX + 2, nameY - 2);
@@ -94,7 +85,7 @@ class UIRenderer {
     // Level badge on right side
     if (playerState.level) {
       const lvlSize = Math.max(9, this.cellSize * THEME.font.cellScale.label);
-      ctx.font = `700 ${lvlSize}px ${this._labelFont}`;
+      ctx.font = `700 ${lvlSize}px ${getDisplayFont()}`;
       ctx.textAlign = 'right';
       ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
       ctx.fillText(`Level ${playerState.level}`, this.boardX + this.boardWidth - 2, nameY - 2);
@@ -111,7 +102,7 @@ class UIRenderer {
 
     // Label
     ctx.fillStyle = `rgba(255, 255, 255, ${THEME.opacity.label})`;
-    ctx.font = `700 ${labelSize}px ${this._labelFont}`;
+    ctx.font = `700 ${labelSize}px ${getDisplayFont()}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.letterSpacing = '0.15em';
@@ -144,7 +135,7 @@ class UIRenderer {
 
     // Label
     ctx.fillStyle = `rgba(255, 255, 255, ${THEME.opacity.label})`;
-    ctx.font = `700 ${labelSize}px ${this._labelFont}`;
+    ctx.font = `700 ${labelSize}px ${getDisplayFont()}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.letterSpacing = '0.15em';
@@ -179,7 +170,7 @@ class UIRenderer {
     const scoreSize = Math.max(14, this.cellSize * THEME.font.cellScale.score);
 
     // Score — large prominent number
-    ctx.font = `700 ${scoreSize}px ${this._labelFont}`;
+    ctx.font = `700 ${scoreSize}px ${getDisplayFont()}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
 
@@ -201,7 +192,7 @@ class UIRenderer {
 
     // Lines count
     const smallSize = Math.max(9, this.cellSize * THEME.font.cellScale.label);
-    ctx.font = `500 ${smallSize}px ${this._labelFont}`;
+    ctx.font = `500 ${smallSize}px ${getDisplayFont()}`;
     ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
     const statsY = panelY + scoreSize + Math.max(10, this.cellSize * 0.4);
     ctx.fillText(

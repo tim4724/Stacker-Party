@@ -1,8 +1,7 @@
 'use strict';
 
-const BUFFER_ROWS = 4;
-const VISIBLE_ROWS = 20;
-const COLS = 10;
+const VISIBLE_ROWS = GameConstants.VISIBLE_HEIGHT;
+const COLS = GameConstants.BOARD_WIDTH;
 
 class BoardRenderer {
   constructor(ctx, x, y, cellSize, playerIndex) {

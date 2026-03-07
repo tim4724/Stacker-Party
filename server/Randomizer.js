@@ -41,5 +41,6 @@ class Randomizer {
 }
 
 exports.Randomizer = Randomizer;
+exports.mulberry32 = mulberry32;
 
 })(typeof module !== 'undefined' ? module.exports : (window.GameRandomizer = {}));

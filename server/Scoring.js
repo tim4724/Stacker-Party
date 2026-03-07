@@ -13,7 +13,6 @@ var BACK_TO_BACK_MULTIPLIER = constants.BACK_TO_BACK_MULTIPLIER;
 class Scoring {
   constructor() {
     this.score = 0;
-    this.level = 1;
     this.lines = 0;
     this.combo = -1;
     this.backToBack = false;
@@ -38,7 +37,7 @@ class Scoring {
     }
 
     // Level multiplier
-    points *= this.level;
+    points *= this.getLevel();
 
     // Back-to-back bonus
     if (isDifficult) {
@@ -52,12 +51,11 @@ class Scoring {
 
     // Combo bonus
     const comboIndex = Math.min(this.combo, COMBO_TABLE.length - 1);
-    const comboBonus = COMBO_TABLE[comboIndex] * this.level;
+    const comboBonus = COMBO_TABLE[comboIndex] * this.getLevel();
     points += comboBonus;
 
     this.score += points;
     this.lines += linesCleared;
-    this.level = Math.floor(this.lines / 10) + 1;
 
     return {
       score: points,
@@ -82,14 +80,13 @@ class Scoring {
   }
 
   getLevel() {
-    this.level = Math.floor(this.lines / 10) + 1;
-    return this.level;
+    return Math.floor(this.lines / 10) + 1;
   }
 
   getState() {
     return {
       score: this.score,
-      level: this.level,
+      level: this.getLevel(),
       lines: this.lines,
       combo: this.combo,
       backToBack: this.backToBack

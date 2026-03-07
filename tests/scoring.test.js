@@ -33,14 +33,14 @@ describe('Scoring - line clear base scores at level 1', () => {
 describe('Scoring - line clear at higher levels', () => {
   test('single at level 2 = 200', () => {
     const scoring = new Scoring();
-    scoring.level = 2;
+    scoring.lines = 10; // level = floor(10/10) + 1 = 2
     scoring.addLineClear(1, false, false);
     assert.strictEqual(scoring.score, 200);
   });
 
   test('tetris at level 3 = 2400', () => {
     const scoring = new Scoring();
-    scoring.level = 3;
+    scoring.lines = 20; // level = floor(20/10) + 1 = 3
     scoring.addLineClear(4, false, false);
     assert.strictEqual(scoring.score, 2400);
   });

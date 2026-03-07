@@ -7,7 +7,6 @@
   var playerColor = null;
   var playerName = null;
   var roomCode = null;
-  var inputSeq = 0;
   var touchInput = null;
   var currentScreen = 'name';
   var isHost = false;
@@ -110,20 +109,20 @@
   var reconnectRejoinBtn = document.getElementById('reconnect-rejoin-btn');
   var pingDisplay = document.getElementById('ping-display');
   var muteBtn = document.getElementById('mute-btn');
-  var muted = localStorage.getItem('tetris_muted') === '1';
+  ControllerAudio.setMuted(localStorage.getItem('tetris_muted') === '1');
 
   // Apply initial mute state
-  if (muted) {
+  if (ControllerAudio.isMuted()) {
     muteBtn.classList.add('muted');
     muteBtn.querySelector('.sound-waves').style.display = 'none';
   }
 
   muteBtn.addEventListener('click', function () {
     vibrate(10);
-    muted = !muted;
-    localStorage.setItem('tetris_muted', muted ? '1' : '0');
-    muteBtn.classList.toggle('muted', muted);
-    muteBtn.querySelector('.sound-waves').style.display = muted ? 'none' : '';
+    ControllerAudio.setMuted(!ControllerAudio.isMuted());
+    localStorage.setItem('tetris_muted', ControllerAudio.isMuted() ? '1' : '0');
+    muteBtn.classList.toggle('muted', ControllerAudio.isMuted());
+    muteBtn.querySelector('.sound-waves').style.display = ControllerAudio.isMuted() ? 'none' : '';
   });
 
   // Screen management
@@ -216,112 +215,10 @@
     navigator.vibrate(pattern);
   }
 
-  // --- Web Audio sound effects ---
-  var audioCtx = null;
-
-  function getAudioCtx() {
-    if (!audioCtx) {
-      audioCtx = new AudioContext();
-    }
-    if (audioCtx.state === 'suspended') {
-      audioCtx.resume();
-    }
-    return audioCtx;
-  }
-
-  function playTick() {
-    if (muted) return;
-    var ctx = getAudioCtx();
-    var osc = ctx.createOscillator();
-    var gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.frequency.value = 150;
-    osc.type = 'sine';
-    gain.gain.setValueAtTime(1.0, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.04);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.04);
-  }
-
-  function playLineClear(count) {
-    if (muted) return;
-    var ctx = getAudioCtx();
-    var baseFreq = count >= 4 ? 600 : count >= 3 ? 500 : count >= 2 ? 440 : 380;
-    var duration = count >= 4 ? 0.25 : 0.15;
-    var osc = ctx.createOscillator();
-    var gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(baseFreq, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.5, ctx.currentTime + duration);
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + duration);
-  }
-
-  function playDrop() {
-    if (muted) return;
-    var ctx = getAudioCtx();
-    var t = ctx.currentTime;
-    var osc = ctx.createOscillator();
-    var gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(120, t);
-    osc.frequency.exponentialRampToValueAtTime(30, t + 0.1);
-    gain.gain.setValueAtTime(0.9, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
-    osc.start(t);
-    osc.stop(t + 0.1);
-    var buf = ctx.createBuffer(1, ctx.sampleRate * 0.05, ctx.sampleRate);
-    var data = buf.getChannelData(0);
-    for (var i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
-    var noise = ctx.createBufferSource();
-    var nGain = ctx.createGain();
-    noise.buffer = buf;
-    noise.connect(nGain);
-    nGain.connect(ctx.destination);
-    nGain.gain.setValueAtTime(0.36, t);
-    nGain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
-    noise.start(t);
-  }
-
-  function playHold() {
-    if (muted) return;
-    var ctx = getAudioCtx();
-    var t = ctx.currentTime;
-    var osc = ctx.createOscillator();
-    var gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(500, t);
-    osc.frequency.exponentialRampToValueAtTime(250, t + 0.08);
-    gain.gain.setValueAtTime(0.6, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
-    osc.start(t);
-    osc.stop(t + 0.08);
-  }
-
   // Prime audio on first interaction
-  var audioPrimed = false;
-  function primeAudio() {
-    if (audioPrimed) return;
-    audioPrimed = true;
-    vibrate(1);
-    var ctx = getAudioCtx();
-    var buf = ctx.createBuffer(1, 1, ctx.sampleRate);
-    var src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.connect(ctx.destination);
-    src.start(0);
-  }
   document.addEventListener('pointerdown', function onFirstPointer() {
-    primeAudio();
+    vibrate(1);
+    ControllerAudio.prime();
     document.removeEventListener('pointerdown', onFirstPointer, true);
   }, { capture: true, passive: true });
 
@@ -633,8 +530,7 @@
   }
 
   function onGameStart() {
-    playTick();
-    inputSeq = 0;
+    ControllerAudio.tick();
     lastLines = 0;
     gameScreen.classList.remove('dead');
     gameScreen.classList.remove('paused');
@@ -657,7 +553,7 @@
       initTouchInput();
     }
     if (data.lines !== undefined && data.lines > lastLines) {
-      playLineClear(data.lines - lastLines);
+      ControllerAudio.lineClear(data.lines - lastLines);
     }
     if (data.lines !== undefined) lastLines = data.lines;
     if (data.alive === false && !gameScreen.classList.contains('dead')) {
@@ -877,21 +773,21 @@
     touchInput = new TouchInput(touchArea, function (action, data) {
       // Gesture feedback
       if (action === 'rotate_cw') {
-        playTick();
+        ControllerAudio.tick();
         createFeedback('ripple', lastTouchX, lastTouchY);
       } else if (action === 'left' || action === 'right') {
-        playTick();
+        ControllerAudio.tick();
         if (buildupEl) {
           flashBuildup();
         } else {
           createWash(action === 'left' ? 'right' : 'left');
         }
       } else if (action === 'hard_drop') {
-        playDrop();
+        ControllerAudio.drop();
         removeBuildupEl();
         createWash('up');
       } else if (action === 'hold') {
-        playHold();
+        ControllerAudio.hold();
         removeBuildupEl();
         createWash('down');
       }
@@ -899,7 +795,7 @@
       if (action === 'soft_drop') {
         if (!softDropActive) {
           softDropActive = true;
-          playTick();
+          ControllerAudio.tick();
           removeBuildupEl();
           softDropWash = document.createElement('div');
           softDropWash.className = 'feedback-wash feedback-wash-up feedback-wash-hold';
@@ -917,7 +813,7 @@
         }
       } else {
         // Regular input: left, right, rotate_cw, hard_drop, hold
-        sendToDisplay(MSG.INPUT, { action: action, seq: inputSeq++ });
+        sendToDisplay(MSG.INPUT, { action: action });
       }
     }, onDragProgress);
   }

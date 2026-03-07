@@ -4,15 +4,6 @@ class Animations {
   constructor(ctx) {
     this.ctx = ctx;
     this.active = [];
-    this._fontLoaded = document.fonts?.check?.('12px Orbitron') ?? false;
-    this._labelFont = this._fontLoaded ? 'Orbitron' : '"Courier New", monospace';
-  }
-
-  _checkFont() {
-    if (!this._fontLoaded) {
-      this._fontLoaded = document.fonts?.check?.('12px Orbitron') ?? false;
-      if (this._fontLoaded) this._labelFont = 'Orbitron';
-    }
   }
 
   addLineClear(boardX, boardY, cellSize, rows, isTetris, isTSpin) {
@@ -159,9 +150,8 @@ class Animations {
   }
 
   addTextPopup(x, y, text, color, hasGlow) {
-    this._checkFont();
     const duration = THEME.timing.textPopup;
-    const font = this._labelFont;
+    const font = getDisplayFont();
 
     this.active.push({
       type: 'textPopup',
@@ -248,7 +238,6 @@ class Animations {
 
   addCombo(x, y, combo) {
     if (combo >= 2) {
-      this._checkFont();
       this.addTextPopup(x, y, `${combo} COMBO!`, THEME.color.combo, true);
     }
   }

@@ -496,7 +496,7 @@ class PlayerBoard {
       holdPiece: this.holdPiece,
       nextPieces: this.nextPieces.slice(0, 5),
       score: this.scoring.score,
-      level: this.scoring.level,
+      level: this.scoring.getLevel(),
       lines: this.scoring.lines,
       alive: this.alive,
       pendingGarbage: this.pendingGarbage.reduce((sum, g) => sum + g.lines, 0),

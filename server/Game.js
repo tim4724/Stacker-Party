@@ -6,6 +6,7 @@
 var PlayerBoard = ((typeof require !== 'undefined') ? require('./PlayerBoard.js') : window.GamePlayerBoard).PlayerBoard;
 var GarbageManager = ((typeof require !== 'undefined') ? require('./GarbageManager.js') : window.GameGarbageManager).GarbageManager;
 var LOGIC_TICK_MS = ((typeof require !== 'undefined') ? require('./constants.js') : window.GameConstants).LOGIC_TICK_MS;
+var mulberry32 = ((typeof require !== 'undefined') ? require('./Randomizer.js') : window.GameRandomizer).mulberry32;
 
 class Game {
   constructor(players, callbacks, seed) {
@@ -29,7 +30,7 @@ class Game {
       this.playerIds.push(id);
     }
 
-    this.garbageManager = new GarbageManager();
+    this.garbageManager = new GarbageManager(mulberry32(seed ^ 0x47617262));
     for (const id of this.playerIds) {
       this.garbageManager.addPlayer(id);
     }

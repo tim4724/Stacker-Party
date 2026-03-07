@@ -10,8 +10,9 @@ var COMBO_GARBAGE = constants.COMBO_GARBAGE;
 var GARBAGE_DELAY_TICKS = constants.GARBAGE_DELAY_TICKS;
 
 class GarbageManager {
-  constructor() {
+  constructor(rng) {
     this.queues = new Map(); // playerId -> array of { lines, gapColumn, senderId, ticksLeft }
+    this.rng = rng || Math.random;
   }
 
   addPlayer(playerId) {
@@ -123,7 +124,7 @@ class GarbageManager {
   }
 
   generateGapColumn() {
-    return Math.floor(Math.random() * 10);
+    return Math.floor(this.rng() * 10);
   }
 }
 
