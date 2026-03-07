@@ -14,6 +14,9 @@
   var gameCancelled = false;
   var lastLines = 0;
   var lastGameResults = null;
+  var hintsFadeTimer = null;
+  var hintsSawLeft = false;
+  var hintsSawRight = false;
 
   // Ping/pong
   var PING_INTERVAL_MS = 1000;
@@ -108,6 +111,7 @@
   var reconnectStatus = document.getElementById('reconnect-status');
   var reconnectRejoinBtn = document.getElementById('reconnect-rejoin-btn');
   var pingDisplay = document.getElementById('ping-display');
+  var compassHints = document.getElementById('compass-hints');
   var muteBtn = document.getElementById('mute-btn');
   ControllerAudio.setMuted(localStorage.getItem('tetris_muted') === '1');
 
@@ -316,7 +320,7 @@
 
   function updatePingDisplay(ms) {
     if (!pingDisplay) return;
-    pingDisplay.textContent = ms + 'ms';
+    pingDisplay.textContent = ms + ' ms';
     pingDisplay.classList.remove('ping-good', 'ping-ok', 'ping-bad');
     pingDisplay.classList.add(ms < 50 ? 'ping-good' : ms < 100 ? 'ping-ok' : 'ping-bad');
   }
@@ -410,6 +414,13 @@
       gameScreen.classList.remove('paused');
       gameScreen.style.setProperty('--player-color', playerColor);
       removeKoOverlay();
+      if (compassHints) {
+        clearTimeout(hintsFadeTimer);
+        hintsFadeTimer = null;
+        hintsSawLeft = false;
+        hintsSawRight = false;
+        compassHints.classList.remove('faded');
+      }
 
       if (data.paused) {
         onGamePaused();
@@ -537,6 +548,13 @@
   function onGameStart() {
     ControllerAudio.tick();
     lastLines = 0;
+    if (compassHints) {
+      clearTimeout(hintsFadeTimer);
+      hintsFadeTimer = null;
+      hintsSawLeft = false;
+      hintsSawRight = false;
+      compassHints.classList.remove('faded');
+    }
     gameScreen.classList.remove('dead');
     gameScreen.classList.remove('paused');
     gameScreen.classList.remove('countdown');
@@ -776,6 +794,17 @@
     touchArea.addEventListener('pointerdown', coordTracker, { passive: true });
 
     touchInput = new TouchInput(touchArea, function (action, data) {
+      // Fade compass hints after player has used both left and right
+      if (compassHints && !compassHints.classList.contains('faded')) {
+        if (action === 'left') hintsSawLeft = true;
+        if (action === 'right') hintsSawRight = true;
+        if (hintsSawLeft && hintsSawRight && !hintsFadeTimer) {
+          hintsFadeTimer = setTimeout(function () {
+            compassHints.classList.add('faded');
+          }, 5000);
+        }
+      }
+
       // Gesture feedback
       if (action === 'rotate_cw') {
         ControllerAudio.tick();

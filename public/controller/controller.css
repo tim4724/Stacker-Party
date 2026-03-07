@@ -346,18 +346,8 @@ body.keyboard-open #name-form {
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  padding: 12px 12px calc(env(safe-area-inset-bottom) + 12px);
-  gap: 12px;
+  padding: 12px;
   overflow: hidden;
-}
-
-.touch-instructions {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
 }
 
 #touch-pad {
@@ -389,25 +379,82 @@ body.keyboard-open #name-form {
   pointer-events: none;
 }
 
-.touch-instruction {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  font-family: 'Orbitron', sans-serif;
-  font-size: clamp(0.78rem, 3.5vw, 1rem);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: rgba(255, 255, 255, 0.35);
-  flex-shrink: 0;
-  text-align: center;
-  line-height: 1.15;
+/* Compass rose gesture hints */
+/* Compass hints render below feedback-layer via DOM order */
+#compass-hints {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transition: opacity 0.6s ease-out;
 }
 
-.touch-instruction svg {
-  vertical-align: middle;
-  margin-top: -2px;
+#compass-hints.faded {
+  opacity: 0.5;
+}
+
+.compass-arrow {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: color-mix(in srgb, var(--player-color, #888) 40%, white);
+  opacity: 0.25;
+}
+
+.compass-arrow span {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(0.75rem, 3.5vw, 0.9rem);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.compass-up {
+  top: max(12%, 40px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.compass-down {
+  bottom: max(12%, 40px);
+  left: 50%;
+  transform: translateX(-50%);
+  flex-direction: column-reverse;
+}
+
+.compass-left {
+  left: max(6%, 16px);
+  top: 50%;
+  transform: translateY(-50%);
+  flex-direction: row;
+}
+
+.compass-right {
+  right: max(6%, 16px);
+  top: 50%;
+  transform: translateY(-50%);
+  flex-direction: row-reverse;
+}
+
+.compass-center {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.compass-center span {
+  font-size: clamp(0.7rem, 3vw, 0.85rem);
+}
+
+/* Ping display — bottom bar */
+#game-bottom-bar {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  padding: 1px 12px;
+  padding-bottom: max(env(safe-area-inset-bottom), 12px);
+  flex-shrink: 0;
+  background: var(--bg-board);
 }
 
 /* Gesture feedback animations */
@@ -665,7 +712,6 @@ body.keyboard-open #name-form {
   font-size: 0.7rem;
   font-family: 'Orbitron', monospace;
   opacity: 0.5;
-  margin-left: auto;
 }
 .ping-good { color: #66bb6a; }
 .ping-ok { color: #ffa726; }
@@ -673,6 +719,10 @@ body.keyboard-open #name-form {
 
 
 /* Mute button */
+#mute-btn {
+  margin-left: auto;
+}
+
 #mute-btn.muted {
   color: rgba(255, 255, 255, 0.25);
 }
