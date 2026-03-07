@@ -1,7 +1,14 @@
 'use strict';
 
 // =====================================================================
-// Controller State — loaded first, all vars are globals
+// Controller IIFE — opened here in ControllerState.js (loaded first),
+// closed in controller.js (loaded last). All vars stay private to the
+// closure and are shared across the four controller script files.
+// =====================================================================
+(function () {
+
+// =====================================================================
+// Controller State
 // =====================================================================
 
 // --- State ---

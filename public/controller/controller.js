@@ -247,3 +247,5 @@ if (hadStoredId || rejoinId) {
 syncViewportLayout();
 
 } // end if (roomCode)
+
+})(); // end Controller IIFE (opened in ControllerState.js)

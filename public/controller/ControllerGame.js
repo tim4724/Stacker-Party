@@ -170,13 +170,8 @@ function onGamePaused() {
   gameScreen.classList.add('paused');
   pauseOverlay.classList.remove('hidden');
   pauseBtn.classList.add('hidden');
-  if (isHost) {
-    pauseButtons.classList.remove('hidden');
-    pauseStatus.textContent = '';
-  } else {
-    pauseButtons.classList.add('hidden');
-    pauseStatus.textContent = '';
-  }
+  pauseStatus.textContent = '';
+  pauseButtons.classList.toggle('hidden', !isHost);
 }
 
 function onGameResumed() {
