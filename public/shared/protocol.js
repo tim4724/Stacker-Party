@@ -9,7 +9,6 @@ var MSG = {
   HELLO: 'hello',
   INPUT: 'input',
   SOFT_DROP: 'soft_drop',
-  SOFT_DROP_END: 'soft_drop_end',
   START_GAME: 'start_game',
   PLAY_AGAIN: 'play_again',
   RETURN_TO_LOBBY: 'return_to_lobby',

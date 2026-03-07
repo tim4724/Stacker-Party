@@ -21,19 +21,23 @@ function connectAndCreateRoom() {
 
   party.onClose = function(attempt, maxAttempts) {
     if (currentScreen === 'welcome') return;
-    reconnectOverlay.classList.remove('hidden');
+    clearTimeout(disconnectedTimer);
+
     if (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN) {
       if (!paused) pauseGame();
       pauseOverlay.classList.add('hidden');
     }
+
+    reconnectOverlay.classList.remove('hidden');
+    if (attempt === 1) reconnectHeading.textContent = 'RECONNECTING';
+    reconnectStatus.textContent = 'Attempt ' + Math.min(attempt, maxAttempts) + ' of ' + maxAttempts;
+    reconnectBtn.classList.add('hidden');
     if (attempt >= maxAttempts) {
-      reconnectHeading.textContent = 'DISCONNECTED';
-      reconnectStatus.textContent = '';
-      reconnectBtn.classList.remove('hidden');
-    } else {
-      reconnectHeading.textContent = 'RECONNECTING';
-      reconnectStatus.textContent = 'Attempt ' + attempt + ' of ' + maxAttempts;
-      reconnectBtn.classList.add('hidden');
+      disconnectedTimer = setTimeout(function () {
+        reconnectHeading.textContent = 'DISCONNECTED';
+        reconnectStatus.textContent = '';
+        reconnectBtn.classList.remove('hidden');
+      }, 1000);
     }
   };
 
@@ -149,6 +153,8 @@ function onDisplayRejoined(partyRoomCode, clients) {
   startLivenessCheck();
 
   // Clear reconnect overlay — connection restored
+  clearTimeout(disconnectedTimer);
+  party.resetReconnectCount();
   reconnectOverlay.classList.add('hidden');
   if (paused && (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN)) {
     // Clear any surviving countdown interval to prevent duplicates
@@ -298,13 +304,20 @@ function startLivenessCheck() {
     if (displayDead) {
       if (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN) {
         if (!paused) pauseGame();
+        pauseOverlay.classList.add('hidden');
+      }
+      // Don't overwrite DISCONNECTED state after attempts exhausted
+      if (party.reconnectAttempt >= party.maxReconnectAttempts) return;
+      // Show overlay once on first dead detection; don't overwrite
+      // attempt text that onClose sets on subsequent ticks
+      if (reconnectOverlay.classList.contains('hidden')) {
         reconnectOverlay.classList.remove('hidden');
         reconnectHeading.textContent = 'RECONNECTING';
         reconnectStatus.textContent = '';
         reconnectBtn.classList.add('hidden');
-        pauseOverlay.classList.add('hidden');
       }
-      // Force reconnect once
+      // Force reconnect — subsequent ticks skip because
+      // party.connected is false while the new WS is connecting
       if (party.connected) {
         party.reconnectNow();
       }

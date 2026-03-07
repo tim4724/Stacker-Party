@@ -24,6 +24,7 @@
   var pingTimer = null;
   var pongCheckTimer = null;
   var lastPongTime = 0;
+  var disconnectedTimer = null;
 
   function getViewportMetrics() {
     if (window.visualViewport) {
@@ -164,17 +165,6 @@
     showRoomGone();
     return;
   }
-  var joinedSessionKey = 'joined_' + roomCode;
-  var hasJoinedSession = sessionStorage.getItem(joinedSessionKey) === '1';
-
-  function setJoinedSession(active) {
-    hasJoinedSession = !!active;
-    if (hasJoinedSession) {
-      sessionStorage.setItem(joinedSessionKey, '1');
-    } else {
-      sessionStorage.removeItem(joinedSessionKey);
-    }
-  }
 
   // Generate or restore clientId
   function generateClientId() {
@@ -251,10 +241,9 @@
 
     party.onProtocol = function (type, msg) {
       if (type === 'joined') {
-        setJoinedSession(true);
         // Successfully joined room — send hello to display
         startPing();
-        vibrate(10);
+        if (currentScreen !== 'game') vibrate(10);
         party.sendTo('display', {
           type: MSG.HELLO,
           name: playerName
@@ -283,17 +272,19 @@
     party.onClose = function (attempt, maxAttempts) {
       stopPing();
       if (gameCancelled) return;
-      if (currentScreen === 'game') {
-        reconnectOverlay.classList.remove('hidden');
-        if (attempt >= maxAttempts) {
+      if (currentScreen !== 'game') return;
+      clearTimeout(disconnectedTimer);
+
+      reconnectOverlay.classList.remove('hidden');
+      if (attempt === 1) reconnectHeading.textContent = 'RECONNECTING';
+      reconnectStatus.textContent = 'Attempt ' + Math.min(attempt, maxAttempts) + ' of ' + maxAttempts;
+      reconnectRejoinBtn.classList.add('hidden');
+      if (attempt >= maxAttempts) {
+        disconnectedTimer = setTimeout(function () {
           reconnectHeading.textContent = 'DISCONNECTED';
           reconnectStatus.textContent = '';
           reconnectRejoinBtn.classList.remove('hidden');
-        } else {
-          reconnectHeading.textContent = 'RECONNECTING';
-          reconnectStatus.textContent = 'Attempt ' + attempt + ' of ' + maxAttempts;
-          reconnectRejoinBtn.classList.add('hidden');
-        }
+        }, 1000);
       }
     };
 
@@ -312,8 +303,9 @@
     }, PING_INTERVAL_MS);
     pongCheckTimer = setInterval(function () {
       if (Date.now() - lastPongTime > PONG_TIMEOUT_MS) {
-        // Stop ping/pong and force reconnect through normal attempt cycle
         stopPing();
+        // Don't retry if attempts already exhausted
+        if (party.reconnectAttempt >= party.maxReconnectAttempts) return;
         if (currentScreen === 'game') {
           reconnectOverlay.classList.remove('hidden');
           reconnectHeading.textContent = 'RECONNECTING';
@@ -400,6 +392,8 @@
           var rtt = Date.now() - data.t;
           updatePingDisplay(Math.round(rtt / 2));
         }
+        if (party) party.resetReconnectCount();
+        clearTimeout(disconnectedTimer);
         reconnectOverlay.classList.add('hidden');
         break;
       case MSG.ERROR:
@@ -414,6 +408,8 @@
     playerCount = data.playerCount || 1;
     gameCancelled = false;
 
+    if (party) party.resetReconnectCount();
+    clearTimeout(disconnectedTimer);
     reconnectOverlay.classList.add('hidden');
 
     // Use display-assigned name if we didn't provide one (e.g. "P1")
@@ -486,7 +482,6 @@
       party = null;
     }
     sessionStorage.removeItem('clientId_' + roomCode);
-    setJoinedSession(false);
     var params = new URLSearchParams(location.search);
     params.delete('rejoin');
     var qs = params.toString();
@@ -511,7 +506,6 @@
 
   function showRoomGone() {
     sessionStorage.removeItem('clientId_' + roomCode);
-    setJoinedSession(false);
     gameCancelled = true;
     nameForm.classList.add('hidden');
     nameJoinBtn.classList.add('hidden');
@@ -525,7 +519,6 @@
 
   function showErrorState(heading, detail) {
     sessionStorage.removeItem('clientId_' + roomCode);
-    setJoinedSession(false);
     gameCancelled = true;
     stopPing();
 
@@ -852,7 +845,7 @@
         }
         sendToDisplay(MSG.SOFT_DROP, { speed: data && data.speed });
       } else if (action === 'soft_drop_end') {
-        sendToDisplay(MSG.SOFT_DROP_END);
+        // Local visual cleanup only — no network message sent
         softDropActive = false;
         if (softDropWash) {
           var el = softDropWash;
@@ -867,11 +860,13 @@
     }, onDragProgress);
   }
 
-  // Reconnect overlay rejoin button
+  // Reconnect overlay rejoin button — reconnect with same clientId
   reconnectRejoinBtn.addEventListener('click', function () {
     vibrate(10);
-    reconnectOverlay.classList.add('hidden');
-    performDisconnect();
+    reconnectHeading.textContent = 'RECONNECTING';
+    reconnectStatus.textContent = 'Connecting...';
+    reconnectRejoinBtn.classList.add('hidden');
+    connect();
   });
 
   // Lobby back button
@@ -926,8 +921,7 @@
   });
 
   // --- Initialization ---
-  var shouldAutoReconnect = !!rejoinId || (!!hadStoredId && hasJoinedSession);
-  if (shouldAutoReconnect) {
+  if (hadStoredId || rejoinId) {
     playerName = savedName || null;
     nameInput.value = savedName;
     nameJoinBtn.disabled = true;

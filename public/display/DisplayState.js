@@ -65,6 +65,7 @@ var livenessInterval = null;
 // Display heartbeat — send echo to self via relay to verify connection
 var lastHeartbeatEcho = 0;
 var heartbeatSent = false;
+var disconnectedTimer = null;
 
 // Grace period timers for disconnected players in lobby
 var graceTimers = new Map();

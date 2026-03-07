@@ -1,7 +1,5 @@
 # Tetris Party
 
-![Tetris Party gameplay banner](banner/readme-header.png)
-
 Browser-based multiplayer Tetris where phones become controllers and a shared screen shows the action.
 
 **Play now at [tetris.party](https://tetris.party)**

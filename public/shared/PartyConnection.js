@@ -20,7 +20,6 @@ class PartyConnection {
     this.clientId = (options && options.clientId) || null;
     this.ws = null;
     this._reconnectTimer = null;
-    this._reconnectDelay = 1000;
     this._shouldReconnect = true;
     this.maxReconnectAttempts = (options && options.maxReconnectAttempts) || 5;
     this.reconnectAttempt = 0;
@@ -42,8 +41,6 @@ class PartyConnection {
 
     ws.onopen = () => {
       if (this.ws !== ws) return; // stale
-      this._reconnectDelay = 1000;
-      this.reconnectAttempt = 0;
       if (this.onOpen) this.onOpen();
     };
 
@@ -87,11 +84,7 @@ class PartyConnection {
     clearTimeout(this._reconnectTimer);
     this._reconnectTimer = setTimeout(() => {
       this.connect();
-    }, this._reconnectDelay);
-    this._reconnectDelay = Math.min(
-      Math.round(this._reconnectDelay * 1.5),
-      10000
-    );
+    }, 1000);
   }
 
   _send(msg) {
@@ -118,9 +111,11 @@ class PartyConnection {
 
   reconnectNow() {
     clearTimeout(this._reconnectTimer);
-    this._reconnectDelay = 1000;
-    this.reconnectAttempt = 0;
     this.connect();
+  }
+
+  resetReconnectCount() {
+    this.reconnectAttempt = 0;
   }
 
   close() {

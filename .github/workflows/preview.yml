@@ -43,7 +43,6 @@ jobs:
         env:
           BRANCH_RAW: ${{ github.ref_name }}
           IMAGE: ${{ needs.build.outputs.sha_tag }}
-          GIT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           SAFE_BRANCH=$(echo "$BRANCH_RAW" | tr '[:upper:]' '[:lower:]' | sed 's#[^a-z0-9-]#-#g' | cut -c1-50 | sed 's/-*$//')
@@ -87,10 +86,6 @@ jobs:
                     env:
                       - name: PUBLIC_URL
                         value: https://${HOST}
-                      - name: APP_ENV
-                        value: preview
-                      - name: GIT_SHA
-                        value: ${GIT_SHA}
                     ports:
                       - containerPort: 4000
                         name: http

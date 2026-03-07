@@ -43,27 +43,6 @@ test.describe('Controller', () => {
     await expect(controller).toHaveScreenshot('01b-name-keyboard.png');
   });
 
-  test('name entry reload does not auto-join', async ({ page, context }) => {
-    const { roomCode } = await createRoom(page);
-    const controller = await context.newPage();
-    await controller.goto(`/${roomCode}`);
-    await waitForFont(controller);
-
-    await controller.evaluate(() => {
-      localStorage.setItem('tetris_player_name', 'Reload Tester');
-    });
-
-    await controller.reload();
-    await waitForFont(controller);
-    await controller.waitForTimeout(500);
-
-    await expect(controller.locator('#name-screen')).not.toHaveClass(/hidden/);
-    await expect(controller.locator('#name-join-btn')).toHaveText('JOIN');
-
-    const joinedPlayers = await page.locator('#player-list .player-card:not(.empty)').count();
-    expect(joinedPlayers).toBe(0);
-  });
-
   test('lobby - host view', async ({ page, context }) => {
     const { controllers } = await setupJoinedRoom(page, context, ['Player 1', 'Player 2']);
     const host = controllers[0];
