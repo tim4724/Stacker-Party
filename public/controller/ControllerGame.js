@@ -86,10 +86,10 @@ function onWelcome(data) {
   }
 
   if (data.roomState === 'results') {
-    var results = data.results || lastGameResults;
-    if (results) {
-      lastGameResults = results;
-      renderGameResults(results);
+    var reconnectResults = data.results || lastGameResults;
+    if (reconnectResults) {
+      lastGameResults = reconnectResults;
+      renderGameResults(reconnectResults);
       showScreen('gameover');
       return;
     }
