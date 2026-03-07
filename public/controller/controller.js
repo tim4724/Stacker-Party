@@ -412,8 +412,8 @@
     clearTimeout(disconnectedTimer);
     reconnectOverlay.classList.add('hidden');
 
-    // Use display-assigned name if we didn't provide one (e.g. "P1")
-    if (!playerName) playerName = data.playerName || 'Player';
+    // Always use display-assigned name (ensures correct slot label)
+    playerName = data.playerName || playerName || 'Player';
     playerNameEl.textContent = playerName;
 
     // Reconnected into active game

@@ -129,7 +129,6 @@ function returnToLobby() {
     party.broadcast({ type: MSG.ERROR, code: 'HOST_DISCONNECTED', message: 'Host disconnected' });
     players.clear();
     playerOrder = [];
-    playerIndexCounter = 0;
     hostId = null;
     lastAliveState = {};
     updatePlayerList();

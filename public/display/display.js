@@ -65,8 +65,8 @@ function onHello(fromId, msg) {
       graceTimers.delete(fromId);
     }
 
-    // Update name only if player provided one (keep slot label like "P1" otherwise)
-    if (name) existing.playerName = name;
+    // Update name, sanitizing "P1"–"P4" to match actual slot
+    if (name) existing.playerName = sanitizePlayerName(name, existing.playerIndex);
     updatePlayerList();
 
     // Send welcome with current state
@@ -91,18 +91,18 @@ function onHello(fromId, msg) {
     return;
   }
 
-  if (players.size >= GameConstants.MAX_PLAYERS) {
+  var index = nextAvailableSlot();
+  if (index < 0) {
     party.sendTo(fromId, { type: MSG.ERROR, message: 'Room is full' });
     return;
   }
-
-  var index = playerIndexCounter++;
   var color = PLAYER_COLORS[index % PLAYER_COLORS.length];
+  var playerName = sanitizePlayerName(name, index);
   var isHost = hostId === null;
   if (isHost) hostId = fromId;
 
   players.set(fromId, {
-    playerName: name || 'P' + (index + 1),
+    playerName: playerName,
     playerColor: color,
     playerIndex: index,
     lastPingTime: Date.now()
@@ -112,7 +112,7 @@ function onHello(fromId, msg) {
   // Send welcome to new player
   party.sendTo(fromId, {
     type: MSG.WELCOME,
-    playerName: name || 'P' + (index + 1),
+    playerName: playerName,
     playerColor: color,
     isHost: isHost,
     playerCount: players.size,
@@ -244,7 +244,6 @@ function resetToWelcome() {
   setRoomState(ROOM_STATE.LOBBY);
   players.clear();
   playerOrder = [];
-  playerIndexCounter = 0;
   gameState = null;
   boardRenderers = [];
   uiRenderers = [];
@@ -588,10 +587,10 @@ if (new URLSearchParams(window.location.search).get('test') === '1') {
     addPlayers: function(playerList) {
       for (var i = 0; i < playerList.length; i++) {
         var p = playerList[i];
-        var index = playerIndexCounter++;
+        var index = nextAvailableSlot();
         var color = PLAYER_COLORS[index % PLAYER_COLORS.length];
         players.set(p.id, {
-          playerName: p.name,
+          playerName: sanitizePlayerName(p.name, index),
           playerColor: color,
           playerIndex: index
         });
