@@ -208,6 +208,20 @@ async function generate() {
     clipHeight: HEADER_HEIGHT
   });
 
+  // --- Phase 4: Name banner (title + falling pieces, no screenshots needed) ---
+  console.log('Generating name banner...');
+  const nameBannerCtx = await browser.newContext({
+    viewport: { width: SOCIAL_WIDTH, height: SOCIAL_HEIGHT },
+    deviceScaleFactor: 2,
+  });
+  const nameBannerPage = await nameBannerCtx.newPage();
+  await nameBannerPage.goto(`file://${path.resolve(BANNER_DIR, 'name-banner.html')}`);
+  await waitForFont(nameBannerPage);
+  await nameBannerPage.waitForTimeout(300);
+  const nameBannerPath = path.resolve(BANNER_DIR, 'social-preview.png');
+  await nameBannerPage.screenshot({ path: nameBannerPath });
+  console.log(`  ${nameBannerPath} (${SOCIAL_WIDTH}x${SOCIAL_HEIGHT} @2x)`);
+
   await browser.close();
   console.log('Done!');
 }

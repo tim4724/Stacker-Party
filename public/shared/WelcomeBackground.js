@@ -17,6 +17,9 @@ class WelcomeBackground {
 
   static PIECE_KEYS = Object.keys(WelcomeBackground.SHAPES);
 
+  // Maps shape key to PIECE_COLORS index (matches PIECE_TYPE_TO_ID)
+  static SHAPE_COLOR_INDEX = { I: 1, O: 4, T: 6, S: 5, Z: 7, J: 2, L: 3 };
+
   constructor(canvas, poolSize = 15) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
@@ -68,12 +71,31 @@ class WelcomeBackground {
   // --- Internals ---
 
   _initPool() {
-    for (let i = 0; i < this.poolSize; i++) {
-      this.pool.push(this._makeShape(true));
+    // Distribute pieces across a grid with jitter for blue-noise-like spacing.
+    // Grid: columns across width, rows across 1.5x height (pieces start above screen).
+    const cols = Math.ceil(Math.sqrt(this.poolSize * 1.5));
+    const rows = Math.ceil(this.poolSize / cols);
+    const w = this.w || window.innerWidth;
+    const h = this.h || window.innerHeight;
+    const cellW = w / cols;
+    const cellH = (h * 1.5) / rows;
+    let idx = 0;
+    for (let r = 0; r < rows && idx < this.poolSize; r++) {
+      for (let c = 0; c < cols && idx < this.poolSize; c++) {
+        const shape = this._makeShape();
+        // Place within grid cell with jitter (±40% of cell size)
+        shape.x = cellW * (c + 0.1 + Math.random() * 0.8);
+        shape.y = -(cellH * (r + 0.1 + Math.random() * 0.8));
+        this.pool.push(shape);
+        idx++;
+      }
     }
+    // Track column index for recycling
+    this._nextCol = 0;
+    this._cols = cols;
   }
 
-  _makeShape(randomY) {
+  _makeShape() {
     const key = WelcomeBackground.PIECE_KEYS[Math.floor(Math.random() * WelcomeBackground.PIECE_KEYS.length)];
     const blocks = WelcomeBackground.SHAPES[key];
     const rotation = Math.floor(Math.random() * 4);
@@ -82,10 +104,12 @@ class WelcomeBackground {
     // Larger shapes fall slower for parallax depth feel
     const speed = 15 + (48 - blockSize) / 32 * 25; // 15-40 px/s
     const drift = 0;
-    const opacity = 0.05 + Math.random() * 0.04; // 0.05-0.09
+    // Base opacity close to original; boost low-luminance colors so they stay visible
+    const boost = key === 'J' ? 0.06 : (key === 'T' || key === 'L') ? 0.03 : 0;
+    const opacity = 0.05 + Math.random() * 0.04 + boost; // base 0.05-0.09
 
-    // Pick a color from PIECE_COLORS (indices 1-7)
-    const colorIdx = 1 + Math.floor(Math.random() * 7);
+    // Use correct color for this piece type
+    const colorIdx = WelcomeBackground.SHAPE_COLOR_INDEX[key];
     const color = typeof PIECE_COLORS !== 'undefined' ? PIECE_COLORS[colorIdx] : '#4444ff';
 
     return {
@@ -95,11 +119,22 @@ class WelcomeBackground {
       drift,
       opacity,
       color,
-      x: Math.random() * (this.w || window.innerWidth),
-      y: randomY
-        ? -Math.random() * (this.h || window.innerHeight) * 1.5 - blockSize * 4
-        : -blockSize * 4 - Math.random() * 100,
+      x: 0,
+      y: 0,
     };
+  }
+
+  _recycleShape() {
+    // Assign to next column slot with jitter for even horizontal distribution
+    const w = this.w || window.innerWidth;
+    const cellW = w / this._cols;
+    const col = this._nextCol;
+    this._nextCol = (this._nextCol + 1) % this._cols;
+
+    const shape = this._makeShape();
+    shape.x = cellW * (col + 0.1 + Math.random() * 0.8);
+    shape.y = -shape.blockSize * 4 - Math.random() * 100;
+    return shape;
   }
 
   _rotate(blocks, times) {
@@ -132,7 +167,7 @@ class WelcomeBackground {
 
       // Recycle off-screen shapes
       if (p.y > maxY) {
-        this.pool[i] = this._makeShape(false);
+        this.pool[i] = this._recycleShape();
         continue;
       }
 
