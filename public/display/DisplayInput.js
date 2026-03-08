@@ -6,7 +6,7 @@
 // =====================================================================
 
 // Input validation: only accept known game actions
-var VALID_ACTIONS = { left: 1, right: 1, rotate_cw: 1, hold: 1, hard_drop: 1 };
+var VALID_ACTIONS = new Set(['left', 'right', 'rotate_cw', 'hold', 'hard_drop']);
 
 function handleControllerMessage(fromId, msg) {
   try {
@@ -132,7 +132,7 @@ function onHello(fromId, msg) {
 function onInput(fromId, msg) {
   if (roomState !== ROOM_STATE.PLAYING || paused) return;
   if (!displayGame) return;
-  if (!VALID_ACTIONS[msg.action]) return;
+  if (!VALID_ACTIONS.has(msg.action)) return;
   displayGame.processInput(fromId, msg.action);
 }
 

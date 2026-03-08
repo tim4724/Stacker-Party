@@ -262,10 +262,10 @@ function drawTimer(elapsedMs) {
   ctx.textBaseline = 'top';
   ctx.letterSpacing = '0.15em';
   var cursorX = startX;
-  for (var i = 0; i < timeStr.length; i++) {
-    var charX = cursorX + advances[i] / 2;
-    ctx.fillText(timeStr[i], charX, y);
-    cursorX += advances[i];
+  for (var k = 0; k < timeStr.length; k++) {
+    var charX = cursorX + advances[k] / 2;
+    ctx.fillText(timeStr[k], charX, y);
+    cursorX += advances[k];
   }
   ctx.letterSpacing = '0px';
 }
