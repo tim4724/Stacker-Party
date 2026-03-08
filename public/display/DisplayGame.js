@@ -75,6 +75,7 @@ function pauseGame() {
   if (roomState === ROOM_STATE.COUNTDOWN) {
     if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
     if (goTimeout) { clearTimeout(goTimeout); goTimeout = null; }
+    if (goOverlayTimer) { clearTimeout(goOverlayTimer); goOverlayTimer = null; }
   }
   party.broadcast({ type: MSG.GAME_PAUSED });
   onGamePaused();
