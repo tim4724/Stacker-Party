@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      overflow: hidden;
+      background: #06060f;
+    }
+
+    .banner {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Display fills full width */
+    .display-img {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+    }
+
+    /* Bottom fade for phone contrast */
+    .overlay-gradient {
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(to top, rgba(6,6,15,0.85) 0%, rgba(6,6,15,0.15) 35%, transparent 55%);
+      pointer-events: none;
+    }
+
+    /* Phone mockup — modern edge-to-edge style */
+    .phone {
+      position: absolute;
+      bottom: var(--phone-bottom, -18px);
+      left: var(--phone-left);
+      width: 120px;
+      height: var(--phone-height, 195px);
+      border-radius: 18px;
+      background: #111122;
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow:
+        0 10px 40px rgba(0,0,0,0.7),
+        0 0 24px color-mix(in srgb, var(--color) 12%, transparent);
+      padding: 3px;
+      z-index: 10;
+    }
+
+    /* Dynamic Island */
+    .phone::before {
+      content: '';
+      position: absolute;
+      top: 6px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 28px;
+      height: 8px;
+      border-radius: 5px;
+      background: #000;
+      z-index: 2;
+    }
+
+    /* Screen — edge-to-edge */
+    .phone-screen {
+      width: 100%;
+      height: 100%;
+      border-radius: 15px;
+      overflow: hidden;
+      background: #080810;
+      padding-top: 14px; /* Safe area below Dynamic Island */
+    }
+
+    .controller-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: top;
+    }
+  </style>
+</head>
+<body>
+  <div class="banner">
+    <img class="display-img" id="display-img" alt="">
+    <div class="overlay-gradient"></div>
+
+    <div class="phone" id="phone-0" style="--phone-left: 16%">
+      <div class="phone-screen"><img class="controller-img" id="ctrl-0" alt=""></div>
+    </div>
+    <div class="phone" id="phone-1" style="--phone-left: 41%">
+      <div class="phone-screen"><img class="controller-img" id="ctrl-1" alt=""></div>
+    </div>
+    <div class="phone" id="phone-2" style="--phone-left: 66%">
+      <div class="phone-screen"><img class="controller-img" id="ctrl-2" alt=""></div>
+    </div>
+    <div class="phone" id="phone-3" style="--phone-left: 90%">
+      <div class="phone-screen"><img class="controller-img" id="ctrl-3" alt=""></div>
+    </div>
+  </div>
+</body>
+</html>

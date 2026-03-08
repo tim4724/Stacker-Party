@@ -1,12 +1,12 @@
 // @ts-check
 // Visual test fixture data — moved from server/visualTestScenarios.js
 
-const PLAYER_COLORS = ['#e74856', '#4fc3f7', '#66bb6a', '#ffa726'];
+const { PLAYER_COLORS } = require('../../public/shared/theme.js');
 
 const LIVE_SCORE = [12450, 8320, 5100, 2800];
 const LIVE_LINES = [24, 16, 10, 5];
 const LIVE_LEVELS = [3, 2, 2, 1];
-const LIVE_GHOST_Y = [13, 14, 14, 14];
+const LIVE_GHOST_Y = [12, 14, 14, 15];
 const LIVE_HOLD = ['O', 'S', 'T', 'I'];
 const LIVE_NEXT = [
   ['I', 'T', 'Z', 'L', 'O'],
@@ -24,26 +24,58 @@ const RESULT_SCORE = [24800, 18200, 12100, 5400];
 const RESULT_LINES = [48, 36, 24, 10];
 const RESULT_LEVELS = [5, 4, 3, 2];
 
-function createPrimaryGrid() {
+// All grids keep piece blocks strictly above garbage rows (no colored blocks in garbage).
+// Each board uses a unique combination of pieces and layout for visual variety.
+
+function createGrid1() {
+  // Emma — tallest stack (highest score)
+  //   J(2) state-0 cols 0-2  |  Z(7) state-0 cols 1-3  |  I(1) vertical col 5  |  L(3) state-0 cols 7-9
   const grid = Array.from({ length: 20 }, () => Array(10).fill(0));
-  grid[16] = [1, 7, 7, 3, 3, 3, 0, 2, 2, 2];
-  grid[15] = [1, 0, 7, 3, 0, 0, 0, 0, 2, 0];
-  grid[14] = [1, 0, 7, 0, 0, 0, 0, 0, 0, 0];
-  grid[13] = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  grid[14] = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0];
+  grid[15] = [0, 7, 7, 0, 0, 1, 0, 0, 0, 0];
+  grid[16] = [2, 0, 7, 7, 0, 1, 0, 0, 0, 3];
+  grid[17] = [2, 2, 2, 0, 0, 1, 0, 3, 3, 3];
+  grid[18] = [8, 8, 8, 8, 0, 8, 8, 8, 8, 8];
   grid[19] = [8, 8, 8, 8, 8, 0, 8, 8, 8, 8];
-  grid[18] = [8, 8, 8, 0, 8, 8, 8, 8, 8, 8];
-  grid[17] = [8, 8, 8, 8, 0, 8, 8, 8, 8, 8];
   return grid;
 }
 
-function createSecondaryGrid() {
+function createGrid2() {
+  // Jake — medium stack
+  //   S(5) state-0 cols 0-2  |  O(4) cols 4-5  |  T(6) state-2 cols 6-8
   const grid = Array.from({ length: 20 }, () => Array(10).fill(0));
-  grid[17] = [5, 5, 0, 0, 4, 4, 6, 6, 6, 0];
-  grid[16] = [5, 5, 0, 0, 4, 4, 0, 6, 0, 0];
+  grid[16] = [0, 5, 5, 0, 4, 4, 6, 6, 6, 0];
+  grid[17] = [5, 5, 0, 0, 4, 4, 0, 6, 0, 0];
+  grid[18] = [8, 8, 8, 0, 8, 8, 8, 8, 8, 8];
   grid[19] = [8, 8, 0, 8, 8, 8, 8, 8, 8, 8];
-  grid[18] = [8, 8, 8, 8, 8, 0, 8, 8, 8, 8];
   return grid;
 }
+
+function createGrid3() {
+  // Sofia — lighter stack
+  //   I(1) horizontal cols 0-3  |  Z(7) state-1 cols 7-8
+  const grid = Array.from({ length: 20 }, () => Array(10).fill(0));
+  grid[15] = [0, 0, 0, 0, 0, 0, 0, 0, 7, 0];
+  grid[16] = [0, 0, 0, 0, 0, 0, 0, 7, 7, 0];
+  grid[17] = [1, 1, 1, 1, 0, 0, 0, 7, 0, 0];
+  grid[18] = [8, 8, 8, 8, 8, 0, 8, 8, 8, 8];
+  grid[19] = [8, 8, 8, 0, 8, 8, 8, 8, 8, 8];
+  return grid;
+}
+
+function createGrid4() {
+  // Liam — sparsest stack (lowest score)
+  //   S(5) state-3 cols 1-2  |  L(3) state-3 cols 6-7
+  const grid = Array.from({ length: 20 }, () => Array(10).fill(0));
+  grid[15] = [0, 5, 0, 0, 0, 0, 3, 3, 0, 0];
+  grid[16] = [0, 5, 5, 0, 0, 0, 0, 3, 0, 0];
+  grid[17] = [0, 0, 5, 0, 0, 0, 0, 3, 0, 0];
+  grid[18] = [8, 8, 8, 0, 8, 8, 8, 8, 8, 8];
+  grid[19] = [8, 0, 8, 8, 8, 8, 8, 8, 8, 8];
+  return grid;
+}
+
+const GRIDS = [createGrid1, createGrid2, createGrid3, createGrid4];
 
 function cloneGrid(grid) {
   return grid.map((row) => row.slice());
@@ -78,7 +110,7 @@ function buildGameState(playerIds, options) {
       score: LIVE_SCORE[index] || LIVE_SCORE[LIVE_SCORE.length - 1],
       lines: LIVE_LINES[index] || LIVE_LINES[LIVE_LINES.length - 1],
       level: LIVE_LEVELS[index] || LIVE_LEVELS[LIVE_LEVELS.length - 1],
-      grid: cloneGrid(index === 0 ? createPrimaryGrid() : createSecondaryGrid()),
+      grid: cloneGrid((GRIDS[index] || GRIDS[GRIDS.length - 1])()),
       currentPiece: {
         typeId: pieces[index]?.typeId || pieces[0].typeId,
         x: pieces[index]?.x || pieces[0].x,
