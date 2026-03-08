@@ -98,7 +98,7 @@ test.describe('Controller', () => {
     await expect(nonHost).toHaveScreenshot('08-pause-nonhost.png');
   });
 
-  test('results - host view', async ({ page, context }) => {
+  test('results - 1 player', async ({ page, context }) => {
     const { controllers } = await setupJoinedRoom(page, context, ['Player 1']);
     const host = controllers[0];
     await host.click('#start-btn');
@@ -118,7 +118,54 @@ test.describe('Controller', () => {
     }, 100);
     await waitForControllerResults(host);
     clearInterval(dropInterval);
-    await expect(host).toHaveScreenshot('10-results-host.png', {
+    await expect(host).toHaveScreenshot('10a-results-1p.png', {
+      maxDiffPixelRatio: 0.02,
+    });
+  });
+
+  test('results - winner (rank 1)', async ({ page, context }) => {
+    const { controllers } = await setupJoinedRoom(page, context, ['Player 1', 'Player 2']);
+    const host = controllers[0];
+    await host.click('#start-btn');
+    await waitForControllerGame(host);
+    // Hard drop only player 2 to make them lose first
+    const dropInterval = setInterval(async () => {
+      try {
+        await page.evaluate(() => {
+          if (displayGame && typeof displayGame.processInput === 'function') {
+            var ids = Array.from(playerOrder || []);
+            if (ids.length >= 2) displayGame.processInput(ids[1], 'hard_drop');
+          }
+        });
+      } catch (_) {}
+    }, 100);
+    await waitForControllerResults(host);
+    clearInterval(dropInterval);
+    await expect(host).toHaveScreenshot('10b-results-winner.png', {
+      maxDiffPixelRatio: 0.02,
+    });
+  });
+
+  test('results - loser (rank 2)', async ({ page, context }) => {
+    const { controllers } = await setupJoinedRoom(page, context, ['Player 1', 'Player 2']);
+    const host = controllers[0];
+    const loser = controllers[1];
+    await host.click('#start-btn');
+    await waitForControllerGame(loser);
+    // Hard drop only player 2 to make them lose first
+    const dropInterval = setInterval(async () => {
+      try {
+        await page.evaluate(() => {
+          if (displayGame && typeof displayGame.processInput === 'function') {
+            var ids = Array.from(playerOrder || []);
+            if (ids.length >= 2) displayGame.processInput(ids[1], 'hard_drop');
+          }
+        });
+      } catch (_) {}
+    }, 100);
+    await waitForControllerResults(loser);
+    clearInterval(dropInterval);
+    await expect(loser).toHaveScreenshot('10c-results-loser.png', {
       maxDiffPixelRatio: 0.02,
     });
   });

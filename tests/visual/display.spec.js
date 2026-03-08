@@ -152,12 +152,30 @@ test.describe('Display', () => {
     await expect(page).toHaveScreenshot('09b-disconnected.png');
   });
 
-  test('results screen', async ({ page }) => {
+  test('results screen - 1 player', async ({ page }) => {
+    await gotoDisplayTest(page);
+    await injectPlayers(page, 1);
+    await injectResults(page, 1);
+    await page.waitForSelector('#results-screen:not(.hidden)');
+    await page.waitForTimeout(1100);
+    await expect(page).toHaveScreenshot('10a-results-1p.png');
+  });
+
+  test('results screen - 2 players', async ({ page }) => {
+    await gotoDisplayTest(page);
+    await injectPlayers(page, 2);
+    await injectResults(page, 2);
+    await page.waitForSelector('#results-screen:not(.hidden)');
+    await page.waitForTimeout(1100);
+    await expect(page).toHaveScreenshot('10b-results-2p.png');
+  });
+
+  test('results screen - 4 players', async ({ page }) => {
     await gotoDisplayTest(page);
     await injectPlayers(page, 4);
     await injectResults(page, 4);
     await page.waitForSelector('#results-screen:not(.hidden)');
     await page.waitForTimeout(1100);
-    await expect(page).toHaveScreenshot('10-results.png');
+    await expect(page).toHaveScreenshot('10c-results-4p.png');
   });
 });
