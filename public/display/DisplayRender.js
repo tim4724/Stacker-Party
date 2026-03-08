@@ -9,7 +9,6 @@ var lastThrottled = null;
 
 function startRenderLoop() {
   if (rafId != null) return;
-  lastFrameTime = null;
   rafId = requestAnimationFrame(renderLoop);
 }
 
@@ -25,9 +24,6 @@ function renderLoop(timestamp) {
   rafId = requestAnimationFrame(renderLoop);
 
   if ((currentScreen !== 'game' && currentScreen !== 'results') || !ctx) return;
-
-  if (lastFrameTime === null) lastFrameTime = timestamp;
-  lastFrameTime = timestamp;
 
   // Throttle to ~4fps when paused/results with no active animations
   var hasAnimations = animations && animations.active.length > 0;

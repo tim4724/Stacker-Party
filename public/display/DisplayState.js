@@ -43,7 +43,6 @@ var animations = null;
 var music = null;
 var canvas = null;
 var ctx = null;
-var lastFrameTime = null;
 var disconnectedQRs = new Map();
 var garbageIndicatorEffects = new Map();
 var welcomeBg = null;

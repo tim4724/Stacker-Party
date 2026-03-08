@@ -171,11 +171,10 @@ describe('PartyConnection - reconnect with exponential backoff', () => {
     MockWebSocket._instances[MockWebSocket._instances.length - 1]._simulateClose();
     assert.strictEqual(pc.reconnectAttempt, 2);
     // At maxAttempts — no more reconnect scheduled
-    // The _scheduleReconnect should not be called
-    const instanceCountBefore = MockWebSocket._instances.length;
+    const instanceCountAfterMax = MockWebSocket._instances.length;
     // Simulate another close — should NOT create new WebSocket
-    // (reconnectAttempt >= maxReconnectAttempts)
-    assert.strictEqual(pc.reconnectAttempt >= pc.maxReconnectAttempts, true);
+    MockWebSocket._instances[MockWebSocket._instances.length - 1]._simulateClose();
+    assert.strictEqual(MockWebSocket._instances.length, instanceCountAfterMax);
   });
 
   test('resetReconnectCount resets attempt counter', () => {
