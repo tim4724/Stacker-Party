@@ -64,6 +64,11 @@ class UIRenderer {
       this.drawGarbageIndicatorEffects(playerState.garbageIndicatorEffects, timestamp);
     }
 
+    // 5c. Defence flash — green flash on cancelled garbage meter rows
+    if (playerState.garbageDefenceEffects && playerState.garbageDefenceEffects.length > 0) {
+      this.drawGarbageDefenceEffects(playerState.garbageDefenceEffects, timestamp);
+    }
+
     // 6. KO overlay
     if (playerState.alive === false) {
       this.drawKOOverlay();
@@ -264,6 +269,40 @@ class UIRenderer {
         roundRect(ctx, bx, by, bw, bh, r);
         ctx.fill();
         ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.fillRect(bx + 1, by + 1, bw - 2, 1);
+        ctx.restore();
+      }
+    }
+  }
+
+  drawGarbageDefenceEffects(effects, timestamp) {
+    if (!Array.isArray(effects) || effects.length === 0) return;
+
+    const ctx = this.ctx;
+    const meter = this.getGarbageMeterLayout();
+    const now = timestamp || performance.now();
+    const inset = THEME.size.boardInset;
+    const r = THEME.radius.block(meter.cellSize);
+
+    for (const effect of effects) {
+      const elapsed = now - effect.startTime;
+      if (elapsed < 0 || elapsed >= effect.duration) continue;
+      const alpha = (1 - elapsed / effect.duration) * (effect.maxAlpha || 0.9);
+
+      for (let row = effect.rowStart; row < effect.rowStart + effect.lines; row++) {
+        if (row < 0 || row >= meter.rows) continue;
+        const y = meter.y + row * meter.cellSize;
+        const bx = meter.x + inset;
+        const by = y + inset;
+        const bw = meter.cellSize - inset * 2;
+        const bh = meter.cellSize - inset * 2;
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = '#00ff88';
+        roundRect(ctx, bx, by, bw, bh, r);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
         ctx.fillRect(bx + 1, by + 1, bw - 2, 1);
         ctx.restore();
       }

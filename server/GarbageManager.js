@@ -41,10 +41,10 @@ class GarbageManager {
     return ready;
   }
 
-  processLineClear(senderId, linesCleared, isTSpin, combo, backToBack, getStackHeight) {
+  processLineClear(senderId, linesCleared, isTSpin, combo, backToBack, getStackHeight, defenseLines) {
     if (linesCleared === 0) return { sent: 0, cancelled: 0, deliveries: [] };
 
-    // Calculate garbage lines to send
+    // Calculate garbage lines to send (always based on original lines cleared)
     let garbageLines = GARBAGE_TABLE[linesCleared] || 0;
 
     // T-spin doubles garbage
@@ -63,9 +63,9 @@ class GarbageManager {
       garbageLines += 1;
     }
 
-    // Cancel sender's incoming garbage first (defense = lines cleared)
+    // Cancel sender's incoming garbage (defenseLines may be reduced by board-pending cancellation)
     const senderQueue = this.queues.get(senderId) || [];
-    let defenseRemaining = linesCleared;
+    let defenseRemaining = defenseLines != null ? defenseLines : linesCleared;
     let cancelled = 0;
 
     while (defenseRemaining > 0 && senderQueue.length > 0) {

@@ -47,6 +47,7 @@ var canvas = null;
 var ctx = null;
 var disconnectedQRs = new Map();
 var garbageIndicatorEffects = new Map();
+var garbageDefenceEffects = new Map();
 var welcomeBg = null;
 var displayGame = null;
 var baseUrlOverride = null;    // LAN base URL from server (fetched on init)

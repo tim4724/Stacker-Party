@@ -160,6 +160,7 @@ function returnToLobbyUI() {
   gameState = null;
   disconnectedQRs.clear();
   garbageIndicatorEffects.clear();
+  garbageDefenceEffects.clear();
   showScreen(SCREEN.LOBBY);
   updateStartButton();
   if (wasInGame && !popstateNavigating) {
@@ -182,6 +183,7 @@ function stopDisplayGame() {
     clearTimeout(entry[1]);
   }
   softDropTimers.clear();
+  garbageDefenceEffects.clear();
   clearCountdownTimers();
 }
 
@@ -298,6 +300,35 @@ function onLineClear(msg) {
 function onGarbageCancelled(msg) {
   // The pending garbage count is already reduced in the engine;
   // broadcastTick will update the meter on the next frame.
+
+  // Compute where the cancelled rows were on the meter.
+  // gameState still has the pre-tick pending count (broadcastTick hasn't fired yet).
+  var oldPending = 0;
+  if (gameState && gameState.players) {
+    for (var i = 0; i < gameState.players.length; i++) {
+      if (gameState.players[i].id === msg.playerId) {
+        oldPending = gameState.players[i].pendingGarbage || 0;
+        break;
+      }
+    }
+  }
+  var cancelledLines = Math.min(msg.lines, oldPending);
+  if (cancelledLines > 0) {
+    // Top-down coords (row 0 = top of board). The meter occupies
+    // rows (20 - oldPending) through 19. The meter shrinks from the top,
+    // so flash the rows that disappear at the top of the old meter.
+    var rowStart = 20 - oldPending;
+    var existing = garbageDefenceEffects.get(msg.playerId) || [];
+    existing.push({
+      startTime: performance.now(),
+      duration: 400,
+      maxAlpha: 0.9,
+      lines: cancelledLines,
+      rowStart: rowStart
+    });
+    garbageDefenceEffects.set(msg.playerId, existing);
+  }
+
   // Clear stale indicator effects since garbage was defended.
   var effects = garbageIndicatorEffects.get(msg.playerId);
   if (effects && effects.length > 0) {
@@ -351,6 +382,7 @@ function onGameEnd(msg) {
   stopDisplayGame();
   disconnectedQRs.clear();
   garbageIndicatorEffects.clear();
+  garbageDefenceEffects.clear();
   showScreen(SCREEN.RESULTS);
   resultsScreen.style.animation = 'none';
   resultsScreen.offsetHeight;

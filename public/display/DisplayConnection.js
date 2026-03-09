@@ -117,6 +117,7 @@ function applyRoomCreated(partyRoomCode, newJoinUrl) {
   uiRenderers = [];
   disconnectedQRs.clear();
   garbageIndicatorEffects.clear();
+  garbageDefenceEffects.clear();
   lastAliveState = {};
   lastResults = null;
 
@@ -263,6 +264,7 @@ function removeLobbyPlayer(clientId) {
     players.clear();
     playerOrder = [];
     garbageIndicatorEffects.clear();
+    garbageDefenceEffects.clear();
     updatePlayerList();
     updateStartButton();
     returnToLobbyUI();
@@ -270,6 +272,7 @@ function removeLobbyPlayer(clientId) {
     players.delete(clientId);
     playerOrder = playerOrder.filter(function(id) { return id !== clientId; });
     garbageIndicatorEffects.delete(clientId);
+    garbageDefenceEffects.delete(clientId);
     updatePlayerList();
     updateStartButton();
     broadcastLobbyUpdate();

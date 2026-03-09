@@ -172,8 +172,18 @@ class Game {
     for (const g of readyGarbage) {
       const board = this.boards.get(g.playerId);
       if (board && board.alive) {
-        this.dirty = true;
-        board.addPendingGarbage(g.lines, g.gapColumn);
+        // Don't deliver during line clear animation — the player just
+        // defended with this clear so new garbage should wait for next piece.
+        if (board.clearingRows) {
+          // Re-queue with 1 tick delay so it arrives after the clear finishes
+          const queue = this.garbageManager.queues.get(g.playerId);
+          if (queue) {
+            queue.push({ lines: g.lines, gapColumn: g.gapColumn, senderId: g.senderId, ticksLeft: 1 });
+          }
+        } else {
+          this.dirty = true;
+          board.addPendingGarbage(g.lines, g.gapColumn);
+        }
       }
     }
 
@@ -221,16 +231,35 @@ class Game {
       combo
     });
 
+    // Cancel board-pending garbage first (already delivered, most urgent)
+    let boardCancelled = 0;
+    let defenseRemaining = lines;
+    while (defenseRemaining > 0 && board.pendingGarbage.length > 0) {
+      const front = board.pendingGarbage[0];
+      if (front.lines <= defenseRemaining) {
+        defenseRemaining -= front.lines;
+        boardCancelled += front.lines;
+        board.pendingGarbage.shift();
+      } else {
+        front.lines -= defenseRemaining;
+        boardCancelled += defenseRemaining;
+        defenseRemaining = 0;
+      }
+    }
+
+    // Then cancel from delayed garbage queue (GarbageManager) with remaining defense
     const getStackHeight = (id) => {
       const b = this.boards.get(id);
       return b && b.alive ? b.getStackHeight() : -1;
     };
-    const result = this.garbageManager.processLineClear(playerId, lines, isTSpin, combo, backToBack, getStackHeight);
-    if (result.cancelled > 0) {
+    const result = this.garbageManager.processLineClear(playerId, lines, isTSpin, combo, backToBack, getStackHeight, defenseRemaining);
+
+    const totalCancelled = boardCancelled + result.cancelled;
+    if (totalCancelled > 0) {
       this.callbacks.onEvent({
         type: 'garbage_cancelled',
         playerId,
-        lines: result.cancelled
+        lines: totalCancelled
       });
     }
     for (const d of result.deliveries) {

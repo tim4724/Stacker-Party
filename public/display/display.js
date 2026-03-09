@@ -30,6 +30,7 @@ function resetToWelcome() {
   uiRenderers = [];
   disconnectedQRs.clear();
   garbageIndicatorEffects.clear();
+  garbageDefenceEffects.clear();
   lastAliveState = {};
   lastResults = null;
   preCreatedRoom = null;

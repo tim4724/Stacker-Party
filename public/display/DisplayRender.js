@@ -27,7 +27,7 @@ function renderLoop(timestamp) {
 
   // Throttle to ~4fps when paused/results with no active animations
   var hasAnimations = animations && animations.active.length > 0;
-  var hasGarbageEffects = garbageIndicatorEffects.size > 0;
+  var hasGarbageEffects = garbageIndicatorEffects.size > 0 || garbageDefenceEffects.size > 0;
   if ((paused || currentScreen === SCREEN.RESULTS) && !hasAnimations && !hasGarbageEffects) {
     if (!lastThrottled) lastThrottled = timestamp;
     if (timestamp - lastThrottled < 250) return;
@@ -99,8 +99,16 @@ function renderFrame(timestamp) {
       } else {
         garbageIndicatorEffects.delete(playerData.id);
       }
+      var activeGarbageDefenceEffects = (garbageDefenceEffects.get(playerData.id) || [])
+        .filter(function(effect) { return timestamp - effect.startTime < effect.duration; });
+      if (activeGarbageDefenceEffects.length > 0) {
+        garbageDefenceEffects.set(playerData.id, activeGarbageDefenceEffects);
+      } else {
+        garbageDefenceEffects.delete(playerData.id);
+      }
       var enriched = Object.assign({}, playerData, {
         garbageIndicatorEffects: activeGarbageIndicatorEffects,
+        garbageDefenceEffects: activeGarbageDefenceEffects,
         playerName: pInfo?.playerName || PLAYER_NAMES[j],
         playerColor: pInfo?.playerColor || PLAYER_COLORS[j]
       });
