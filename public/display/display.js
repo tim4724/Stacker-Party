@@ -33,7 +33,7 @@ function resetToWelcome() {
   lastAliveState = {};
   lastResults = null;
   preCreatedRoom = null;
-  showScreen('welcome');
+  showScreen(SCREEN.WELCOME);
   connectAndCreateRoom();
 }
 
@@ -80,7 +80,7 @@ if (new URLSearchParams(window.location.search).get('test') === '1') {
       setRoomState(ROOM_STATE.PLAYING);
       gameState = state;
       countdownOverlay.classList.add('hidden');
-      showScreen('game');
+      showScreen(SCREEN.GAME);
       calculateLayout();
     },
 
@@ -149,7 +149,7 @@ newGameBtn.addEventListener('click', function() {
     connectAndCreateRoom();
   }
 
-  history.pushState({ screen: 'lobby' }, '');
+  history.pushState({ screen: SCREEN.LOBBY }, '');
 });
 
 window.addEventListener('popstate', function(e) {
@@ -158,20 +158,20 @@ window.addEventListener('popstate', function(e) {
     return;
   }
   var target = e.state && e.state.screen;
-  if (currentScreen === 'welcome' && target === 'lobby') {
+  if (currentScreen === SCREEN.WELCOME && target === SCREEN.LOBBY) {
     suppressPopstate = true;
     history.back();
-  } else if (currentScreen === 'lobby') {
-    if (target === 'game') {
+  } else if (currentScreen === SCREEN.LOBBY) {
+    if (target === SCREEN.GAME) {
       suppressPopstate = true;
       history.back();
     } else {
       resetToWelcome();
     }
-  } else if (currentScreen === 'game' || currentScreen === 'results') {
+  } else if (currentScreen === SCREEN.GAME || currentScreen === SCREEN.RESULTS) {
     popstateNavigating = true;
     if (music) music.stop();
-    showScreen('lobby');
+    showScreen(SCREEN.LOBBY);
     returnToLobby();
   }
 });

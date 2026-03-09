@@ -4,8 +4,11 @@
 // Shared Display State — loaded first, all vars are globals
 // =====================================================================
 
+// --- Screen Constants ---
+var SCREEN = { WELCOME: 'welcome', LOBBY: 'lobby', GAME: 'game', RESULTS: 'results' };
+
 // --- State ---
-var currentScreen = 'welcome';
+var currentScreen = SCREEN.WELCOME;
 var party = null;
 var roomCode = null;
 var joinUrl = null;
@@ -136,28 +139,28 @@ var muteBtn = document.getElementById('mute-btn');
 // --- Screen Management ---
 function showScreen(name) {
   currentScreen = name;
-  welcomeScreen.classList.toggle('hidden', name !== 'welcome');
-  lobbyScreen.classList.toggle('hidden', name !== 'lobby');
-  gameScreen.classList.toggle('hidden', name !== 'game' && name !== 'results');
-  resultsScreen.classList.toggle('hidden', name !== 'results');
-  gameToolbar.classList.toggle('hidden', name === 'welcome');
-  pauseBtn.classList.toggle('hidden', name !== 'game');
-  if (name !== 'game') {
+  welcomeScreen.classList.toggle('hidden', name !== SCREEN.WELCOME);
+  lobbyScreen.classList.toggle('hidden', name !== SCREEN.LOBBY);
+  gameScreen.classList.toggle('hidden', name !== SCREEN.GAME && name !== SCREEN.RESULTS);
+  resultsScreen.classList.toggle('hidden', name !== SCREEN.RESULTS);
+  gameToolbar.classList.toggle('hidden', name === SCREEN.WELCOME);
+  pauseBtn.classList.toggle('hidden', name !== SCREEN.GAME);
+  if (name !== SCREEN.GAME) {
     pauseOverlay.classList.add('hidden');
     reconnectOverlay.classList.add('hidden');
   }
-  if (name === 'game' || name === 'results') {
+  if (name === SCREEN.GAME || name === SCREEN.RESULTS) {
     initCanvas();
     calculateLayout();
     startRenderLoop();
   } else {
     stopRenderLoop();
   }
-  if (name === 'lobby') {
+  if (name === SCREEN.LOBBY) {
     updatePlayerList();
   }
   if (welcomeBg) {
-    if (name === 'welcome' || name === 'lobby') welcomeBg.start();
+    if (name === SCREEN.WELCOME || name === SCREEN.LOBBY) welcomeBg.start();
     else welcomeBg.stop();
   }
 }
@@ -177,7 +180,7 @@ function resizeCanvas() {
   canvas.style.width = window.innerWidth + 'px';
   canvas.style.height = window.innerHeight + 'px';
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  if (currentScreen === 'game') {
+  if (currentScreen === SCREEN.GAME) {
     calculateLayout();
   }
 }

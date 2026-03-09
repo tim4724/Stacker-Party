@@ -23,12 +23,12 @@ function renderLoop(timestamp) {
   if (rafId == null) return;
   rafId = requestAnimationFrame(renderLoop);
 
-  if ((currentScreen !== 'game' && currentScreen !== 'results') || !ctx) return;
+  if ((currentScreen !== SCREEN.GAME && currentScreen !== SCREEN.RESULTS) || !ctx) return;
 
   // Throttle to ~4fps when paused/results with no active animations
   var hasAnimations = animations && animations.active.length > 0;
   var hasGarbageEffects = garbageIndicatorEffects.size > 0;
-  if ((paused || currentScreen === 'results') && !hasAnimations && !hasGarbageEffects) {
+  if ((paused || currentScreen === SCREEN.RESULTS) && !hasAnimations && !hasGarbageEffects) {
     if (!lastThrottled) lastThrottled = timestamp;
     if (timestamp - lastThrottled < 250) return;
     lastThrottled = timestamp;
@@ -106,7 +106,7 @@ function renderFrame(timestamp) {
       });
 
       boardRenderers[j].render(enriched);
-      uiRenderers[j].render(enriched);
+      uiRenderers[j].render(enriched, timestamp);
 
       // Draw QR overlay for disconnected players
       if (disconnectedQRs.has(playerData.id)) {
@@ -129,11 +129,10 @@ function renderFrame(timestamp) {
         var totalH = outerSize + labelGap + labelSize;
         var groupY = by + (bh - totalH) / 2;
         var outerX = bx + (bw - outerSize) / 2;
-        var outerY = groupY;
 
         ctx.fillStyle = THEME.color.text.white;
         ctx.beginPath();
-        ctx.roundRect(outerX, outerY, outerSize, outerSize, qrRadius);
+        ctx.roundRect(outerX, groupY, outerSize, outerSize, qrRadius);
         ctx.fill();
 
         ctx.strokeStyle = 'rgba(0, 200, 255, 0.15)';
@@ -143,9 +142,9 @@ function renderFrame(timestamp) {
         if (qrImg) {
           ctx.save();
           ctx.beginPath();
-          ctx.roundRect(outerX + pad, outerY + pad, qrSize, qrSize, Math.max(1, qrRadius - pad));
+          ctx.roundRect(outerX + pad, groupY + pad, qrSize, qrSize, Math.max(1, qrRadius - pad));
           ctx.clip();
-          ctx.drawImage(qrImg, outerX + pad, outerY + pad, qrSize, qrSize);
+          ctx.drawImage(qrImg, outerX + pad, groupY + pad, qrSize, qrSize);
           ctx.restore();
         }
 
@@ -154,7 +153,7 @@ function renderFrame(timestamp) {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         ctx.letterSpacing = '0.1em';
-        ctx.fillText('SCAN TO REJOIN', bx + bw / 2, outerY + outerSize + labelGap);
+        ctx.fillText('SCAN TO REJOIN', bx + bw / 2, groupY + outerSize + labelGap);
         ctx.letterSpacing = '0px';
       }
 

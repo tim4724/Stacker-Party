@@ -5,8 +5,8 @@
 // Depends on: DisplayState.js, DisplayUI.js, DisplayConnection.js, DisplayGame.js
 // =====================================================================
 
-// Input validation: only accept known game actions
-var VALID_ACTIONS = new Set(['left', 'right', 'rotate_cw', 'hold', 'hard_drop']);
+// Input validation: only accept known game actions (derived from protocol.js INPUT)
+var VALID_ACTIONS = new Set(Object.values(INPUT));
 
 function handleControllerMessage(fromId, msg) {
   try {

@@ -38,10 +38,10 @@ class UIRenderer {
     this.panelWidth = cellSize * THEME.size.panelWidth;
     this.miniSize = cellSize * THEME.font.cellScale.mini;
     this.panelGap = Math.max(THEME.size.panelGapMin, cellSize * THEME.size.panelGap);
-    this._miniGradients = new Map(); // cached per pieceType+size key
+    this._miniGradients = new Map(); // cached per pieceType_size key
   }
 
-  render(playerState) {
+  render(playerState, timestamp) {
     // 1. Player name + accent stripe above board
     this.drawPlayerName(playerState);
 
@@ -61,7 +61,7 @@ class UIRenderer {
 
     // 5b. Transient attacker-colored tint on newly appeared garbage meter blocks
     if (playerState.garbageIndicatorEffects && playerState.garbageIndicatorEffects.length > 0) {
-      this.drawGarbageIndicatorEffects(playerState.garbageIndicatorEffects);
+      this.drawGarbageIndicatorEffects(playerState.garbageIndicatorEffects, timestamp);
     }
 
     // 6. KO overlay
@@ -235,12 +235,12 @@ class UIRenderer {
     }
   }
 
-  drawGarbageIndicatorEffects(effects) {
+  drawGarbageIndicatorEffects(effects, timestamp) {
     if (!Array.isArray(effects) || effects.length === 0) return;
 
     const ctx = this.ctx;
     const meter = this.getGarbageMeterLayout();
-    const now = performance.now();
+    const now = timestamp || performance.now();
     const inset = THEME.size.boardInset;
     const r = THEME.radius.block(meter.cellSize);
 
@@ -303,8 +303,8 @@ class UIRenderer {
     const offsetX = centerX - (bounds.w * size) / 2;
     const offsetY = centerY - (bounds.h * size) / 2;
 
-    // Cache gradient per piece type (all blocks share the same color)
-    const gradKey = pieceType;
+    // Cache gradient per piece type + size (all blocks share the same color)
+    const gradKey = pieceType + '_' + size;
     let grad = this._miniGradients.get(gradKey);
     if (!grad) {
       grad = ctx.createLinearGradient(0, 0, 0, size);

@@ -55,6 +55,7 @@ function detectTSpin(grid, pieceType, pieceX, pieceY, rotation) {
     case 1: frontCorners = [[cx + 1, cy - 1], [cx + 1, cy + 1]]; break;
     case 2: frontCorners = [[cx + 1, cy + 1], [cx - 1, cy + 1]]; break;
     case 3: frontCorners = [[cx - 1, cy + 1], [cx - 1, cy - 1]]; break;
+    default: return { isTSpin: false, isTSpinMini: false };
   }
 
   var frontFilled = 0;

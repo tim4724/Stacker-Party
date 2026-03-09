@@ -68,14 +68,18 @@ function startCountdown(onComplete, startFrom) {
   }, 1000);
 }
 
+function clearCountdownTimers() {
+  if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+  if (goTimeout) { clearTimeout(goTimeout); goTimeout = null; }
+  if (goOverlayTimer) { clearTimeout(goOverlayTimer); goOverlayTimer = null; }
+}
+
 function pauseGame() {
   if (paused) return;
   if (roomState !== ROOM_STATE.PLAYING && roomState !== ROOM_STATE.COUNTDOWN) return;
   paused = true;
   if (roomState === ROOM_STATE.COUNTDOWN) {
-    if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
-    if (goTimeout) { clearTimeout(goTimeout); goTimeout = null; }
-    if (goOverlayTimer) { clearTimeout(goOverlayTimer); goOverlayTimer = null; }
+    clearCountdownTimers();
   }
   party.broadcast({ type: MSG.GAME_PAUSED });
   onGamePaused();
@@ -105,10 +109,7 @@ function resumeGame() {
 }
 
 function returnToLobby() {
-  // Clear countdown state
-  if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
-  if (goTimeout) { clearTimeout(goTimeout); goTimeout = null; }
-  if (goOverlayTimer) { clearTimeout(goOverlayTimer); goOverlayTimer = null; }
+  clearCountdownTimers();
   graceTimers.forEach(clearTimeout);
   graceTimers.clear();
   countdownCallback = null;
@@ -155,11 +156,11 @@ function returnToLobby() {
 }
 
 function returnToLobbyUI() {
-  var wasInGame = currentScreen === 'game' || currentScreen === 'results';
+  var wasInGame = currentScreen === SCREEN.GAME || currentScreen === SCREEN.RESULTS;
   gameState = null;
   disconnectedQRs.clear();
   garbageIndicatorEffects.clear();
-  showScreen('lobby');
+  showScreen(SCREEN.LOBBY);
   updateStartButton();
   if (wasInGame && !popstateNavigating) {
     suppressPopstate = true;
@@ -181,12 +182,7 @@ function stopDisplayGame() {
     clearTimeout(entry[1]);
   }
   softDropTimers.clear();
-  clearInterval(countdownTimer);
-  clearTimeout(goTimeout);
-  clearTimeout(goOverlayTimer);
-  countdownTimer = null;
-  goTimeout = null;
-  goOverlayTimer = null;
+  clearCountdownTimers();
 }
 
 function runGameLocally() {
@@ -255,10 +251,10 @@ function runGameLocally() {
 
 function onCountdownDisplay(value) {
   gameState = null;
-  if (currentScreen !== 'game') {
+  if (currentScreen !== SCREEN.GAME) {
     history.pushState({ screen: 'game' }, '');
   }
-  showScreen('game');
+  showScreen(SCREEN.GAME);
   countdownOverlay.classList.remove('hidden');
   countdownOverlay.textContent = value;
   playCountdownBeep(value === 'GO');
@@ -355,7 +351,7 @@ function onGameEnd(msg) {
   stopDisplayGame();
   disconnectedQRs.clear();
   garbageIndicatorEffects.clear();
-  showScreen('results');
+  showScreen(SCREEN.RESULTS);
   resultsScreen.style.animation = 'none';
   resultsScreen.offsetHeight;
   resultsScreen.style.animation = '';
@@ -372,7 +368,7 @@ function onGamePaused() {
 function onGameResumed() {
   if (displayGame) displayGame.resume();
   pauseOverlay.classList.add('hidden');
-  if (currentScreen === 'game') {
+  if (currentScreen === SCREEN.GAME) {
     gameToolbar.classList.remove('hidden');
   }
   if (countdownOverlay.textContent) {
