@@ -169,28 +169,30 @@ describe('GarbageManager - target selection', () => {
   });
 });
 
-describe('GarbageManager - tick-based garbage delay', () => {
-  test('garbage is not ready until delay ticks elapse', () => {
+describe('GarbageManager - time-based garbage delay', () => {
+  test('garbage is not ready until delay ms elapse', () => {
+    const { LOGIC_TICK_MS } = require('../server/constants');
     const mgr = makeManager('p1', 'p2');
     mgr.processLineClear('p1', 4, false, -1, false); // sends 4 to p2
 
     assert.strictEqual(mgr.getPendingLines('p2'), 4, 'p2 has 4 pending lines');
 
     // Tick once — not ready yet
-    const ready = mgr.tick();
+    const ready = mgr.tick(LOGIC_TICK_MS);
     assert.strictEqual(ready.length, 0, 'garbage should not be ready after 1 tick');
     assert.strictEqual(mgr.getPendingLines('p2'), 4, 'still pending');
   });
 
-  test('garbage becomes ready after GARBAGE_DELAY_TICKS', () => {
-    const { GARBAGE_DELAY_TICKS } = require('../server/constants');
+  test('garbage becomes ready after GARBAGE_DELAY_MS', () => {
+    const { GARBAGE_DELAY_MS, LOGIC_TICK_MS } = require('../server/constants');
     const mgr = makeManager('p1', 'p2');
     mgr.processLineClear('p1', 4, false, -1, false);
 
     // Tick through the full delay
+    const tickCount = Math.ceil(GARBAGE_DELAY_MS / LOGIC_TICK_MS);
     let allReady = [];
-    for (let i = 0; i < GARBAGE_DELAY_TICKS; i++) {
-      allReady.push(...mgr.tick());
+    for (let i = 0; i < tickCount; i++) {
+      allReady.push(...mgr.tick(LOGIC_TICK_MS));
     }
 
     assert.strictEqual(allReady.length, 1);

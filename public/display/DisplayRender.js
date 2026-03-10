@@ -25,6 +25,44 @@ function renderLoop(timestamp) {
 
   if ((currentScreen !== SCREEN.GAME && currentScreen !== SCREEN.RESULTS) || !ctx) return;
 
+  // Drive game physics from RAF
+  if (displayGame && roomState === ROOM_STATE.PLAYING && !paused) {
+    var deltaMs = prevFrameTime ? Math.min(timestamp - prevFrameTime, 50) : 0;
+    try {
+      if (deltaMs > 0) {
+        displayGame.update(deltaMs);
+      }
+      gameState = displayGame.getSnapshot();
+    } catch (err) {
+      console.error('Game engine error:', err);
+      displayGame.ended = true;
+      var results = displayGame.getResults();
+      displayGame = null;
+      prevFrameTime = 0;
+      if (results) {
+        setRoomState(ROOM_STATE.RESULTS);
+        lastResults = results;
+        party.broadcast({ type: MSG.GAME_END, elapsed: results.elapsed, results: results.results });
+        onGameEnd(results);
+      }
+      return;
+    }
+
+    // Recalculate layout if player count changed
+    if (gameState.players && boardRenderers.length !== gameState.players.length) {
+      calculateLayout();
+    }
+    // Update music speed
+    if (music && music.playing && gameState.players && gameState.players.length > 0) {
+      var maxLevel = Math.max.apply(null, gameState.players.map(function(p) { return p.level || 1; }));
+      music.setSpeed(maxLevel);
+    }
+
+    prevFrameTime = timestamp;
+  } else {
+    prevFrameTime = 0;
+  }
+
   // Throttle to ~4fps when paused/results with no active animations
   var hasAnimations = animations && animations.active.length > 0;
   var hasGarbageEffects = garbageIndicatorEffects.size > 0 || garbageDefenceEffects.size > 0;

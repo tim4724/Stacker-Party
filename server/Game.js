@@ -16,7 +16,6 @@ class Game {
     this.startTime = null;
     this.logicInterval = null;
     this.ended = false;
-    this.dirty = false;
     this.paused = false;
     this.pausedAt = null;
 
@@ -36,13 +35,18 @@ class Game {
     }
   }
 
-  start() {
+  init() {
     this.startTime = Date.now();
 
     for (const [id, board] of this.boards) {
       board.spawnPiece();
     }
+  }
 
+  start() {
+    this.init();
+    // Flag so resume() knows to restart the interval (not needed for RAF-driven path via init())
+    this._usesInterval = true;
     this.logicInterval = setInterval(() => this._safeTick(), LOGIC_TICK_MS);
   }
 
@@ -57,7 +61,8 @@ class Game {
     if (this.paused || this.ended) return;
     this.paused = true;
     this.pausedAt = Date.now();
-    this.stop();
+    // Stop interval if running (start()-based path)
+    if (this.logicInterval) this.stop();
   }
 
   resume() {
@@ -67,7 +72,10 @@ class Game {
     this.startTime += pausedDuration;
     this.paused = false;
     this.pausedAt = null;
-    this.logicInterval = setInterval(() => this._safeTick(), LOGIC_TICK_MS);
+    // Restart interval only if start() was used (not init()-based path)
+    if (!this.logicInterval && this._usesInterval) {
+      this.logicInterval = setInterval(() => this._safeTick(), LOGIC_TICK_MS);
+    }
   }
 
   _safeTick() {
@@ -92,27 +100,22 @@ class Game {
     switch (action) {
       case 'left':
         board.moveLeft();
-        this.dirty = true;
         break;
       case 'right':
         board.moveRight();
-        this.dirty = true;
         break;
       case 'rotate_cw':
         board.rotateCW();
-        this.dirty = true;
         break;
       case 'hard_drop': {
         const result = board.hardDrop();
         if (result && result.linesCleared > 0) {
           this.handleLineClear(playerId, result);
         }
-        this.dirty = true;
         break;
       }
       case 'hold':
         board.hold();
-        this.dirty = true;
         break;
     }
   }
@@ -121,45 +124,33 @@ class Game {
     const board = this.boards.get(playerId);
     if (!board || !board.alive || this.ended) return;
     board.softDropStart(speed);
-    this.dirty = true;
   }
 
   handleSoftDropEnd(playerId) {
     const board = this.boards.get(playerId);
     if (!board || !board.alive || this.ended) return;
     board.softDropEnd();
-    this.dirty = true;
   }
 
-  logicTick() {
-    if (this.ended) return;
+  update(deltaMs) {
+    if (this.ended || this.paused) return;
 
     for (const [id, board] of this.boards) {
       if (!board.alive) continue;
 
       try {
-        const prevY = board.currentPiece ? board.currentPiece.y : null;
-        const wasClearing = board.clearingRows;
-        const result = board.tick(LOGIC_TICK_MS);
-        const curY = board.currentPiece ? board.currentPiece.y : null;
+        const result = board.tick(deltaMs);
 
-        if (result) {
-          this.dirty = true;
-          if (result.linesCleared > 0) {
-            this.handleLineClear(id, result);
-          }
-        } else if (prevY !== curY || (wasClearing && !board.clearingRows)) {
-          this.dirty = true;
+        if (result && result.linesCleared > 0) {
+          this.handleLineClear(id, result);
         }
       } catch (err) {
         console.error('[game] Board tick error for', id, ':', err);
         board.alive = false;
-        this.dirty = true;
       }
 
       // Check if player just died
       if (!board.alive) {
-        this.dirty = true;
         this.callbacks.onEvent({
           type: 'player_ko',
           playerId: id
@@ -168,50 +159,50 @@ class Game {
     }
 
     // Tick garbage delay timers and apply any that are ready
-    const readyGarbage = this.garbageManager.tick();
+    const readyGarbage = this.garbageManager.tick(deltaMs);
     for (const g of readyGarbage) {
       const board = this.boards.get(g.playerId);
       if (board && board.alive) {
-        // Don't deliver during line clear animation — the player just
-        // defended with this clear so new garbage should wait for next piece.
         if (board.clearingRows) {
           const queue = this.garbageManager.queues.get(g.playerId);
           if (queue) {
-            queue.push({ lines: g.lines, gapColumn: g.gapColumn, senderId: g.senderId, ticksLeft: 1 });
+            queue.push({ lines: g.lines, gapColumn: g.gapColumn, senderId: g.senderId, msLeft: deltaMs });
           }
         } else {
-          this.dirty = true;
           board.addPendingGarbage(g.lines, g.gapColumn);
         }
       }
     }
 
     this.checkWinCondition();
-
-    if (this.dirty) {
-      this.broadcastTick();
-      this.dirty = false;
-    }
   }
 
-  broadcastTick() {
-    if (this.ended) return;
-
+  getSnapshot() {
     const playerArr = [];
     for (const [id, board] of this.boards) {
       const state = board.getState();
       state.id = id;
-      // Include delayed garbage from GarbageManager in the pending count
       state.pendingGarbage += this.garbageManager.getPendingLines(id);
       playerArr.push(state);
     }
 
-    const elapsed = Date.now() - this.startTime;
-
-    this.callbacks.onGameState({
+    return {
       players: playerArr,
-      elapsed
-    });
+      elapsed: Date.now() - this.startTime
+    };
+  }
+
+  logicTick() {
+    if (this.ended) return;
+    this.update(LOGIC_TICK_MS);
+    this.broadcastTick();
+  }
+
+  broadcastTick() {
+    if (this.ended) return;
+    if (this.callbacks.onGameState) {
+      this.callbacks.onGameState(this.getSnapshot());
+    }
   }
 
   handleLineClear(playerId, clearResult) {

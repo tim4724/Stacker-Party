@@ -158,6 +158,7 @@ function returnToLobby() {
 function returnToLobbyUI() {
   var wasInGame = currentScreen === SCREEN.GAME || currentScreen === SCREEN.RESULTS;
   gameState = null;
+  prevFrameTime = 0;
   disconnectedQRs.clear();
   garbageIndicatorEffects.clear();
   garbageDefenceEffects.clear();
@@ -176,7 +177,6 @@ function returnToLobbyUI() {
 
 function stopDisplayGame() {
   if (displayGame) {
-    displayGame.stop();
     displayGame = null;
   }
   for (const entry of softDropTimers) {
@@ -201,26 +201,22 @@ function runGameLocally() {
   var seed = (Math.random() * 0xFFFFFFFF) >>> 0;
 
   displayGame = new Game(gamePlayers, {
-    onGameState: function(state) {
-      onGameState(state);
-      // Relay per-player state to controllers
-      if (state.players) {
-        for (var k = 0; k < state.players.length; k++) {
-          var p = state.players[k];
-          party.sendTo(p.id, {
+    onEvent: function(event) {
+      if (event.type === 'line_clear') {
+        onLineClear(event);
+        var snap = displayGame.getSnapshot();
+        var p = snap.players.find(function(pl) { return pl.id === event.playerId; });
+        if (p) {
+          party.sendTo(event.playerId, {
             type: MSG.PLAYER_STATE,
             score: p.score, level: p.level, lines: p.lines,
             alive: p.alive, garbageIncoming: p.pendingGarbage || 0
           });
         }
-      }
-    },
-    onEvent: function(event) {
-      if (event.type === 'line_clear') {
-        onLineClear(event);
       } else if (event.type === 'player_ko') {
         onPlayerKO(event);
         lastAliveState[event.playerId] = false;
+        party.sendTo(event.playerId, { type: MSG.PLAYER_STATE, alive: false });
         party.sendTo(event.playerId, { type: MSG.GAME_OVER });
       } else if (event.type === 'garbage_cancelled') {
         onGarbageCancelled(event);
@@ -244,7 +240,7 @@ function runGameLocally() {
     }
   }, seed);
 
-  displayGame.start();
+  displayGame.init();
 }
 
 // =====================================================================
@@ -273,18 +269,6 @@ function onCountdownDisplay(value) {
   }
 }
 
-function onGameState(msg) {
-  gameState = msg;
-  // playerOrder is snapshotted at game start — no dynamic pushes mid-game
-  if (msg.players && boardRenderers.length !== msg.players.length) {
-    calculateLayout();
-  }
-  if (music && music.playing && msg.players && msg.players.length > 0) {
-    var maxLevel = Math.max.apply(null, msg.players.map(function(p) { return p.level || 1; }));
-    music.setSpeed(maxLevel);
-  }
-}
-
 function onLineClear(msg) {
   if (!animations || !boardRenderers.length) return;
   var idx = playerOrder.indexOf(msg.playerId);
@@ -299,10 +283,10 @@ function onLineClear(msg) {
 
 function onGarbageCancelled(msg) {
   // The pending garbage count is already reduced in the engine;
-  // broadcastTick will update the meter on the next frame.
+  // the next getSnapshot() in renderLoop will update the meter.
 
   // Compute where the cancelled rows were on the meter.
-  // gameState still has the pre-tick pending count (broadcastTick hasn't fired yet).
+  // gameState still has the previous frame's snapshot.
   var oldPending = 0;
   if (gameState && gameState.players) {
     for (var i = 0; i < gameState.players.length; i++) {
@@ -380,6 +364,7 @@ function onPlayerKO(msg) {
 function onGameEnd(msg) {
   if (music) music.stop();
   stopDisplayGame();
+  prevFrameTime = 0;
   disconnectedQRs.clear();
   garbageIndicatorEffects.clear();
   garbageDefenceEffects.clear();

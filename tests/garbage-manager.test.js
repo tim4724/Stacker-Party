@@ -13,17 +13,17 @@ describe('GarbageManager - tick', () => {
     gm.addPlayer('p2');
   });
 
-  test('tick decrements ticksLeft on queued garbage', () => {
+  test('tick decrements msLeft on queued garbage', () => {
     const queue = gm.queues.get('p1');
-    queue.push({ lines: 2, gapColumn: 3, senderId: 'p2', ticksLeft: 5 });
-    gm.tick();
-    assert.strictEqual(queue[0].ticksLeft, 4);
+    queue.push({ lines: 2, gapColumn: 3, senderId: 'p2', msLeft: 100 });
+    gm.tick(20);
+    assert.strictEqual(queue[0].msLeft, 80);
   });
 
-  test('tick returns garbage when ticksLeft reaches 0', () => {
+  test('tick returns garbage when msLeft reaches 0', () => {
     const queue = gm.queues.get('p1');
-    queue.push({ lines: 3, gapColumn: 5, senderId: 'p2', ticksLeft: 1 });
-    const ready = gm.tick();
+    queue.push({ lines: 3, gapColumn: 5, senderId: 'p2', msLeft: 16 });
+    const ready = gm.tick(16);
     assert.strictEqual(ready.length, 1);
     assert.strictEqual(ready[0].playerId, 'p1');
     assert.strictEqual(ready[0].lines, 3);
@@ -35,16 +35,16 @@ describe('GarbageManager - tick', () => {
 
   test('tick returns empty array when no garbage is ready', () => {
     const queue = gm.queues.get('p1');
-    queue.push({ lines: 2, gapColumn: 3, senderId: 'p2', ticksLeft: 10 });
-    const ready = gm.tick();
+    queue.push({ lines: 2, gapColumn: 3, senderId: 'p2', msLeft: 200 });
+    const ready = gm.tick(16);
     assert.strictEqual(ready.length, 0);
     assert.strictEqual(queue.length, 1);
   });
 
   test('tick processes multiple players independently', () => {
-    gm.queues.get('p1').push({ lines: 1, gapColumn: 0, senderId: 'p2', ticksLeft: 1 });
-    gm.queues.get('p2').push({ lines: 2, gapColumn: 4, senderId: 'p1', ticksLeft: 1 });
-    const ready = gm.tick();
+    gm.queues.get('p1').push({ lines: 1, gapColumn: 0, senderId: 'p2', msLeft: 16 });
+    gm.queues.get('p2').push({ lines: 2, gapColumn: 4, senderId: 'p1', msLeft: 16 });
+    const ready = gm.tick(16);
     assert.strictEqual(ready.length, 2);
     const ids = ready.map(g => g.playerId).sort();
     assert.deepStrictEqual(ids, ['p1', 'p2']);
@@ -52,21 +52,21 @@ describe('GarbageManager - tick', () => {
 
   test('tick handles multiple garbage entries for same player', () => {
     const queue = gm.queues.get('p1');
-    queue.push({ lines: 1, gapColumn: 0, senderId: 'p2', ticksLeft: 1 });
-    queue.push({ lines: 2, gapColumn: 3, senderId: 'p2', ticksLeft: 3 });
-    const ready = gm.tick();
+    queue.push({ lines: 1, gapColumn: 0, senderId: 'p2', msLeft: 16 });
+    queue.push({ lines: 2, gapColumn: 3, senderId: 'p2', msLeft: 48 });
+    const ready = gm.tick(16);
     assert.strictEqual(ready.length, 1);
     assert.strictEqual(ready[0].lines, 1);
     assert.strictEqual(queue.length, 1);
-    assert.strictEqual(queue[0].ticksLeft, 2);
+    assert.strictEqual(queue[0].msLeft, 32);
   });
 
   test('multiple ticks count down correctly', () => {
     const queue = gm.queues.get('p1');
-    queue.push({ lines: 4, gapColumn: 7, senderId: 'p2', ticksLeft: 3 });
-    assert.strictEqual(gm.tick().length, 0);
-    assert.strictEqual(gm.tick().length, 0);
-    const ready = gm.tick();
+    queue.push({ lines: 4, gapColumn: 7, senderId: 'p2', msLeft: 48 });
+    assert.strictEqual(gm.tick(16).length, 0);
+    assert.strictEqual(gm.tick(16).length, 0);
+    const ready = gm.tick(16);
     assert.strictEqual(ready.length, 1);
     assert.strictEqual(ready[0].lines, 4);
   });
@@ -92,7 +92,7 @@ describe('GarbageManager - processLineClear delivery', () => {
 
   test('garbage cancels incoming before sending', () => {
     // Give p1 some pending garbage
-    gm.queues.get('p1').push({ lines: 2, gapColumn: 0, senderId: 'p2', ticksLeft: 5 });
+    gm.queues.get('p1').push({ lines: 2, gapColumn: 0, senderId: 'p2', msLeft: 100 });
     const result = gm.processLineClear('p1', 4, false, 0, false, () => 5);
     assert.strictEqual(result.cancelled, 2);
   });

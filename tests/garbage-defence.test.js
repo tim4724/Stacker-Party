@@ -35,7 +35,7 @@ describe('GarbageManager - defenseLines parameter', () => {
 
   test('defenseLines limits queue cancellation independently of attack', () => {
     // p1 has 4 incoming garbage
-    gm.queues.get('p1').push({ lines: 4, gapColumn: 0, senderId: 'p2', ticksLeft: 5 });
+    gm.queues.get('p1').push({ lines: 4, gapColumn: 0, senderId: 'p2', msLeft: 5 });
 
     // Clear 4 lines (attack = 4) but only 1 defenseLines remaining
     const result = gm.processLineClear('p1', 4, false, -1, false, () => 5, 1);
@@ -47,7 +47,7 @@ describe('GarbageManager - defenseLines parameter', () => {
   });
 
   test('defenseLines=0 skips queue cancellation entirely', () => {
-    gm.queues.get('p1').push({ lines: 2, gapColumn: 0, senderId: 'p2', ticksLeft: 5 });
+    gm.queues.get('p1').push({ lines: 2, gapColumn: 0, senderId: 'p2', msLeft: 5 });
 
     // Clear 4 lines but 0 defenseLines (board-pending already absorbed all defense)
     const result = gm.processLineClear('p1', 4, false, -1, false, () => 5, 0);
@@ -58,7 +58,7 @@ describe('GarbageManager - defenseLines parameter', () => {
   });
 
   test('defenseLines=null falls back to linesCleared', () => {
-    gm.queues.get('p1').push({ lines: 2, gapColumn: 0, senderId: 'p2', ticksLeft: 5 });
+    gm.queues.get('p1').push({ lines: 2, gapColumn: 0, senderId: 'p2', msLeft: 5 });
 
     const result = gm.processLineClear('p1', 4, false, -1, false, () => 5, null);
 
@@ -66,7 +66,7 @@ describe('GarbageManager - defenseLines parameter', () => {
   });
 
   test('defenseLines undefined falls back to linesCleared', () => {
-    gm.queues.get('p1').push({ lines: 2, gapColumn: 0, senderId: 'p2', ticksLeft: 5 });
+    gm.queues.get('p1').push({ lines: 2, gapColumn: 0, senderId: 'p2', msLeft: 5 });
 
     const result = gm.processLineClear('p1', 4, false, -1, false, () => 5);
 
@@ -88,7 +88,7 @@ describe('Game - board-pending garbage cancellation', () => {
 
     // Also queue delayed garbage in the manager
     game.garbageManager.queues.get('p1').push(
-      { lines: 2, gapColumn: 5, senderId: 'p2', ticksLeft: 50 }
+      { lines: 2, gapColumn: 5, senderId: 'p2', msLeft: 50 }
     );
 
     // Simulate a 4-line clear
@@ -117,7 +117,7 @@ describe('Game - board-pending garbage cancellation', () => {
     // 3 lines on board, 3 in manager queue
     board.pendingGarbage.push({ lines: 3, gapColumn: 0 });
     game.garbageManager.queues.get('p1').push(
-      { lines: 3, gapColumn: 0, senderId: 'p2', ticksLeft: 50 }
+      { lines: 3, gapColumn: 0, senderId: 'p2', msLeft: 50 }
     );
 
     // Clear 4 lines: should cancel all 3 board-pending, then 1 from manager
@@ -206,9 +206,10 @@ describe('Game - garbage delivery during line clear animation', () => {
     board.clearingRows = [20, 21];
     board.clearingStartTime = Date.now() + 60000;
 
-    // Queue garbage that expires this tick
+    // Queue garbage that expires this tick (msLeft <= LOGIC_TICK_MS)
+    const LOGIC_TICK_MS = require('../server/constants').LOGIC_TICK_MS;
     game.garbageManager.queues.get('p1').push(
-      { lines: 3, gapColumn: 2, senderId: 'p2', ticksLeft: 1 }
+      { lines: 3, gapColumn: 2, senderId: 'p2', msLeft: LOGIC_TICK_MS }
     );
 
     game.logicTick();
@@ -216,11 +217,11 @@ describe('Game - garbage delivery during line clear animation', () => {
     // Board should NOT have received the garbage
     assert.strictEqual(board.pendingGarbage.length, 0, 'no garbage delivered during clear');
 
-    // Garbage should be re-queued in manager with 1 tick delay
+    // Garbage should be re-queued in manager with one-frame delay
     const requeued = game.garbageManager.queues.get('p1');
     assert.strictEqual(requeued.length, 1, 'garbage re-queued');
     assert.strictEqual(requeued[0].lines, 3);
-    assert.strictEqual(requeued[0].ticksLeft, 1);
+    assert.ok(requeued[0].msLeft > 0, 'msLeft is positive (one frame delay)');
     assert.strictEqual(requeued[0].senderId, 'p2');
   });
 
@@ -231,8 +232,9 @@ describe('Game - garbage delivery during line clear animation', () => {
 
     assert.strictEqual(board.clearingRows, null);
 
+    const LOGIC_TICK_MS = require('../server/constants').LOGIC_TICK_MS;
     game.garbageManager.queues.get('p1').push(
-      { lines: 2, gapColumn: 4, senderId: 'p2', ticksLeft: 1 }
+      { lines: 2, gapColumn: 4, senderId: 'p2', msLeft: LOGIC_TICK_MS }
     );
 
     game.logicTick();

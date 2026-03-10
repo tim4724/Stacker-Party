@@ -7,11 +7,11 @@ var constants = (typeof require !== 'undefined') ? require('./constants') : wind
 var GARBAGE_TABLE = constants.GARBAGE_TABLE;
 var TSPIN_GARBAGE_MULTIPLIER = constants.TSPIN_GARBAGE_MULTIPLIER;
 var COMBO_GARBAGE = constants.COMBO_GARBAGE;
-var GARBAGE_DELAY_TICKS = constants.GARBAGE_DELAY_TICKS;
+var GARBAGE_DELAY_MS = constants.GARBAGE_DELAY_MS;
 
 class GarbageManager {
   constructor(rng) {
-    this.queues = new Map(); // playerId -> array of { lines, gapColumn, senderId, ticksLeft }
+    this.queues = new Map(); // playerId -> array of { lines, gapColumn, senderId, msLeft }
     this.rng = rng || Math.random;
   }
 
@@ -27,12 +27,12 @@ class GarbageManager {
    * Called each game tick to count down garbage delays.
    * Returns an array of { playerId, lines, gapColumn, senderId } for garbage that is ready.
    */
-  tick() {
+  tick(deltaMs) {
     const ready = [];
     for (const [playerId, queue] of this.queues) {
       for (let i = queue.length - 1; i >= 0; i--) {
-        queue[i].ticksLeft--;
-        if (queue[i].ticksLeft <= 0) {
+        queue[i].msLeft -= deltaMs;
+        if (queue[i].msLeft <= 0) {
           const g = queue.splice(i, 1)[0];
           ready.push({ playerId, lines: g.lines, gapColumn: g.gapColumn, senderId: g.senderId });
         }
@@ -92,7 +92,7 @@ class GarbageManager {
       if (targetId) {
         const gapColumn = this.generateGapColumn();
         const queue = this.queues.get(targetId);
-        queue.push({ lines: netAttack, gapColumn, senderId, ticksLeft: GARBAGE_DELAY_TICKS });
+        queue.push({ lines: netAttack, gapColumn, senderId, msLeft: GARBAGE_DELAY_MS });
         deliveries.push({ fromId: senderId, toId: targetId, lines: netAttack, gapColumn });
         sent = netAttack;
       }

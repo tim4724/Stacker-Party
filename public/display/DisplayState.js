@@ -92,6 +92,9 @@ var muted = localStorage.getItem('tetris_muted') === '1';
 // Render loop RAF handle (for stop/start)
 var rafId = null;
 
+// RAF-driven game loop timing
+var prevFrameTime = 0;
+
 // --- Slot Helpers ---
 // Find the first available player slot (0–3) not used by any current player
 function nextAvailableSlot() {

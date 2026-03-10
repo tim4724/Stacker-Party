@@ -59,7 +59,7 @@ const GARBAGE_TABLE = {
 
 const TSPIN_GARBAGE_MULTIPLIER = 2;
 const COMBO_GARBAGE = [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 4, 5];
-const GARBAGE_DELAY_TICKS = 120; // Ticks before garbage rises (~2s at 60Hz), allowing counterplay
+const GARBAGE_DELAY_MS = 2000;   // Milliseconds before garbage rises, allowing counterplay
 
 // Room settings
 const MAX_PLAYERS = 4;
@@ -95,7 +95,7 @@ exports.BACK_TO_BACK_MULTIPLIER = BACK_TO_BACK_MULTIPLIER;
 exports.GARBAGE_TABLE = GARBAGE_TABLE;
 exports.TSPIN_GARBAGE_MULTIPLIER = TSPIN_GARBAGE_MULTIPLIER;
 exports.COMBO_GARBAGE = COMBO_GARBAGE;
-exports.GARBAGE_DELAY_TICKS = GARBAGE_DELAY_TICKS;
+exports.GARBAGE_DELAY_MS = GARBAGE_DELAY_MS;
 exports.MAX_PLAYERS = MAX_PLAYERS;
 exports.ROOM_CODE_LENGTH = ROOM_CODE_LENGTH;
 exports.COUNTDOWN_SECONDS = COUNTDOWN_SECONDS;
