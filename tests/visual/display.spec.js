@@ -25,7 +25,9 @@ test.describe('Display', () => {
     await page.goto('/');
     await waitForFont(page);
     await stopDisplayBackground(page);
-    await expect(page).toHaveScreenshot('02-welcome.png');
+    await expect(page).toHaveScreenshot('02-welcome.png', {
+      mask: [page.locator('#version-label')],
+    });
   });
 
   test('lobby screen - empty', async ({ page }) => {

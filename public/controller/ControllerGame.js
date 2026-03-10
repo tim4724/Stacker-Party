@@ -67,6 +67,7 @@ function onWelcome(data) {
     hintsSawLeft = false;
     hintsSawRight = false;
     compassHints.classList.remove('faded');
+    gestureHints.classList.remove('faded');
 
     if (data.paused) {
       onGamePaused();
@@ -115,6 +116,7 @@ function onGameStart() {
   hintsSawLeft = false;
   hintsSawRight = false;
   compassHints.classList.remove('faded');
+  gestureHints.classList.remove('faded');
   gameScreen.classList.remove('dead');
   gameScreen.classList.remove('paused');
   gameScreen.classList.remove('countdown');
@@ -348,6 +350,7 @@ function initTouchInput() {
       if (hintsSawLeft && hintsSawRight && !hintsFadeTimer) {
         hintsFadeTimer = setTimeout(function () {
           compassHints.classList.add('faded');
+          gestureHints.classList.add('faded');
         }, 5000);
       }
     }

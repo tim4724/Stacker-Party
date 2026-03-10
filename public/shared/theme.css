@@ -48,6 +48,10 @@
   --glow-green: rgba(0, 255, 136, 0.3);
   --glow-blue: rgba(68, 68, 255, 0.06);
 
+  /* Hints */
+  --text-hint: rgba(255, 255, 255, 0.35);
+  --text-hint-strong: rgba(255, 255, 255, 0.45);
+
   /* Opacities */
   --opacity-faint: 0.04;
   --opacity-tint: 0.06;
