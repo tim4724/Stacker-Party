@@ -71,6 +71,7 @@ public/
   controller/# Phone touch controller
   shared/    # Protocol, relay connection, colors, theme, shared UI
 tests/       # Unit tests (node:test) and Playwright visual snapshots
+banner/      # GitHub banner/preview image generator (Playwright)
 ```
 
 ## Configuration
