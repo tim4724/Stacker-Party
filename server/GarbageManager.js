@@ -84,7 +84,7 @@ class GarbageManager {
     // Remaining attack after cancellation absorbs some offensive power
     const netAttack = Math.max(0, garbageLines - cancelled);
 
-    // Send net attack to opponent with the highest stack (most vulnerable)
+    // Send net attack to opponent with the lowest stack (strongest player)
     let sent = 0;
     const deliveries = [];
     if (netAttack > 0) {
