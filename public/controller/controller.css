@@ -341,6 +341,12 @@ html, body {
   letter-spacing: 0.02em;
 }
 
+#gesture-hints .hint-icon {
+  height: 1em;
+  width: auto;
+  vertical-align: -0.15em;
+}
+
 #touch-area {
   flex: 1;
   width: 100%;
