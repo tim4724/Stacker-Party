@@ -348,10 +348,7 @@ function initTouchInput() {
       if (action === 'left') hintsSawLeft = true;
       if (action === 'right') hintsSawRight = true;
       if (hintsSawLeft && hintsSawRight && !hintsFadeTimer) {
-        hintsFadeTimer = setTimeout(function () {
-          compassHints.classList.add('faded');
-          gestureHints.classList.add('faded');
-        }, 5000);
+        // Hints stay visible permanently
       }
     }
 
