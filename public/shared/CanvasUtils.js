@@ -56,13 +56,13 @@ var _fontLoaded = false;
 if (typeof document !== 'undefined' && document.fonts && document.fonts.addEventListener) {
   document.fonts.addEventListener('loadingdone', function() {
     if (!_fontLoaded) {
-      _fontLoaded = document.fonts?.check?.('12px Orbitron') ?? false;
+      _fontLoaded = document.fonts?.check?.('700 12px Orbitron') ?? false;
     }
   });
 }
 function getDisplayFont() {
   if (!_fontLoaded) {
-    _fontLoaded = document.fonts?.check?.('12px Orbitron') ?? false;
+    _fontLoaded = document.fonts?.check?.('700 12px Orbitron') ?? false;
   }
   return _fontLoaded ? 'Orbitron' : '"Courier New", monospace';
 }
