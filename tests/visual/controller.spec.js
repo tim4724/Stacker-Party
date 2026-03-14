@@ -63,13 +63,9 @@ test.describe('Controller', () => {
     // Start game via host
     await host.click('#start-btn');
     await waitForControllerGame(host);
-    // Freeze ping to placeholder to avoid flaky diffs (override global-scope function)
-    await host.evaluate(() => {
-      window.updatePingDisplay = function() {};
-      const ping = document.getElementById('ping-display');
-      if (ping) { ping.textContent = '-- ms'; ping.className = 'ping-display'; }
+    await expect(host).toHaveScreenshot('05-game-host.png', {
+      mask: [host.locator('#ping-display')],
     });
-    await expect(host).toHaveScreenshot('05-game-host.png');
   });
 
   test('game screen - non-host', async ({ page, context }) => {
@@ -78,13 +74,9 @@ test.describe('Controller', () => {
     const host = controllers[0];
     await host.click('#start-btn');
     await waitForControllerGame(nonHost);
-    // Freeze ping to placeholder to avoid flaky diffs (override global-scope function)
-    await nonHost.evaluate(() => {
-      window.updatePingDisplay = function() {};
-      const ping = document.getElementById('ping-display');
-      if (ping) { ping.textContent = '-- ms'; ping.className = 'ping-display'; }
+    await expect(nonHost).toHaveScreenshot('06-game-nonhost.png', {
+      mask: [nonHost.locator('#ping-display')],
     });
-    await expect(nonHost).toHaveScreenshot('06-game-nonhost.png');
   });
 
   test('game screen - paused (host)', async ({ page, context }) => {
@@ -95,7 +87,9 @@ test.describe('Controller', () => {
     await host.click('#pause-btn');
     await host.waitForSelector('#pause-overlay:not(.hidden)');
     await host.waitForTimeout(150);
-    await expect(host).toHaveScreenshot('07-pause-host.png');
+    await expect(host).toHaveScreenshot('07-pause-host.png', {
+      mask: [host.locator('#ping-display')],
+    });
   });
 
   test('game screen - paused (non-host)', async ({ page, context }) => {
@@ -107,7 +101,9 @@ test.describe('Controller', () => {
     await host.click('#pause-btn');
     await nonHost.waitForSelector('#pause-overlay:not(.hidden)');
     await nonHost.waitForTimeout(150);
-    await expect(nonHost).toHaveScreenshot('08-pause-nonhost.png');
+    await expect(nonHost).toHaveScreenshot('08-pause-nonhost.png', {
+      mask: [nonHost.locator('#ping-display')],
+    });
   });
 
   test('results - 1 player', async ({ page, context }) => {
@@ -194,7 +190,9 @@ test.describe('Controller', () => {
       document.getElementById('reconnect-rejoin-btn').classList.add('hidden');
     });
     await host.waitForTimeout(150);
-    await expect(host).toHaveScreenshot('09a-reconnect-attempt.png');
+    await expect(host).toHaveScreenshot('09a-reconnect-attempt.png', {
+      mask: [host.locator('#ping-display')],
+    });
   });
 
   test('reconnect overlay - display disconnected', async ({ page, context }) => {
@@ -209,7 +207,9 @@ test.describe('Controller', () => {
       document.getElementById('reconnect-rejoin-btn').classList.add('hidden');
     });
     await host.waitForTimeout(150);
-    await expect(host).toHaveScreenshot('09b-reconnect-display.png');
+    await expect(host).toHaveScreenshot('09b-reconnect-display.png', {
+      mask: [host.locator('#ping-display')],
+    });
   });
 
   test('reconnect overlay - failed with rejoin', async ({ page, context }) => {
@@ -224,7 +224,9 @@ test.describe('Controller', () => {
       document.getElementById('reconnect-rejoin-btn').classList.remove('hidden');
     });
     await host.waitForTimeout(150);
-    await expect(host).toHaveScreenshot('09c-reconnect-rejoin.png');
+    await expect(host).toHaveScreenshot('09c-reconnect-rejoin.png', {
+      mask: [host.locator('#ping-display')],
+    });
   });
 
   test('error - room not found', async ({ page }) => {
