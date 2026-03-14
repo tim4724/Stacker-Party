@@ -387,11 +387,8 @@ function onGameEnd(msg) {
   disconnectedQRs.clear();
   garbageIndicatorEffects.clear();
   garbageDefenceEffects.clear();
-  showScreen(SCREEN.RESULTS);
-  resultsScreen.style.animation = 'none';
-  resultsScreen.offsetHeight;
-  resultsScreen.style.animation = '';
   renderResults(msg.results);
+  showScreen(SCREEN.RESULTS);
 }
 
 function onGamePaused() {

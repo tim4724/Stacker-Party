@@ -67,9 +67,9 @@ test.describe('Display', () => {
     await injectPlayers(page, 1);
     await injectGameState(page, 1, {
       pieces: [
-        { typeId: 1, x: 3, y: 2, blocks: [[0, 1], [1, 1], [2, 1], [3, 1]] }
+        { typeId: 1, x: 6, y: 2, blocks: [[0, 1], [1, 1], [2, 1], [3, 1]] }
       ],
-      ghostYs: [13]
+      ghostYs: [14]
     });
     await page.waitForTimeout(150);
     await expect(page).toHaveScreenshot('05-game-1p.png');
@@ -80,8 +80,8 @@ test.describe('Display', () => {
     await injectPlayers(page, 2);
     await injectGameState(page, 2, {
       pieces: [
-        { typeId: 6, x: 4, y: 2, blocks: [[1, 0], [0, 1], [1, 1], [2, 1]] },
-        { typeId: 2, x: 3, y: 3, blocks: [[0, 0], [0, 1], [1, 1], [2, 1]] }
+        { typeId: 6, x: 7, y: 2, blocks: [[1, 0], [0, 1], [1, 1], [2, 1]] },
+        { typeId: 2, x: 7, y: 3, blocks: [[0, 0], [0, 1], [1, 1], [2, 1]] }
       ],
       ghostYs: [14, 14]
     });
@@ -94,12 +94,12 @@ test.describe('Display', () => {
     await injectPlayers(page, 4);
     await injectGameState(page, 4, {
       pieces: [
-        { typeId: 5, x: 4, y: 2, blocks: [[1, 0], [2, 0], [0, 1], [1, 1]] },
-        { typeId: 7, x: 3, y: 3, blocks: [[0, 0], [1, 0], [1, 1], [2, 1]] },
-        { typeId: 3, x: 3, y: 4, blocks: [[2, 0], [0, 1], [1, 1], [2, 1]] },
-        { typeId: 4, x: 5, y: 3, blocks: [[1, 0], [2, 0], [1, 1], [2, 1]] }
+        { typeId: 6, x: 7, y: 2, blocks: [[1, 0], [0, 1], [1, 1], [2, 1]] },
+        { typeId: 7, x: 7, y: 3, blocks: [[0, 0], [1, 0], [1, 1], [2, 1]] },
+        { typeId: 3, x: 3, y: 2, blocks: [[2, 0], [0, 1], [1, 1], [2, 1]] },
+        { typeId: 6, x: 3, y: 3, blocks: [[1, 0], [0, 1], [1, 1], [2, 1]] }
       ],
-      ghostYs: [14, 14, 14, 14]
+      ghostYs: [14, 14, 15, 16]
     });
     await page.waitForTimeout(150);
     await expect(page).toHaveScreenshot('07-game-4p.png');

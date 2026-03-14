@@ -110,6 +110,19 @@ html, body {
   margin-top: 14px;
 }
 
+.join-url-hint {
+  position: absolute;
+  bottom: calc(env(safe-area-inset-bottom) + 12px);
+  left: 12px;
+  right: 12px;
+  font-size: clamp(1rem, 4.5vw, 1.2rem);
+  color: var(--text-secondary);
+  opacity: 0.4;
+  text-align: center;
+  word-break: break-all;
+  line-height: 1.3;
+}
+
 #lobby-screen.controller-shell {
   padding-top: 0;
 }

@@ -1,5 +1,5 @@
 // @ts-check
-const { defineConfig } = require('@playwright/test');
+const { defineConfig, devices } = require('@playwright/test');
 
 module.exports = defineConfig({
   testDir: './tests/visual',
@@ -29,7 +29,15 @@ module.exports = defineConfig({
     {
       name: 'controller',
       testMatch: 'controller.spec.js',
-      use: { viewport: { width: 390, height: 844 } },
+      use: {
+        viewport: devices['iPhone 14'].screen,
+        deviceScaleFactor: devices['iPhone 14'].deviceScaleFactor,
+        isMobile: true,
+        hasTouch: true,
+      },
+      expect: {
+        toHaveScreenshot: { scale: 'device' },
+      },
     },
   ],
 });

@@ -76,6 +76,8 @@ async function gotoDisplayTest(page) {
 // --- Integration test helpers (real Party-Server flows) ---
 
 async function createRoom(page) {
+  // Display page needs a desktop viewport even when running in the controller project
+  await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto('/');
   await waitForFont(page);
   const continueAnyway = page.locator('#mobile-hint button');

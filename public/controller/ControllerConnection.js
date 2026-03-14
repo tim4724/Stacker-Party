@@ -58,7 +58,7 @@ function connect() {
         reconnectHeading.textContent = 'DISCONNECTED';
         reconnectStatus.textContent = '';
         reconnectRejoinBtn.classList.remove('hidden');
-      }, 1000);
+      }, 500);
     }
   };
 
