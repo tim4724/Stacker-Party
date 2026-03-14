@@ -15,7 +15,7 @@ function connectAndCreateRoom() {
     if (lastRoomCode) {
       party.join(lastRoomCode);
     } else {
-      party.create(5);
+      party.create(9);
     }
   };
 

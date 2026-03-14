@@ -105,6 +105,14 @@ test.describe('Display', () => {
     await expect(page).toHaveScreenshot('07-game-4p.png');
   });
 
+  test('game screen - 8 players', async ({ page }) => {
+    await gotoDisplayTest(page);
+    await injectPlayers(page, 8);
+    await injectGameState(page, 8, {});
+    await page.waitForTimeout(150);
+    await expect(page).toHaveScreenshot('07b-game-8p.png');
+  });
+
   test('game screen - with KO', async ({ page }) => {
     await gotoDisplayTest(page);
     await injectPlayers(page, 2);
@@ -179,5 +187,14 @@ test.describe('Display', () => {
     await page.waitForSelector('#results-screen:not(.hidden)');
     await page.waitForTimeout(1100);
     await expect(page).toHaveScreenshot('10c-results-4p.png');
+  });
+
+  test('results screen - 8 players', async ({ page }) => {
+    await gotoDisplayTest(page);
+    await injectPlayers(page, 8);
+    await injectResults(page, 8);
+    await page.waitForSelector('#results-screen:not(.hidden)');
+    await page.waitForTimeout(1100);
+    await expect(page).toHaveScreenshot('10d-results-8p.png');
   });
 });

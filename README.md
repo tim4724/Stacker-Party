@@ -8,7 +8,7 @@ Browser-based multiplayer Tetris where phones become controllers and a shared sc
 
 ## Overview
 
-Tetris Party supports 1 to 4 players on a single shared display. One browser window acts as the game screen (TV, monitor, or laptop), while each player joins by scanning a QR code with their phone. The phone becomes a touch-based controller with gesture input and haptic feedback. The display client runs the authoritative game engine at 60 Hz, communicating with controllers through a lightweight WebSocket relay.
+Tetris Party supports 1 to 8 players on a single shared display. One browser window acts as the game screen (TV, monitor, or laptop), while each player joins by scanning a QR code with their phone. The phone becomes a touch-based controller with gesture input and haptic feedback. The display client runs the authoritative game engine at 60 Hz, communicating with controllers through a lightweight WebSocket relay.
 
 ## Architecture
 
@@ -24,7 +24,7 @@ The display browser runs the game engine and renders all player boards. Controll
 
 ## Features
 
-- 1--4 players on one screen
+- 1--8 players on one screen
 - QR code join -- scan and play, no app install
 - Touch gesture controls with haptic feedback
 - Competitive mode with garbage lines

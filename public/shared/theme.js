@@ -34,10 +34,14 @@ const PLAYER_COLORS = [
   '#FF6B6B', // Player 1 - red
   '#4ECDC4', // Player 2 - teal
   '#FFE66D', // Player 3 - yellow
-  '#A78BFA'  // Player 4 - purple
+  '#A78BFA', // Player 4 - purple
+  '#FF9F43', // Player 5 - orange
+  '#54A0FF', // Player 6 - blue
+  '#FF6FB5', // Player 7 - pink
+  '#1DD1A1'  // Player 8 - mint
 ];
 
-const PLAYER_NAMES = ['Player 1', 'Player 2', 'Player 3', 'Player 4'];
+const PLAYER_NAMES = ['Player 1', 'Player 2', 'Player 3', 'Player 4', 'Player 5', 'Player 6', 'Player 7', 'Player 8'];
 
 // --- Theme tokens ---
 const THEME = Object.freeze({

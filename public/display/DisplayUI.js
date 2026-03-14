@@ -27,11 +27,24 @@ function calculateLayout() {
   if (n === 1) { gridCols = 1; gridRows = 1; }
   else if (n === 2) { gridCols = 2; gridRows = 1; }
   else if (n === 3) { gridCols = 3; gridRows = 1; }
-  else {
+  else if (n <= 4) {
     if (cellSizeFor(4, 1) >= cellSizeFor(2, 2)) {
       gridCols = 4; gridRows = 1;
     } else {
       gridCols = 2; gridRows = 2;
+    }
+  } else if (n <= 6) {
+    if (cellSizeFor(n, 1) >= cellSizeFor(3, 2)) {
+      gridCols = n; gridRows = 1;
+    } else {
+      gridCols = 3; gridRows = 2;
+    }
+  } else {
+    // 7-8 players: 4x2 grid
+    if (cellSizeFor(n, 1) >= cellSizeFor(4, 2)) {
+      gridCols = n; gridRows = 1;
+    } else {
+      gridCols = 4; gridRows = 2;
     }
   }
 
@@ -58,24 +71,37 @@ function calculateLayout() {
 }
 
 // --- Lobby UI ---
-var SLOT_LABELS = ['P1', 'P2', 'P3', 'P4'];
-var MAX_SLOTS = 4;
+var PLACEHOLDER_SLOTS = 4;  // Always show 4 placeholders in lobby
 
 function updatePlayerList() {
-  if (playerListEl.children.length === 0) {
-    for (var i = 0; i < MAX_SLOTS; i++) {
-      var card = document.createElement('div');
-      card.className = 'player-card empty';
-      var name = document.createElement('span');
-      name.textContent = SLOT_LABELS[i];
-      card.appendChild(name);
-      playerListEl.appendChild(card);
-    }
+  // Determine how many cards we need: at least PLACEHOLDER_SLOTS, or more if players exceed that
+  var totalSlots = Math.max(PLACEHOLDER_SLOTS, GameConstants.MAX_PLAYERS);
+
+  // Ensure we have enough card elements
+  while (playerListEl.children.length < totalSlots) {
+    var card = document.createElement('div');
+    card.className = 'player-card empty';
+    var name = document.createElement('span');
+    var idx = playerListEl.children.length;
+    name.textContent = 'P' + (idx + 1);
+    card.appendChild(name);
+    playerListEl.appendChild(card);
   }
 
-  for (var j = 0; j < MAX_SLOTS; j++) {
+  // Find the highest occupied slot to know which cards to show
+  var highestOccupied = -1;
+  for (const entry of players) {
+    if (entry[1].playerIndex > highestOccupied) highestOccupied = entry[1].playerIndex;
+  }
+  var visibleSlots = Math.max(PLACEHOLDER_SLOTS, highestOccupied + 1);
+
+  for (var j = 0; j < totalSlots; j++) {
     var card = playerListEl.children[j];
     var nameEl = card.querySelector('span');
+
+    // Hide slots beyond visible range
+    card.style.display = j < visibleSlots ? '' : 'none';
+
     // Find player assigned to this slot by playerIndex
     var playerId = null;
     var info = null;
@@ -101,7 +127,7 @@ function updatePlayerList() {
       }
     } else {
       card.style.removeProperty('--player-color');
-      nameEl.textContent = SLOT_LABELS[j];
+      nameEl.textContent = 'P' + (j + 1);
       card.classList.add('empty');
       card.classList.remove('join-pop');
       delete card.dataset.playerId;
