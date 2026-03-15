@@ -222,10 +222,62 @@ html, body {
   animation: fadeUp 0.5s 0.3s ease-out both;
 }
 
+#level-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+}
+
+#level-selector .level-heading {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.06em;
+  margin-right: 0.3rem;
+}
+
+#level-display {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  min-width: 1.4em;
+  text-align: center;
+}
+
+#level-selector .level-btn {
+  width: 2.8rem;
+  height: 2.8rem;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+}
+
+#level-selector .level-btn:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+#level-selector .level-btn:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
 #player-identity-card {
   justify-content: center;
   padding: 14px 28px;
   font-size: clamp(1.1rem, 5vw, 1.5rem);
+  min-width: min(65vw, 260px);
 }
 
 .status-banner {

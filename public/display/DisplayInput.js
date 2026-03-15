@@ -42,6 +42,9 @@ function handleControllerMessage(fromId, msg) {
       case MSG.RESUME_GAME:
         if (fromId === hostId) resumeGame();
         break;
+      case MSG.SET_LEVEL:
+        onSetLevel(fromId, msg);
+        break;
       case MSG.LEAVE:
         removePlayer(fromId, true);
         break;
@@ -79,6 +82,7 @@ function onHello(fromId, msg) {
       isHost: fromId === hostId,
       playerCount: players.size,
       roomState: roomState,
+      startLevel: existing.startLevel || 1,
       alive: lastAliveState[fromId] != null ? lastAliveState[fromId] : true,
       paused: paused
     };
@@ -111,6 +115,7 @@ function onHello(fromId, msg) {
     playerName: playerName,
     playerColor: color,
     playerIndex: index,
+    startLevel: 1,
     lastPingTime: Date.now()
   });
   playerOrder.push(fromId);
@@ -121,7 +126,8 @@ function onHello(fromId, msg) {
     playerColor: color,
     isHost: isHost,
     playerCount: players.size,
-    roomState: roomState
+    roomState: roomState,
+    startLevel: 1
   });
 
   broadcastLobbyUpdate();
@@ -150,6 +156,17 @@ function onSoftDrop(fromId, speed) {
     softDropTimers.delete(fromId);
     if (displayGame) displayGame.handleSoftDropEnd(fromId);
   }, GameConstants.SOFT_DROP_TIMEOUT_MS));
+}
+
+function onSetLevel(fromId, msg) {
+  if (roomState !== ROOM_STATE.LOBBY) return;
+  var player = players.get(fromId);
+  if (!player) return;
+  var level = parseInt(msg.level, 10);
+  if (isNaN(level) || level < 1 || level > 15) return;
+  player.startLevel = level;
+  updatePlayerList();
+  broadcastLobbyUpdate();
 }
 
 function removePlayer(clientId, immediate) {

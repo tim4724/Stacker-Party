@@ -75,15 +75,18 @@ function updatePlayerList() {
   var placeholderSlots = window.innerWidth >= 2400 ? 8 : 4;
   var totalSlots = Math.max(placeholderSlots, GameConstants.MAX_PLAYERS);
 
-  // Ensure we have enough card elements
+  // Ensure we have enough slot elements
   while (playerListEl.children.length < totalSlots) {
+    var slot = document.createElement('div');
+    slot.className = 'player-slot';
     var card = document.createElement('div');
     card.className = 'player-card empty';
     var name = document.createElement('span');
     var idx = playerListEl.children.length;
     name.textContent = 'P' + (idx + 1);
     card.appendChild(name);
-    playerListEl.appendChild(card);
+    slot.appendChild(card);
+    playerListEl.appendChild(slot);
   }
 
   // Find the highest occupied slot to know which cards to show
@@ -94,11 +97,12 @@ function updatePlayerList() {
   var visibleSlots = Math.max(placeholderSlots, highestOccupied + 1);
 
   for (var j = 0; j < totalSlots; j++) {
-    var card = playerListEl.children[j];
+    var slot = playerListEl.children[j];
+    var card = slot.querySelector('.player-card');
     var nameEl = card.querySelector('span');
 
     // Hide slots beyond visible range
-    card.style.display = j < visibleSlots ? '' : 'none';
+    slot.style.display = j < visibleSlots ? '' : 'none';
 
     // Find player assigned to this slot by playerIndex
     var playerId = null;
@@ -118,17 +122,33 @@ function updatePlayerList() {
       nameEl.textContent = info.playerName || PLAYER_NAMES[info.playerIndex] || 'Player';
       card.classList.remove('empty');
       card.dataset.playerId = playerId;
+      slot.dataset.playerId = playerId;
       if (wasEmpty) {
         card.classList.remove('join-pop');
         void card.offsetWidth;
         card.classList.add('join-pop');
       }
+      // Level controls below card
+      var levelCtrl = slot.querySelector('.level-controls');
+      if (!levelCtrl) {
+        levelCtrl = document.createElement('div');
+        levelCtrl.className = 'level-controls';
+        levelCtrl.innerHTML = '<span class="level-heading">Level</span><button class="level-btn level-minus" aria-label="Decrease level">&minus;</button><span class="level-label"></span><button class="level-btn level-plus" aria-label="Increase level">+</button>';
+        slot.appendChild(levelCtrl);
+      }
+      var lvl = info.startLevel || 1;
+      levelCtrl.querySelector('.level-label').textContent = lvl;
+      levelCtrl.querySelector('.level-minus').disabled = lvl <= 1;
+      levelCtrl.querySelector('.level-plus').disabled = lvl >= 15;
     } else {
       card.style.removeProperty('--player-color');
       nameEl.textContent = 'P' + (j + 1);
       card.classList.add('empty');
       card.classList.remove('join-pop');
       delete card.dataset.playerId;
+      delete slot.dataset.playerId;
+      var levelCtrl = slot.querySelector('.level-controls');
+      if (levelCtrl) levelCtrl.remove();
     }
   }
 }
@@ -140,6 +160,26 @@ function updateStartButton() {
     ? 'START (' + players.size + ' player' + (players.size > 1 ? 's' : '') + ')'
     : 'Waiting for players...';
 }
+
+// Delegated click handler for level +/- buttons on display player cards
+playerListEl.addEventListener('click', function(e) {
+  var btn = e.target.closest('.level-btn');
+  if (!btn) return;
+  var slot = btn.closest('.player-slot');
+  if (!slot || !slot.dataset.playerId) return;
+  var pid = slot.dataset.playerId;
+  var player = players.get(pid);
+  if (!player) return;
+  var lvl = player.startLevel || 1;
+  if (btn.classList.contains('level-minus')) {
+    lvl = Math.max(1, lvl - 1);
+  } else if (btn.classList.contains('level-plus')) {
+    lvl = Math.min(15, lvl + 1);
+  }
+  player.startLevel = lvl;
+  updatePlayerList();
+  broadcastLobbyUpdate();
+});
 
 // --- QR Code Rendering ---
 function renderTetrisQR(canvas, qrMatrix) {

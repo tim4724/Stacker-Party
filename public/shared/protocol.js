@@ -15,6 +15,7 @@ var MSG = {
   PAUSE_GAME: 'pause_game',
   RESUME_GAME: 'resume_game',
   LEAVE: 'leave',
+  SET_LEVEL: 'set_level',
   PING: 'ping',
 
   // Display -> Specific Controller

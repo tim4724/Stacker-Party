@@ -23,6 +23,7 @@ var playerCount = 0;
 var gameCancelled = false;
 var lastLines = 0;
 var lastGameResults = null;
+var startLevel = 1;
 
 // Ping/pong
 var PING_INTERVAL_MS = 1000;
@@ -124,6 +125,9 @@ var reconnectStatus = document.getElementById('reconnect-status');
 var reconnectRejoinBtn = document.getElementById('reconnect-rejoin-btn');
 var pingDisplay = document.getElementById('ping-display');
 var muteBtn = document.getElementById('mute-btn');
+var levelDisplay = document.getElementById('level-display');
+var levelMinusBtn = document.getElementById('level-minus-btn');
+var levelPlusBtn = document.getElementById('level-plus-btn');
 
 // --- Screen Management ---
 var SCREEN_ORDER = { name: 0, lobby: 1, game: 1, gameover: 1 };

@@ -11,11 +11,12 @@ var COMBO_TABLE = constants.COMBO_TABLE;
 var BACK_TO_BACK_MULTIPLIER = constants.BACK_TO_BACK_MULTIPLIER;
 
 class Scoring {
-  constructor() {
+  constructor(startLevel) {
     this.score = 0;
     this.lines = 0;
     this.combo = -1;
     this.backToBack = false;
+    this.startLevel = startLevel || 1;
   }
 
   addLineClear(linesCleared, isTSpin, isTSpinMini) {
@@ -80,7 +81,7 @@ class Scoring {
   }
 
   getLevel() {
-    return Math.floor(this.lines / 10) + 1;
+    return Math.floor(this.lines / 10) + this.startLevel;
   }
 
   getState() {

@@ -10,9 +10,16 @@
 // Lobby / Welcome
 // =====================================================================
 
+function updateLevelDisplay() {
+  if (levelDisplay) levelDisplay.textContent = startLevel;
+  if (levelMinusBtn) levelMinusBtn.disabled = startLevel <= 1;
+  if (levelPlusBtn) levelPlusBtn.disabled = startLevel >= 15;
+}
+
 function showLobbyUI() {
   playerIdentity.style.setProperty('--player-color', playerColor);
   playerIdentityName.textContent = playerName || 'Player';
+  updateLevelDisplay();
 
   if (isHost) {
     startBtn.classList.remove('hidden');
@@ -56,6 +63,7 @@ function onWelcome(data) {
 
   playerName = data.playerName || playerName || 'Player';
   playerNameEl.textContent = playerName;
+  if (data.startLevel != null) startLevel = data.startLevel;
 
   if (data.roomState === 'playing' || data.roomState === 'countdown') {
     gameScreen.classList.remove('dead');
@@ -98,7 +106,9 @@ function onLobbyUpdate(data) {
   if (typeof data.isHost === 'boolean') {
     isHost = data.isHost;
   }
+  if (data.startLevel != null) startLevel = data.startLevel;
   if (isHost) updateStartButton();
+  if (currentScreen === 'lobby') updateLevelDisplay();
 }
 
 function onGameStart() {

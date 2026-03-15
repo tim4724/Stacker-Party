@@ -26,6 +26,13 @@ function fillRow(board, row) {
   board.grid[row] = new Array(BOARD_WIDTH).fill(1);
 }
 
+describe('PlayerBoard - start level', () => {
+  test('PlayerBoard passes startLevel to Scoring', () => {
+    const board = new PlayerBoard('test', 12345, 5);
+    assert.strictEqual(board.scoring.getLevel(), 5);
+  });
+});
+
 describe('PlayerBoard - spawnPiece()', () => {
   test('spawnPiece() returns true on empty board', () => {
     const board = makeBoard();

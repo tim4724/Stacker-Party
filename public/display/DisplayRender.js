@@ -104,7 +104,7 @@ function renderFrame(timestamp) {
       var empty = {
         id: playerOrder[i],
         alive: true,
-        score: 0, lines: 0, level: 1,
+        score: 0, lines: 0, level: pInfo?.startLevel || 1,
         garbageIndicatorEffects: [],
         playerName: pInfo?.playerName || PLAYER_NAMES[i],
         playerColor: pInfo?.playerColor || PLAYER_COLORS[i]

@@ -213,7 +213,8 @@ function runGameLocally() {
   playerOrder = playerOrder.slice();
   var gamePlayers = new Map();
   for (var i = 0; i < playerOrder.length; i++) {
-    gamePlayers.set(playerOrder[i], {});
+    var pInfo = players.get(playerOrder[i]);
+    gamePlayers.set(playerOrder[i], { startLevel: (pInfo && pInfo.startLevel) || 1 });
   }
 
   var seed = (Math.random() * 0xFFFFFFFF) >>> 0;

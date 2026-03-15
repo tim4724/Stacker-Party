@@ -23,8 +23,8 @@ class Game {
     if (seed == null) seed = (Math.random() * 0xFFFFFFFF) >>> 0;
     this.seed = seed;
 
-    for (const [id] of players) {
-      const board = new PlayerBoard(id, seed);
+    for (const [id, opts] of players) {
+      const board = new PlayerBoard(id, seed, (opts && opts.startLevel) || 1);
       this.boards.set(id, board);
       this.playerIds.push(id);
     }

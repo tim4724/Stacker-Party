@@ -189,6 +189,22 @@ startBtn.addEventListener('click', function () {
   sendToDisplay(MSG.START_GAME);
 });
 
+levelMinusBtn.addEventListener('click', function () {
+  if (startLevel <= 1) return;
+  vibrate(10);
+  startLevel = Math.max(1, startLevel - 1);
+  updateLevelDisplay();
+  sendToDisplay(MSG.SET_LEVEL, { level: startLevel });
+});
+
+levelPlusBtn.addEventListener('click', function () {
+  if (startLevel >= 15) return;
+  vibrate(10);
+  startLevel = Math.min(15, startLevel + 1);
+  updateLevelDisplay();
+  sendToDisplay(MSG.SET_LEVEL, { level: startLevel });
+});
+
 playAgainBtn.addEventListener('click', function () {
   if (!isHost) return;
   vibrate(10);

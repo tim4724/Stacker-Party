@@ -184,6 +184,63 @@ html, body {
   animation: slotPopIn 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
+.player-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(0.3rem, 0.6vh, 0.5rem);
+}
+
+.level-controls {
+  display: flex;
+  align-items: center;
+  gap: clamp(0.25rem, 0.5vw, 0.4rem);
+}
+
+.level-heading {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(0.8rem, 1.8vh, 1.2rem);
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.06em;
+  margin-right: clamp(0.15rem, 0.3vw, 0.3rem);
+}
+
+.level-label {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(0.9rem, 2vh, 1.4rem);
+  font-weight: 700;
+  color: var(--text-primary);
+  min-width: 1.2em;
+  text-align: center;
+}
+
+.level-btn {
+  width: clamp(1.8em, 3.6vh, 2.8em);
+  height: clamp(1.8em, 3.6vh, 2.8em);
+  border: none;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(0.8rem, 1.8vh, 1.2rem);
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+}
+
+.level-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.level-btn:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
 #start-btn {
   margin-top: auto;
   padding: clamp(0.7rem, 1.4vh, 1.3rem) clamp(2rem, 4vw, 6rem);

@@ -178,6 +178,7 @@ function onDisplayRejoined(partyRoomCode, clients) {
       isHost: id === hostId,
       playerCount: players.size,
       roomState: roomState,
+      startLevel: info.startLevel || 1,
       alive: lastAliveState[id] != null ? lastAliveState[id] : true,
       paused: paused
     };
@@ -212,6 +213,7 @@ function onPeerJoined(clientId) {
     playerName: 'P' + (index + 1),
     playerColor: color,
     playerIndex: index,
+    startLevel: 1,
     lastPingTime: Date.now()
   });
   playerOrder.push(clientId);
@@ -289,7 +291,8 @@ function broadcastLobbyUpdate() {
     party.sendTo(id, {
       type: MSG.LOBBY_UPDATE,
       playerCount: players.size,
-      isHost: id === hostId
+      isHost: id === hostId,
+      startLevel: entry[1].startLevel || 1
     });
   }
 }

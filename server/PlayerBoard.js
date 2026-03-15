@@ -74,7 +74,7 @@ function detectTSpin(grid, pieceType, pieceX, pieceY, rotation) {
 }
 
 class PlayerBoard {
-  constructor(playerId, seed) {
+  constructor(playerId, seed, startLevel) {
     this.playerId = playerId;
     // 10 wide x 24 tall grid (0=empty, 1-7=piece type, 8=garbage)
     this.grid = Array.from({ length: BOARD_HEIGHT }, () => new Array(BOARD_WIDTH).fill(0));
@@ -82,7 +82,7 @@ class PlayerBoard {
     this.holdPiece = null;
     this.holdUsed = false;
     this.nextPieces = [];
-    this.scoring = new Scoring();
+    this.scoring = new Scoring(startLevel);
     this.randomizer = new Randomizer(seed);
     this.alive = true;
     this.lockTimer = null;

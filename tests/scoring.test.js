@@ -289,6 +289,30 @@ describe('Scoring - back-to-back edge cases', () => {
   });
 });
 
+describe('Scoring - start level', () => {
+  test('start level is applied to getLevel()', () => {
+    const scoring = new Scoring(5);
+    assert.strictEqual(scoring.getLevel(), 5);
+  });
+
+  test('start level with line progression', () => {
+    const scoring = new Scoring(5);
+    scoring.lines = 20;
+    assert.strictEqual(scoring.getLevel(), 7); // floor(20/10) + 5
+  });
+
+  test('default start level is 1 (backward compat)', () => {
+    const scoring = new Scoring();
+    assert.strictEqual(scoring.getLevel(), 1);
+  });
+
+  test('score multiplier uses start level', () => {
+    const scoring = new Scoring(5);
+    scoring.addLineClear(1, false, false);
+    assert.strictEqual(scoring.score, 500); // 100 * level 5
+  });
+});
+
 describe('Scoring - getState', () => {
   test('getState returns correct fields', () => {
     const scoring = new Scoring();
