@@ -248,7 +248,10 @@ function runGameLocally() {
         for (var j = 0; j < results.results.length; j++) {
           var r = results.results[j];
           var pInfo = players.get(r.playerId);
-          if (pInfo) r.playerName = pInfo.playerName;
+          if (pInfo) {
+            r.playerName = pInfo.playerName;
+            r.playerColor = pInfo.playerColor;
+          }
         }
       }
       setRoomState(ROOM_STATE.RESULTS);
