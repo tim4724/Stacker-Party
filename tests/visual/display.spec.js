@@ -41,7 +41,7 @@ test.describe('Display', () => {
     await stabilizeDisplayLobby(page);
     await stopDisplayBackground(page);
     await expect(page).toHaveScreenshot('03-lobby-empty.png', {
-      maxDiffPixelRatio: 0.005,
+      maxDiffPixelRatio: 0.001,
     });
   });
 
@@ -55,7 +55,7 @@ test.describe('Display', () => {
     await stabilizeDisplayLobby(page);
     await stopDisplayBackground(page);
     await expect(page).toHaveScreenshot('04-lobby-players.png', {
-      maxDiffPixelRatio: 0.005,
+      maxDiffPixelRatio: 0.001,
     });
   });
 
@@ -70,7 +70,7 @@ test.describe('Display', () => {
     await stabilizeDisplayLobby(page);
     await stopDisplayBackground(page);
     await expect(page).toHaveScreenshot('04b-lobby-wide.png', {
-      maxDiffPixelRatio: 0.005,
+      maxDiffPixelRatio: 0.001,
     });
   });
 
