@@ -158,7 +158,7 @@ function showScreen(name) {
     gameToolbar.classList.remove('toolbar-autohide');
   }
   if (name === SCREEN.GAME || name === SCREEN.RESULTS) {
-    initCanvas();
+    if (!ctx) initCanvas();
     calculateLayout();
     startRenderLoop();
   } else {
