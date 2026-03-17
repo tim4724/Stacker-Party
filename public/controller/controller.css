@@ -364,47 +364,62 @@ html, body {
   background: var(--bg-board);
 }
 
-#game-name-card {
-  height: 56px;
-  padding: 0 28px;
-  font-size: clamp(0.85rem, 4vw, 1.1rem);
-  min-width: 0;
-}
-
-#player-name {
+.game-name-label {
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 700;
+  font-size: clamp(1rem, 5vw, 1.3rem);
+  letter-spacing: 0.05em;
+  color: var(--player-color, var(--text-primary));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
+  padding-left: 4px;
 }
 
-/* Gesture hints — text above touch pad */
+/* Gesture hint bar — pictograms above touch pad */
 #gesture-hints {
   flex-shrink: 0;
+  width: 100%;
+  padding: 10px 8px 12px;
+  background: var(--bg-board);
+  display: flex;
+  justify-content: space-evenly;
+}
+
+.hint-bar-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: 12px 12px 8px;
-  background: var(--bg-board);
+  gap: 5px;
+  color: color-mix(in srgb, var(--player-color, #888) 55%, white);
 }
 
-.gesture-hint-primary {
-  font-size: clamp(1rem, 4.5vw, 1.2rem);
+.hint-bar-item__icon {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hint-bar-item__icon svg {
+  transform: scale(1.3);
+}
+
+.hint-bar-item__verb {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(0.6rem, 3.2vw, 0.75rem);
   font-weight: 700;
-  color: var(--text-secondary);
-  letter-spacing: 0.04em;
+  letter-spacing: 0.1em;
+  color: color-mix(in srgb, var(--player-color, #888) 65%, white);
+  text-transform: uppercase;
 }
 
-.gesture-hint-row {
-  font-size: clamp(0.85rem, 3.8vw, 1rem);
+.hint-bar-item__result {
+  font-size: clamp(0.65rem, 3.5vw, 0.8rem);
+  font-weight: 500;
   color: var(--text-secondary);
-  letter-spacing: 0.02em;
-}
-
-#gesture-hints .hint-icon {
-  height: 1em;
-  width: auto;
-  vertical-align: -0.15em;
+  margin-top: -3px;
 }
 
 #touch-area {
@@ -427,17 +442,33 @@ html, body {
   position: relative;
   overflow: hidden;
   border-radius: var(--radius-lg);
-  border: 1px solid color-mix(in srgb, var(--player-color, #888) 15%, rgba(255, 255, 255, 0.06));
-  background-color: color-mix(in srgb, var(--player-color, #888) 6%, rgba(255, 255, 255, 0.02));
-  background-image: radial-gradient(
-    circle, rgba(255, 255, 255, 0.10) 1px, transparent 1px
-  );
-  background-size: 20px 20px;
+  border: 1px solid rgba(0, 0, 0, 0.4);
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.5),
+    inset 0 0 20px rgba(0, 0, 0, 0.2),
+    0 1px 0 rgba(255, 255, 255, 0.04);
+  background-color: color-mix(in srgb, var(--player-color, #888) 5%, rgba(10, 10, 20, 1));
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+  background-size: 18px 18px;
   cursor: crosshair;
 }
 
 #touch-pad:active {
   cursor: grabbing;
+}
+
+#pad-label {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(0.55rem, 2.5vw, 0.65rem);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  pointer-events: none;
+  opacity: 0.7;
 }
 
 #feedback-layer {
@@ -449,67 +480,6 @@ html, body {
   pointer-events: none;
 }
 
-/* Compass rose gesture hints */
-/* Compass hints render below feedback-layer via DOM order */
-#compass-hints {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.compass-arrow {
-  position: absolute;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  color: color-mix(in srgb, var(--player-color, #888) 40%, white);
-  opacity: 0.35;
-}
-
-.compass-arrow span {
-  font-family: 'Orbitron', sans-serif;
-  font-size: clamp(0.75rem, 3.5vw, 0.9rem);
-  font-weight: 700;
-  letter-spacing: 0.1em;
-}
-
-.compass-up {
-  top: max(12%, 40px);
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.compass-down {
-  bottom: max(12%, 40px);
-  left: 50%;
-  transform: translateX(-50%);
-  flex-direction: column-reverse;
-}
-
-.compass-left {
-  left: max(6%, 16px);
-  top: 50%;
-  transform: translateY(-50%);
-  flex-direction: row;
-}
-
-.compass-right {
-  right: max(6%, 16px);
-  top: 50%;
-  transform: translateY(-50%);
-  flex-direction: row-reverse;
-}
-
-.compass-center {
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-}
-
-.compass-center span {
-  font-size: clamp(0.7rem, 3vw, 0.85rem);
-}
 
 /* Ping display — bottom bar */
 #game-bottom-bar {
@@ -522,102 +492,17 @@ html, body {
   background: var(--bg-board);
 }
 
-/* Gesture feedback animations */
-
-/* Tap radial wash */
-.feedback-ripple {
+/* Gesture feedback — glow that follows finger */
+.feedback-glow {
   position: absolute;
-  width: 300px;
-  height: 300px;
-  margin-left: -150px;
-  margin-top: -150px;
-  background: radial-gradient(circle, var(--player-color, rgba(255,255,255,0.5)) 0%, transparent 70%);
+  width: 100px;
+  height: 100px;
   border-radius: 50%;
-  animation: rippleWash 250ms ease-out forwards;
-  pointer-events: none;
-}
-
-@keyframes rippleWash {
-  0% { transform: scale(0.3); opacity: 0.4; }
-  100% { transform: scale(1.2); opacity: 0; }
-}
-
-/* Directional wash overlays */
-.feedback-wash {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  animation: washFade 200ms ease-out forwards;
-  pointer-events: none;
-}
-
-.feedback-wash-left {
-  background: linear-gradient(to right,
-    var(--player-color, rgba(255,255,255,0.5)) 0%,
-    transparent 40%
-  );
-}
-
-.feedback-wash-right {
-  background: linear-gradient(to left,
-    var(--player-color, rgba(255,255,255,0.5)) 0%,
-    transparent 40%
-  );
-}
-
-.feedback-wash-down {
-  background: linear-gradient(to top,
-    var(--player-color, rgba(255,255,255,0.5)) 0%,
-    transparent 40%
-  );
-}
-
-.feedback-wash-up {
-  background: linear-gradient(to bottom,
-    var(--player-color, rgba(255,255,255,0.5)) 0%,
-    transparent 40%
-  );
-}
-
-@keyframes washFade {
-  0% { opacity: 0.15; }
-  100% { opacity: 0; }
-}
-
-/* Buildup wash — opacity driven by JS, flashes on trigger */
-.feedback-buildup {
-  position: absolute;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
+  background: radial-gradient(circle, var(--player-color, rgba(255,255,255,0.5)) 0%, transparent 80%);
+  filter: blur(10px);
   pointer-events: none;
   opacity: 0;
-  transition: opacity 60ms ease-out;
-}
-
-@keyframes buildupFlash {
-  0% { opacity: 0.25; }
-  100% { opacity: 0; }
-}
-
-.feedback-buildup.flash {
-  transition: none;
-  animation: buildupFlash 200ms ease-out forwards;
-}
-
-/* Persistent wash for soft drop hold */
-.feedback-wash-hold {
-  animation: washFadeIn 150ms ease-out forwards;
-}
-
-.feedback-wash-hold.fade-out {
-  animation: washFade 200ms ease-out forwards;
-}
-
-@keyframes washFadeIn {
-  0% { opacity: 0; }
-  100% { opacity: 0.15; }
+  will-change: transform, opacity;
 }
 
 /* KO overlay */
@@ -805,8 +690,8 @@ html, body {
 }
 
 #game-screen.countdown #touch-pad {
-  border-color: rgba(255, 255, 255, 0.06);
-  background-color: rgba(255, 255, 255, 0.02);
+  border-color: rgba(0, 0, 0, 0.4);
+  background-color: rgba(10, 10, 20, 1);
 }
 
 /* Paused state — disable touch input */

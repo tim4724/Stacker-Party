@@ -90,7 +90,7 @@
   <!-- Game screen with touch area -->
   <div id="game-screen" class="screen hidden">
     <div id="game-top-bar">
-      <div id="game-name-card" class="player-card"><span id="player-name">Player</span></div>
+      <span id="player-name" class="game-name-label">Player</span>
       <button id="mute-btn" class="icon-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="sound-waves" d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/></svg></button>
       <button id="pause-btn" class="icon-btn hidden"><span class="pause-icon"></span></button>
     </div>
@@ -108,34 +108,14 @@
       <button id="reconnect-rejoin-btn" class="btn btn-primary hidden">REJOIN</button>
     </div>
     <div id="gesture-hints" aria-hidden="true">
-      <div class="gesture-hint-primary"><svg class="hint-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 4L7 10L13 16"/></svg> Drag to move <svg class="hint-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4L13 10L7 16"/></svg></div>
-      <div class="gesture-hint-row"><svg class="hint-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.22-8.56"/><path d="M21 3v6h-6"/></svg> Tap to rotate</div>
-      <div class="gesture-hint-row">Flick <svg class="hint-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3L10 9L16 3"/><path d="M4 10L10 16L16 10"/></svg> drop · Flick <svg class="hint-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14L10 8L16 14"/><path d="M4 8L10 2L16 8"/></svg> hold</div>
+      <div class="hint-bar-item"><div class="hint-bar-item__icon"><svg width="36" height="18" viewBox="0 0 36 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M9 3L3 9L9 15" opacity="0.5"/><path d="M27 3L33 9L27 15" opacity="0.5"/><circle cx="18" cy="9" r="4" fill="currentColor" stroke="none" opacity="0.8"/><line x1="7" y1="9" x2="29" y2="9" opacity="0.2"/></svg></div><div class="hint-bar-item__verb">Swipe</div><div class="hint-bar-item__result">move</div></div>
+      <div class="hint-bar-item"><div class="hint-bar-item__icon"><svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="14" cy="14" r="3" fill="currentColor" stroke="none" opacity="0.8"/><circle cx="14" cy="14" r="8" opacity="0.25"/><circle cx="14" cy="14" r="13" opacity="0.1"/></svg></div><div class="hint-bar-item__verb">Tap</div><div class="hint-bar-item__result">rotate</div></div>
+      <div class="hint-bar-item"><div class="hint-bar-item__icon"><svg width="22" height="28" viewBox="0 0 22 28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="11" cy="6" r="4" fill="currentColor" stroke="none" opacity="0.8"/><line x1="11" y1="10" x2="11" y2="23" opacity="0.3"/><path d="M7 19L11 24L15 19" opacity="0.5"/></svg></div><div class="hint-bar-item__verb">Flick</div><div class="hint-bar-item__result">drop</div></div>
+      <div class="hint-bar-item"><div class="hint-bar-item__icon"><svg width="22" height="28" viewBox="0 0 22 28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="11" cy="22" r="4" fill="currentColor" stroke="none" opacity="0.8"/><line x1="11" y1="18" x2="11" y2="5" opacity="0.3"/><path d="M7 9L11 4L15 9" opacity="0.5"/></svg></div><div class="hint-bar-item__verb">Flick</div><div class="hint-bar-item__result">hold</div></div>
     </div>
     <div id="touch-area">
       <div id="touch-pad">
-        <div id="compass-hints" aria-hidden="true">
-          <div class="compass-arrow compass-up">
-            <svg width="32" height="32" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14L10 8L16 14"/><path d="M4 8L10 2L16 8"/></svg>
-            <span>HOLD</span>
-          </div>
-          <div class="compass-arrow compass-down">
-            <svg width="32" height="32" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3L10 9L16 3"/><path d="M4 10L10 16L16 10"/></svg>
-            <span>DROP</span>
-          </div>
-          <div class="compass-arrow compass-left">
-            <svg width="28" height="28" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 4L7 10L13 16"/></svg>
-            <span>MOVE</span>
-          </div>
-          <div class="compass-arrow compass-right">
-            <svg width="28" height="28" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4L13 10L7 16"/></svg>
-            <span>MOVE</span>
-          </div>
-          <div class="compass-arrow compass-center">
-            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.22-8.56"/><path d="M21 3v6h-6"/></svg>
-            <span>TAP</span>
-          </div>
-        </div>
+        <div id="pad-label" aria-hidden="true">Touchpad</div>
         <div id="feedback-layer"></div>
       </div>
     </div>

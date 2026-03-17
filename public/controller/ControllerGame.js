@@ -260,65 +260,43 @@ function removeKoOverlay() {
 }
 
 // =====================================================================
-// Gesture Feedback
+// Gesture Feedback — glow that follows finger
 // =====================================================================
 
-function createFeedback(type, x, y) {
-  var el = document.createElement('div');
-  el.className = 'feedback-' + type;
-  if (x !== undefined && y !== undefined) {
-    var rect = feedbackLayer.getBoundingClientRect();
-    el.style.left = (x - rect.left) + 'px';
-    el.style.top = (y - rect.top) + 'px';
+var GLOW_SIZE = 100;
+var GLOW_OPACITY = 0.36;
+var GLOW_GROW = 0.15;
+
+function showGlow(x, y, progress) {
+  if (!glowEl) {
+    glowEl = document.createElement('div');
+    glowEl.className = 'feedback-glow';
+    feedbackLayer.appendChild(glowEl);
   }
-  feedbackLayer.appendChild(el);
-  el.addEventListener('animationend', function () { el.remove(); });
+  var rect = feedbackLayer.getBoundingClientRect();
+  var lx = x - rect.left;
+  var ly = y - rect.top;
+  var p = progress || 0;
+  var scale = 1 + p * GLOW_GROW;
+  glowEl.style.transform = 'translate(' + (lx - GLOW_SIZE / 2) + 'px,' + (ly - GLOW_SIZE / 2) + 'px) scale(' + scale + ')';
+  glowEl.style.opacity = GLOW_OPACITY;
 }
 
-function createWash(direction) {
-  var el = document.createElement('div');
-  el.className = 'feedback-wash feedback-wash-' + direction;
-  feedbackLayer.appendChild(el);
-  el.addEventListener('animationend', function () { el.remove(); });
+function hideGlow() {
+  if (glowEl) { glowEl.remove(); glowEl = null; }
 }
 
-function removeBuildupEl() {
-  if (buildupEl) {
-    buildupEl.remove();
-    buildupEl = null;
-    buildupDir = null;
-  }
-}
-
-function flashBuildup() {
-  if (buildupEl) {
-    buildupEl.classList.add('flash');
-    var el = buildupEl;
-    buildupEl = null;
-    buildupDir = null;
-    el.addEventListener('animationend', function () { el.remove(); });
+function flashGlow() {
+  if (glowEl) {
+    var el = glowEl;
+    glowEl = null;
+    el.animate([{ opacity: GLOW_OPACITY }, { opacity: 0 }], { duration: 150, easing: 'ease-out' });
+    setTimeout(function () { if (el.parentNode) el.remove(); }, 170);
   }
 }
 
 function onDragProgress(direction, progress) {
-  if (!direction || progress <= 0) {
-    removeBuildupEl();
-    return;
-  }
-  if (buildupDir !== direction) {
-    removeBuildupEl();
-    // Wash originates from the opposite edge (shows where piece "came from")
-    var washDir = direction;
-    if (direction === 'left') washDir = 'right';
-    else if (direction === 'right') washDir = 'left';
-    else if (direction === 'down') washDir = 'up';
-    else if (direction === 'up') washDir = 'down';
-    buildupEl = document.createElement('div');
-    buildupEl.className = 'feedback-buildup feedback-wash-' + washDir;
-    feedbackLayer.appendChild(buildupEl);
-    buildupDir = direction;
-  }
-  buildupEl.style.opacity = progress * 0.15;
+  // Glow position is updated via pointermove coordTracker — nothing extra needed here
 }
 
 // =====================================================================
@@ -330,55 +308,71 @@ function initTouchInput() {
     touchInput.destroy();
   }
 
-  if (coordTracker) touchArea.removeEventListener('pointerdown', coordTracker);
+  if (coordTracker) {
+    touchArea.removeEventListener('pointerdown', coordTracker);
+    touchArea.removeEventListener('pointermove', coordTracker);
+    touchArea.removeEventListener('pointerup', coordTracker);
+  }
+
+  var anchorX = 0, anchorY = 0;
+
   coordTracker = function (e) {
     lastTouchX = e.clientX;
     lastTouchY = e.clientY;
+    if (e.type === 'pointerdown') {
+      anchorX = e.clientX;
+      anchorY = e.clientY;
+      showGlow(e.clientX, e.clientY, 0);
+    } else if (e.type === 'pointermove') {
+      var dx = e.clientX - anchorX;
+      var dy = e.clientY - anchorY;
+      var dir = Math.abs(dx) >= Math.abs(dy) ? 'h' : 'v';
+      var axisDist = dir === 'h' ? Math.abs(dx) : Math.abs(dy);
+      var progress = Math.min(axisDist / 48, 1);
+      showGlow(e.clientX, e.clientY, progress);
+    } else if (e.type === 'pointerup') {
+      hideGlow();
+    }
   };
   touchArea.addEventListener('pointerdown', coordTracker, { passive: true });
+  touchArea.addEventListener('pointermove', coordTracker, { passive: true });
+  touchArea.addEventListener('pointerup', coordTracker, { passive: true });
 
   touchInput = new TouchInput(touchArea, function (action, data) {
     // Gesture feedback
     if (action === 'rotate_cw') {
       ControllerAudio.tick();
-      createFeedback('ripple', lastTouchX, lastTouchY);
+      // Tap: flash the existing glow and fade out
+      flashGlow();
     } else if (action === 'left' || action === 'right') {
       ControllerAudio.tick();
-      if (buildupEl) {
-        flashBuildup();
-      } else {
-        createWash(action === 'left' ? 'right' : 'left');
-      }
     } else if (action === 'hard_drop') {
       ControllerAudio.drop();
-      removeBuildupEl();
-      createWash('up');
     } else if (action === 'hold') {
       ControllerAudio.hold();
-      removeBuildupEl();
-      createWash('down');
     }
 
     if (action === 'soft_drop') {
       if (!softDropActive) {
         softDropActive = true;
         ControllerAudio.tick();
-        removeBuildupEl();
-        softDropWash = document.createElement('div');
-        softDropWash.className = 'feedback-wash feedback-wash-up feedback-wash-hold';
-        feedbackLayer.appendChild(softDropWash);
       }
       sendToDisplay(MSG.SOFT_DROP, { speed: data && data.speed });
     } else if (action === 'soft_drop_end') {
       softDropActive = false;
-      if (softDropWash) {
-        var el = softDropWash;
-        softDropWash = null;
-        el.classList.add('fade-out');
-        el.addEventListener('animationend', function () { el.remove(); });
-      }
     } else {
       sendToDisplay(MSG.INPUT, { action: action });
     }
   }, onDragProgress);
+
+  // Reset anchor on each ratchet trigger — listen for input actions to reset
+  var origOnInput = touchInput.onInput;
+  var wrappedOnInput = function (action, data) {
+    if (action === 'left' || action === 'right' || action === 'hard_drop' || action === 'hold') {
+      anchorX = lastTouchX;
+      anchorY = lastTouchY;
+    }
+    origOnInput(action, data);
+  };
+  touchInput.onInput = wrappedOnInput;
 }

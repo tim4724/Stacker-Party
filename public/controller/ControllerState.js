@@ -37,9 +37,7 @@ var disconnectedTimer = null;
 var lastTouchX = 0, lastTouchY = 0;
 var coordTracker = null;
 var softDropActive = false;
-var softDropWash = null;
-var buildupEl = null;
-var buildupDir = null;
+var glowEl = null;
 
 // Rejoin
 var rejoinId = new URLSearchParams(location.search).get('rejoin');
