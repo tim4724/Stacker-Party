@@ -403,7 +403,7 @@ function onGamePaused() {
   if (displayGame) displayGame.pause();
   pauseOverlay.classList.remove('hidden');
   gameToolbar.classList.add('hidden');
-  if (music) music.stop();
+  if (music) music.pause();
 }
 
 function onGameResumed() {
@@ -415,7 +415,7 @@ function onGameResumed() {
   if (countdownOverlay.textContent) {
     countdownOverlay.classList.remove('hidden');
   } else if (music) {
-    music.start();
+    music.resume();
     if (muted) music.masterGain.gain.setValueAtTime(0, music.ctx.currentTime);
   }
 }

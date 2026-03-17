@@ -157,6 +157,56 @@ class Music {
     }, 450);
   }
 
+  pause() {
+    if (!this.playing) return;
+    this.playing = false;
+    const gen = ++this.generation;
+
+    if (this.scheduleTimer) {
+      clearTimeout(this.scheduleTimer);
+      this.scheduleTimer = null;
+    }
+
+    // Fade out over 0.3s, then suspend context to freeze timeline
+    if (this.masterGain && this.ctx) {
+      const now = this.ctx.currentTime;
+      this.masterGain.gain.cancelScheduledValues(now);
+      this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+      this.masterGain.gain.linearRampToValueAtTime(0, now + 0.3);
+
+      setTimeout(() => {
+        if (this.generation !== gen) return;
+        // Kill scheduled oscillators so they don't pile up
+        for (const src of this.scheduledSources) {
+          try { src.stop(); } catch (e) { /* already stopped */ }
+        }
+        this.scheduledSources.clear();
+        this.ctx.suspend().catch(() => {});
+      }, 350);
+    }
+  }
+
+  resume() {
+    if (this.playing) return;
+    if (!this.ctx) return;
+
+    this.generation++;
+    this.playing = true;
+
+    this.ctx.resume().then(() => {
+      // Re-anchor scheduling times to now, preserving melody/bass indices
+      this.nextMelodyTime = this.ctx.currentTime + 0.1;
+      this.nextBassTime = this.ctx.currentTime + 0.1;
+
+      // Fade in over 0.3s
+      this.masterGain.gain.cancelScheduledValues(this.ctx.currentTime);
+      this.masterGain.gain.setValueAtTime(0, this.ctx.currentTime);
+      this.masterGain.gain.linearRampToValueAtTime(MASTER_VOLUME, this.ctx.currentTime + 0.3);
+
+      this.schedule();
+    }).catch(e => console.warn('AudioContext resume failed:', e));
+  }
+
   schedule() {
     if (!this.playing) return;
 
