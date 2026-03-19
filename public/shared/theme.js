@@ -135,6 +135,7 @@ const THEME = Object.freeze({
       name:  16,
       label: 12,
       score: 18,
+      timer: 14,
     }),
   }),
 

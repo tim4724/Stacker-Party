@@ -335,7 +335,7 @@ function drawTimer(elapsedMs) {
 
   var font = getDisplayFont();
   var cs = (boardRenderers.length > 0 ? boardRenderers[0].cellSize : 30);
-  var timerSize = Math.max(THEME.font.minPx.name, cs * THEME.font.cellScale.timer);
+  var timerSize = Math.max(THEME.font.minPx.timer, cs * THEME.font.cellScale.timer);
 
   var labelSize = Math.round(timerSize);
   var digitAdvance = labelSize * 0.92;
