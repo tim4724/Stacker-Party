@@ -32,9 +32,11 @@ function renderLoop(timestamp) {
       if (deltaMs > 0) {
         displayGame.update(deltaMs);
       }
+      if (!displayGame) return; // game ended during update
       gameState = displayGame.getSnapshot();
     } catch (err) {
       console.error('Game engine error:', err);
+      if (!displayGame) return;  // already cleaned up (e.g. game ended mid-update)
       displayGame.ended = true;
       var results = displayGame.getResults();
       displayGame = null;
