@@ -127,13 +127,15 @@ html, body {
 }
 
 #lobby-top-bar {
-  align-self: stretch;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   display: flex;
   align-items: center;
-  margin: 0 -12px;
   padding: 12px;
   padding-top: max(env(safe-area-inset-top), 12px);
-  flex-shrink: 0;
+  z-index: 1;
 }
 
 .controller-shell__frame--lobby {
