@@ -203,7 +203,7 @@ async function generate() {
   await nameBannerPage.goto(`file://${path.resolve(BANNER_DIR, 'name-banner.html')}`);
   await waitForFont(nameBannerPage);
   await nameBannerPage.waitForTimeout(300);
-  const nameBannerPath = path.resolve(BANNER_DIR, 'social-preview.png');
+  const nameBannerPath = path.resolve(BANNER_DIR, '..', 'public', 'social-preview.png');
   await nameBannerPage.screenshot({ path: nameBannerPath });
   console.log(`  ${nameBannerPath} (${SOCIAL_WIDTH}x${SOCIAL_HEIGHT} @2x)`);
 
