@@ -99,7 +99,7 @@ html, body {
 #lobby-screen {
   background:
     radial-gradient(ellipse at 50% 20%, var(--glow-blue) 0%, transparent 50%);
-  gap: 0;
+  justify-content: space-evenly;
   padding: 4vh 2rem 4vh;
 }
 
@@ -115,7 +115,6 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-top: auto;
   animation: fadeUp 0.6s 0.15s ease-out both, qrGlow 3s 1s ease-in-out infinite;
 }
 
@@ -155,7 +154,6 @@ html, body {
   gap: clamp(0.6rem, 1.2vw, 1.2rem);
   justify-content: center;
   justify-items: center;
-  margin-top: auto;
   min-height: clamp(50px, 8vh, 90px);
   animation: fadeIn 0.4s 0.3s ease-out both;
 }
@@ -254,7 +252,6 @@ html, body {
 }
 
 #start-btn {
-  margin-top: auto;
   padding: clamp(0.7rem, 1.4vh, 1.3rem) clamp(2rem, 4vw, 6rem);
   font-size: clamp(1rem, 2vh, 1.6rem);
   letter-spacing: 0.08em;
