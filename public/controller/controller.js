@@ -34,6 +34,10 @@ function handleMessage(data) {
           pauseBtn.classList.toggle('hidden', !isHost);
           showScreen('game');
         }
+        if (data.value === 'GO') {
+          gameScreen.classList.remove('countdown');
+          initTouchInput();
+        }
         break;
       case MSG.PLAYER_STATE:
         onPlayerState(data);
