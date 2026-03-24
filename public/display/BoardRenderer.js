@@ -171,26 +171,29 @@ class BoardRenderer {
 
   _drawBlockNormal(x, y, size, inset, s, r, color) {
     const ctx = this.ctx;
-    const gradKey = color + '_' + y;
-    let grad = this._blockGradients.get(gradKey);
+    // Gradient cached per color (7 entries), drawn with save/translate/restore
+    let grad = this._blockGradients.get(color);
     if (!grad) {
-      grad = ctx.createLinearGradient(0, y, 0, y + size);
+      grad = ctx.createLinearGradient(0, 0, 0, size);
       grad.addColorStop(0, lightenColor(color, 15));
       grad.addColorStop(1, darkenColor(color, 10));
-      this._blockGradients.set(gradKey, grad);
+      this._blockGradients.set(color, grad);
     }
+    ctx.save();
+    ctx.translate(x, y);
     ctx.fillStyle = grad;
-    roundRect(ctx, x + inset, y + inset, s, s, r);
+    roundRect(ctx, inset, inset, s, s, r);
     ctx.fill();
     ctx.fillStyle = `rgba(255, 255, 255, ${THEME.opacity.highlight})`;
-    ctx.fillRect(x + inset + r, y + inset, s - r * 2, size * 0.08);
+    ctx.fillRect(inset + r, inset, s - r * 2, size * 0.08);
     ctx.fillStyle = `rgba(255, 255, 255, ${THEME.opacity.muted})`;
-    ctx.fillRect(x + inset, y + inset + r, size * 0.07, s - r * 2);
+    ctx.fillRect(inset, inset + r, size * 0.07, s - r * 2);
     ctx.fillStyle = `rgba(0, 0, 0, ${THEME.opacity.shadow})`;
-    ctx.fillRect(x + inset + r, y + size - inset - size * 0.08, s - r * 2, size * 0.08);
+    ctx.fillRect(inset + r, size - inset - size * 0.08, s - r * 2, size * 0.08);
     ctx.fillStyle = `rgba(255, 255, 255, ${THEME.opacity.subtle})`;
     const shineSize = size * 0.25;
-    ctx.fillRect(x + size * 0.25, y + size * 0.2, shineSize, shineSize * 0.5);
+    ctx.fillRect(size * 0.25, size * 0.2, shineSize, shineSize * 0.5);
+    ctx.restore();
   }
 
   _drawBlockSquare(x, y, size, inset, s, color) {
