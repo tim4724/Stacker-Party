@@ -76,7 +76,7 @@ class BoardRenderer {
     if (playerState.currentPiece && playerState.ghostY != null && playerState.alive !== false) {
       const piece = playerState.currentPiece;
       const ghostDisplayY = playerState.ghostY;
-      const ghostColor = ghostColors[piece.typeId] || 'rgba(255,255,255,0.12)';
+      const ghostColor = ghostColors[piece.typeId] || { outline: 'rgba(255,255,255,0.12)', fill: 'rgba(255,255,255,0.06)' };
       if (piece.blocks) {
         for (const [bx, by] of piece.blocks) {
           const drawRow = ghostDisplayY + by;
@@ -232,22 +232,20 @@ class BoardRenderer {
     const s = size - inset * 2;
     const r = THEME.radius.block(size);
     const tier = this._styleTier;
-    const outlineAlpha = parseFloat((color.match(/([\d.]+)\)$/) || [])[1] || 0.4);
-    const fillColor = color.replace(/[\d.]+\)$/, (outlineAlpha * 0.5).toFixed(2) + ')');
 
     if (tier === STYLE_TIERS.SQUARE) {
-      ctx.strokeStyle = color;
+      ctx.strokeStyle = color.outline;
       ctx.lineWidth = 1;
       ctx.strokeRect(x + inset + 0.5, y + inset + 0.5, s - 1, s - 1);
-      ctx.fillStyle = fillColor;
+      ctx.fillStyle = color.fill;
       ctx.fillRect(x + inset + 1, y + inset + 1, s - 2, s - 2);
     } else {
       // Normal / Neon — solid rounded outline + translucent fill
-      ctx.strokeStyle = color;
+      ctx.strokeStyle = color.outline;
       ctx.lineWidth = 1;
       roundRect(ctx, x + inset + 0.5, y + inset + 0.5, s - 1, s - 1, r);
       ctx.stroke();
-      ctx.fillStyle = fillColor;
+      ctx.fillStyle = color.fill;
       roundRect(ctx, x + inset, y + inset, s, s, r);
       ctx.fill();
     }

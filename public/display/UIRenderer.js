@@ -280,8 +280,12 @@ class UIRenderer {
         ctx.save();
         ctx.globalAlpha = alpha;
         ctx.fillStyle = effect.color;
-        roundRect(ctx, bx, by, bw, bh, r);
-        ctx.fill();
+        if (this._styleTier === STYLE_TIERS.SQUARE) {
+          ctx.fillRect(bx, by, bw, bh);
+        } else {
+          roundRect(ctx, bx, by, bw, bh, r);
+          ctx.fill();
+        }
         ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
         ctx.fillRect(bx + inset, by + inset, bw - inset * 2, inset);
         ctx.restore();
@@ -314,8 +318,12 @@ class UIRenderer {
         ctx.save();
         ctx.globalAlpha = alpha;
         ctx.fillStyle = THEME.color.text.white;
-        roundRect(ctx, bx, by, bw, bh, r);
-        ctx.fill();
+        if (this._styleTier === STYLE_TIERS.SQUARE) {
+          ctx.fillRect(bx, by, bw, bh);
+        } else {
+          roundRect(ctx, bx, by, bw, bh, r);
+          ctx.fill();
+        }
         ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
         ctx.fillRect(bx + inset, by + inset, bw - inset * 2, inset);
         ctx.restore();

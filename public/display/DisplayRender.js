@@ -177,7 +177,7 @@ function renderFrame(timestamp) {
         var extras = window.__TEST__._extraGhosts[j];
         for (var eg = 0; eg < extras.length; eg++) {
           var ghost = extras[eg];
-          var gc = ghostColorSet[ghost.typeId] || 'rgba(255,255,255,0.12)';
+          var gc = ghostColorSet[ghost.typeId] || { outline: 'rgba(255,255,255,0.12)', fill: 'rgba(255,255,255,0.06)' };
           for (var bl = 0; bl < ghost.blocks.length; bl++) {
             var gbx = ghost.blocks[bl][0];
             var gby = ghost.blocks[bl][1];

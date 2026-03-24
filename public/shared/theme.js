@@ -175,14 +175,18 @@ if (typeof module !== 'undefined' && module.exports) {
   // In Node.js, compute ghost colors inline (CanvasUtils not loaded as global)
   var _gc = function(hex) {
     var m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    if (!m) return 'rgba(255,255,255,0.3)';
+    if (!m) return { outline: 'rgba(255,255,255,0.3)', fill: 'rgba(255,255,255,0.15)' };
     var rv = parseInt(m[1],16), gv = parseInt(m[2],16), bv = parseInt(m[3],16);
     var r = Math.min(255, Math.max(80, Math.round(rv + (255-rv)*0.3)));
     var g = Math.min(255, Math.max(80, Math.round(gv + (255-gv)*0.3)));
     var b = Math.min(255, Math.max(80, Math.round(bv + (255-bv)*0.3)));
     var lum = (rv*0.299 + gv*0.587 + bv*0.114) / 255;
-    var a = (0.3 + (1-lum)*0.15).toFixed(2);
-    return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+    var a = +(0.3 + (1-lum)*0.15).toFixed(2);
+    var fillA = +(a * 0.5).toFixed(2);
+    return {
+      outline: 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')',
+      fill: 'rgba(' + r + ',' + g + ',' + b + ',' + fillA + ')'
+    };
   };
   for (var _k = 1; _k <= 7; _k++) {
     if (!GHOST_COLORS[_k]) GHOST_COLORS[_k] = _gc(PIECE_COLORS[_k]);
