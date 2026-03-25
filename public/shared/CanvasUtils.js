@@ -215,15 +215,21 @@ function _stampPillow(c, size, inset, s, r, color) {
   c.fillStyle = color;
   roundRect(c, inset, inset, s, s, r);
   c.fill();
+  // Scale highlight/shadow intensity by luminance — dark colors (blue) get softer
+  // highlights to avoid looking blown out compared to bright colors (yellow, cyan).
+  var rgb = hexToRgb(color);
+  var lum = rgb ? (rgb.r * 0.299 + rgb.g * 0.587 + rgb.b * 0.114) / 255 : 0.5;
+  var hiAlpha = 0.12 + lum * 0.18;   // dark ~0.12, bright ~0.30
+  var edgeAlpha = 0.12 + lum * 0.22; // dark ~0.12, bright ~0.34
   var half = size / 2;
   var g = c.createRadialGradient(half * 0.9, half * 0.8, 0, half, half, size * 0.65);
-  g.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
+  g.addColorStop(0, 'rgba(255, 255, 255, ' + hiAlpha.toFixed(2) + ')');
   g.addColorStop(0.6, 'rgba(255, 255, 255, 0.03)');
   g.addColorStop(1, 'rgba(0, 0, 0, 0.2)');
   c.fillStyle = g;
   roundRect(c, inset, inset, s, s, r);
   c.fill();
-  c.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+  c.strokeStyle = 'rgba(255, 255, 255, ' + edgeAlpha.toFixed(2) + ')';
   c.lineWidth = Math.max(0.5, size * 0.04);
   c.beginPath();
   c.moveTo(inset + r, inset + size * 0.015);
