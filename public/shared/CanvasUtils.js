@@ -103,6 +103,170 @@ function ghostColor(hex) {
   };
 }
 
+// ============================================================
+// Offscreen block stamp cache — pre-renders each (tier, color,
+// cellSize) block to a small canvas so the main render loop
+// can blit with a single drawImage() call.
+// ============================================================
+var _stampCache = new Map();
+
+function _createStampCanvas(size) {
+  if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(size, size);
+  var c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  return c;
+}
+
+function getBlockStamp(tier, color, cellSize) {
+  var key = tier + '_' + color + '_' + cellSize;
+  var stamp = _stampCache.get(key);
+  if (stamp) return stamp;
+
+  var size = cellSize;
+  var inset = size * THEME.size.blockGap;
+  var s = size - inset * 2;
+  var r = THEME.radius.block(size);
+  var oc = _createStampCanvas(size);
+  var c = oc.getContext('2d');
+
+  if (tier === STYLE_TIERS.PILLOW) {
+    _stampPillow(c, size, inset, s, r, color);
+  } else if (tier === STYLE_TIERS.NEON_FLAT) {
+    _stampNeonFlat(c, size, inset, s, r, color);
+  } else {
+    _stampNormal(c, size, inset, s, r, color);
+  }
+
+  _stampCache.set(key, oc);
+  return oc;
+}
+
+function getMiniBlockStamp(tier, color, miniSize) {
+  var key = 'mi_' + tier + '_' + color + '_' + miniSize;
+  var stamp = _stampCache.get(key);
+  if (stamp) return stamp;
+
+  var size = miniSize;
+  var inset = size * THEME.size.blockGap;
+  var s = size - inset * 2;
+  var r = THEME.radius.mini(size);
+  var oc = _createStampCanvas(size);
+  var c = oc.getContext('2d');
+
+  if (tier === STYLE_TIERS.PILLOW) {
+    _stampPillow(c, size, inset, s, r, color);
+  } else if (tier === STYLE_TIERS.NEON_FLAT) {
+    _stampNeonFlat(c, size, inset, s, r, color);
+  } else {
+    _stampMiniNormal(c, size, inset, s, r, color);
+  }
+
+  _stampCache.set(key, oc);
+  return oc;
+}
+
+function getGarbageStamp(cellSize) {
+  var key = 'g_' + cellSize;
+  var stamp = _stampCache.get(key);
+  if (stamp) return stamp;
+
+  var size = cellSize;
+  var inset = size * THEME.size.blockGap;
+  var s = size - inset * 2;
+  var r = THEME.radius.block(size);
+  var oc = _createStampCanvas(size);
+  var c = oc.getContext('2d');
+
+  c.fillStyle = THEME.color.garbage;
+  roundRect(c, inset, inset, s, s, r);
+  c.fill();
+  c.fillStyle = 'rgba(255, 255, 255, ' + THEME.opacity.faint + ')';
+  c.fillRect(inset * 2, inset * 2, s - inset * 2, inset);
+
+  _stampCache.set(key, oc);
+  return oc;
+}
+
+function clearStampCache() {
+  _stampCache.clear();
+}
+
+// --- Stamp drawing helpers (draw at 0,0 on offscreen context) ---
+
+function _stampNormal(c, size, inset, s, r, color) {
+  var g = c.createLinearGradient(0, 0, 0, size);
+  g.addColorStop(0, lightenColor(color, 15));
+  g.addColorStop(1, darkenColor(color, 10));
+  c.fillStyle = g;
+  roundRect(c, inset, inset, s, s, r);
+  c.fill();
+  c.fillStyle = 'rgba(255, 255, 255, ' + THEME.opacity.highlight + ')';
+  c.fillRect(inset + r, inset, s - r * 2, size * 0.08);
+  c.fillStyle = 'rgba(255, 255, 255, ' + THEME.opacity.muted + ')';
+  c.fillRect(inset, inset + r, size * 0.07, s - r * 2);
+  c.fillStyle = 'rgba(0, 0, 0, ' + THEME.opacity.shadow + ')';
+  c.fillRect(inset + r, size - inset - size * 0.08, s - r * 2, size * 0.08);
+  c.fillStyle = 'rgba(255, 255, 255, ' + THEME.opacity.subtle + ')';
+  var sh = size * 0.25;
+  c.fillRect(size * 0.25, size * 0.2, sh, sh * 0.5);
+}
+
+function _stampPillow(c, size, inset, s, r, color) {
+  c.fillStyle = color;
+  roundRect(c, inset, inset, s, s, r);
+  c.fill();
+  var half = size / 2;
+  var g = c.createRadialGradient(half * 0.9, half * 0.8, 0, half, half, size * 0.65);
+  g.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
+  g.addColorStop(0.6, 'rgba(255, 255, 255, 0.03)');
+  g.addColorStop(1, 'rgba(0, 0, 0, 0.2)');
+  c.fillStyle = g;
+  roundRect(c, inset, inset, s, s, r);
+  c.fill();
+  c.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+  c.lineWidth = Math.max(0.5, size * 0.04);
+  c.beginPath();
+  c.moveTo(inset + r, inset + size * 0.015);
+  c.lineTo(inset + s - r, inset + size * 0.015);
+  c.stroke();
+  c.strokeStyle = 'rgba(0, 0, 0, 0.25)';
+  c.beginPath();
+  c.moveTo(inset + r, inset + s - size * 0.015);
+  c.lineTo(inset + s - r, inset + s - size * 0.015);
+  c.stroke();
+}
+
+function _stampNeonFlat(c, size, inset, s, r, color) {
+  var rgb = hexToRgb(color);
+  if (!rgb) return;
+  var bw = Math.max(1, size * 0.08);
+  var half = bw / 2;
+  c.fillStyle = 'rgba(' + (rgb.r * 0.2 | 0) + ',' + (rgb.g * 0.2 | 0) + ',' + (rgb.b * 0.2 | 0) + ',0.92)';
+  roundRect(c, inset, inset, s, s, r);
+  c.fill();
+  c.strokeStyle = color;
+  c.lineWidth = bw;
+  roundRect(c, inset + half, inset + half, s - bw, s - bw, r);
+  c.stroke();
+  c.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+  c.lineWidth = Math.max(0.5, size * 0.025);
+  c.beginPath();
+  c.moveTo(inset + r + bw, inset + bw);
+  c.lineTo(size - inset - r - bw, inset + bw);
+  c.stroke();
+}
+
+function _stampMiniNormal(c, size, inset, s, r, color) {
+  var g = c.createLinearGradient(0, 0, 0, size);
+  g.addColorStop(0, color);
+  g.addColorStop(1, darkenColor(color, 15));
+  c.fillStyle = g;
+  roundRect(c, inset, inset, s, s, r);
+  c.fill();
+  c.fillStyle = 'rgba(255, 255, 255, ' + THEME.opacity.highlight + ')';
+  c.fillRect(inset + r, inset, s - r * 2, size * 0.06);
+}
+
 // Shared font detection — returns the preferred display font family string.
 // Checks whether Orbitron has loaded; falls back to monospace.
 // Re-checks on each font load event until Orbitron is detected.

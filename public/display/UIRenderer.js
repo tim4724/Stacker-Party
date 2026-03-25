@@ -44,11 +44,7 @@ class UIRenderer {
 
   render(playerState, timestamp) {
     // Update style tier from level
-    const newTier = getStyleTier(playerState.level || 1);
-    if (newTier !== this._styleTier) {
-      this._styleTier = newTier;
-      clearSharedGradients();
-    }
+    this._styleTier = getStyleTier(playerState.level || 1);
 
     // 1. Player name + accent stripe above board
     this.drawPlayerName(playerState);
@@ -334,7 +330,6 @@ class UIRenderer {
   }
 
   drawMiniPiece(centerX, centerY, pieceType, size) {
-    const ctx = this.ctx;
     const blocks = MINI_PIECES[pieceType];
     if (!blocks) return;
 
@@ -343,68 +338,15 @@ class UIRenderer {
     const tier = this._styleTier;
     const isNeon = tier === STYLE_TIERS.NEON_FLAT;
     const color = (isNeon ? NEON_PIECE_COLORS[typeId] : PIECE_COLORS[typeId]) || '#ffffff';
+    const stamp = getMiniBlockStamp(tier, color, size);
 
-    // Center the piece within the given area
     const offsetX = centerX - (bounds.w * size) / 2;
     const offsetY = centerY - (bounds.h * size) / 2;
 
-    const inset = size * THEME.size.blockGap;
-    const s = size - inset * 2;
-
     for (const [bx, by] of blocks) {
-      const dx = offsetX + (bx - bounds.minX) * size;
-      const dy = offsetY + (by - bounds.minY) * size;
-
-      if (tier === STYLE_TIERS.PILLOW) {
-        // Pillow mini — solid fill + subtle radial highlight
-        const r = THEME.radius.mini(size);
-        ctx.fillStyle = color;
-        roundRect(ctx, dx + inset, dy + inset, s, s, r);
-        ctx.fill();
-        const grad = getSharedGradient('pm_' + size, size, function(c, sz) {
-          var half = sz / 2;
-          var g = c.createRadialGradient(half * 0.9, half * 0.8, 0, half, half, sz * 0.65);
-          g.addColorStop(0, 'rgba(255, 255, 255, 0.2)');
-          g.addColorStop(0.6, 'rgba(255, 255, 255, 0)');
-          g.addColorStop(1, 'rgba(0, 0, 0, 0.15)');
-          return g;
-        });
-        ctx.save();
-        ctx.translate(dx, dy);
-        ctx.fillStyle = grad;
-        roundRect(ctx, inset, inset, s, s, r);
-        ctx.fill();
-        ctx.restore();
-      } else if (tier === STYLE_TIERS.NEON_FLAT) {
-        // Neon flat mini — dark tinted fill + bright border
-        const cRgb = hexToRgb(color);
-        if (!cRgb) continue;
-        const r = THEME.radius.mini(size);
-        ctx.fillStyle = `rgba(${cRgb.r * 0.2 | 0}, ${cRgb.g * 0.2 | 0}, ${cRgb.b * 0.2 | 0}, 0.92)`;
-        roundRect(ctx, dx + inset, dy + inset, s, s, r);
-        ctx.fill();
-        ctx.strokeStyle = color;
-        ctx.lineWidth = Math.max(1, size * 0.08);
-        roundRect(ctx, dx + inset + 0.5, dy + inset + 0.5, s - 1, s - 1, r);
-        ctx.stroke();
-      } else {
-        // Normal mini — gradient + highlight
-        const r = THEME.radius.mini(size);
-        const grad = getSharedGradient('mn_' + pieceType + '_' + size, size, function(c, sz) {
-          var g = c.createLinearGradient(0, 0, 0, sz);
-          g.addColorStop(0, color);
-          g.addColorStop(1, darkenColor(color, 15));
-          return g;
-        });
-        ctx.save();
-        ctx.translate(dx, dy);
-        ctx.fillStyle = grad;
-        roundRect(ctx, inset, inset, s, s, r);
-        ctx.fill();
-        ctx.fillStyle = `rgba(255, 255, 255, ${THEME.opacity.highlight})`;
-        ctx.fillRect(inset + r, inset, s - r * 2, size * 0.06);
-        ctx.restore();
-      }
+      this.ctx.drawImage(stamp,
+        offsetX + (bx - bounds.minX) * size,
+        offsetY + (by - bounds.minY) * size);
     }
   }
 
