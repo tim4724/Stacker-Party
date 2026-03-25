@@ -369,7 +369,10 @@ class PlayerBoard {
       lockedTypeId = this.currentPiece.typeId;
       var abs = this.currentPiece.getAbsoluteBlocks();
       for (var i = 0; i < abs.length; i++) {
-        lockedBlocks.push([abs[i][0], abs[i][1] - BUFFER_ROWS]);
+        var visibleRow = abs[i][1] - BUFFER_ROWS;
+        if (visibleRow >= 0) {
+          lockedBlocks.push([abs[i][0], visibleRow]);
+        }
       }
     }
 

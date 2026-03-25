@@ -240,6 +240,10 @@ describe('PlayerBoard - hardDrop()', () => {
     assert.ok('linesCleared' in result);
     assert.ok('alive' in result);
     assert.ok('fullRows' in result, 'result should include fullRows array');
+    assert.ok(Array.isArray(result.lockedBlocks), 'result should include lockedBlocks array');
+    assert.ok(result.lockedBlocks.length > 0, 'lockedBlocks should not be empty');
+    assert.strictEqual(typeof result.lockedTypeId, 'number', 'result should include lockedTypeId');
+    assert.ok(result.lockedTypeId > 0, 'lockedTypeId should be a valid piece type');
   });
 
   test('hardDrop() returns null when no currentPiece', () => {
