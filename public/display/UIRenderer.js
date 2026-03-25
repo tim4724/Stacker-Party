@@ -255,24 +255,27 @@ class UIRenderer {
     const bw = meter.cellSize - inset * 2;
     const bh = meter.cellSize - inset * 2;
 
-    for (const effect of effects) {
-      const elapsed = now - effect.startTime;
-      if (elapsed < 0 || elapsed >= effect.duration) continue;
-      ctx.globalAlpha = (1 - elapsed / effect.duration) * (effect.maxAlpha || 0.9);
+    try {
+      for (const effect of effects) {
+        const elapsed = now - effect.startTime;
+        if (elapsed < 0 || elapsed >= effect.duration) continue;
+        ctx.globalAlpha = (1 - elapsed / effect.duration) * (effect.maxAlpha || 0.9);
 
-      for (let row = effect.rowStart; row < effect.rowStart + effect.lines; row++) {
-        if (row < 0 || row >= meter.rows) continue;
-        const y = meter.y + row * meter.cellSize;
-        const bx = meter.x + inset;
-        const by = y + inset;
-        ctx.fillStyle = effect.color;
-        roundRect(ctx, bx, by, bw, bh, r);
-        ctx.fill();
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-        ctx.fillRect(bx + inset, by + inset, bw - inset * 2, inset);
+        for (let row = effect.rowStart; row < effect.rowStart + effect.lines; row++) {
+          if (row < 0 || row >= meter.rows) continue;
+          const y = meter.y + row * meter.cellSize;
+          const bx = meter.x + inset;
+          const by = y + inset;
+          ctx.fillStyle = effect.color;
+          roundRect(ctx, bx, by, bw, bh, r);
+          ctx.fill();
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+          ctx.fillRect(bx + inset, by + inset, bw - inset * 2, inset);
+        }
       }
+    } finally {
+      ctx.globalAlpha = 1.0;
     }
-    ctx.globalAlpha = 1.0;
   }
 
   drawGarbageDefenceEffects(effects, timestamp) {
@@ -286,24 +289,27 @@ class UIRenderer {
     const bw = meter.cellSize - inset * 2;
     const bh = meter.cellSize - inset * 2;
 
-    for (const effect of effects) {
-      const elapsed = now - effect.startTime;
-      if (elapsed < 0 || elapsed >= effect.duration) continue;
-      ctx.globalAlpha = (1 - elapsed / effect.duration) * (effect.maxAlpha || 0.9);
+    try {
+      for (const effect of effects) {
+        const elapsed = now - effect.startTime;
+        if (elapsed < 0 || elapsed >= effect.duration) continue;
+        ctx.globalAlpha = (1 - elapsed / effect.duration) * (effect.maxAlpha || 0.9);
 
-      for (let row = effect.rowStart; row < effect.rowStart + effect.lines; row++) {
-        if (row < 0 || row >= meter.rows) continue;
-        const y = meter.y + row * meter.cellSize;
-        const bx = meter.x + inset;
-        const by = y + inset;
-        ctx.fillStyle = THEME.color.text.white;
-        roundRect(ctx, bx, by, bw, bh, r);
-        ctx.fill();
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-        ctx.fillRect(bx + inset, by + inset, bw - inset * 2, inset);
+        for (let row = effect.rowStart; row < effect.rowStart + effect.lines; row++) {
+          if (row < 0 || row >= meter.rows) continue;
+          const y = meter.y + row * meter.cellSize;
+          const bx = meter.x + inset;
+          const by = y + inset;
+          ctx.fillStyle = THEME.color.text.white;
+          roundRect(ctx, bx, by, bw, bh, r);
+          ctx.fill();
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+          ctx.fillRect(bx + inset, by + inset, bw - inset * 2, inset);
+        }
       }
+    } finally {
+      ctx.globalAlpha = 1.0;
     }
-    ctx.globalAlpha = 1.0;
   }
 
   drawKOOverlay() {

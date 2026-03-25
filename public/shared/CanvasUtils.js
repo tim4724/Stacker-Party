@@ -118,11 +118,10 @@ function _createStampCanvas(size) {
 }
 
 function getBlockStamp(tier, color, cellSize) {
-  var key = tier + '_' + color + '_' + cellSize;
+  var size = Math.round(cellSize);
+  var key = tier + '_' + color + '_' + size;
   var stamp = _stampCache.get(key);
   if (stamp) return stamp;
-
-  var size = cellSize;
   var inset = size * THEME.size.blockGap;
   var s = size - inset * 2;
   var r = THEME.radius.block(size);
@@ -142,11 +141,10 @@ function getBlockStamp(tier, color, cellSize) {
 }
 
 function getMiniBlockStamp(tier, color, miniSize) {
-  var key = 'mi_' + tier + '_' + color + '_' + miniSize;
+  var size = Math.round(miniSize);
+  var key = 'mi_' + tier + '_' + color + '_' + size;
   var stamp = _stampCache.get(key);
   if (stamp) return stamp;
-
-  var size = miniSize;
   var inset = size * THEME.size.blockGap;
   var s = size - inset * 2;
   var r = THEME.radius.mini(size);
@@ -166,11 +164,10 @@ function getMiniBlockStamp(tier, color, miniSize) {
 }
 
 function getGarbageStamp(cellSize) {
-  var key = 'g_' + cellSize;
+  var size = Math.round(cellSize);
+  var key = 'g_' + size;
   var stamp = _stampCache.get(key);
   if (stamp) return stamp;
-
-  var size = cellSize;
   var inset = size * THEME.size.blockGap;
   var s = size - inset * 2;
   var r = THEME.radius.block(size);
