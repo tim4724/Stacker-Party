@@ -12,6 +12,10 @@
 
 function handleMessage(data) {
   try {
+    // Ignore game broadcasts after rejection (e.g., joined during countdown)
+    // Only allow WELCOME (re-admission) and ERROR (new rejection info) through.
+    if (gameCancelled && data.type !== MSG.WELCOME && data.type !== MSG.ERROR) return;
+
     switch (data.type) {
       case MSG.WELCOME:
         onWelcome(data);
