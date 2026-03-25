@@ -199,7 +199,7 @@ test.describe('Display', () => {
     await expect(page).toHaveScreenshot('07c-game-style-tiers.png');
   });
 
-  for (const [tierName, tierLevel] of [['normal', 3], ['square', 8], ['neon', 13]]) {
+  for (const [tierName, tierLevel] of [['normal', 3], ['pillow', 8], ['neon', 13]]) {
     test(`game screen - all pieces + ghosts ${tierName}`, async ({ page }) => {
       await page.setViewportSize({ width: 2560, height: 1440 });
       await gotoDisplayTest(page);

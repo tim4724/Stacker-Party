@@ -214,7 +214,7 @@ function buildResults(playerIds) {
 // Level overrides per style tier (for visual tests)
 const TIER_LEVELS = {
   normal:   [3, 3],
-  square:   [8, 8],
+  pillow:   [8, 8],
   neon:     [13, 13],
 };
 

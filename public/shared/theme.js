@@ -57,13 +57,13 @@ if (typeof ghostColor === 'function') {
 // Level-based style tiers
 const STYLE_TIERS = Object.freeze({
   NORMAL: 'normal',         // Lv 1–5
-  SQUARE: 'square',         // Lv 6–10
+  PILLOW: 'pillow',         // Lv 6–10
   NEON_FLAT: 'neonFlat'     // Lv 11+
 });
 
 function getStyleTier(level) {
   if (level >= 11) return STYLE_TIERS.NEON_FLAT;
-  if (level >= 6)  return STYLE_TIERS.SQUARE;
+  if (level >= 6)  return STYLE_TIERS.PILLOW;
   return STYLE_TIERS.NORMAL;
 }
 

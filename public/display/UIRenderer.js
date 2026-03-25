@@ -39,17 +39,12 @@ class UIRenderer {
     this.panelWidth = cellSize * THEME.size.panelWidth;
     this.miniSize = cellSize * THEME.font.cellScale.mini;
     this.panelGap = cellSize * THEME.size.panelGap;
-    this._miniGradients = new Map(); // cached per pieceType_size key
     this._styleTier = STYLE_TIERS.NORMAL;
   }
 
   render(playerState, timestamp) {
     // Update style tier from level
-    const newTier = getStyleTier(playerState.level || 1);
-    if (newTier !== this._styleTier) {
-      this._styleTier = newTier;
-      this._miniGradients.clear();
-    }
+    this._styleTier = getStyleTier(playerState.level || 1);
 
     // 1. Player name + accent stripe above board
     this.drawPlayerName(playerState);
@@ -223,35 +218,30 @@ class UIRenderer {
     const ctx = this.ctx;
     const meter = this.getGarbageMeterLayout();
     const rows = Math.min(pendingGarbage, meter.rows);
+    if (rows === 0) return;
     const inset = meter.cellSize * THEME.size.blockGap;
-    const tier = this._styleTier;
     const r = THEME.radius.block(meter.cellSize);
+    const bw = meter.cellSize - inset * 2;
+    const bh = meter.cellSize - inset * 2;
 
+    // Batched stroke: one compound path for all cells
+    ctx.beginPath();
     for (let i = 0; i < rows; i++) {
       const y = meter.y + this.boardHeight - (i + 1) * meter.cellSize;
-      const bx = meter.x + inset;
-      const by = y + inset;
-      const bw = meter.cellSize - inset * 2;
-      const bh = meter.cellSize - inset * 2;
-
-      if (tier === STYLE_TIERS.SQUARE) {
-        // Square — solid thin border + translucent fill
-        ctx.strokeStyle = `rgba(255, 255, 255, ${THEME.opacity.label})`;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
-        ctx.fillStyle = `rgba(255, 255, 255, ${THEME.opacity.muted})`;
-        ctx.fillRect(bx + 1, by + 1, bw - 2, bh - 2);
-      } else {
-        // Normal / Neon — solid rounded outline + translucent fill
-        ctx.strokeStyle = `rgba(255, 255, 255, ${THEME.opacity.label})`;
-        ctx.lineWidth = 1;
-        roundRect(ctx, bx + 0.5, by + 0.5, bw - 1, bh - 1, r);
-        ctx.stroke();
-        ctx.fillStyle = `rgba(255, 255, 255, ${THEME.opacity.muted})`;
-        roundRect(ctx, bx, by, bw, bh, r);
-        ctx.fill();
-      }
+      _addRoundRectSubPath(ctx, meter.x + inset + 0.5, y + inset + 0.5, bw - 1, bh - 1, r);
     }
+    ctx.strokeStyle = `rgba(255, 255, 255, ${THEME.opacity.label})`;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Batched fill: one compound path for all cells
+    ctx.beginPath();
+    for (let i = 0; i < rows; i++) {
+      const y = meter.y + this.boardHeight - (i + 1) * meter.cellSize;
+      _addRoundRectSubPath(ctx, meter.x + inset, y + inset, bw, bh, r);
+    }
+    ctx.fillStyle = `rgba(255, 255, 255, ${THEME.opacity.muted})`;
+    ctx.fill();
   }
 
   drawGarbageIndicatorEffects(effects, timestamp) {
@@ -262,34 +252,29 @@ class UIRenderer {
     const now = timestamp || performance.now();
     const inset = meter.cellSize * THEME.size.blockGap;
     const r = THEME.radius.block(meter.cellSize);
+    const bw = meter.cellSize - inset * 2;
+    const bh = meter.cellSize - inset * 2;
 
-    for (const effect of effects) {
-      const elapsed = now - effect.startTime;
-      if (elapsed < 0 || elapsed >= effect.duration) continue;
-      // Fade out over the duration
-      const alpha = (1 - elapsed / effect.duration) * (effect.maxAlpha || 0.9);
+    try {
+      for (const effect of effects) {
+        const elapsed = now - effect.startTime;
+        if (elapsed < 0 || elapsed >= effect.duration) continue;
+        ctx.globalAlpha = (1 - elapsed / effect.duration) * (effect.maxAlpha || 0.9);
 
-      for (let row = effect.rowStart; row < effect.rowStart + effect.lines; row++) {
-        if (row < 0 || row >= meter.rows) continue;
-        const y = meter.y + row * meter.cellSize;
-        const bx = meter.x + inset;
-        const by = y + inset;
-        const bw = meter.cellSize - inset * 2;
-        const bh = meter.cellSize - inset * 2;
-
-        ctx.save();
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = effect.color;
-        if (this._styleTier === STYLE_TIERS.SQUARE) {
-          ctx.fillRect(bx, by, bw, bh);
-        } else {
+        for (let row = effect.rowStart; row < effect.rowStart + effect.lines; row++) {
+          if (row < 0 || row >= meter.rows) continue;
+          const y = meter.y + row * meter.cellSize;
+          const bx = meter.x + inset;
+          const by = y + inset;
+          ctx.fillStyle = effect.color;
           roundRect(ctx, bx, by, bw, bh, r);
           ctx.fill();
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+          ctx.fillRect(bx + inset, by + inset, bw - inset * 2, inset);
         }
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-        ctx.fillRect(bx + inset, by + inset, bw - inset * 2, inset);
-        ctx.restore();
       }
+    } finally {
+      ctx.globalAlpha = 1.0;
     }
   }
 
@@ -301,33 +286,29 @@ class UIRenderer {
     const now = timestamp || performance.now();
     const inset = meter.cellSize * THEME.size.blockGap;
     const r = THEME.radius.block(meter.cellSize);
+    const bw = meter.cellSize - inset * 2;
+    const bh = meter.cellSize - inset * 2;
 
-    for (const effect of effects) {
-      const elapsed = now - effect.startTime;
-      if (elapsed < 0 || elapsed >= effect.duration) continue;
-      const alpha = (1 - elapsed / effect.duration) * (effect.maxAlpha || 0.9);
+    try {
+      for (const effect of effects) {
+        const elapsed = now - effect.startTime;
+        if (elapsed < 0 || elapsed >= effect.duration) continue;
+        ctx.globalAlpha = (1 - elapsed / effect.duration) * (effect.maxAlpha || 0.9);
 
-      for (let row = effect.rowStart; row < effect.rowStart + effect.lines; row++) {
-        if (row < 0 || row >= meter.rows) continue;
-        const y = meter.y + row * meter.cellSize;
-        const bx = meter.x + inset;
-        const by = y + inset;
-        const bw = meter.cellSize - inset * 2;
-        const bh = meter.cellSize - inset * 2;
-
-        ctx.save();
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = THEME.color.text.white;
-        if (this._styleTier === STYLE_TIERS.SQUARE) {
-          ctx.fillRect(bx, by, bw, bh);
-        } else {
+        for (let row = effect.rowStart; row < effect.rowStart + effect.lines; row++) {
+          if (row < 0 || row >= meter.rows) continue;
+          const y = meter.y + row * meter.cellSize;
+          const bx = meter.x + inset;
+          const by = y + inset;
+          ctx.fillStyle = THEME.color.text.white;
           roundRect(ctx, bx, by, bw, bh, r);
           ctx.fill();
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+          ctx.fillRect(bx + inset, by + inset, bw - inset * 2, inset);
         }
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-        ctx.fillRect(bx + inset, by + inset, bw - inset * 2, inset);
-        ctx.restore();
       }
+    } finally {
+      ctx.globalAlpha = 1.0;
     }
   }
 
@@ -352,7 +333,6 @@ class UIRenderer {
   }
 
   drawMiniPiece(centerX, centerY, pieceType, size) {
-    const ctx = this.ctx;
     const blocks = MINI_PIECES[pieceType];
     if (!blocks) return;
 
@@ -361,59 +341,15 @@ class UIRenderer {
     const tier = this._styleTier;
     const isNeon = tier === STYLE_TIERS.NEON_FLAT;
     const color = (isNeon ? NEON_PIECE_COLORS[typeId] : PIECE_COLORS[typeId]) || '#ffffff';
+    const stamp = getMiniBlockStamp(tier, color, size);
 
-    // Center the piece within the given area
     const offsetX = centerX - (bounds.w * size) / 2;
     const offsetY = centerY - (bounds.h * size) / 2;
 
-    const inset = size * THEME.size.blockGap;
-    const s = size - inset * 2;
-
     for (const [bx, by] of blocks) {
-      const dx = offsetX + (bx - bounds.minX) * size;
-      const dy = offsetY + (by - bounds.minY) * size;
-
-      if (tier === STYLE_TIERS.SQUARE) {
-        // Square mini — lighter border + flat fill
-        const bw = Math.max(1, size * 0.06);
-        const half = bw / 2;
-        ctx.strokeStyle = lightenColor(color, 20);
-        ctx.lineWidth = bw;
-        ctx.strokeRect(dx + inset + half, dy + inset + half, s - bw, s - bw);
-        ctx.fillStyle = color;
-        ctx.fillRect(dx + inset + bw, dy + inset + bw, s - bw * 2, s - bw * 2);
-      } else if (tier === STYLE_TIERS.NEON_FLAT) {
-        // Neon flat mini — dark tinted fill + bright border
-        const cRgb = hexToRgb(color);
-        if (!cRgb) continue;
-        const r = THEME.radius.mini(size);
-        ctx.fillStyle = `rgba(${cRgb.r * 0.2 | 0}, ${cRgb.g * 0.2 | 0}, ${cRgb.b * 0.2 | 0}, 0.92)`;
-        roundRect(ctx, dx + inset, dy + inset, s, s, r);
-        ctx.fill();
-        ctx.strokeStyle = color;
-        ctx.lineWidth = Math.max(1, size * 0.08);
-        roundRect(ctx, dx + inset + 0.5, dy + inset + 0.5, s - 1, s - 1, r);
-        ctx.stroke();
-      } else {
-        // Normal mini — gradient + highlight
-        const r = THEME.radius.mini(size);
-        const gradKey = pieceType + '_' + size;
-        let grad = this._miniGradients.get(gradKey);
-        if (!grad) {
-          grad = ctx.createLinearGradient(0, 0, 0, size);
-          grad.addColorStop(0, color);
-          grad.addColorStop(1, darkenColor(color, 15));
-          this._miniGradients.set(gradKey, grad);
-        }
-        ctx.save();
-        ctx.translate(dx, dy);
-        ctx.fillStyle = grad;
-        roundRect(ctx, inset, inset, s, s, r);
-        ctx.fill();
-        ctx.fillStyle = `rgba(255, 255, 255, ${THEME.opacity.highlight})`;
-        ctx.fillRect(inset + r, inset, s - r * 2, size * 0.06);
-        ctx.restore();
-      }
+      this.ctx.drawImage(stamp,
+        offsetX + (bx - bounds.minX) * size,
+        offsetY + (by - bounds.minY) * size);
     }
   }
 

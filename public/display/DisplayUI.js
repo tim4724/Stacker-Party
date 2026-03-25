@@ -9,6 +9,7 @@
 // --- Layout Calculation ---
 function calculateLayout() {
   if (!ctx || playerOrder.length === 0) return;
+  clearStampCache();
 
   var n = playerOrder.length;
   var w = window.innerWidth;

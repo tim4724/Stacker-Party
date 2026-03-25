@@ -14,8 +14,6 @@ class BoardRenderer {
     this._accentRgb = hexToRgb(this.accentColor);
     this.boardWidth = COLS * cellSize;
     this.boardHeight = VISIBLE_ROWS * cellSize;
-    this._bgGradient = null;
-    this._blockGradients = new Map(); // cached per color hex string
     this._styleTier = STYLE_TIERS.NORMAL;
   }
 
@@ -26,12 +24,9 @@ class BoardRenderer {
 
     // Determine style tier from level
     const newTier = getStyleTier(playerState.level || 1);
-    if (newTier !== this._styleTier) {
-      this._styleTier = newTier;
-      this._blockGradients.clear();
-    }
+    this._styleTier = newTier;
 
-    const isNeon = this._styleTier === STYLE_TIERS.NEON_FLAT;
+    const isNeon = newTier === STYLE_TIERS.NEON_FLAT;
     const colors = isNeon ? NEON_PIECE_COLORS : PIECE_COLORS;
     const ghostColors = isNeon ? NEON_GHOST_COLORS : GHOST_COLORS;
 
@@ -74,19 +69,39 @@ class BoardRenderer {
       }
     }
 
-    // 4. Ghost piece
+    // 4. Ghost piece (batched: one compound path for all 4 blocks)
     if (playerState.currentPiece && playerState.ghostY != null && playerState.alive !== false) {
       const piece = playerState.currentPiece;
       const ghostDisplayY = playerState.ghostY;
-      const ghostColor = ghostColors[piece.typeId] || { outline: 'rgba(255,255,255,0.12)', fill: 'rgba(255,255,255,0.06)' };
+      const gc = ghostColors[piece.typeId] || { outline: 'rgba(255,255,255,0.12)', fill: 'rgba(255,255,255,0.06)' };
       if (piece.blocks) {
+        const size = this.cellSize;
+        const inset = size * THEME.size.blockGap;
+        const s = size - inset * 2;
+        const r = THEME.radius.block(size);
+        // Stroke path (inset by 0.5 for crisp 1px lines)
+        ctx.beginPath();
         for (const [bx, by] of piece.blocks) {
           const drawRow = ghostDisplayY + by;
           const drawCol = piece.x + bx;
           if (drawRow >= 0 && drawRow < VISIBLE_ROWS && drawCol >= 0 && drawCol < COLS) {
-            this.drawGhostBlock(drawCol, drawRow, ghostColor);
+            _addRoundRectSubPath(ctx, this.x + drawCol * size + inset + 0.5, this.y + drawRow * size + inset + 0.5, s - 1, s - 1, r);
           }
         }
+        ctx.strokeStyle = gc.outline;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        // Fill path
+        ctx.beginPath();
+        for (const [bx, by] of piece.blocks) {
+          const drawRow = ghostDisplayY + by;
+          const drawCol = piece.x + bx;
+          if (drawRow >= 0 && drawRow < VISIBLE_ROWS && drawCol >= 0 && drawCol < COLS) {
+            _addRoundRectSubPath(ctx, this.x + drawCol * size + inset, this.y + drawRow * size + inset, s, s, r);
+          }
+        }
+        ctx.fillStyle = gc.fill;
+        ctx.fill();
       }
     }
 
@@ -139,99 +154,15 @@ class BoardRenderer {
   }
 
   drawBlock(col, row, color, isGarbage) {
-    const ctx = this.ctx;
     const x = this.x + col * this.cellSize;
     const y = this.y + row * this.cellSize;
-    const size = this.cellSize;
-    const inset = size * THEME.size.blockGap;
-    const r = THEME.radius.block(size);
-    const s = size - inset * 2;
-    const tier = this._styleTier;
-
-    if (isGarbage) {
-      ctx.fillStyle = THEME.color.garbage;
-      if (tier === STYLE_TIERS.SQUARE) {
-        ctx.fillRect(x + inset, y + inset, s, s);
-      } else {
-        roundRect(ctx, x + inset, y + inset, s, s, r);
-        ctx.fill();
-      }
-      ctx.fillStyle = `rgba(255, 255, 255, ${THEME.opacity.faint})`;
-      ctx.fillRect(x + inset * 2, y + inset * 2, s - inset * 2, inset);
-      return;
-    }
-
-    if (tier === STYLE_TIERS.SQUARE) {
-      this._drawBlockSquare(x, y, size, inset, s, color);
-    } else if (tier === STYLE_TIERS.NEON_FLAT) {
-      this._drawBlockNeonFlat(x, y, size, inset, s, r, color);
-    } else {
-      this._drawBlockNormal(x, y, size, inset, s, r, color);
-    }
+    const stamp = isGarbage
+      ? getGarbageStamp(this.cellSize)
+      : getBlockStamp(this._styleTier, color, this.cellSize);
+    this.ctx.drawImage(stamp, x, y);
   }
 
-  _drawBlockNormal(x, y, size, inset, s, r, color) {
-    const ctx = this.ctx;
-    // Gradient in (0,0)→(0,size) coords — requires ctx.translate(x,y) before drawing
-    let grad = this._blockGradients.get(color);
-    if (!grad) {
-      grad = ctx.createLinearGradient(0, 0, 0, size);
-      grad.addColorStop(0, lightenColor(color, 15));
-      grad.addColorStop(1, darkenColor(color, 10));
-      this._blockGradients.set(color, grad);
-    }
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.fillStyle = grad;
-    roundRect(ctx, inset, inset, s, s, r);
-    ctx.fill();
-    ctx.fillStyle = `rgba(255, 255, 255, ${THEME.opacity.highlight})`;
-    ctx.fillRect(inset + r, inset, s - r * 2, size * 0.08);
-    ctx.fillStyle = `rgba(255, 255, 255, ${THEME.opacity.muted})`;
-    ctx.fillRect(inset, inset + r, size * 0.07, s - r * 2);
-    ctx.fillStyle = `rgba(0, 0, 0, ${THEME.opacity.shadow})`;
-    ctx.fillRect(inset + r, size - inset - size * 0.08, s - r * 2, size * 0.08);
-    ctx.fillStyle = `rgba(255, 255, 255, ${THEME.opacity.subtle})`;
-    const shineSize = size * 0.25;
-    ctx.fillRect(size * 0.25, size * 0.2, shineSize, shineSize * 0.5);
-    ctx.restore();
-  }
-
-  _drawBlockSquare(x, y, size, inset, s, color) {
-    const ctx = this.ctx;
-    const bw = Math.max(1, size * 0.06);
-    const half = bw / 2;
-    ctx.strokeStyle = lightenColor(color, 20);
-    ctx.lineWidth = bw;
-    ctx.strokeRect(x + inset + half, y + inset + half, s - bw, s - bw);
-    ctx.fillStyle = color;
-    ctx.fillRect(x + inset + bw, y + inset + bw, s - bw * 2, s - bw * 2);
-  }
-
-  _drawBlockNeonFlat(x, y, size, inset, s, r, color) {
-    const ctx = this.ctx;
-    const cRgb = hexToRgb(color);
-    if (!cRgb) return;
-    const bw = Math.max(1, size * 0.08);
-    const half = bw / 2;
-    // Dark tinted fill (~20% of piece color)
-    ctx.fillStyle = `rgba(${cRgb.r * 0.2 | 0}, ${cRgb.g * 0.2 | 0}, ${cRgb.b * 0.2 | 0}, 0.92)`;
-    roundRect(ctx, x + inset, y + inset, s, s, r);
-    ctx.fill();
-    // Bright border
-    ctx.strokeStyle = color;
-    ctx.lineWidth = bw;
-    roundRect(ctx, x + inset + half, y + inset + half, s - bw, s - bw, r);
-    ctx.stroke();
-    // Top edge highlight
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
-    ctx.lineWidth = Math.max(0.5, size * 0.025);
-    ctx.beginPath();
-    ctx.moveTo(x + inset + r + bw, y + inset + bw);
-    ctx.lineTo(x + size - inset - r - bw, y + inset + bw);
-    ctx.stroke();
-  }
-
+  // Used by DisplayRender __TEST__._extraGhosts path; main render uses batched compound path above.
   drawGhostBlock(col, row, color) {
     const ctx = this.ctx;
     const x = this.x + col * this.cellSize;
@@ -240,24 +171,13 @@ class BoardRenderer {
     const inset = size * THEME.size.blockGap;
     const s = size - inset * 2;
     const r = THEME.radius.block(size);
-    const tier = this._styleTier;
-
-    if (tier === STYLE_TIERS.SQUARE) {
-      ctx.strokeStyle = color.outline;
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x + inset + 0.5, y + inset + 0.5, s - 1, s - 1);
-      ctx.fillStyle = color.fill;
-      ctx.fillRect(x + inset + 1, y + inset + 1, s - 2, s - 2);
-    } else {
-      // Normal / Neon — solid rounded outline + translucent fill
-      ctx.strokeStyle = color.outline;
-      ctx.lineWidth = 1;
-      roundRect(ctx, x + inset + 0.5, y + inset + 0.5, s - 1, s - 1, r);
-      ctx.stroke();
-      ctx.fillStyle = color.fill;
-      roundRect(ctx, x + inset, y + inset, s, s, r);
-      ctx.fill();
-    }
+    ctx.strokeStyle = color.outline;
+    ctx.lineWidth = 1;
+    roundRect(ctx, x + inset + 0.5, y + inset + 0.5, s - 1, s - 1, r);
+    ctx.stroke();
+    ctx.fillStyle = color.fill;
+    roundRect(ctx, x + inset, y + inset, s, s, r);
+    ctx.fill();
   }
 }
 

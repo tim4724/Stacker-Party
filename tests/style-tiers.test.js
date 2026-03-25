@@ -17,12 +17,12 @@ describe('getStyleTier', () => {
     assert.equal(getStyleTier(5), STYLE_TIERS.NORMAL);
   });
 
-  it('level 6 returns SQUARE', () => {
-    assert.equal(getStyleTier(6), STYLE_TIERS.SQUARE);
+  it('level 6 returns PILLOW', () => {
+    assert.equal(getStyleTier(6), STYLE_TIERS.PILLOW);
   });
 
-  it('level 10 returns SQUARE', () => {
-    assert.equal(getStyleTier(10), STYLE_TIERS.SQUARE);
+  it('level 10 returns PILLOW', () => {
+    assert.equal(getStyleTier(10), STYLE_TIERS.PILLOW);
   });
 
   it('level 11 returns NEON_FLAT', () => {
