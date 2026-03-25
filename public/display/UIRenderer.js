@@ -252,31 +252,27 @@ class UIRenderer {
     const now = timestamp || performance.now();
     const inset = meter.cellSize * THEME.size.blockGap;
     const r = THEME.radius.block(meter.cellSize);
+    const bw = meter.cellSize - inset * 2;
+    const bh = meter.cellSize - inset * 2;
 
     for (const effect of effects) {
       const elapsed = now - effect.startTime;
       if (elapsed < 0 || elapsed >= effect.duration) continue;
-      // Fade out over the duration
-      const alpha = (1 - elapsed / effect.duration) * (effect.maxAlpha || 0.9);
+      ctx.globalAlpha = (1 - elapsed / effect.duration) * (effect.maxAlpha || 0.9);
 
       for (let row = effect.rowStart; row < effect.rowStart + effect.lines; row++) {
         if (row < 0 || row >= meter.rows) continue;
         const y = meter.y + row * meter.cellSize;
         const bx = meter.x + inset;
         const by = y + inset;
-        const bw = meter.cellSize - inset * 2;
-        const bh = meter.cellSize - inset * 2;
-
-        ctx.save();
-        ctx.globalAlpha = alpha;
         ctx.fillStyle = effect.color;
         roundRect(ctx, bx, by, bw, bh, r);
         ctx.fill();
         ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
         ctx.fillRect(bx + inset, by + inset, bw - inset * 2, inset);
-        ctx.restore();
       }
     }
+    ctx.globalAlpha = 1.0;
   }
 
   drawGarbageDefenceEffects(effects, timestamp) {
@@ -287,30 +283,27 @@ class UIRenderer {
     const now = timestamp || performance.now();
     const inset = meter.cellSize * THEME.size.blockGap;
     const r = THEME.radius.block(meter.cellSize);
+    const bw = meter.cellSize - inset * 2;
+    const bh = meter.cellSize - inset * 2;
 
     for (const effect of effects) {
       const elapsed = now - effect.startTime;
       if (elapsed < 0 || elapsed >= effect.duration) continue;
-      const alpha = (1 - elapsed / effect.duration) * (effect.maxAlpha || 0.9);
+      ctx.globalAlpha = (1 - elapsed / effect.duration) * (effect.maxAlpha || 0.9);
 
       for (let row = effect.rowStart; row < effect.rowStart + effect.lines; row++) {
         if (row < 0 || row >= meter.rows) continue;
         const y = meter.y + row * meter.cellSize;
         const bx = meter.x + inset;
         const by = y + inset;
-        const bw = meter.cellSize - inset * 2;
-        const bh = meter.cellSize - inset * 2;
-
-        ctx.save();
-        ctx.globalAlpha = alpha;
         ctx.fillStyle = THEME.color.text.white;
         roundRect(ctx, bx, by, bw, bh, r);
         ctx.fill();
         ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
         ctx.fillRect(bx + inset, by + inset, bw - inset * 2, inset);
-        ctx.restore();
       }
     }
+    ctx.globalAlpha = 1.0;
   }
 
   drawKOOverlay() {
