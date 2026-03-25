@@ -272,11 +272,9 @@ if (hadStoredId || rejoinId) {
 
 syncViewportLayout();
 
-// Show join URL hint on name and lobby screens
+// Show join URL hint on lobby screen
 var joinUrlHint = location.origin + '/' + roomCode;
-var nameJoinUrl = document.getElementById('name-join-url');
 var lobbyJoinUrl = document.getElementById('lobby-join-url');
-if (nameJoinUrl) nameJoinUrl.textContent = joinUrlHint;
 if (lobbyJoinUrl) lobbyJoinUrl.textContent = joinUrlHint;
 
 } // end if (roomCode)
