@@ -170,6 +170,9 @@ newGameBtn.addEventListener('click', function() {
       requestAnimationFrame(function() { renderTetrisQR(qrCode, pre.qrMatrix); });
     }
   } else {
+    // Relay hasn't responded yet — show lobby so onRoomCreated
+    // applies the room immediately instead of pre-caching it.
+    showScreen(SCREEN.LOBBY);
     connectAndCreateRoom();
   }
 
