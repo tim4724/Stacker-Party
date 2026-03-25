@@ -102,17 +102,19 @@ class Animations {
     }
   }
 
-  _addSparkle(x, y, color, duration, cellSize) {
+  _addSparkle(x, y, color, duration, cellSize, sizeBase, sizeRange) {
     const vx = (Math.random() - 0.5) * 120;
     const vy = -Math.random() * 80 - 20;
     const cs = cellSize ?? 30;
+    const base = sizeBase ?? 0.05;
+    const range = sizeRange ?? 0.07;
 
     this.active.push({
       type: 'sparkle',
       startTime: performance.now(),
       duration,
       x, y, vx, vy, color,
-      size: cs * (0.05 + Math.random() * 0.07),
+      size: cs * (base + Math.random() * range),
       render(ctx, progress) {
         const t = progress * this.duration / 1000;
         const px = this.x + this.vx * t;
@@ -129,56 +131,28 @@ class Animations {
     });
   }
 
-  _addLockSparkle(x, y, color, duration, cellSize) {
-    const vx = (Math.random() - 0.5) * 120;
-    const vy = -Math.random() * 80 - 20;
-    const cs = cellSize ?? 30;
-
-    this.active.push({
-      type: 'sparkle',
-      startTime: performance.now(),
-      duration,
-      x, y, vx, vy, color,
-      size: cs * (0.08 + Math.random() * 0.1),
-      render(ctx, progress) {
-        const t = progress * this.duration / 1000;
-        const px = this.x + this.vx * t;
-        const py = this.y + this.vy * t + 80 * t * t;
-        const alpha = 1 - progress;
-        const sz = this.size * (1 - progress * 0.5);
-
-        ctx.save();
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = this.color;
-        ctx.fillRect(px - sz / 2, py - sz / 2, sz, sz);
-        ctx.restore();
-      }
-    });
-  }
-
   addLockFlash(boardX, boardY, cellSize, blocks, pieceColor) {
     if (!blocks || blocks.length === 0) return;
 
     // Build a set of occupied cells to skip internal edges
-    var occupied = {};
-    for (var i = 0; i < blocks.length; i++) {
-      occupied[blocks[i][0] + ',' + blocks[i][1]] = true;
+    const occupied = new Set();
+    for (const [col, row] of blocks) {
+      occupied.add(col + ',' + row);
     }
 
     // Colored sparkles only at exposed bottom edges
-    for (var i = 0; i < blocks.length; i++) {
-      var col = blocks[i][0];
-      var row = blocks[i][1];
-      if (row < 0 || row >= 20) continue;
+    for (const [col, row] of blocks) {
+      if (row < 0 || row >= VISIBLE_ROWS) continue;
       // Skip if another block from this piece is directly below
-      if (occupied[col + ',' + (row + 1)]) continue;
-      for (var j = 0; j < 5; j++) {
-        this._addLockSparkle(
+      if (occupied.has(col + ',' + (row + 1))) continue;
+      for (let j = 0; j < 5; j++) {
+        this._addSparkle(
           boardX + (col + Math.random()) * cellSize,
           boardY + (row + 1) * cellSize,
           pieceColor,
           150 + Math.random() * 250,
-          cellSize
+          cellSize,
+          0.08, 0.1
         );
       }
     }
