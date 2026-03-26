@@ -1,6 +1,6 @@
 {
   "name": "tetris-party",
-  "version": "1.6.4",
+  "version": "1.7.0",
   "description": "Browser-based multiplayer Tetris with phone controllers",
   "main": "server/index.js",
   "scripts": {
