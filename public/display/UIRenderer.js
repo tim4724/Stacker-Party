@@ -332,6 +332,50 @@ class UIRenderer {
     );
   }
 
+  drawDisconnectedOverlay(qrImg, playerColor) {
+    const ctx = this.ctx;
+    const bx = this.boardX, by = this.boardY, bw = this.boardWidth, bh = this.boardHeight;
+
+    ctx.fillStyle = 'rgba(0, 0, 0, ' + THEME.opacity.overlay + ')';
+    ctx.fillRect(bx, by, bw, bh);
+
+    const labelSize = Math.max(10, this.cellSize * THEME.font.cellScale.name);
+    const labelGap = labelSize * 1.2;
+    const qrSize = Math.min(bw, bh) * 0.5;
+    const qrRadius = qrSize * 0.08;
+    const pad = qrSize * 0.06;
+    const outerSize = qrSize + pad * 2;
+    const totalH = outerSize + labelGap + labelSize;
+    const groupY = by + (bh - totalH) / 2;
+    const outerX = bx + (bw - outerSize) / 2;
+
+    ctx.fillStyle = THEME.color.text.white;
+    ctx.beginPath();
+    ctx.roundRect(outerX, groupY, outerSize, outerSize, qrRadius);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(0, 200, 255, 0.15)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    if (qrImg) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(outerX + pad, groupY + pad, qrSize, qrSize, Math.max(1, qrRadius - pad));
+      ctx.clip();
+      ctx.drawImage(qrImg, outerX + pad, groupY + pad, qrSize, qrSize);
+      ctx.restore();
+    }
+
+    ctx.fillStyle = playerColor || 'rgba(0, 200, 255, 0.7)';
+    ctx.font = '600 ' + labelSize + 'px ' + getDisplayFont();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.letterSpacing = '0.1em';
+    ctx.fillText('SCAN TO REJOIN', bx + bw / 2, groupY + outerSize + labelGap);
+    ctx.letterSpacing = '0px';
+  }
+
   drawMiniPiece(centerX, centerY, pieceType, size) {
     const blocks = MINI_PIECES[pieceType];
     if (!blocks) return;

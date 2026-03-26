@@ -13,11 +13,9 @@ class Game {
     this.callbacks = callbacks; // { onGameState, onEvent, onGameEnd }
     this.boards = new Map();
     this.playerIds = [];
-    this.startTime = null;
     this.logicInterval = null;
     this.ended = false;
     this.paused = false;
-    this.pausedAt = null;
 
     // Shared seed so all players get the same piece sequence
     if (seed == null) seed = (Math.random() * 0xFFFFFFFF) >>> 0;
@@ -36,7 +34,7 @@ class Game {
   }
 
   init() {
-    this.startTime = Date.now();
+    this.elapsed = 0;
 
     for (const [id, board] of this.boards) {
       board.spawnPiece();
@@ -60,18 +58,13 @@ class Game {
   pause() {
     if (this.paused || this.ended) return;
     this.paused = true;
-    this.pausedAt = Date.now();
     // Stop interval if running (start()-based path)
     if (this.logicInterval) this.stop();
   }
 
   resume() {
     if (!this.paused || this.ended) return;
-    // Adjust startTime so elapsed doesn't include paused duration
-    const pausedDuration = Date.now() - this.pausedAt;
-    this.startTime += pausedDuration;
     this.paused = false;
-    this.pausedAt = null;
     // Restart interval only if start() was used (not init()-based path)
     if (!this.logicInterval && this._usesInterval) {
       this.logicInterval = setInterval(() => this._safeTick(), LOGIC_TICK_MS);
@@ -142,6 +135,7 @@ class Game {
 
   update(deltaMs) {
     if (this.ended || this.paused) return;
+    this.elapsed += deltaMs;
 
     for (const [id, board] of this.boards) {
       if (!board.alive) {
@@ -184,14 +178,7 @@ class Game {
     for (const g of readyGarbage) {
       const board = this.boards.get(g.playerId);
       if (board && board.alive) {
-        if (board.clearingRows) {
-          const queue = this.garbageManager.queues.get(g.playerId);
-          if (queue) {
-            queue.push({ lines: g.lines, gapColumn: g.gapColumn, senderId: g.senderId, msLeft: deltaMs });
-          }
-        } else {
-          board.addPendingGarbage(g.lines, g.gapColumn);
-        }
+        board.addPendingGarbage(g.lines, g.gapColumn);
       }
     }
 
@@ -209,7 +196,7 @@ class Game {
 
     return {
       players: playerArr,
-      elapsed: Date.now() - this.startTime
+      elapsed: this.elapsed
     };
   }
 
@@ -327,7 +314,7 @@ class Game {
     results.forEach((r, i) => { r.rank = i + 1; });
 
     return {
-      elapsed: Date.now() - this.startTime,
+      elapsed: this.elapsed,
       results
     };
   }

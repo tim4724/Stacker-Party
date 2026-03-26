@@ -97,7 +97,7 @@ class PlayerBoard {
 
     // Line clear animation state
     this.clearingRows = null;
-    this.clearingStartTime = null;
+    this.clearingTimer = null;
 
     // Fill the next queue
     this._fillNextQueue();
@@ -211,7 +211,7 @@ class PlayerBoard {
     if (!this.currentPiece) return;
     if (this._isOnSurface()) {
       if (this.lockResets < MAX_LOCK_RESETS) {
-        this.lockTimer = Date.now();
+        this.lockTimer = LOCK_DELAY_MS;
         this.lockResets++;
       }
     } else {
@@ -292,7 +292,8 @@ class PlayerBoard {
 
     // Handle line clear animation delay
     if (this.clearingRows) {
-      if ((Date.now() - this.clearingStartTime) >= LINE_CLEAR_DELAY_MS) {
+      this.clearingTimer -= deltaMs;
+      if (this.clearingTimer <= 0) {
         this._finishClearLines();
       }
       return null;
@@ -329,7 +330,7 @@ class PlayerBoard {
         // Reset lock timer when piece moves down
         if (this._isOnSurface()) {
           if (this.lockTimer === null) {
-            this.lockTimer = Date.now();
+            this.lockTimer = LOCK_DELAY_MS;
           }
         } else {
           this.lockTimer = null;
@@ -337,7 +338,7 @@ class PlayerBoard {
       } else {
         // Can't drop further, start lock timer if not already
         if (this.lockTimer === null) {
-          this.lockTimer = Date.now();
+          this.lockTimer = LOCK_DELAY_MS;
         }
         this.gravityCounter = 0;
         break;
@@ -353,9 +354,12 @@ class PlayerBoard {
       this.scoring.addSoftDrop(softDropCells);
     }
 
-    // Check lock timer
-    if (this.lockTimer !== null && (Date.now() - this.lockTimer) >= LOCK_DELAY_MS) {
-      return this._lockAndProcess();
+    // Decrement and check lock timer
+    if (this.lockTimer !== null) {
+      this.lockTimer -= deltaMs;
+      if (this.lockTimer <= 0) {
+        return this._lockAndProcess();
+      }
     }
 
     return null;
@@ -398,7 +402,7 @@ class PlayerBoard {
 
       // Start clearing animation - delay actual row removal
       this.clearingRows = fullRows;
-      this.clearingStartTime = Date.now();
+      this.clearingTimer = LINE_CLEAR_DELAY_MS;
       this.currentPiece = null;
     } else {
       // T-spin zero still scores points even with no lines cleared
@@ -435,7 +439,7 @@ class PlayerBoard {
     }
 
     this.clearingRows = null;
-    this.clearingStartTime = null;
+    this.clearingTimer = null;
 
     this._applyPendingGarbage();
     this.spawnPiece();
