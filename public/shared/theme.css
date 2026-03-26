@@ -26,6 +26,7 @@
   --danger: #ff4444;
   --garbage: #3a3a4e;
   --border: #1e1e44;
+  --border-faint: rgba(255, 255, 255, 0.06);
   --border-glass: rgba(255, 255, 255, 0.15);
 
   /* Medals */
@@ -59,7 +60,7 @@
   --opacity-overlay: 0.75;
 
   /* Transitions */
-  --transition-fast: 0.2s ease;
+  --transition-fast: 0.15s ease;
   --transition-normal: 0.3s ease;
 
   /* Animations */

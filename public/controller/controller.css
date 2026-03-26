@@ -248,7 +248,7 @@ html, body {
   align-items: center;
   gap: 0.5rem;
   padding-top: 6px;
-  border-top: 1px solid var(--bg-glass);
+  border-top: 1px solid var(--border-faint);
   width: 100%;
   justify-content: center;
 }
