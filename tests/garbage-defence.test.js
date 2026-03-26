@@ -197,14 +197,14 @@ describe('Game - board-pending garbage cancellation', () => {
 // Game.logicTick — garbage not delivered during line clear animation
 // ---------------------------------------------------------------------------
 describe('Game - garbage delivery during line clear animation', () => {
-  test('garbage is re-queued when board is clearing lines', () => {
+  test('garbage is added to pendingGarbage when board is clearing lines', () => {
     const { game } = createGame(['p1', 'p2']);
     const board = game.boards.get('p1');
     board.spawnPiece();
 
-    // Put board into clearing state (far-future timestamp so it won't finish)
+    // Put board into clearing state with plenty of time remaining
     board.clearingRows = [20, 21];
-    board.clearingStartTime = Date.now() + 60000;
+    board.clearingTimer = 999999;
 
     // Queue garbage that expires this tick (msLeft <= LOGIC_TICK_MS)
     const LOGIC_TICK_MS = require('../server/constants').LOGIC_TICK_MS;
@@ -214,15 +214,13 @@ describe('Game - garbage delivery during line clear animation', () => {
 
     game.logicTick();
 
-    // Board should NOT have received the garbage
-    assert.strictEqual(board.pendingGarbage.length, 0, 'no garbage delivered during clear');
+    // Garbage should be in board.pendingGarbage, ready to apply when animation ends
+    assert.strictEqual(board.pendingGarbage.length, 1, 'garbage queued in board pending');
+    assert.strictEqual(board.pendingGarbage[0].lines, 3);
 
-    // Garbage should be re-queued in manager with one-frame delay
-    const requeued = game.garbageManager.queues.get('p1');
-    assert.strictEqual(requeued.length, 1, 'garbage re-queued');
-    assert.strictEqual(requeued[0].lines, 3);
-    assert.ok(requeued[0].msLeft > 0, 'msLeft is positive (one frame delay)');
-    assert.strictEqual(requeued[0].senderId, 'p2');
+    // Garbage should NOT be re-queued back into the manager
+    const managerQueue = game.garbageManager.queues.get('p1');
+    assert.strictEqual(managerQueue.length, 0, 'garbage not re-queued in manager');
   });
 
   test('garbage is delivered normally when board is not clearing', () => {

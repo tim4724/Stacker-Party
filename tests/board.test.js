@@ -3,7 +3,7 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const { PlayerBoard } = require('../server/PlayerBoard');
-const { BOARD_WIDTH, BOARD_HEIGHT, BUFFER_ROWS, LINE_CLEAR_DELAY_MS } = require('../server/constants');
+const { BOARD_WIDTH, BOARD_HEIGHT, BUFFER_ROWS, LINE_CLEAR_DELAY_MS, LOCK_DELAY_MS } = require('../server/constants');
 
 function makeBoard() {
   return new PlayerBoard('test-player');
@@ -310,7 +310,7 @@ describe('PlayerBoard - line clear', () => {
 
     // Set up clearing state and finish it
     board.clearingRows = [BOARD_HEIGHT - 4, BOARD_HEIGHT - 3, BOARD_HEIGHT - 2, BOARD_HEIGHT - 1];
-    board.clearingStartTime = Date.now() - LINE_CLEAR_DELAY_MS - 1;
+    board.clearingTimer = 0;
     board._finishClearLines();
 
     // Top rows should be empty
@@ -326,7 +326,7 @@ describe('PlayerBoard - line clear', () => {
     }
 
     board.clearingRows = [BOARD_HEIGHT - 2, BOARD_HEIGHT - 1];
-    board.clearingStartTime = Date.now() - LINE_CLEAR_DELAY_MS - 1;
+    board.clearingTimer = 0;
     board._finishClearLines();
 
     assert.strictEqual(board.grid.length, BOARD_HEIGHT);
@@ -358,7 +358,7 @@ describe('PlayerBoard - line clear delay', () => {
     const board = makeBoard();
     // Simulate clearing state
     board.clearingRows = [BOARD_HEIGHT - 1];
-    board.clearingStartTime = Date.now();
+    board.clearingTimer = LINE_CLEAR_DELAY_MS;
 
     const result = board.tick(16);
     assert.strictEqual(result, null, 'tick should return null during clearing');
@@ -373,7 +373,7 @@ describe('PlayerBoard - line clear delay', () => {
 
     // Set up clearing state (rows in ascending order, as _lockAndProcess produces)
     board.clearingRows = [BOARD_HEIGHT - 2, BOARD_HEIGHT - 1];
-    board.clearingStartTime = Date.now() - LINE_CLEAR_DELAY_MS - 1;
+    board.clearingTimer = 0;
 
     board._finishClearLines();
 
@@ -393,7 +393,7 @@ describe('PlayerBoard - line clear delay', () => {
 
     // Set up clearing state that has expired
     board.clearingRows = [BOARD_HEIGHT - 1];
-    board.clearingStartTime = Date.now() - LINE_CLEAR_DELAY_MS - 10;
+    board.clearingTimer = 0;
 
     board.tick(16);
 
@@ -564,7 +564,7 @@ describe('PlayerBoard - lock timer clears when moved off surface', () => {
     assert.ok(board._isOnSurface(), 'Piece should be on surface (ledge)');
 
     // Simulate lock timer being active
-    board.lockTimer = Date.now();
+    board.lockTimer = LOCK_DELAY_MS;
 
     // Move left: x=3 → bottom blocks at (4,14) and (5,14)
     // Row 15, cols 4 and 5 are empty → piece is no longer on surface
@@ -591,7 +591,7 @@ describe('PlayerBoard - lock timer clears when moved off surface', () => {
     board.currentPiece.y = 13;
 
     assert.ok(board._isOnSurface(), 'Piece should be on surface (ledge)');
-    board.lockTimer = Date.now();
+    board.lockTimer = LOCK_DELAY_MS;
 
     // Move right: x=4 → bottom blocks at cols 5 and 6
     // Row 15 cols 5 and 6 are empty → piece is no longer on surface
@@ -616,7 +616,7 @@ describe('PlayerBoard - lock timer clears when moved off surface', () => {
     board.currentPiece.y = 13;
 
     assert.ok(board._isOnSurface(), 'Piece should be on surface');
-    board.lockTimer = Date.now();
+    board.lockTimer = LOCK_DELAY_MS;
 
     // Move left: x=3 → bottom blocks at (4,14) and (5,14)
     // Row 15, cols 4 and 5 are filled → piece stays on surface
@@ -639,7 +639,7 @@ describe('PlayerBoard - lock timer clears when moved off surface', () => {
     board.currentPiece = new Piece('O');
     board.currentPiece.x = 4;
     board.currentPiece.y = 13;
-    board.lockTimer = Date.now();
+    board.lockTimer = LOCK_DELAY_MS;
     board.gravityCounter = 0;
 
     // Move off the ledge

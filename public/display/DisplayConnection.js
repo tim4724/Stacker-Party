@@ -243,16 +243,14 @@ function onPeerLeft(clientId) {
     }, 5000);
     graceTimers.set(clientId, graceTimer);
   } else if (roomState === ROOM_STATE.RESULTS) {
-    // Results screen — return to lobby
-    var peerWasHost = clientId === hostId;
-    lastResults = null;
-    setRoomState(ROOM_STATE.LOBBY);
-    removeLobbyPlayer(clientId);
-    // removeLobbyPlayer handles UI + broadcast for host disconnect;
-    // for non-host, we still need to notify controllers and update UI.
-    if (!peerWasHost) {
-      party.broadcast({ type: MSG.RETURN_TO_LOBBY, playerCount: players.size });
-      returnToLobbyUI();
+    if (clientId === hostId) {
+      // Host left — kick everyone back to lobby
+      lastResults = null;
+      setRoomState(ROOM_STATE.LOBBY);
+      removeLobbyPlayer(clientId);
+    } else {
+      // Non-host left — stay on results screen, just remove them
+      players.delete(clientId);
     }
   } else {
     // In game/countdown — show disconnect QR overlay

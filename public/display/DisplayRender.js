@@ -192,51 +192,10 @@ function renderFrame(timestamp) {
 
       // Draw QR overlay for disconnected players
       if (disconnectedQRs.has(playerData.id)) {
-        var br = boardRenderers[j];
-        var bx = br.x;
-        var by = br.y;
-        var bw = 10 * br.cellSize;
-        var bh = 20 * br.cellSize;
-
-        ctx.fillStyle = 'rgba(0, 0, 0, ' + THEME.opacity.overlay + ')';
-        ctx.fillRect(bx, by, bw, bh);
-
-        var qrImg = disconnectedQRs.get(playerData.id);
-        var labelSize = Math.max(10, br.cellSize * THEME.font.cellScale.name);
-        var labelGap = labelSize * 1.2;
-        var qrSize = Math.min(bw, bh) * 0.5;
-        var qrRadius = qrSize * 0.08;
-        var pad = qrSize * 0.06;
-        var outerSize = qrSize + pad * 2;
-        var totalH = outerSize + labelGap + labelSize;
-        var groupY = by + (bh - totalH) / 2;
-        var outerX = bx + (bw - outerSize) / 2;
-
-        ctx.fillStyle = THEME.color.text.white;
-        ctx.beginPath();
-        ctx.roundRect(outerX, groupY, outerSize, outerSize, qrRadius);
-        ctx.fill();
-
-        ctx.strokeStyle = 'rgba(0, 200, 255, 0.15)';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-
-        if (qrImg) {
-          ctx.save();
-          ctx.beginPath();
-          ctx.roundRect(outerX + pad, groupY + pad, qrSize, qrSize, Math.max(1, qrRadius - pad));
-          ctx.clip();
-          ctx.drawImage(qrImg, outerX + pad, groupY + pad, qrSize, qrSize);
-          ctx.restore();
-        }
-
-        ctx.fillStyle = playerData.playerColor || 'rgba(0, 200, 255, 0.7)';
-        ctx.font = '600 ' + labelSize + 'px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        ctx.letterSpacing = '0.1em';
-        ctx.fillText('SCAN TO REJOIN', bx + bw / 2, groupY + outerSize + labelGap);
-        ctx.letterSpacing = '0px';
+        uiRenderers[j].drawDisconnectedOverlay(
+          disconnectedQRs.get(playerData.id),
+          playerData.playerColor
+        );
       }
 
       if (shake.x !== 0 || shake.y !== 0) {
