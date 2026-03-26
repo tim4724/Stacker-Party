@@ -72,7 +72,11 @@ function calculateLayout() {
 
   boardRenderers = [];
   uiRenderers = [];
-  if (!animations) animations = new Animations(ctx);
+  if (!animations) {
+    animations = new Animations(ctx);
+  } else {
+    animations.active = [];
+  }
 
   var maxSlots = gridCols * gridRows;
   var cellAreaW = (w - padding * (gridCols + 1)) / gridCols;
