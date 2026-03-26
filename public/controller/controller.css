@@ -197,7 +197,7 @@ html, body {
 
 #name-input:focus {
   border-color: var(--accent-cyan);
-  box-shadow: 0 0 12px rgba(0, 200, 255, 0.1);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent-cyan) 10%, transparent);
 }
 
 #name-join-btn,
@@ -248,7 +248,7 @@ html, body {
   align-items: center;
   gap: 0.5rem;
   padding-top: 6px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid var(--bg-glass);
   width: 100%;
   justify-content: center;
 }
@@ -275,19 +275,19 @@ html, body {
   width: 2.6rem;
   height: 2.6rem;
   border: none;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, white 8%, transparent);
   color: var(--text-primary);
   padding: 0;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s ease;
+  transition: background var(--transition-fast);
 }
 
 #level-selector .level-btn:active:not(:disabled) {
-  background: rgba(255, 255, 255, 0.2);
+  background: color-mix(in srgb, white 20%, transparent);
 }
 
 #level-selector .level-btn:disabled {

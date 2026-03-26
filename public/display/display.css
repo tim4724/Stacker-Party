@@ -81,7 +81,7 @@ html, body {
   font-weight: 500;
   letter-spacing: 0.06em;
   text-decoration: none;
-  transition: color 0.3s ease, filter 0.3s ease;
+  transition: color var(--transition-normal), filter var(--transition-normal);
 }
 
 #welcome-footer a:hover {
@@ -145,7 +145,7 @@ html, body {
   height: clamp(180px, 32vh, 400px);
   border: 1px solid rgba(0, 200, 255, 0.15);
   border-radius: clamp(8px, 1vh, 16px);
-  background: #fff;
+  background: var(--text-white);
   padding: clamp(6px, 1vh, 14px);
   box-shadow: 0 0 24px rgba(0, 200, 255, 0.08);
 }
@@ -212,7 +212,7 @@ html, body {
   align-items: center;
   gap: clamp(0.25rem, 0.5vw, 0.4rem);
   padding-top: clamp(4px, 0.8vh, 8px);
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid var(--bg-glass);
   width: 100%;
   justify-content: center;
 }
@@ -240,7 +240,7 @@ html, body {
   height: clamp(24px, 3.6vh, 36px);
   border: none;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, white 8%, transparent);
   color: var(--text-primary);
   font-size: 0;
   padding: 0;
@@ -248,11 +248,11 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s ease;
+  transition: background var(--transition-fast);
 }
 
 .level-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--border-glass);
 }
 
 .level-btn:disabled {
@@ -305,14 +305,14 @@ html, body {
   font-size: clamp(6rem, 15vh, 14rem);
   font-weight: 900;
   letter-spacing: 0.05em;
-  color: #fff;
+  color: var(--text-white);
   text-shadow:
-    0 0 30px rgba(68, 68, 255, 0.9),
-    0 0 60px rgba(68, 68, 255, 0.5),
-    0 0 120px rgba(68, 68, 255, 0.2);
+    0 0 30px color-mix(in srgb, var(--accent-blue) 90%, transparent),
+    0 0 60px color-mix(in srgb, var(--accent-blue) 50%, transparent),
+    0 0 120px color-mix(in srgb, var(--accent-blue) 20%, transparent);
   background:
-    radial-gradient(ellipse at 50% 50%, rgba(68, 68, 255, 0.08) 0%, transparent 60%),
-    rgba(6, 6, 15, 0.8);
+    radial-gradient(ellipse at 50% 50%, color-mix(in srgb, var(--accent-blue) 8%, transparent) 0%, transparent 60%),
+    color-mix(in srgb, var(--bg-primary) 80%, transparent);
   z-index: 10;
 }
 
@@ -330,7 +330,7 @@ html, body {
   z-index: 50;
   display: flex;
   gap: clamp(6px, 0.8vh, 10px);
-  transition: opacity 0.3s ease;
+  transition: opacity var(--transition-normal);
 }
 
 #game-toolbar.toolbar-autohide {
