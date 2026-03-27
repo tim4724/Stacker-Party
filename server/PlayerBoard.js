@@ -94,7 +94,6 @@ class PlayerBoard {
     test.x -= 1;
     if (this.isValidPosition(test)) {
       this.currentPiece.x = test.x;
-
       this._resetLockTimerIfOnSurface();
       return true;
     }
@@ -107,7 +106,6 @@ class PlayerBoard {
     test.x += 1;
     if (this.isValidPosition(test)) {
       this.currentPiece.x = test.x;
-
       this._resetLockTimerIfOnSurface();
       return true;
     }

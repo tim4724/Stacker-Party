@@ -267,7 +267,6 @@ class Animations {
     }
   }
 
-
   /**
    * Update animation state. Pass the RAF timestamp for consistent timing.
    * @param {number} timestamp - DOMHighResTimeStamp from requestAnimationFrame

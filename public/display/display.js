@@ -343,7 +343,6 @@ if (debugCount > 0 && window.__TEST__) {
       id: debugPlayers[dj].id,
       playerName: debugPlayers[dj].name,
       grid: debugGrids[dj % debugGrids.length](),
-
       lines: debugLines[dj % debugLines.length],
       level: debugLevels[dj % debugLevels.length],
       alive: true,
