@@ -54,11 +54,11 @@ const PIECES = {
   ]
 };
 
-// Wall kick offsets — generated from simple "try nearby" formula.
-// Standard pieces try ±1 horizontally then ±1/±2 vertically.
+// Wall kick offsets — try nearby positions when rotation collides.
+// Standard pieces try ±1 horizontally, then up 1-2 (floor kick), then down 1.
 // I piece uses wider ±2 horizontal shifts since it spans 4 cells.
-const STANDARD_KICKS = [[0,0], [-1,0], [1,0], [0,-1], [0,-2]];
-const I_KICKS = [[0,0], [-2,0], [2,0], [-1,0], [1,0], [0,-1], [0,-2]];
+const STANDARD_KICKS = [[0,0], [-1,0], [1,0], [0,1], [0,2], [0,-1]];
+const I_KICKS = [[0,0], [-2,0], [2,0], [-1,0], [1,0], [0,1], [0,2], [0,-1]];
 
 class Piece {
   constructor(type) {
