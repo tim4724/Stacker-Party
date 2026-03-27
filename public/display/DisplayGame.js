@@ -343,13 +343,13 @@ function onGarbageCancelled(msg) {
   if (effects && effects.length > 0) {
     var remaining = msg.lines;
     while (remaining > 0 && effects.length > 0) {
-      var last = effects[effects.length - 1];
-      if (last.lines <= remaining) {
-        remaining -= last.lines;
-        effects.pop();
+      var front = effects[0];
+      if (front.lines <= remaining) {
+        remaining -= front.lines;
+        effects.shift();
       } else {
-        last.lines -= remaining;
-        last.rowStart += remaining;
+        front.lines -= remaining;
+        front.rowStart += remaining;
         remaining = 0;
       }
     }
