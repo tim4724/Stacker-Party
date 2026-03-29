@@ -13,7 +13,7 @@ var airconsole = new AirConsole({
 });
 
 // Capture early onReady — the SDK may fire it before our adapter is wired up.
-var _acEarlyReadyCode = undefined;
+var _acEarlyReadyCode;
 var _acEarlyReady = false;
 airconsole.onReady = function(code) {
   _acEarlyReady = true;

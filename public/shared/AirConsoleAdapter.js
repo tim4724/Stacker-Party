@@ -131,7 +131,9 @@ class AirConsoleAdapter {
     this.airconsole.broadcast(data);
   }
 
-  // No-ops — AirConsole handles connection lifecycle
+  // No-ops — AirConsole handles connection lifecycle.
+  // reconnectAttempt stays 0 and is never incremented because the heartbeat
+  // self-echo always succeeds in AirConsole mode (displayDead is always false).
   create() {}
   join() {}
   reconnectNow() {}

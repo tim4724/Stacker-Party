@@ -16,7 +16,8 @@ jobs:
             const branch = context.payload.pull_request.head.ref;
             const safeBranch = branch.toLowerCase().replace(/[^a-z0-9-]/g, '-');
             const previewUrl = `https://stacker-${safeBranch}.couch-games.com`;
-            const commentBody = `${previewUrl}`;
+            const airConsoleUrl = `https://www.airconsole.com/#${previewUrl}`;
+            const commentBody = `${previewUrl}\nAirConsole: ${airConsoleUrl}`;
 
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,

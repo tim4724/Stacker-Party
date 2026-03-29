@@ -13,7 +13,7 @@ var airconsole = new AirConsole({
 });
 
 // Capture early onReady — the SDK may fire it before our adapter is wired up.
-var _acEarlyReadyCode = undefined;
+var _acEarlyReadyCode;
 var _acEarlyReady = false;
 airconsole.onReady = function(code) {
   _acEarlyReady = true;
@@ -46,7 +46,7 @@ PartyConnection = function() {
 
 // Wrap connect() to inject AirConsole nickname and replay early onReady
 var _originalConnect = connect;
-var _acOnReadyWrapped = false;
+var _acOnReadyWrapped = false; // one-time setup — AirConsole onReady fires once per session
 connect = function() {
   if (party && party.connected) return;
   _originalConnect();
