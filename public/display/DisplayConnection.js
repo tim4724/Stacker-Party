@@ -395,6 +395,10 @@ function showDisconnectQR(clientId) {
   var rejoinUrl = joinUrl + '?rejoin=' + encodeURIComponent(clientId);
   fetchQR(rejoinUrl, function(qrMatrix) {
     if (!players.has(clientId)) return;
+    if (!qrMatrix) {
+      disconnectedQRs.set(clientId, null);
+      return;
+    }
     var offscreen = document.createElement('canvas');
     renderQR(offscreen, qrMatrix);
     disconnectedQRs.set(clientId, offscreen);

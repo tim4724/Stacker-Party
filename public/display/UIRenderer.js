@@ -306,6 +306,20 @@ class UIRenderer {
     ctx.fillRect(bx, by, bw, bh);
 
     const labelSize = Math.max(10, this.cellSize * THEME.font.cellScale.name);
+    ctx.fillStyle = playerColor || 'rgba(0, 200, 255, 0.7)';
+    ctx.font = '600 ' + labelSize + 'px ' + getDisplayFont();
+    ctx.textAlign = 'center';
+    ctx.letterSpacing = '0.1em';
+
+    if (!qrImg) {
+      // No QR (AirConsole mode) — just show "DISCONNECTED" centered
+      ctx.textBaseline = 'middle';
+      ctx.fillText('DISCONNECTED', bx + bw / 2, by + bh / 2);
+      ctx.letterSpacing = '0px';
+      return;
+    }
+
+    // Standalone mode — show QR code with "SCAN TO REJOIN" label
     const labelGap = labelSize * 1.2;
     const qrSize = Math.min(bw, bh) * 0.5;
     const qrRadius = qrSize * 0.08;
@@ -324,20 +338,16 @@ class UIRenderer {
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    if (qrImg) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.roundRect(outerX + pad, groupY + pad, qrSize, qrSize, Math.max(1, qrRadius - pad));
-      ctx.clip();
-      ctx.drawImage(qrImg, outerX + pad, groupY + pad, qrSize, qrSize);
-      ctx.restore();
-    }
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(outerX + pad, groupY + pad, qrSize, qrSize, Math.max(1, qrRadius - pad));
+    ctx.clip();
+    ctx.drawImage(qrImg, outerX + pad, groupY + pad, qrSize, qrSize);
+    ctx.restore();
 
     ctx.fillStyle = playerColor || 'rgba(0, 200, 255, 0.7)';
     ctx.font = '600 ' + labelSize + 'px ' + getDisplayFont();
-    ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.letterSpacing = '0.1em';
     ctx.fillText('SCAN TO REJOIN', bx + bw / 2, groupY + outerSize + labelGap);
     ctx.letterSpacing = '0px';
   }

@@ -42,6 +42,13 @@ module.exports = defineConfig({
     {
       name: 'e2e',
       testDir: './tests/e2e',
+      testIgnore: /airconsole.*\.spec\.js/,
+      use: { viewport: { width: 1280, height: 720 } },
+    },
+    {
+      name: 'e2e-airconsole',
+      testDir: './tests/e2e',
+      testMatch: 'airconsole.spec.js',
       use: { viewport: { width: 1280, height: 720 } },
     },
   ],

@@ -129,6 +129,14 @@ const server = http.createServer((req, res) => {
     urlPath = '/favicon.svg';
   }
 
+  // AirConsole entry points: screen.html and controller.html at root
+  // AirConsole expects these at the root of the game URL
+  if (urlPath === '/screen.html') {
+    urlPath = '/display/screen.html';
+  } else if (urlPath === '/controller.html') {
+    urlPath = '/controller/controller.html';
+  }
+
   // Map directory paths to index.html
   if (urlPath === '/') {
     urlPath = '/display/index.html';
@@ -166,7 +174,21 @@ const server = http.createServer((req, res) => {
     }
 
     if (ext === '.html') {
-      headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' wss://ws.couch-games.com; img-src 'self' data:";
+      // AirConsole entry points need access to the AirConsole SDK and iframe messaging
+      var isAirConsole = urlPath === '/display/screen.html' || urlPath === '/controller/controller.html';
+      if (isAirConsole) {
+        headers['Content-Security-Policy'] = [
+          "default-src 'self'",
+          "script-src 'self' https://www.airconsole.com",
+          "style-src 'self' 'unsafe-inline'",
+          "font-src 'self'",
+          "connect-src 'self' https://www.airconsole.com wss://*.airconsole.com",
+          "img-src 'self' data: https://www.airconsole.com",
+          "frame-ancestors https://www.airconsole.com http://www.airconsole.com http://http.airconsole.com",
+        ].join('; ');
+      } else {
+        headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' wss://ws.couch-games.com; img-src 'self' data:";
+      }
     }
 
     res.writeHead(200, headers);
@@ -194,3 +216,24 @@ server.listen(PORT, () => {
   console.log(`Local network: http://${localIP}:${PORT}`);
   console.log(`Display: http://localhost:${PORT}/`);
 });
+
+// --- Optional HTTPS server for AirConsole local development ---
+const HTTPS_PORT = parseInt(process.env.HTTPS_PORT, 10) || 0;
+if (HTTPS_PORT) {
+  const https = require('https');
+  const certDir = path.join(__dirname, '..', '.dev-certs');
+  try {
+    const httpsServer = https.createServer({
+      key: fs.readFileSync(path.join(certDir, 'key.pem')),
+      cert: fs.readFileSync(path.join(certDir, 'cert.pem')),
+    }, server._events.request);
+    httpsServer.listen(HTTPS_PORT, () => {
+      const localIP = getLocalIP();
+      console.log(`HTTPS server: https://localhost:${HTTPS_PORT}`);
+      console.log(`HTTPS LAN:    https://${localIP}:${HTTPS_PORT}`);
+      console.log(`AirConsole:   https://www.airconsole.com/#https://${localIP}:${HTTPS_PORT}/`);
+    });
+  } catch (err) {
+    console.log('HTTPS disabled — generate certs with: openssl req -x509 -newkey rsa:2048 -keyout .dev-certs/key.pem -out .dev-certs/cert.pem -days 365 -nodes -subj /CN=localhost');
+  }
+}
