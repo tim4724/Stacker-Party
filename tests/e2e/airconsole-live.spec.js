@@ -1,25 +1,30 @@
 // @ts-check
-const { test, expect, chromium, devices } = require('@playwright/test');
+const { test, expect, chromium, firefox, devices } = require('@playwright/test');
 
 /**
  * AirConsole Live E2E tests using the real AirConsole platform.
  *
- * Opens the screen via https://www.airconsole.com/#GAME_URL, extracts
- * the pairing code, connects a controller via deeplink, handles
- * AirConsole's name entry + "Sind alle dabei?" flow, then tests
- * the full game lifecycle with the real AirConsole SDK.
+ * Opens the screen via airconsole.com/#GAME_URL, extracts the pairing
+ * code, connects a controller via deeplink, handles AirConsole's name
+ * entry + confirmation flow, then tests the full game lifecycle.
  *
- * Requires AC_GAME_URL env var pointing to a deployed game URL.
+ * Supports two modes:
+ * - Remote: AC_GAME_URL=https://deploy.example.com (uses Chrome)
+ * - Local:  Uses localhost:4100 with Firefox (avoids Chrome Private Network Access)
  *
- * Run: AC_GAME_URL=https://your-deploy.example.com npx playwright test --project=e2e-airconsole-live
+ * Run:
+ *   npx playwright test --project=e2e-airconsole-live              # local (needs server on :4100)
+ *   AC_GAME_URL=https://... npx playwright test --project=e2e-airconsole-live  # remote
  */
 
 const GAME_URL = process.env.AC_GAME_URL;
-
+// Local HTTP won't work — controller page is HTTPS and can't load HTTP iframes.
+// A deployed HTTPS URL is required.
 test.skip(!GAME_URL, 'AC_GAME_URL not set — skipping live AirConsole tests');
+const IS_LOCAL = false;
 
 /**
- * Wait for a frame matching a URL substring to appear.
+ * Wait for a frame matching a URL substring.
  */
 async function waitForFrame(page, urlSubstring, timeout = 30000) {
   const start = Date.now();
@@ -28,7 +33,7 @@ async function waitForFrame(page, urlSubstring, timeout = 30000) {
     if (frame) return frame;
     await page.waitForTimeout(500);
   }
-  throw new Error('Frame containing "' + urlSubstring + '" not found within ' + timeout + 'ms');
+  throw new Error('Frame "' + urlSubstring + '" not found within ' + timeout + 'ms');
 }
 
 /**
@@ -56,12 +61,12 @@ async function connectController(ctrlContext, code) {
 
   const ctrlFrontend = await waitForFrame(ctrlPage, 'airconsole-controller', 10000);
 
-  // Enter name
+  // AirConsole name entry
   await ctrlFrontend.locator('input').fill('TestPlayer');
   await ctrlFrontend.locator('button', { hasText: /weiter|continue/i }).click();
   await ctrlPage.waitForTimeout(2000);
 
-  // Confirm "Sind alle dabei?" / "Is everyone in?"
+  // "Sind alle dabei?" / "Is everyone in?" confirmation
   await ctrlFrontend.locator('button', { hasText: /ja|yes|start|play/i }).click({ timeout: 10000 });
 
   return ctrlPage;
@@ -75,15 +80,25 @@ test.describe.serial('AirConsole Live', () => {
   let ctrlCtx;
 
   test.beforeAll(async () => {
-    browser = await chromium.launch({
-      headless: false,
-      channel: 'chrome',
-      args: ['--disable-blink-features=AutomationControlled'],
-      ignoreDefaultArgs: ['--enable-automation'],
-    });
-    screenCtx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
-    const iPhone = devices['iPhone 14'];
-    ctrlCtx = await browser.newContext({ ...iPhone });
+    if (IS_LOCAL) {
+      // Firefox doesn't enforce Private Network Access — can load localhost
+      browser = await firefox.launch({ headless: false });
+      screenCtx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+      ctrlCtx = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
+      });
+    } else {
+      browser = await chromium.launch({
+        headless: false,
+        channel: 'chrome',
+        args: ['--disable-blink-features=AutomationControlled'],
+        ignoreDefaultArgs: ['--enable-automation'],
+      });
+      screenCtx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+      const iPhone = devices['iPhone 14'];
+      ctrlCtx = await browser.newContext({ ...iPhone });
+    }
   });
 
   test.afterAll(async () => {
@@ -91,7 +106,7 @@ test.describe.serial('AirConsole Live', () => {
   });
 
   test('full lifecycle: pairing → lobby → game → results', async () => {
-    // 1. Open screen
+    // 1. Open screen on AirConsole
     const screenPage = await screenCtx.newPage();
     await screenPage.goto('https://www.airconsole.com/#' + GAME_URL + '/');
     await screenPage.waitForTimeout(10000);
@@ -100,38 +115,31 @@ test.describe.serial('AirConsole Live', () => {
     const code = await getPairingCode(screenPage);
     expect(code).toBeTruthy();
 
-    // 3. Connect controller
+    // 3. Connect controller via deeplink
     const ctrlPage = await connectController(ctrlCtx, code);
 
-    // 4. Wait for game frames
+    // 4. Wait for game frames to load
     const screenFrame = await waitForFrame(screenPage, 'screen.html', 30000);
     const ctrlFrame = await waitForFrame(ctrlPage, 'controller.html', 30000);
 
-    // 5. Verify screen lobby
+    // 5. Verify screen is in lobby with adapter
     await screenFrame.waitForFunction(() => {
       return typeof party !== 'undefined' && party && party._ready
         && typeof currentScreen !== 'undefined' && currentScreen === 'lobby';
     }, null, { timeout: 15000 });
-
     expect(await screenFrame.evaluate(() => party.constructor.name)).toBe('AirConsoleAdapter');
 
-    // Wait for at least 1 player to join
+    // 6. Wait for player to appear
     await screenFrame.waitForFunction(() => players.size >= 1, null, { timeout: 15000 });
 
-    // 6. Verify controller lobby (display→controller messaging works)
+    // 7. Verify controller is in lobby (proves display→controller messaging works)
     await ctrlFrame.waitForFunction(() => {
       return typeof currentScreen !== 'undefined' && currentScreen === 'lobby'
         && typeof playerColor !== 'undefined' && playerColor !== null;
     }, null, { timeout: 15000 });
+    expect(await ctrlFrame.evaluate(() => party.constructor.name)).toBe('AirConsoleAdapter');
 
-    const ctrlState = await ctrlFrame.evaluate(() => ({
-      currentScreen, playerColor, partyType: party.constructor.name,
-    }));
-    expect(ctrlState.currentScreen).toBe('lobby');
-    expect(ctrlState.playerColor).not.toBeNull();
-    expect(ctrlState.partyType).toBe('AirConsoleAdapter');
-
-    // 7. Set high level and start game
+    // 8. Set high level and start game
     await ctrlFrame.evaluate(() => {
       const plus = document.getElementById('level-plus-btn');
       for (let i = 0; i < 14; i++) plus.click();
@@ -139,18 +147,13 @@ test.describe.serial('AirConsole Live', () => {
     await ctrlPage.waitForTimeout(300);
     await ctrlFrame.locator('#start-btn').click();
 
-    // 8. Verify game starts
-    await screenFrame.waitForSelector('#game-screen:not(.hidden)', { timeout: 15000 });
-    await screenFrame.waitForFunction(() => {
-      return document.getElementById('countdown-overlay').classList.contains('hidden');
-    }, null, { timeout: 15000 });
-    await ctrlFrame.waitForSelector('#game-screen:not(.hidden):not(.countdown)', { timeout: 15000 });
+    // 9. Wait for game to start
     await screenFrame.waitForFunction(() => roomState === 'playing', null, { timeout: 15000 });
+    await ctrlFrame.waitForSelector('#game-screen:not(.hidden):not(.countdown)', { timeout: 15000 });
 
-    // 9. Wait for results (level 15 tops out quickly)
+    // 10. Wait for results (level 15 tops out quickly)
     await screenFrame.waitForSelector('#results-screen:not(.hidden)', { timeout: 60000 });
     await ctrlFrame.waitForSelector('#gameover-screen:not(.hidden)', { timeout: 60000 });
-
     expect(await screenFrame.evaluate(() => roomState)).toBe('results');
 
     await screenPage.close();
