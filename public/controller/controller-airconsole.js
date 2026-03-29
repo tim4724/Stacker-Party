@@ -7,7 +7,10 @@
 // and calls party.connect() — works with AirConsole instead.
 // =====================================================================
 
-var airconsole = new AirConsole({ orientation: AirConsole.ORIENTATION_PORTRAIT });
+var airconsole = new AirConsole({
+  orientation: AirConsole.ORIENTATION_PORTRAIT,
+  silence_inactive_players: false
+});
 
 // Capture early onReady — the SDK may fire it before our adapter is wired up.
 var _acEarlyReadyCode = undefined;
