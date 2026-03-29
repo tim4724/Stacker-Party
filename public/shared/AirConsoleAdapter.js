@@ -20,6 +20,7 @@ class AirConsoleAdapter {
     this._ready = false;
     this._acReady = false;
     this._acReadyCode = null;
+    this._connectCalled = false;
     this.reconnectAttempt = 0;
     this.maxReconnectAttempts = 5;
 
@@ -86,6 +87,14 @@ class AirConsoleAdapter {
 
     if (this.role === 'display') {
       if (this.onProtocol) this.onProtocol('created', { room: code });
+      // Re-synthesize peer_joined for already-connected controllers.
+      // When Play Again / New Game recreates the adapter, AirConsole won't
+      // re-fire onConnect for controllers that are already connected.
+      var self = this;
+      var ids = this.airconsole.getControllerDeviceIds();
+      for (var i = 0; i < ids.length; i++) {
+        if (self.onProtocol) self.onProtocol('peer_joined', { clientId: String(ids[i]) });
+      }
     } else {
       if (this.onProtocol) this.onProtocol('joined', { room: code, clients: [] });
     }

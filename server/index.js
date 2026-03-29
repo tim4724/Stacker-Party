@@ -184,7 +184,7 @@ const server = http.createServer((req, res) => {
           "font-src 'self'",
           "connect-src 'self' https://www.airconsole.com wss://*.airconsole.com",
           "img-src 'self' data: https://www.airconsole.com",
-          "frame-ancestors https://www.airconsole.com http://www.airconsole.com http://http.airconsole.com",
+          "frame-ancestors https://www.airconsole.com" + (APP_ENV !== 'production' ? " http://www.airconsole.com http://http.airconsole.com" : ""),
         ].join('; ');
       } else {
         headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' wss://ws.couch-games.com; img-src 'self' data:";

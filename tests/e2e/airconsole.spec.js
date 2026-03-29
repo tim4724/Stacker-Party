@@ -23,7 +23,7 @@ const { waitForFont } = require('../visual/helpers');
  *   AC_GAME_URL=https://... npx playwright test --project=e2e-airconsole # remote
  */
 
-const USE_MOCK = process.env.AC_MOCK === '1';
+const USE_MOCK = process.env.AC_MOCK === '1' || !!process.env.CI;
 const GAME_URL = process.env.AC_GAME_URL || 'http://localhost:4100';
 const IS_LOCAL = GAME_URL.includes('localhost') || GAME_URL.includes('127.0.0.1');
 const MOCK_SCRIPT = path.join(__dirname, 'airconsole-mock.js');

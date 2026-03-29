@@ -27,6 +27,7 @@
     this._ready = false;
     this._channel = new BroadcastChannel(CHANNEL_NAME);
     this._nicknames = {};
+    this._connectedDevices = new Set();
 
     // Callbacks
     this.onReady = null;
@@ -51,13 +52,14 @@
       switch (msg._ac_type) {
         case 'connect':
           if (msg.deviceId !== self._deviceId) {
-            // Store nickname
             if (msg.nickname) self._nicknames[msg.deviceId] = msg.nickname;
+            if (msg.deviceId !== 0) self._connectedDevices.add(msg.deviceId);
             if (self.onConnect) self.onConnect(msg.deviceId);
           }
           break;
         case 'disconnect':
           if (msg.deviceId !== self._deviceId) {
+            self._connectedDevices.delete(msg.deviceId);
             if (self.onDisconnect) self.onDisconnect(msg.deviceId);
           }
           break;
@@ -66,13 +68,6 @@
             if (msg.from !== self._deviceId) {
               if (self.onMessage) self.onMessage(msg.from, msg.data);
             }
-          }
-          break;
-        case 'ready_ack':
-          // Screen acknowledges a controller's connect
-          if (msg.forDevice === self._deviceId && !self._ready) {
-            self._ready = true;
-            if (self.onReady) self.onReady('MOCK');
           }
           break;
       }
@@ -118,7 +113,7 @@
   };
 
   AirConsole.prototype.getControllerDeviceIds = function() {
-    return []; // Not needed for our tests
+    return Array.from(this._connectedDevices);
   };
 
   AirConsole.prototype.getMasterControllerDeviceId = function() {

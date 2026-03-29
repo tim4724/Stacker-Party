@@ -33,7 +33,9 @@ showRoomGone = function() {};
 clientId = 'ac_controller';
 
 // Force hadStoredId so controller.js auto-connects on load (skips name screen).
-// Use the roomCode that controller.js will parse: "controller.html"
+// controller.js parses location.pathname to get roomCode (e.g. "controller.html")
+// and checks sessionStorage['clientId_' + roomCode]. We pre-set that key here.
+// Coupling: if the HTML filename or URL parsing logic changes, update this too.
 var _acRoomCode = location.pathname.split('/').filter(Boolean)[0] || 'airconsole';
 sessionStorage.setItem('clientId_' + _acRoomCode, clientId);
 

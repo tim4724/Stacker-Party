@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- AirConsole display entry point. Keep in sync with display/index.html -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -16,6 +17,10 @@
     #welcome-screen { display: none !important; }
     /* Hide mobile hint — AirConsole always runs on a screen */
     #mobile-hint { display: none !important; }
+    /* Hide fullscreen button — AirConsole top bar has one */
+    #fullscreen-btn { display: none !important; }
+    /* Hide empty player placeholders — all players join via AirConsole before lobby */
+    .player-card.empty { display: none !important; }
   </style>
 </head>
 <body>
@@ -42,6 +47,10 @@
     </div>
     <div id="player-list"></div>
     <button id="start-btn" class="btn btn-primary" disabled>Waiting for players...</button>
+    <div id="lobby-footer" style="position:absolute;bottom:12px;left:0;right:0;text-align:center;font-size:11px;opacity:0.5;color:#fff;">
+      <div><a href="https://opengameart.org/content/lunar-joyride-8-bit" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;">Music by FoxSynergy (CC BY 3.0)</a></div>
+      <span id="version-label"></span>
+    </div>
   </div>
 
   <div id="game-toolbar" class="hidden">
