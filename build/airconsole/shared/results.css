@@ -1,0 +1,63 @@
+/* ==========================================================
+   Results Overlay — shared between display and controller
+   ========================================================== */
+
+/* --- Keyframes --- */
+
+@keyframes btnPulse {
+  0%, 100% { box-shadow: 0 0 20px var(--glow-green); }
+  50% { box-shadow: 0 0 36px rgba(0, 255, 136, 0.5); }
+}
+
+@keyframes resultRowIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes resultsBtnIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* --- Result rows --- */
+
+.result-row {
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--bg-card) 95%, transparent);
+  border: 1px solid var(--border);
+  animation: resultRowIn 0.4s ease-out both;
+  animation-delay: var(--row-delay, 0.2s);
+}
+
+.result-row.rank-1 {
+  border-color: color-mix(in srgb, var(--medal-gold) 40%, transparent);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--bg-card) 95%, transparent), color-mix(in srgb, var(--medal-gold) 10%, transparent));
+  box-shadow: 0 0 16px color-mix(in srgb, var(--medal-gold) 8%, transparent);
+}
+
+.result-row.rank-2 {
+  border-color: color-mix(in srgb, var(--medal-silver) 30%, transparent);
+}
+
+.result-row.rank-3 {
+  border-color: color-mix(in srgb, var(--medal-bronze) 30%, transparent);
+}
+
+/* --- Rank ordinal --- */
+
+.result-rank {
+  font-family: 'Orbitron', sans-serif;
+  text-align: center;
+}
+
+.rank-1 .result-rank { color: var(--medal-gold); }
+.rank-2 .result-rank { color: var(--medal-silver); }
+.rank-3 .result-rank { color: var(--medal-bronze); }
+
+/* --- Name --- */
+
+.result-name {
+  font-family: 'Orbitron', sans-serif;
+}

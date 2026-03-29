@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="4" y1="4" x2="60" y2="60" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#12121c"/>
+      <stop offset="1" stop-color="#0a0a0f"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="4" y1="4" x2="60" y2="60" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EE4444"/>
+      <stop offset=".5" stop-color="#FF1493"/>
+      <stop offset="1" stop-color="#9B59F0"/>
+    </linearGradient>
+    <filter id="shadow" x="0" y="0" width="64" height="64" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="0" stdDeviation="2" flood-color="#FF1493" flood-opacity=".3"/>
+    </filter>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="12" fill="url(#bg)"/>
+  <rect x="3.5" y="3.5" width="57" height="57" rx="10.5" stroke="url(#glow)" stroke-width="2.5"/>
+  <!-- Inner area: 8 to 56 (4px clearance from border at 4.75) -->
+  <!-- 4 cols × 11px blocks + 3×1px gap = 47px wide. Centered: (64 - 47) / 2 = 8.5 -->
+  <!-- 4 rows × 11px + 3×1px gap = 47px tall. Bottom at 55.5, top at 8.5 -->
+  <g filter="url(#shadow)">
+    <!-- Col 1: 3 blocks -->
+    <rect x="8.5"  y="20.5" width="11" height="11" rx="2.5" fill="#EE4444"/>
+    <rect x="8.5"  y="32.5" width="11" height="11" rx="2.5" fill="#FFD700"/>
+    <rect x="8.5"  y="44.5" width="11" height="11" rx="2.5" fill="#00CED1"/>
+    <!-- Col 2: 4 blocks -->
+    <rect x="20.5" y="8.5"  width="11" height="11" rx="2.5" fill="#9B59F0"/>
+    <rect x="20.5" y="20.5" width="11" height="11" rx="2.5" fill="#FF1493"/>
+    <rect x="20.5" y="32.5" width="11" height="11" rx="2.5" fill="#7FFF00"/>
+    <rect x="20.5" y="44.5" width="11" height="11" rx="2.5" fill="#FF8C00"/>
+    <!-- Col 3: 2 blocks -->
+    <rect x="32.5" y="32.5" width="11" height="11" rx="2.5" fill="#FFD700"/>
+    <rect x="32.5" y="44.5" width="11" height="11" rx="2.5" fill="#EE4444"/>
+    <!-- Col 4: 3 blocks -->
+    <rect x="44.5" y="20.5" width="11" height="11" rx="2.5" fill="#00CED1"/>
+    <rect x="44.5" y="32.5" width="11" height="11" rx="2.5" fill="#9B59F0"/>
+    <rect x="44.5" y="44.5" width="11" height="11" rx="2.5" fill="#7FFF00"/>
+  </g>
+</svg>

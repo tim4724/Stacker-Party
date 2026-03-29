@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stacker Party</title>
+  <link rel="stylesheet" href="shared/fonts/orbitron.css">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="shared/theme.css">
+  <link rel="stylesheet" href="shared/results.css">
+  <link rel="stylesheet" href="display/display.css">
+  <style>
+    /* Hide QR/join elements — AirConsole handles device pairing */
+    #qr-container, #join-url, #welcome-footer { display: none !important; }
+    /* Hide welcome screen — AirConsole manages the session */
+    #welcome-screen { display: none !important; }
+    /* Hide mobile hint — AirConsole always runs on a screen */
+    #mobile-hint { display: none !important; }
+  </style>
+</head>
+<body>
+  <!-- Shared falling piece background (visible on lobby) -->
+  <canvas id="bg-canvas"></canvas>
+
+  <!-- Mobile screen hint (hidden in AirConsole) -->
+  <div id="mobile-hint"></div>
+
+  <!-- Welcome screen (hidden in AirConsole — go straight to lobby) -->
+  <div id="welcome-screen" class="screen">
+    <h1 class="gradient-title">STACKER PARTY</h1>
+    <button id="new-game-btn" class="btn btn-primary">START NEW GAME</button>
+    <div id="welcome-footer"><span id="version-label"></span></div>
+  </div>
+
+  <!-- Lobby screen: player list + start button -->
+  <div id="lobby-screen" class="screen hidden">
+    <h1 class="gradient-title">STACKER PARTY</h1>
+    <div id="qr-container">
+      <canvas id="qr-code"></canvas>
+      <p id="qr-label">Scan to join</p>
+      <p id="join-url"></p>
+    </div>
+    <div id="player-list"></div>
+    <button id="start-btn" class="btn btn-primary" disabled>Waiting for players...</button>
+  </div>
+
+  <div id="game-toolbar" class="hidden">
+    <button id="mute-btn" class="icon-btn" title="Toggle mute"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="sound-waves" d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/></svg></button>
+    <button id="fullscreen-btn" class="icon-btn" title="Toggle fullscreen"><svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor"><path d="M3 3h4V1H1v6h2V3zM11 1v2h4v4h2V1h-6zM15 15h-4v2h6v-6h-2v4zM3 11H1v6h6v-2H3v-4z"/></svg></button>
+    <button id="pause-btn" class="icon-btn"><span class="pause-icon"></span></button>
+  </div>
+
+  <!-- Game screen: canvas boards -->
+  <div id="game-screen" class="screen hidden">
+    <canvas id="game-canvas"></canvas>
+    <div id="countdown-overlay" class="hidden"></div>
+  </div>
+
+  <!-- Pause overlay -->
+  <div id="pause-overlay" class="game-overlay hidden">
+    <h1>PAUSED</h1>
+    <div id="pause-buttons">
+      <button id="pause-continue-btn" class="btn btn-primary">Continue</button>
+      <button id="pause-newgame-btn" class="btn btn-secondary">New Game</button>
+    </div>
+  </div>
+
+  <!-- Reconnect overlay -->
+  <div id="reconnect-overlay" class="game-overlay hidden">
+    <h1 id="reconnect-heading">RECONNECTING</h1>
+    <p id="reconnect-status" class="game-overlay__status">Connection lost...</p>
+    <button id="reconnect-btn" class="btn btn-primary hidden">RECONNECT</button>
+  </div>
+
+  <!-- Results overlay -->
+  <div id="results-screen" class="screen hidden">
+    <div id="results-list"></div>
+    <div id="results-buttons">
+      <button id="play-again-btn" class="btn btn-primary">Play Again</button>
+      <button id="new-game-results-btn" class="btn btn-secondary">New Game</button>
+    </div>
+  </div>
+
+  <!-- AirConsole SDK -->
+  <script src="https://www.airconsole.com/api/airconsole-1.10.0.js"></script>
+
+  <!-- Engine modules (relative paths for AirConsole hosting) -->
+  <script src="engine/constants.js"></script>
+  <script src="engine/Piece.js"></script>
+  <script src="engine/Randomizer.js"></script>
+  <script src="engine/GarbageManager.js"></script>
+  <script src="engine/PlayerBoard.js"></script>
+  <script src="engine/Game.js"></script>
+
+  <!-- Shared -->
+  <script src="shared/PartyConnection.js"></script>
+  <script src="shared/AirConsoleAdapter.js"></script>
+  <script src="shared/protocol.js"></script>
+  <script src="shared/CanvasUtils.js"></script>
+  <script src="shared/theme.js"></script>
+  <script src="shared/WelcomeBackground.js"></script>
+
+  <!-- Display modules -->
+  <script src="display/BoardRenderer.js"></script>
+  <script src="display/UIRenderer.js"></script>
+  <script src="display/Animations.js"></script>
+  <script src="display/Music.js"></script>
+  <script src="display/DisplayState.js"></script>
+  <script src="display/DisplayUI.js"></script>
+  <script src="display/DisplayConnection.js"></script>
+  <script src="display/DisplayAudio.js"></script>
+  <script src="display/DisplayGame.js"></script>
+  <script src="display/DisplayInput.js"></script>
+  <script src="display/DisplayRender.js"></script>
+
+  <!-- AirConsole bootstrap (overrides connectAndCreateRoom BEFORE display.js init) -->
+  <script src="display/display-airconsole.js"></script>
+
+  <!-- Display entry point -->
+  <script src="display/display.js"></script>
+</body>
+</html>

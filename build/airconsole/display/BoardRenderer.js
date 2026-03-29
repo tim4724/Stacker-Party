@@ -1,0 +1,184 @@
+'use strict';
+
+const VISIBLE_ROWS = GameConstants.VISIBLE_HEIGHT;
+const COLS = GameConstants.BOARD_WIDTH;
+
+class BoardRenderer {
+  constructor(ctx, x, y, cellSize, playerIndex) {
+    this.ctx = ctx;
+    this.x = x;
+    this.y = y;
+    this.cellSize = cellSize;
+    this.playerIndex = playerIndex;
+    this.accentColor = PLAYER_COLORS[playerIndex] || PLAYER_COLORS[0];
+    this._accentRgb = hexToRgb(this.accentColor);
+    this.boardWidth = COLS * cellSize;
+    this.boardHeight = VISIBLE_ROWS * cellSize;
+    this._styleTier = STYLE_TIERS.NORMAL;
+  }
+
+  get styleTier() { return this._styleTier; }
+
+  render(playerState, timestamp) {
+    const ctx = this.ctx;
+
+    // Determine style tier from level
+    const newTier = getStyleTier(playerState.level || 1);
+    this._styleTier = newTier;
+
+    const isNeon = newTier === STYLE_TIERS.NEON_FLAT;
+    const colors = isNeon ? NEON_PIECE_COLORS : PIECE_COLORS;
+    const ghostColors = isNeon ? NEON_GHOST_COLORS : GHOST_COLORS;
+
+    // 1. Board background — player-color tinted (matches controller touch pad)
+    const rgb = this._accentRgb;
+    ctx.fillStyle = THEME.color.bg.board;
+    ctx.fillRect(this.x, this.y, this.boardWidth, this.boardHeight);
+    if (rgb) {
+      ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${THEME.opacity.tint})`;
+      ctx.fillRect(this.x, this.y, this.boardWidth, this.boardHeight);
+    }
+
+    // 2. Grid lines (batched into single stroke)
+    ctx.strokeStyle = rgb
+      ? `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${THEME.opacity.muted})`
+      : `rgba(255, 255, 255, ${THEME.opacity.subtle})`;
+    ctx.lineWidth = this.cellSize * THEME.stroke.grid;
+    ctx.beginPath();
+    for (let r = 1; r < VISIBLE_ROWS; r++) {
+      const py = this.y + r * this.cellSize;
+      ctx.moveTo(this.x, py);
+      ctx.lineTo(this.x + this.boardWidth, py);
+    }
+    for (let c = 1; c < COLS; c++) {
+      const px = this.x + c * this.cellSize;
+      ctx.moveTo(px, this.y);
+      ctx.lineTo(px, this.y + this.boardHeight);
+    }
+    ctx.stroke();
+
+    // 3. Placed blocks from grid
+    if (playerState.grid) {
+      for (let r = 0; r < playerState.grid.length; r++) {
+        for (let c = 0; c < playerState.grid[r].length; c++) {
+          const cellVal = playerState.grid[r][c];
+          if (cellVal > 0) {
+            this.drawBlock(c, r, colors[cellVal], cellVal === 8);
+          }
+        }
+      }
+    }
+
+    // 4. Ghost piece (batched: one compound path for all 4 blocks)
+    if (playerState.currentPiece && playerState.ghostY != null && playerState.alive !== false) {
+      const piece = playerState.currentPiece;
+      const ghostDisplayY = playerState.ghostY;
+      const gc = ghostColors[piece.typeId] || { outline: 'rgba(255,255,255,0.12)', fill: 'rgba(255,255,255,0.06)' };
+      if (piece.blocks) {
+        const size = this.cellSize;
+        const inset = size * THEME.size.blockGap;
+        const s = size - inset * 2;
+        const r = THEME.radius.block(size);
+        // Stroke path (inset by 0.5 for crisp 1px lines)
+        ctx.beginPath();
+        for (const [bx, by] of piece.blocks) {
+          const drawRow = ghostDisplayY + by;
+          const drawCol = piece.x + bx;
+          if (drawRow >= 0 && drawRow < VISIBLE_ROWS && drawCol >= 0 && drawCol < COLS) {
+            _addRoundRectSubPath(ctx, this.x + drawCol * size + inset + 0.5, this.y + drawRow * size + inset + 0.5, s - 1, s - 1, r);
+          }
+        }
+        ctx.strokeStyle = gc.outline;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        // Fill path
+        ctx.beginPath();
+        for (const [bx, by] of piece.blocks) {
+          const drawRow = ghostDisplayY + by;
+          const drawCol = piece.x + bx;
+          if (drawRow >= 0 && drawRow < VISIBLE_ROWS && drawCol >= 0 && drawCol < COLS) {
+            _addRoundRectSubPath(ctx, this.x + drawCol * size + inset, this.y + drawRow * size + inset, s, s, r);
+          }
+        }
+        ctx.fillStyle = gc.fill;
+        ctx.fill();
+      }
+    }
+
+    // 5. Current piece
+    if (playerState.currentPiece && playerState.alive !== false) {
+      const piece = playerState.currentPiece;
+      const pieceDisplayY = piece.y;
+      const color = colors[piece.typeId] || '#ffffff';
+      if (piece.blocks) {
+        for (const [bx, by] of piece.blocks) {
+          const drawRow = pieceDisplayY + by;
+          const drawCol = piece.x + bx;
+          if (drawRow >= 0 && drawRow < VISIBLE_ROWS && drawCol >= 0 && drawCol < COLS) {
+            this.drawBlock(drawCol, drawRow, color, false);
+          }
+        }
+      }
+    }
+
+    // 6. Clearing rows pulsing glow effect
+    if (playerState.clearingRows && playerState.clearingRows.length > 0) {
+      const t = (timestamp || performance.now()) / 150;
+      for (const row of playerState.clearingRows) {
+        if (row >= 0 && row < VISIBLE_ROWS) {
+          const alpha = 0.3 + 0.2 * Math.sin(t * Math.PI);
+          ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+          ctx.fillRect(this.x, this.y + row * this.cellSize, this.boardWidth, this.cellSize);
+          if (rgb) {
+            ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha * 0.3})`;
+            ctx.fillRect(this.x, this.y + row * this.cellSize, this.boardWidth, this.cellSize);
+          }
+        }
+      }
+    }
+
+    // 7. Board border
+    this._drawBoardBorder();
+  }
+
+  _drawBoardBorder() {
+    const ctx = this.ctx;
+    const rgb = this._accentRgb;
+    ctx.strokeStyle = rgb
+      ? `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${THEME.opacity.strong})`
+      : `rgba(255, 255, 255, ${THEME.opacity.soft})`;
+    const bw = this.cellSize * THEME.stroke.border;
+    ctx.lineWidth = bw;
+    const half = bw / 2;
+    ctx.strokeRect(this.x - half, this.y - half, this.boardWidth + bw, this.boardHeight + bw);
+  }
+
+  drawBlock(col, row, color, isGarbage) {
+    const x = this.x + col * this.cellSize;
+    const y = this.y + row * this.cellSize;
+    const stamp = isGarbage
+      ? getGarbageStamp(this.cellSize)
+      : getBlockStamp(this._styleTier, color, this.cellSize);
+    this.ctx.drawImage(stamp, x, y);
+  }
+
+  // Used by DisplayRender __TEST__._extraGhosts path; main render uses batched compound path above.
+  drawGhostBlock(col, row, color) {
+    const ctx = this.ctx;
+    const x = this.x + col * this.cellSize;
+    const y = this.y + row * this.cellSize;
+    const size = this.cellSize;
+    const inset = size * THEME.size.blockGap;
+    const s = size - inset * 2;
+    const r = THEME.radius.block(size);
+    ctx.strokeStyle = color.outline;
+    ctx.lineWidth = 1;
+    roundRect(ctx, x + inset + 0.5, y + inset + 0.5, s - 1, s - 1, r);
+    ctx.stroke();
+    ctx.fillStyle = color.fill;
+    roundRect(ctx, x + inset, y + inset, s, s, r);
+    ctx.fill();
+  }
+}
+
+window.BoardRenderer = BoardRenderer;

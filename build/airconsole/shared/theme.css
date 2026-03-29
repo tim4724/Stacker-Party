@@ -1,0 +1,236 @@
+/* ==========================================================
+   Design Tokens — CSS custom properties (mirrors theme.js)
+   ========================================================== */
+
+:root {
+  /* Backgrounds */
+  --bg-primary: #06060f;
+  --bg-secondary: #0c0c1a;
+  --bg-card: #12122a;
+  --bg-board: #080810;
+  --bg-glass: rgba(255, 255, 255, 0.06);
+
+  /* Text */
+  --text-primary: #e0e0ff;
+  --text-secondary: rgba(240, 244, 255, 0.6);
+  --color-white: #ffffff;
+  --text-cyan: rgba(0, 200, 255, 0.9);
+
+  /* Accents */
+  --accent-blue: #4444ff;
+  --accent-cyan: #00ccff;
+  --accent-green: #00ff88;
+  --accent-green-dark: #00dd77;
+
+  /* Semantic */
+  --danger: #ff4444;
+  --garbage: #3a3a4e;
+  --border: #1e1e44;
+  --border-glass: rgba(255, 255, 255, 0.15);
+
+  /* Medals */
+  --medal-gold: #ffd700;
+  --medal-silver: #c0c0c0;
+  --medal-bronze: #cd7f32;
+
+  /* Button text */
+  --btn-green-text: #003d1f;
+
+  /* Ping indicators */
+  --ping-good: #66bb6a;
+  --ping-ok: #ffa726;
+  --ping-bad: #e74856;
+
+  /* Overlay */
+  --overlay-bg: rgba(6, 6, 15, 0.88);
+
+  /* Glows */
+  --glow-cyan: rgba(0, 200, 255, 0.15);
+  --glow-green: rgba(0, 255, 136, 0.3);
+  --glow-blue: rgba(68, 68, 255, 0.06);
+
+  /* Opacities */
+  --opacity-faint: 0.04;
+  --opacity-tint: 0.06;
+  --opacity-subtle: 0.08;
+  --opacity-muted: 0.10;
+  --opacity-soft: 0.15;
+  --opacity-label: 0.6;
+  --opacity-overlay: 0.75;
+
+  /* Transitions */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.3s ease;
+
+  /* Animations */
+  --anim-fade: 0.5s ease-out both;
+  --anim-pulse: 2.5s ease-in-out infinite;
+
+  /* Radii */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+}
+
+/* ==========================================================
+   Shared Button Classes
+   ========================================================== */
+
+.btn {
+  border: none;
+  border-radius: var(--radius-md);
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-primary {
+  background: linear-gradient(180deg, var(--accent-green) 0%, var(--accent-green-dark) 100%);
+  color: var(--btn-green-text);
+}
+
+.btn-primary:hover {
+  box-shadow: 0 0 24px var(--glow-green);
+}
+
+.btn-primary:active {
+  scale: 0.95;
+  box-shadow: 0 0 8px var(--glow-green);
+}
+
+.btn-secondary {
+  background: transparent;
+  border: 1px solid var(--text-secondary);
+  color: var(--text-secondary);
+}
+
+.btn-secondary:hover {
+  border-color: var(--text-primary);
+  color: var(--text-primary);
+}
+
+.btn-secondary:active {
+  scale: 0.95;
+}
+
+/* ==========================================================
+   Shared Component Classes
+   ========================================================== */
+
+.icon-btn {
+  border: 1px solid var(--text-secondary);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+}
+
+.icon-btn:hover {
+  border-color: var(--text-primary);
+  color: var(--text-primary);
+}
+
+.icon-btn:active {
+  scale: 0.95;
+}
+
+.player-card {
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  border: 2px solid var(--player-color, var(--border));
+  box-shadow: 0 0 16px -4px var(--player-color, transparent);
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--player-color, var(--text-primary));
+}
+
+.gradient-title {
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan), var(--accent-green));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.pause-icon {
+  display: flex;
+  gap: 3px;
+}
+
+.pause-icon::before,
+.pause-icon::after {
+  content: '';
+  width: 4px;
+  height: 18px;
+  background: var(--text-secondary);
+  border-radius: 1.5px;
+}
+
+/* ==========================================================
+   Shared Keyframes
+   ========================================================== */
+
+@keyframes fadeDown {
+  from { opacity: 0; transform: translateY(-16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Game overlays (pause, reconnect) — shared between display and controller */
+.game-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  background: var(--overlay-bg);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: fadeIn 0.3s ease both;
+}
+
+.game-overlay.hidden {
+  display: none !important;
+}
+
+.game-overlay h1 {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(1.3rem, 6vw, 1.8rem);
+  font-weight: 900;
+  letter-spacing: 0.15em;
+  color: var(--text-primary);
+}
+
+.game-overlay__status {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+}
