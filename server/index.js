@@ -129,6 +129,14 @@ const server = http.createServer((req, res) => {
     urlPath = '/favicon.svg';
   }
 
+  // AirConsole entry points: screen.html and controller.html at root
+  // AirConsole expects these at the root of the game URL
+  if (urlPath === '/screen.html') {
+    urlPath = '/display/screen.html';
+  } else if (urlPath === '/controller.html') {
+    urlPath = '/controller/controller.html';
+  }
+
   // Map directory paths to index.html
   if (urlPath === '/') {
     urlPath = '/display/index.html';
@@ -166,7 +174,13 @@ const server = http.createServer((req, res) => {
     }
 
     if (ext === '.html') {
-      headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' wss://ws.couch-games.com; img-src 'self' data:";
+      // AirConsole entry points need access to the AirConsole SDK and iframe messaging
+      var isAirConsole = urlPath === '/display/screen.html' || urlPath === '/controller/controller.html';
+      if (isAirConsole) {
+        headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' https://www.airconsole.com; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' https://www.airconsole.com; img-src 'self' data: https://www.airconsole.com; frame-ancestors https://www.airconsole.com http://www.airconsole.com";
+      } else {
+        headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' wss://ws.couch-games.com; img-src 'self' data:";
+      }
     }
 
     res.writeHead(200, headers);
