@@ -59,26 +59,6 @@ renderQR = function(canvas, matrix) {
   _originalRenderQR(canvas, matrix);
 };
 
-// Debug overlay — shows adapter state visually (remove after testing)
-var _dbgD = document.createElement('div');
-_dbgD.style.cssText = 'position:fixed;top:0;left:0;right:0;background:rgba(0,0,0,0.85);color:#0f0;font:11px monospace;padding:8px;z-index:99999;white-space:pre-wrap;pointer-events:none';
-document.body.appendChild(_dbgD);
-setInterval(function() {
-  _dbgD.textContent = [
-    'SCREEN DEBUG',
-    'screen: ' + currentScreen,
-    'roomCode: ' + roomCode,
-    'roomState: ' + roomState,
-    'players: ' + players.size,
-    'hostId: ' + hostId,
-    'party: ' + (party ? party.constructor.name : 'null'),
-    'connected: ' + (party ? party.connected : '-'),
-    'acReady: ' + (party ? party._acReady : '-'),
-    'earlyReady: ' + _acEarlyReady + ' code=' + _acEarlyReadyCode,
-    'ac.device_id: ' + (airconsole.device_id !== undefined ? airconsole.device_id : 'unset'),
-  ].join('\n');
-}, 500);
-
 // Skip welcome screen — go straight to lobby.
 // onRoomCreated caches as preCreatedRoom when currentScreen === WELCOME,
 // so setting it to LOBBY ensures the room is applied immediately.

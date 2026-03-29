@@ -67,7 +67,6 @@ class AirConsoleAdapter {
     };
 
     ac.onMessage = function(device_id, data) {
-      console.log('[ACA ' + self.role + '] onMessage from=' + device_id + ' type=' + (data && data.type));
       if (self.role === 'display') {
         if (device_id === AirConsole.SCREEN) return; // ignore own broadcasts echoed back
         if (self.onMessage) self.onMessage(String(device_id), data);
@@ -107,7 +106,6 @@ class AirConsoleAdapter {
   }
 
   sendTo(to, data) {
-    console.log('[ACA ' + this.role + '] sendTo=' + to + ' type=' + (data && data.type));
     if (to === 'display') {
       if (this.role === 'display') {
         // Self-echo for heartbeat compatibility

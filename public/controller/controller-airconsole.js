@@ -58,23 +58,3 @@ connect = function() {
 
 // Hide ping display — AirConsole manages connectivity
 if (pingDisplay) pingDisplay.style.display = 'none';
-
-// Debug overlay — shows adapter state visually (remove after testing)
-var _dbg = document.createElement('div');
-_dbg.id = 'ac-debug';
-_dbg.style.cssText = 'position:fixed;top:0;left:0;right:0;background:rgba(0,0,0,0.85);color:#0f0;font:11px monospace;padding:8px;z-index:99999;white-space:pre-wrap;pointer-events:none';
-document.body.appendChild(_dbg);
-setInterval(function() {
-  _dbg.textContent = [
-    'screen: ' + currentScreen,
-    'roomCode: ' + roomCode,
-    'playerName: ' + playerName,
-    'clientId: ' + clientId,
-    'party: ' + (party ? party.constructor.name : 'null'),
-    'connected: ' + (party ? party.connected : '-'),
-    'acReady: ' + (party ? party._acReady : '-'),
-    'earlyReady: ' + _acEarlyReady + ' code=' + _acEarlyReadyCode,
-    'connectCalled: ' + (party ? party._connectCalled : '-'),
-    'ac.device_id: ' + (airconsole.device_id !== undefined ? airconsole.device_id : 'unset'),
-  ].join('\n');
-}, 500);
