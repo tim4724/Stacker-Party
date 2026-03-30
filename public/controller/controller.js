@@ -211,11 +211,13 @@ levelPlusBtn.addEventListener('click', function () {
 });
 
 playAgainBtn.addEventListener('click', function () {
+  if (!gameoverButtonsReady) return;
   vibrate(10);
   sendToDisplay(MSG.PLAY_AGAIN);
 });
 
 newGameBtn.addEventListener('click', function () {
+  if (!gameoverButtonsReady) return;
   vibrate(10);
   sendToDisplay(MSG.RETURN_TO_LOBBY);
 });

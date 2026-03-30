@@ -177,10 +177,17 @@ function onGameResumed() {
 // Results
 // =====================================================================
 
+var gameoverButtonsReady = false;
+
 function renderGameResults(results) {
   resultsList.innerHTML = '';
-  gameoverButtons.classList.remove('hidden');
+  gameoverButtons.classList.add('hidden');
   gameoverStatus.textContent = '';
+  gameoverButtonsReady = false;
+  setTimeout(function() {
+    gameoverButtons.classList.remove('hidden');
+    gameoverButtonsReady = true;
+  }, 1500);
 
   var winnerColor = 'rgba(255, 215, 0, 0.06)';
   if (results && results.length) {

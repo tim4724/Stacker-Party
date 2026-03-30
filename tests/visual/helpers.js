@@ -181,7 +181,8 @@ async function waitForControllerGame(page) {
 
 async function waitForControllerResults(page) {
   await page.waitForSelector('#gameover-screen:not(.hidden)', { timeout: 30000 });
-  await page.waitForTimeout(1100);
+  await page.waitForSelector('#gameover-buttons:not(.hidden)', { timeout: 5000 });
+  await page.waitForTimeout(200);
 }
 
 module.exports = {
