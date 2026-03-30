@@ -20,41 +20,18 @@ airconsole.onReady = function(code) {
   _acEarlyReadyCode = code;
 };
 
-// Wire AirConsole pause/resume to existing game pause.
-// Show "CONNECTION UNSTABLE" on the display only — don't broadcast
-// to controllers since they can't do anything about a connectivity issue
-// and AirConsole will auto-resume when the connection stabilizes.
-var _acConnectionPaused = false;
-
+// Wire AirConsole pause/resume — silently freeze the game engine.
+// No overlay, no broadcast to controllers. AirConsole auto-resumes
+// when the connection stabilizes.
 airconsole.onPause = function() {
+  console.log('[AirConsole] onPause — connection unstable');
   if (roomState !== ROOM_STATE.PLAYING && roomState !== ROOM_STATE.COUNTDOWN) return;
-  if (paused) return;
-  _acConnectionPaused = true;
-  // Pause the engine and music directly without broadcasting to controllers
-  paused = true;
   if (displayGame) displayGame.pause();
-  if (music) music.pause();
-  // Show overlay with connection message instead of pause buttons
-  var heading = document.querySelector('#pause-overlay h1');
-  var buttons = document.getElementById('pause-buttons');
-  if (heading) heading.textContent = 'CONNECTION UNSTABLE';
-  if (buttons) buttons.classList.add('hidden');
-  pauseOverlay.classList.remove('hidden');
 };
 
 airconsole.onResume = function() {
-  if (!_acConnectionPaused) return;
-  _acConnectionPaused = false;
-  // Restore normal pause overlay for future user-initiated pauses
-  var heading = document.querySelector('#pause-overlay h1');
-  var buttons = document.getElementById('pause-buttons');
-  if (heading) heading.textContent = 'PAUSED';
-  if (buttons) buttons.classList.remove('hidden');
-  // Resume without broadcasting (controllers never knew about this pause)
-  paused = false;
+  console.log('[AirConsole] onResume — connection restored');
   if (displayGame) displayGame.resume();
-  pauseOverlay.classList.add('hidden');
-  if (music && !muted) music.resume();
 };
 
 // Replace PartyConnection with a factory that returns AirConsoleAdapter.
