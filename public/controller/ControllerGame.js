@@ -107,8 +107,21 @@ function onLobbyUpdate(data) {
     isHost = data.isHost;
   }
   if (data.startLevel != null) startLevel = data.startLevel;
-  if (isHost) updateStartButton();
-  if (currentScreen === 'lobby') updateLevelDisplay();
+
+  if (currentScreen === 'lobby') {
+    // Full host/non-host UI update (handles mid-lobby host promotion)
+    if (isHost) {
+      startBtn.classList.remove('hidden');
+      startBtn.disabled = false;
+      setWaitingActionMessage('');
+      updateStartButton();
+    } else {
+      startBtn.classList.add('hidden');
+      setWaitingActionMessage('Waiting for host to start...');
+    }
+    updateLevelDisplay();
+  }
+
   // Update gameover buttons if host was promoted during results screen
   if (currentScreen === 'gameover') {
     gameoverButtons.classList.toggle('hidden', !isHost);
