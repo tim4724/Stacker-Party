@@ -244,6 +244,14 @@ function onPeerLeft(clientId) {
     if (displayGame) displayGame.handleSoftDropEnd(clientId);
   }
 
+  // AirConsole mode: players come and go via the platform. Remove the
+  // player, promote host if needed, return to lobby if nobody is left.
+  if (party && party.allowLateJoin) {
+    onPeerLeftAirConsole(clientId);
+    return;
+  }
+
+  // Standalone mode
   if (roomState === ROOM_STATE.LOBBY) {
     // Grace period: hold slot for 5s so reconnecting controller can rejoin
     var graceTimer = setTimeout(function() {
@@ -254,26 +262,10 @@ function onPeerLeft(clientId) {
     graceTimers.set(clientId, graceTimer);
   } else if (roomState === ROOM_STATE.RESULTS) {
     if (clientId === hostId) {
-      if (party && party.allowLateJoin && playerOrder.length > 1) {
-        // AirConsole: promote next player to host, stay on results
-        players.delete(clientId);
-        playerOrder = playerOrder.filter(function(id) { return id !== clientId; });
-        hostId = playerOrder[0];
-        // Notify new host so they see Play Again / New Game buttons
-        party.sendTo(hostId, {
-          type: MSG.LOBBY_UPDATE,
-          playerCount: players.size,
-          isHost: true,
-          startLevel: players.get(hostId).startLevel || 1
-        });
-      } else {
-        // Standalone: kick everyone back to lobby
-        lastResults = null;
-        setRoomState(ROOM_STATE.LOBBY);
-        removeLobbyPlayer(clientId);
-      }
+      lastResults = null;
+      setRoomState(ROOM_STATE.LOBBY);
+      removeLobbyPlayer(clientId);
     } else {
-      // Non-host left — stay on results screen, just remove them
       players.delete(clientId);
       var idx = playerOrder.indexOf(clientId);
       if (idx !== -1) playerOrder.splice(idx, 1);
@@ -284,22 +276,50 @@ function onPeerLeft(clientId) {
   }
 }
 
+function onPeerLeftAirConsole(clientId) {
+  if (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN) {
+    // In game — show disconnect overlay before removing player (showDisconnectQR
+    // checks players.has() in its callback, so must be called first).
+    // In AirConsole mode fetchQR is a no-op, so disconnectedQRs gets null
+    // which renders "DISCONNECTED" text instead of a QR code.
+    showDisconnectQR(clientId);
+  }
+
+  // Remove player
+  players.delete(clientId);
+  playerOrder = playerOrder.filter(function(id) { return id !== clientId; });
+  garbageIndicatorEffects.delete(clientId);
+  garbageDefenceEffects.delete(clientId);
+
+  // Promote host if the disconnected player was host
+  if (clientId === hostId) {
+    hostId = playerOrder.length > 0 ? playerOrder[0] : null;
+  }
+
+  if (roomState === ROOM_STATE.LOBBY) {
+    updatePlayerList();
+    updateStartButton();
+    if (players.size > 0) broadcastLobbyUpdate();
+  } else if (roomState === ROOM_STATE.RESULTS) {
+    if (players.size === 0) {
+      // All players left during results — return to lobby
+      lastResults = null;
+      setRoomState(ROOM_STATE.LOBBY);
+      returnToLobbyUI();
+    } else if (hostId) {
+      // Notify new host so they see Play Again / New Game buttons
+      party.sendTo(hostId, {
+        type: MSG.LOBBY_UPDATE,
+        playerCount: players.size,
+        isHost: true,
+        startLevel: players.get(hostId).startLevel || 1
+      });
+    }
+  }
+}
+
 function removeLobbyPlayer(clientId) {
   if (clientId === hostId) {
-    if (party && party.allowLateJoin && playerOrder.length > 1) {
-      // AirConsole: promote next player to host instead of kicking everyone.
-      // Players stay connected via the platform.
-      players.delete(clientId);
-      playerOrder = playerOrder.filter(function(id) { return id !== clientId; });
-      garbageIndicatorEffects.delete(clientId);
-      garbageDefenceEffects.delete(clientId);
-      hostId = playerOrder[0];
-      updatePlayerList();
-      updateStartButton();
-      broadcastLobbyUpdate();
-      return;
-    }
-    // Standalone: kick everyone — players need to scan a new QR
     hostId = null;
     party.broadcast({ type: MSG.ERROR, code: 'HOST_DISCONNECTED', message: 'Host disconnected' });
     players.clear();
