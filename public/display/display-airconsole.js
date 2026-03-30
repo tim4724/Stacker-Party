@@ -7,8 +7,6 @@
 // callbacks and calls party.connect() — works with AirConsole instead.
 // =====================================================================
 
-var _isAirConsole = true;
-
 var airconsole = new AirConsole({
   orientation: AirConsole.ORIENTATION_LANDSCAPE,
   silence_inactive_players: false

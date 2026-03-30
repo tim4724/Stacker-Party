@@ -191,6 +191,37 @@ test.describe('Display', () => {
     await expect(page).toHaveScreenshot('09b-disconnected.png');
   });
 
+  test('airconsole lobby - no QR, no placeholders', async ({ page }) => {
+    await gotoDisplayTest(page);
+    await page.evaluate(() => {
+      // Simulate AirConsole mode: hide QR, hide empty placeholders
+      document.getElementById('qr-container').style.display = 'none';
+      document.getElementById('join-url').style.display = 'none';
+      document.getElementById('lobby-screen').classList.remove('hidden');
+      document.getElementById('welcome-screen').classList.add('hidden');
+      // Add players like AirConsole would
+      window.__TEST__.addPlayers([{ id: 'ac1', name: 'Alice' }, { id: 'ac2', name: 'Bob' }]);
+      // Hide empty placeholder cards
+      document.querySelectorAll('.player-card.empty').forEach(function(el) { el.style.display = 'none'; });
+    });
+    await stopDisplayBackground(page);
+    await expect(page).toHaveScreenshot('10a-airconsole-lobby.png', {
+      maxDiffPixelRatio: 0,
+    });
+  });
+
+  test('airconsole disconnected player overlay', async ({ page }) => {
+    await gotoDisplayTest(page);
+    await injectPlayers(page, 2);
+    await injectGameState(page, 2, {});
+    // Set player 1 as disconnected with null QR (AirConsole style)
+    await page.evaluate(() => {
+      disconnectedQRs.set('player1', null);
+    });
+    await page.waitForTimeout(150);
+    await expect(page).toHaveScreenshot('10b-airconsole-disconnected.png');
+  });
+
   test('game screen - all style tiers (3 players)', async ({ page }) => {
     await gotoDisplayTest(page);
     await injectPlayers(page, 3);

@@ -21,6 +21,7 @@ class AirConsoleAdapter {
     this._acReady = false;
     this._acReadyCode = null;
     this._connectCalled = false;
+    this.allowLateJoin = true;  // AirConsole players can join anytime — return to lobby
     this.reconnectAttempt = 0;
     this.maxReconnectAttempts = 5;
 

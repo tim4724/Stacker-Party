@@ -203,10 +203,9 @@ function onDisplayRejoined(partyRoomCode, clients) {
 function onPeerJoined(clientId) {
   if (players.has(clientId)) return;
   if (roomState !== ROOM_STATE.LOBBY) {
-    // In AirConsole mode (_isAirConsole set by display-airconsole.js), new
-    // players can join at any time via the platform. returnToLobby() is
-    // synchronous — it sets roomState to LOBBY before returning.
-    if (typeof _isAirConsole !== 'undefined' && _isAirConsole) {
+    // In AirConsole mode, players can join at any time via the platform.
+    // returnToLobby() is synchronous — sets roomState to LOBBY before returning.
+    if (party && party.allowLateJoin) {
       returnToLobby();
     } else {
       return;
