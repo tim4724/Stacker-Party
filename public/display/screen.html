@@ -19,8 +19,9 @@
     #mobile-hint { display: none !important; }
     /* Hide fullscreen button — AirConsole top bar has one */
     #fullscreen-btn { display: none !important; }
-    /* Hide empty player placeholders — all players join via AirConsole before lobby */
-    .player-card.empty { display: none !important; }
+    /* Hide empty player slots — all players join via AirConsole before lobby.
+       Target the slot (grid cell) so it doesn't take up space in the grid. */
+    .player-slot:has(.player-card.empty) { display: none !important; }
   </style>
 </head>
 <body>
