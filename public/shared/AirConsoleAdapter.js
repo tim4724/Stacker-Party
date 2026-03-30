@@ -123,7 +123,8 @@ class AirConsoleAdapter {
       }
       this.airconsole.message(AirConsole.SCREEN, data);
     } else {
-      this.airconsole.message(parseInt(to, 10), data);
+      var id = parseInt(to, 10);
+      if (!isNaN(id)) this.airconsole.message(id, data);
     }
   }
 

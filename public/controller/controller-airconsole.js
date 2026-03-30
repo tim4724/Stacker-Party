@@ -27,6 +27,8 @@ airconsole.onReady = function(code) {
 // Instead, pre-set roomCode and override showRoomGone to be a no-op.
 // controller.js will overwrite roomCode with "controller.html" — that's fine,
 // we just need to ensure the if(roomCode) block executes.
+// AirConsole has no room concept — showRoomGone would show a "Room Not Found"
+// error when controller.js can't find a room code in the URL. Safe to silence.
 showRoomGone = function() {};
 
 // Pre-set clientId (adapter maps real AirConsole device IDs at message time)
@@ -35,7 +37,7 @@ clientId = 'ac_controller';
 // Force hadStoredId so controller.js auto-connects on load (skips name screen).
 // controller.js parses location.pathname to get roomCode (e.g. "controller.html")
 // and checks sessionStorage['clientId_' + roomCode]. We pre-set that key here.
-// Coupling: if the HTML filename or URL parsing logic changes, update this too.
+// Coupling: depends on controller.html filename and controller.js line ~89 parsing logic.
 var _acRoomCode = location.pathname.split('/').filter(Boolean)[0] || 'airconsole';
 sessionStorage.setItem('clientId_' + _acRoomCode, clientId);
 
