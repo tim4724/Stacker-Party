@@ -208,6 +208,7 @@ function onPeerJoined(clientId) {
     // connect new players at any time, and we want everyone in the lobby
     // together rather than silently queueing the new player.
     if (party && party.allowLateJoin) {
+      party.broadcast({ type: MSG.RETURN_TO_LOBBY, playerCount: players.size, reason: 'New player joined' });
       returnToLobby();
     } else {
       return;

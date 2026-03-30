@@ -118,7 +118,8 @@ class AirConsoleAdapter {
   sendTo(to, data) {
     if (to === 'display') {
       if (this.role === 'display') {
-        // Self-echo for heartbeat compatibility
+        // Synchronous self-echo for heartbeat compatibility.
+        // Callers must not call sendTo('display') from within an onMessage handler.
         if (this.onMessage) this.onMessage('display', data);
         return;
       }
@@ -142,6 +143,9 @@ class AirConsoleAdapter {
   reconnectNow() {}
   resetReconnectCount() { this.reconnectAttempt = 0; }
 
+  // Safe to omit callback cleanup — connectAndCreateRoom() always creates a new
+  // adapter with the same airconsole instance, which overwrites callbacks in
+  // _wireAirConsole(). Only call close() if a new adapter follows immediately.
   close() {
     this._ready = false;
   }
