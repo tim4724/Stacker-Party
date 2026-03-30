@@ -192,26 +192,34 @@ test.describe('Display', () => {
   });
 
   test('airconsole lobby - no QR, no placeholders', async ({ page }) => {
-    await gotoDisplayTest(page);
+    // Block real AirConsole SDK and inject a minimal stub
+    await page.route('**/airconsole-1.10.0.js', (route) => {
+      route.fulfill({ status: 200, contentType: 'text/javascript', body: 'function AirConsole(){ var self=this; setTimeout(function(){ if(self.onReady) self.onReady("TEST"); },50); } AirConsole.ORIENTATION_LANDSCAPE="landscape"; AirConsole.SCREEN=0; AirConsole.prototype.getControllerDeviceIds=function(){return[]};AirConsole.prototype.getDeviceId=function(){return 0};AirConsole.prototype.getNickname=function(){return"Player"};AirConsole.prototype.message=function(){};AirConsole.prototype.broadcast=function(){};' });
+    });
+    await page.goto('/screen.html?test=1');
+    await waitForFont(page);
+    await page.waitForSelector('#lobby-screen:not(.hidden)', { timeout: 5000 });
     await page.evaluate(() => {
-      // Simulate AirConsole mode: hide QR, hide empty placeholders
-      document.getElementById('qr-container').style.display = 'none';
-      document.getElementById('join-url').style.display = 'none';
-      document.getElementById('lobby-screen').classList.remove('hidden');
-      document.getElementById('welcome-screen').classList.add('hidden');
-      // Add players like AirConsole would
       window.__TEST__.addPlayers([{ id: 'ac1', name: 'Alice' }, { id: 'ac2', name: 'Bob' }]);
-      // Hide empty placeholder cards
-      document.querySelectorAll('.player-card.empty').forEach(function(el) { el.style.display = 'none'; });
     });
     await stopDisplayBackground(page);
+    await page.evaluate(() => {
+      var vl = document.getElementById('lobby-version-label');
+      if (vl) vl.textContent = 'X.Y.Z';
+    });
     await expect(page).toHaveScreenshot('11a-airconsole-lobby.png', {
       maxDiffPixelRatio: 0,
     });
   });
 
   test('airconsole disconnected player overlay', async ({ page }) => {
-    await gotoDisplayTest(page);
+    // Block real AirConsole SDK and inject a minimal stub
+    await page.route('**/airconsole-1.10.0.js', (route) => {
+      route.fulfill({ status: 200, contentType: 'text/javascript', body: 'function AirConsole(){ var self=this; setTimeout(function(){ if(self.onReady) self.onReady("TEST"); },50); } AirConsole.ORIENTATION_LANDSCAPE="landscape"; AirConsole.SCREEN=0; AirConsole.prototype.getControllerDeviceIds=function(){return[]};AirConsole.prototype.getDeviceId=function(){return 0};AirConsole.prototype.getNickname=function(){return"Player"};AirConsole.prototype.message=function(){};AirConsole.prototype.broadcast=function(){};' });
+    });
+    await page.goto('/screen.html?test=1');
+    await waitForFont(page);
+    await page.waitForSelector('#lobby-screen:not(.hidden)', { timeout: 5000 });
     await injectPlayers(page, 2);
     await injectGameState(page, 2, {});
     // Set player 1 as disconnected with null QR (AirConsole style)
