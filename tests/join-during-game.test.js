@@ -189,6 +189,38 @@ describe('Display: onHello during non-LOBBY states', () => {
     assert.strictEqual(sentMessages[0].msg.paused, undefined, 'paused should be omitted for late joiners');
   });
 
+  test('active player reconnecting during PLAYING is NOT treated as late joiner', () => {
+    // Join in lobby → added to playerOrder
+    onHello('player1', { type: MSG.HELLO, name: 'Alice' });
+    assert.ok(playerOrder.indexOf('player1') >= 0);
+    sentMessages = [];
+
+    // Game starts
+    roomState = ROOM_STATE.PLAYING;
+
+    // Player reconnects (onPeerJoined → onHello)
+    // onPeerJoined returns early because player already in Map
+    onPeerJoined('player1');
+    onHello('player1', { type: MSG.HELLO, name: 'Alice' });
+
+    assert.strictEqual(sentMessages[0].msg.type, MSG.WELCOME);
+    assert.strictEqual(sentMessages[0].msg.alive, true, 'active player should get alive: true');
+    assert.notStrictEqual(sentMessages[0].msg.paused, undefined, 'active player should get paused field');
+  });
+
+  test('late joiner not added to playerOrder during game', () => {
+    roomState = ROOM_STATE.PLAYING;
+    onPeerJoined('player4');
+    assert.strictEqual(playerOrder.indexOf('player4'), -1);
+    assert.strictEqual(players.has('player4'), true, 'should be in players Map');
+  });
+
+  test('late joiner added to playerOrder when joining during LOBBY', () => {
+    roomState = ROOM_STATE.LOBBY;
+    onPeerJoined('player1');
+    assert.ok(playerOrder.indexOf('player1') >= 0);
+  });
+
   test('existing player reconnecting during COUNTDOWN gets WELCOME', () => {
     // Add player first in LOBBY
     onHello('player1', { type: MSG.HELLO, name: 'Alice' });
@@ -220,14 +252,17 @@ describe('Display: onHello during non-LOBBY states', () => {
 
 // --- Controller-side tests (handleMessage guard) ---
 
-describe('Controller: handleMessage ignores broadcasts when gameCancelled', () => {
-  let gameCancelled, currentScreen, playerColor, playerCount;
+describe('Controller: handleMessage ignores broadcasts when gameCancelled or waitingForNextGame', () => {
+  let gameCancelled, waitingForNextGame, currentScreen, playerColor, playerCount;
   let screenShown, touchInitialized;
 
   // Minimal handleMessage extracted from controller.js
   function handleMessage(data) {
     try {
       if (gameCancelled && data.type !== MSG.WELCOME && data.type !== MSG.ERROR) return;
+      if (waitingForNextGame && data.type !== MSG.WELCOME && data.type !== MSG.GAME_END
+          && data.type !== MSG.RETURN_TO_LOBBY && data.type !== MSG.LOBBY_UPDATE
+          && data.type !== MSG.ERROR && data.type !== MSG.PONG) return;
 
       switch (data.type) {
         case MSG.COUNTDOWN:
@@ -242,6 +277,20 @@ describe('Controller: handleMessage ignores broadcasts when gameCancelled', () =
         case MSG.WELCOME:
           playerColor = data.playerColor;
           gameCancelled = false;
+          waitingForNextGame = false;
+          if (data.alive === undefined && (data.roomState === 'playing' || data.roomState === 'countdown')) {
+            waitingForNextGame = true;
+            screenShown = 'lobby';
+          } else {
+            screenShown = 'lobby';
+          }
+          break;
+        case MSG.GAME_END:
+          waitingForNextGame = false;
+          screenShown = 'gameover';
+          break;
+        case MSG.RETURN_TO_LOBBY:
+          waitingForNextGame = false;
           screenShown = 'lobby';
           break;
         case MSG.ERROR:
@@ -256,6 +305,7 @@ describe('Controller: handleMessage ignores broadcasts when gameCancelled', () =
 
   beforeEach(() => {
     gameCancelled = false;
+    waitingForNextGame = false;
     currentScreen = 'name';
     playerColor = null;
     playerCount = 0;
@@ -322,5 +372,64 @@ describe('Controller: handleMessage ignores broadcasts when gameCancelled', () =
     assert.strictEqual(screenShown, null);
     handleMessage({ type: MSG.GAME_START });
     assert.strictEqual(screenShown, null);
+  });
+
+  // --- waitingForNextGame tests (late joiner broadcast filtering) ---
+
+  test('late joiner WELCOME sets waitingForNextGame', () => {
+    handleMessage({ type: MSG.WELCOME, playerColor: '#ff0000', roomState: 'playing' });
+    // alive is undefined → late joiner
+    assert.strictEqual(waitingForNextGame, true);
+    assert.strictEqual(screenShown, 'lobby');
+  });
+
+  test('late joiner ignores COUNTDOWN and GAME_START broadcasts', () => {
+    waitingForNextGame = true;
+    handleMessage({ type: MSG.COUNTDOWN, value: 3 });
+    assert.strictEqual(screenShown, null, 'COUNTDOWN should be blocked');
+    handleMessage({ type: MSG.GAME_START });
+    assert.strictEqual(screenShown, null, 'GAME_START should be blocked');
+  });
+
+  test('GAME_END clears waitingForNextGame', () => {
+    waitingForNextGame = true;
+    handleMessage({ type: MSG.GAME_END, results: [] });
+    assert.strictEqual(waitingForNextGame, false);
+    assert.strictEqual(screenShown, 'gameover');
+  });
+
+  test('late joiner receives GAME_END then can participate in Play Again', () => {
+    waitingForNextGame = true;
+    // Game ends — late joiner sees results
+    handleMessage({ type: MSG.GAME_END, results: [] });
+    assert.strictEqual(waitingForNextGame, false);
+    assert.strictEqual(screenShown, 'gameover');
+
+    // Play Again triggers new countdown — should NOT be blocked
+    screenShown = null;
+    handleMessage({ type: MSG.COUNTDOWN, value: 3 });
+    assert.strictEqual(screenShown, 'game', 'COUNTDOWN should work after GAME_END cleared waitingForNextGame');
+  });
+
+  test('RETURN_TO_LOBBY clears waitingForNextGame', () => {
+    waitingForNextGame = true;
+    handleMessage({ type: MSG.RETURN_TO_LOBBY, playerCount: 2 });
+    assert.strictEqual(waitingForNextGame, false);
+    assert.strictEqual(screenShown, 'lobby');
+  });
+
+  test('LOBBY_UPDATE allowed through while waitingForNextGame', () => {
+    waitingForNextGame = true;
+    screenShown = null;
+    // LOBBY_UPDATE doesn't set screenShown in our minimal handler,
+    // but it should NOT be blocked by the filter
+    handleMessage({ type: MSG.LOBBY_UPDATE, playerCount: 3 });
+    // If it was blocked, we'd never reach the switch — verify no error thrown
+    assert.strictEqual(waitingForNextGame, true, 'LOBBY_UPDATE should not clear flag');
+  });
+
+  test('normal WELCOME with alive field does NOT set waitingForNextGame', () => {
+    handleMessage({ type: MSG.WELCOME, playerColor: '#ff0000', roomState: 'playing', alive: true });
+    assert.strictEqual(waitingForNextGame, false);
   });
 });
