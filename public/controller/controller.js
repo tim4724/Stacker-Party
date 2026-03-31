@@ -238,12 +238,14 @@ document.addEventListener('visibilitychange', function () {
   if (gameCancelled) return;
   if (currentScreen === 'name' && !playerColor) return;
 
-  stopPing();
-  if (party) {
-    party.close();
-    party = null;
+  // Restart pings to check if connection is still alive.
+  // If the WebSocket died while backgrounded, party.onClose will
+  // trigger reconnection automatically.
+  if (party && party.connected) {
+    startPing();
+  } else if (!party) {
+    connect();
   }
-  connect();
 });
 
 window.addEventListener('popstate', function () {
