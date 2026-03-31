@@ -38,8 +38,10 @@ function startNewGame() {
   paused = false;
   lastResults = null;
   lastAliveState = {};
-  // Rebuild playerOrder to include late joiners from the previous game
-  playerOrder = Array.from(players.keys());
+  // Add late joiners to playerOrder (preserving existing order)
+  for (const id of players.keys()) {
+    if (playerOrder.indexOf(id) < 0) playerOrder.push(id);
+  }
   setRoomState(ROOM_STATE.COUNTDOWN);
   acquireWakeLock();
 
@@ -147,11 +149,13 @@ function returnToLobby() {
 
   for (var i = 0; i < disconnectedIds.length; i++) {
     players.delete(disconnectedIds[i]);
+    playerOrder = playerOrder.filter(function(id) { return id !== disconnectedIds[i]; });
   }
 
-  // Rebuild playerOrder from all connected players (includes late joiners
-  // who were in players Map but not in playerOrder during the game)
-  playerOrder = Array.from(players.keys());
+  // Add late joiners to playerOrder (preserving existing order)
+  for (const id of players.keys()) {
+    if (playerOrder.indexOf(id) < 0) playerOrder.push(id);
+  }
 
   lastResults = null;
   lastAliveState = {};
