@@ -261,6 +261,8 @@ function onPeerLeft(clientId) {
     if (!hasParticipants) {
       lastResults = null;
       setRoomState(ROOM_STATE.LOBBY);
+      broadcastLobbyUpdate();
+      party.broadcast({ type: MSG.RETURN_TO_LOBBY, playerCount: players.size });
       returnToLobbyUI();
     }
   }

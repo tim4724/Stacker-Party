@@ -17,7 +17,7 @@ const { MSG, ROOM_STATE } = require('../public/shared/protocol');
 // --- Display-side tests (onHello logic) ---
 
 describe('Display: onHello during non-LOBBY states', () => {
-  let players, roomState, playerOrder, lastAliveState, paused;
+  let players, roomState, playerOrder, lastAliveState, lastResults, paused;
   let sentMessages;   // [{ to, msg }]
   let party;
   let broadcastCalled, updatePlayerListCalled, updateStartButtonCalled;
@@ -102,14 +102,18 @@ describe('Display: onHello during non-LOBBY states', () => {
       playerOrder.push(fromId);
     }
 
-    party.sendTo(fromId, {
+    var newWelcome = {
       type: MSG.WELCOME,
       playerName: playerName,
       playerColor: color,
       playerCount: players.size,
       roomState: roomState,
       startLevel: 1
-    });
+    };
+    if (roomState === ROOM_STATE.RESULTS && lastResults) {
+      newWelcome.results = lastResults.results;
+    }
+    party.sendTo(fromId, newWelcome);
 
     broadcastCalled = true;
     updatePlayerListCalled = true;
@@ -121,6 +125,7 @@ describe('Display: onHello during non-LOBBY states', () => {
     roomState = ROOM_STATE.LOBBY;
     playerOrder = [];
     lastAliveState = {};
+    lastResults = null;
     paused = false;
     sentMessages = [];
     broadcastCalled = false;
@@ -157,6 +162,16 @@ describe('Display: onHello during non-LOBBY states', () => {
     assert.strictEqual(sentMessages[0].msg.type, MSG.WELCOME);
     assert.strictEqual(sentMessages[0].msg.roomState, ROOM_STATE.PLAYING);
     assert.strictEqual(players.has('player3'), true);
+  });
+
+  test('new player during RESULTS gets WELCOME with results', () => {
+    roomState = ROOM_STATE.RESULTS;
+    lastResults = { results: [{ rank: 1, playerId: 'player1', lines: 10 }] };
+    onHello('player5', { type: MSG.HELLO, name: 'Eve' });
+    assert.strictEqual(sentMessages.length, 1);
+    assert.strictEqual(sentMessages[0].msg.type, MSG.WELCOME);
+    assert.strictEqual(sentMessages[0].msg.roomState, ROOM_STATE.RESULTS);
+    assert.deepStrictEqual(sentMessages[0].msg.results, lastResults.results);
   });
 
   test('late joiner via onPeerJoined then onHello omits alive field', () => {
