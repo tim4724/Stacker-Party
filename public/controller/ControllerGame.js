@@ -17,6 +17,8 @@ function updateLevelDisplay() {
 }
 
 function showLobbyUI() {
+  clearTimeout(gameoverButtonsTimer);
+  gameoverButtonsReady = false;
   playerIdentity.style.setProperty('--player-color', playerColor);
   playerIdentityName.textContent = playerName || 'Player';
   updateLevelDisplay();
