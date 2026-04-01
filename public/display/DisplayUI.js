@@ -334,7 +334,15 @@ function drawTimer(elapsedMs) {
     advances.push(advance);
     timerWidth += advance;
   }
-  var startX = window.innerWidth / 2 - timerWidth / 2;
+  // With odd board counts the centre board's stats text overlaps a centred timer,
+  // so anchor the timer to the left edge of the screen instead.
+  var n = boardRenderers.length;
+  var startX;
+  if (n > 0 && n % 2 === 1) {
+    startX = THEME.size.canvasPad + timerSize * 0.3;
+  } else {
+    startX = window.innerWidth / 2 - timerWidth / 2;
+  }
   var btnTop = timerSize * 0.6;
   var y = btnTop;
 

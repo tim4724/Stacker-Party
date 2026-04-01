@@ -142,15 +142,15 @@ const THEME = Object.freeze({
   // ---- Font Size Multipliers (× cellSize) with minimum px floors ----
   font: Object.freeze({
     cellScale: Object.freeze({
-      name:  0.55,
-      label: 0.38,
-      timer: 0.52,
+      name:  0.7,
+      label: 0.48,
+      timer: 0.65,
       mini:  0.6,
     }),
     minPx: Object.freeze({
-      name:  16,
-      label: 12,
-      timer: 14,
+      name:  18,
+      label: 14,
+      timer: 16,
     }),
   }),
 
