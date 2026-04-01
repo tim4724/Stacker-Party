@@ -18,11 +18,6 @@ function handleControllerMessage(fromId, msg) {
     var senderPlayer = players.get(fromId);
     if (senderPlayer) senderPlayer.lastPingTime = Date.now();
 
-    // Auto-resume if a game participant reconnects while auto-paused
-    if (wasDisconnected && autoPaused && playerOrder.indexOf(fromId) >= 0) {
-      checkAutoResume();
-    }
-
     switch (msg.type) {
       case MSG.HELLO:
         onHello(fromId, msg);
@@ -57,6 +52,13 @@ function handleControllerMessage(fromId, msg) {
       case MSG.PING:
         party.sendTo(fromId, { type: MSG.PONG, t: msg.t });
         break;
+    }
+
+    // Auto-resume after processing the message (e.g. after onHello sends
+    // WELCOME with paused state) so the controller gets proper state sync
+    // before the GAME_RESUMED broadcast.
+    if (wasDisconnected && autoPaused && playerOrder.indexOf(fromId) >= 0) {
+      checkAutoResume();
     }
   } catch (err) {
     console.error('[input] Error handling message from', fromId, ':', err);
