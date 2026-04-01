@@ -74,17 +74,10 @@ function startPing() {
   lastPongTime = Date.now();
   pingTimer = setInterval(function () {
     party.sendTo('display', { type: MSG.PING, t: Date.now() });
-    // Pong check (combined into ping interval)
+    // Show "Bad Connection" if pong is overdue, but keep pinging.
+    // Actual reconnect is handled by party.onClose when WebSocket dies.
     if (Date.now() - lastPongTime > PONG_TIMEOUT_MS) {
-      stopPing();
-      if (party.reconnectAttempt > party.maxReconnectAttempts) return;
-      if (currentScreen === 'game') {
-        reconnectOverlay.classList.remove('hidden');
-        reconnectHeading.textContent = 'RECONNECTING';
-        reconnectStatus.textContent = 'Display not responding';
-        reconnectRejoinBtn.classList.add('hidden');
-      }
-      party.reconnectNow();
+      updatePingDisplay(-1);
     }
   }, PING_INTERVAL_MS);
 }
@@ -95,9 +88,14 @@ function stopPing() {
 
 function updatePingDisplay(ms) {
   if (!pingDisplay) return;
-  pingDisplay.textContent = ms + ' ms';
   pingDisplay.classList.remove('ping-good', 'ping-ok', 'ping-bad');
-  pingDisplay.classList.add(ms < 50 ? 'ping-good' : ms < 100 ? 'ping-ok' : 'ping-bad');
+  if (ms < 0) {
+    pingDisplay.textContent = 'Bad Connection';
+    pingDisplay.classList.add('ping-bad');
+  } else {
+    pingDisplay.textContent = ms + ' ms';
+    pingDisplay.classList.add(ms < 50 ? 'ping-good' : ms < 100 ? 'ping-ok' : 'ping-bad');
+  }
 }
 
 // =====================================================================
@@ -132,7 +130,6 @@ function performDisconnect() {
   history.replaceState(null, '', location.pathname + (qs ? '?' + qs : ''));
   rejoinId = null;
   playerColor = null;
-  isHost = false;
   gameCancelled = false;
   nameInput.value = playerName || '';
   nameJoinBtn.disabled = false;

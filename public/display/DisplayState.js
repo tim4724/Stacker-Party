@@ -17,7 +17,6 @@ var gameState = null;
 var players = new Map();       // clientId -> { playerName, playerColor, playerIndex }
 var playerOrder = [];          // compact list of active clientIds for game layout (join order)
                                // lobby UI uses playerIndex on each player for slot positioning
-var hostId = null;             // clientId of host (first joiner)
 var roomState = ROOM_STATE.LOBBY;
 
 // Valid room state transitions
@@ -69,9 +68,6 @@ var livenessInterval = null;
 var lastHeartbeatEcho = 0;
 var heartbeatSent = false;
 var disconnectedTimer = null;
-
-// Grace period timers for disconnected players in lobby
-var graceTimers = new Map();
 
 // Last alive state per player (for reconnect)
 var lastAliveState = {};

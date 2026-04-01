@@ -30,6 +30,7 @@ function startGame() {
 
 function playAgain() {
   if (roomState !== ROOM_STATE.RESULTS) return;
+  if (players.size < 1) return;
   startNewGame();
 }
 
@@ -38,6 +39,10 @@ function startNewGame() {
   paused = false;
   lastResults = null;
   lastAliveState = {};
+  // Add late joiners to playerOrder (preserving existing order)
+  for (const id of players.keys()) {
+    if (playerOrder.indexOf(id) < 0) playerOrder.push(id);
+  }
   setRoomState(ROOM_STATE.COUNTDOWN);
   acquireWakeLock();
 
@@ -126,9 +131,8 @@ function resumeGame() {
 }
 
 function returnToLobby() {
+  if (roomState === ROOM_STATE.LOBBY) return;
   clearCountdownTimers();
-  graceTimers.forEach(clearTimeout);
-  graceTimers.clear();
   countdownCallback = null;
   countdownRemaining = 0;
   paused = false;
@@ -145,22 +149,14 @@ function returnToLobby() {
     }
   }
 
-  if (hostId !== null && disconnectedIds.indexOf(hostId) >= 0) {
-    setRoomState(ROOM_STATE.LOBBY);
-    party.broadcast({ type: MSG.ERROR, code: 'HOST_DISCONNECTED', message: 'Host disconnected' });
-    players.clear();
-    playerOrder = [];
-    hostId = null;
-    lastAliveState = {};
-    updatePlayerList();
-    updateStartButton();
-    returnToLobbyUI();
-    return;
-  }
-
   for (var i = 0; i < disconnectedIds.length; i++) {
     players.delete(disconnectedIds[i]);
     playerOrder = playerOrder.filter(function(id) { return id !== disconnectedIds[i]; });
+  }
+
+  // Add late joiners to playerOrder (preserving existing order)
+  for (const id of players.keys()) {
+    if (playerOrder.indexOf(id) < 0) playerOrder.push(id);
   }
 
   lastResults = null;

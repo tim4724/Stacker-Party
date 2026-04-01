@@ -21,7 +21,6 @@ function resetToWelcome() {
   lastRoomCode = null;
   roomCode = null;
   joinUrl = null;
-  hostId = null;
   paused = false;
   setRoomState(ROOM_STATE.LOBBY);
   players.clear();
@@ -77,7 +76,6 @@ if (urlParams.get('test') === '1' || debugCount > 0) {
           playerIndex: index
         });
         playerOrder.push(p.id);
-        if (!hostId) hostId = p.id;
       }
       updatePlayerList();
       updateStartButton();

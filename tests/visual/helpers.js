@@ -181,7 +181,12 @@ async function waitForControllerGame(page) {
 
 async function waitForControllerResults(page) {
   await page.waitForSelector('#gameover-screen:not(.hidden)', { timeout: 30000 });
-  await page.waitForTimeout(1100);
+  // Buttons fade in after a 2s delay via opacity 0 → 1
+  await page.waitForFunction(
+    () => document.getElementById('gameover-buttons').style.opacity !== '0',
+    { timeout: 5000 }
+  );
+  await page.waitForTimeout(200);
 }
 
 module.exports = {

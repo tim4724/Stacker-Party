@@ -46,20 +46,28 @@ test.describe('Controller', () => {
     await expect(controller).toHaveScreenshot('01b-name-keyboard.png');
   });
 
-  test('lobby - host view', async ({ page, context }) => {
+  test('lobby view', async ({ page, context }) => {
     const { controllers } = await setupJoinedRoom(page, context, ['Player 1', 'Player 2']);
-    const host = controllers[0];
-    await host.waitForFunction(() => document.getElementById('start-btn').textContent.includes('2 players'));
-    await stabilizeControllerUI(host);
-    await expect(host).toHaveScreenshot('03-lobby-host.png');
+    const player = controllers[0];
+    await player.waitForFunction(() => document.getElementById('start-btn').textContent.includes('2 players'));
+    await stabilizeControllerUI(player);
+    await expect(player).toHaveScreenshot('03-lobby.png');
   });
 
-  test('lobby - non-host view', async ({ page, context }) => {
-    const { controllers } = await setupJoinedRoom(page, context, ['Player 1', 'Player 2']);
-    const nonHost = controllers[1];
-    await nonHost.waitForFunction(() => document.getElementById('waiting-action-text').textContent.includes('Waiting for host'));
-    await stabilizeControllerUI(nonHost);
-    await expect(nonHost).toHaveScreenshot('04-lobby-nonhost.png');
+  test('lobby - late joiner waiting', async ({ page, context }) => {
+    const { controllers } = await setupJoinedRoom(page, context, ['Player 1']);
+    const player1 = controllers[0];
+    // Start the game
+    await player1.click('#start-btn');
+    await waitForControllerGame(player1);
+    // Late joiner connects mid-game
+    const { roomCode } = await page.evaluate(() => ({ roomCode }));
+    const lateJoiner = await joinController(context, roomCode, 'Late Joiner');
+    await lateJoiner.waitForFunction(() =>
+      document.getElementById('waiting-action-text').textContent.includes('Game in progress')
+    );
+    await stabilizeControllerUI(lateJoiner);
+    await expect(lateJoiner).toHaveScreenshot('03b-lobby-late-joiner.png');
   });
 
   test('game screen - all player colors', async ({ page, context }) => {
@@ -147,27 +155,15 @@ test.describe('Controller', () => {
     await expect(player2).toHaveScreenshot('06d-game-ko-reconnect.png');
   });
 
-  test('game screen - paused (host)', async ({ page, context }) => {
+  test('game screen - paused', async ({ page, context }) => {
     const { controllers } = await setupJoinedRoom(page, context, ['Player 1', 'Player 2']);
-    const host = controllers[0];
-    await host.click('#start-btn');
-    await waitForControllerGame(host);
-    await host.click('#pause-btn');
-    await host.waitForSelector('#pause-overlay:not(.hidden)');
-    await host.waitForTimeout(150);
-    await expect(host).toHaveScreenshot('07-pause-host.png');
-  });
-
-  test('game screen - paused (non-host)', async ({ page, context }) => {
-    const { controllers } = await setupJoinedRoom(page, context, ['Player 1', 'Player 2']);
-    const host = controllers[0];
-    const nonHost = controllers[1];
-    await host.click('#start-btn');
-    await waitForControllerGame(nonHost);
-    await host.click('#pause-btn');
-    await nonHost.waitForSelector('#pause-overlay:not(.hidden)');
-    await nonHost.waitForTimeout(150);
-    await expect(nonHost).toHaveScreenshot('08-pause-nonhost.png');
+    const player = controllers[0];
+    await player.click('#start-btn');
+    await waitForControllerGame(player);
+    await player.click('#pause-btn');
+    await player.waitForSelector('#pause-overlay:not(.hidden)');
+    await player.waitForTimeout(150);
+    await expect(player).toHaveScreenshot('07-pause.png');
   });
 
   test('results - 1 player', async ({ page, context }) => {
@@ -325,17 +321,4 @@ test.describe('Controller', () => {
     await expect(page).toHaveScreenshot('12-error-room-notfound.png');
   });
 
-  test('error - host disconnected', async ({ page, context }) => {
-    const { controllers } = await setupJoinedRoom(page, context, ['Player 1', 'Player 2']);
-    const host = controllers[0];
-    const nonHost = controllers[1];
-    await host.click('#lobby-back-btn');
-    await nonHost.waitForFunction(() => {
-      const btn = document.getElementById('name-join-btn');
-      return document.getElementById('name-status-detail').textContent === 'Host disconnected'
-        && !btn.disabled;
-    });
-    await stabilizeControllerUI(nonHost);
-    await expect(nonHost).toHaveScreenshot('13-error-host-disconnected.png');
-  });
 });

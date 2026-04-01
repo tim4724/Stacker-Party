@@ -312,7 +312,6 @@ html, body {
 
 #waiting-action-text {
   font-family: 'Orbitron', sans-serif;
-  white-space: nowrap;
   animation: fadeUp 0.5s 0.35s ease-out both;
 }
 
@@ -626,6 +625,7 @@ html, body {
   flex-direction: column;
   gap: 12px;
   width: 100%;
+  transition: opacity 0.4s ease;
 }
 
 #play-again-btn {

@@ -15,6 +15,11 @@ function handleMessage(data) {
     // Ignore game broadcasts after rejection (e.g., joined during countdown)
     // Only allow WELCOME (re-admission) and ERROR (new rejection info) through.
     if (gameCancelled && data.type !== MSG.WELCOME && data.type !== MSG.ERROR) return;
+    // Late joiner waiting for next game — ignore game broadcasts but allow
+    // WELCOME (re-admission), GAME_END (show results), RETURN_TO_LOBBY, LOBBY_UPDATE, ERROR
+    if (waitingForNextGame && data.type !== MSG.WELCOME && data.type !== MSG.GAME_END
+        && data.type !== MSG.RETURN_TO_LOBBY && data.type !== MSG.LOBBY_UPDATE
+        && data.type !== MSG.ERROR && data.type !== MSG.PONG) return;
 
     switch (data.type) {
       case MSG.WELCOME:
@@ -35,7 +40,7 @@ function handleMessage(data) {
           gameScreen.style.setProperty('--player-color', playerColor);
           pauseOverlay.classList.add('hidden');
           pauseBtn.disabled = false;
-          pauseBtn.classList.toggle('hidden', !isHost);
+          pauseBtn.classList.remove('hidden');
           showScreen('game');
         }
         if (data.value === 'GO') {
@@ -49,6 +54,7 @@ function handleMessage(data) {
       case MSG.GAME_OVER:
         break;
       case MSG.GAME_END:
+        waitingForNextGame = false;
         onGameEnd(data);
         break;
       case MSG.GAME_PAUSED:
@@ -58,6 +64,7 @@ function handleMessage(data) {
         onGameResumed();
         break;
       case MSG.RETURN_TO_LOBBY:
+        waitingForNextGame = false;
         playerCount = data.playerCount || playerCount;
         gameScreen.classList.remove('dead');
         gameScreen.classList.remove('paused');
@@ -161,19 +168,16 @@ muteBtn.addEventListener('click', function () {
 // =====================================================================
 
 pauseBtn.addEventListener('click', function () {
-  if (!isHost) return;
   vibrate(10);
   sendToDisplay(MSG.PAUSE_GAME);
 });
 
 pauseContinueBtn.addEventListener('click', function () {
-  if (!isHost) return;
   vibrate(10);
   sendToDisplay(MSG.RESUME_GAME);
 });
 
 pauseNewGameBtn.addEventListener('click', function () {
-  if (!isHost) return;
   vibrate(10);
   sendToDisplay(MSG.RETURN_TO_LOBBY);
 });
@@ -192,7 +196,7 @@ lobbyBackBtn.addEventListener('click', function () {
 });
 
 startBtn.addEventListener('click', function () {
-  if (!isHost || startBtn.disabled) return;
+  if (startBtn.disabled) return;
   vibrate(10);
   sendToDisplay(MSG.START_GAME);
 });
@@ -214,13 +218,13 @@ levelPlusBtn.addEventListener('click', function () {
 });
 
 playAgainBtn.addEventListener('click', function () {
-  if (!isHost) return;
+  if (!gameoverButtonsReady) return;
   vibrate(10);
   sendToDisplay(MSG.PLAY_AGAIN);
 });
 
 newGameBtn.addEventListener('click', function () {
-  if (!isHost) return;
+  if (!gameoverButtonsReady) return;
   vibrate(10);
   sendToDisplay(MSG.RETURN_TO_LOBBY);
 });
@@ -234,12 +238,14 @@ document.addEventListener('visibilitychange', function () {
   if (gameCancelled) return;
   if (currentScreen === 'name' && !playerColor) return;
 
-  stopPing();
-  if (party) {
-    party.close();
-    party = null;
+  // Restart pings to check if connection is still alive.
+  // If the WebSocket died while backgrounded, party.onClose will
+  // trigger reconnection automatically.
+  if (party && party.connected) {
+    startPing();
+  } else {
+    connect();
   }
-  connect();
 });
 
 window.addEventListener('popstate', function () {

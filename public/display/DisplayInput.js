@@ -28,25 +28,25 @@ function handleControllerMessage(fromId, msg) {
         onSoftDrop(fromId, msg.speed);
         break;
       case MSG.START_GAME:
-        if (fromId === hostId) startGame();
+        startGame();
         break;
       case MSG.PLAY_AGAIN:
-        if (fromId === hostId) playAgain();
+        playAgain();
         break;
       case MSG.RETURN_TO_LOBBY:
-        if (fromId === hostId) returnToLobby();
+        returnToLobby();
         break;
       case MSG.PAUSE_GAME:
-        if (fromId === hostId) pauseGame();
+        if (playerOrder.indexOf(fromId) >= 0) pauseGame();
         break;
       case MSG.RESUME_GAME:
-        if (fromId === hostId) resumeGame();
+        if (playerOrder.indexOf(fromId) >= 0) resumeGame();
         break;
       case MSG.SET_LEVEL:
         onSetLevel(fromId, msg);
         break;
       case MSG.LEAVE:
-        removePlayer(fromId, true);
+        removePlayer(fromId);
         break;
       case MSG.PING:
         party.sendTo(fromId, { type: MSG.PONG, t: msg.t });
@@ -64,43 +64,38 @@ function onHello(fromId, msg) {
   if (players.has(fromId)) {
     var existing = players.get(fromId);
 
-    // Clear grace timer if any
-    if (graceTimers.has(fromId)) {
-      clearTimeout(graceTimers.get(fromId));
-      graceTimers.delete(fromId);
-    }
-
     // Update name, sanitizing "P1"–"P4" to match actual slot
     if (name) existing.playerName = sanitizePlayerName(name, existing.playerIndex);
     updatePlayerList();
+
+    // Late joiner: registered via onPeerJoined during active game but never
+    // participated. Omit alive/paused so controller shows waiting screen.
+    var isLateJoiner = (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN)
+      && playerOrder.indexOf(fromId) < 0;
 
     // Send welcome with current state
     var welcomeMsg = {
       type: MSG.WELCOME,
       playerName: existing.playerName,
       playerColor: existing.playerColor,
-      isHost: fromId === hostId,
       playerCount: players.size,
       roomState: roomState,
-      startLevel: existing.startLevel || 1,
-      alive: lastAliveState[fromId] != null ? lastAliveState[fromId] : true,
-      paused: paused
+      startLevel: existing.startLevel || 1
     };
+    if (!isLateJoiner) {
+      welcomeMsg.alive = lastAliveState[fromId] != null ? lastAliveState[fromId] : true;
+      welcomeMsg.paused = paused;
+    }
     if (roomState === ROOM_STATE.RESULTS && lastResults) {
       welcomeMsg.results = lastResults.results;
     }
     party.sendTo(fromId, welcomeMsg);
 
-    broadcastLobbyUpdate();
+    if (roomState === ROOM_STATE.LOBBY) broadcastLobbyUpdate();
     return;
   }
 
   // New player joining
-  if (roomState !== ROOM_STATE.LOBBY) {
-    party.sendTo(fromId, { type: MSG.ERROR, message: 'Game already in progress' });
-    return;
-  }
-
   var index = nextAvailableSlot();
   if (index < 0) {
     party.sendTo(fromId, { type: MSG.ERROR, message: 'Room is full' });
@@ -108,8 +103,6 @@ function onHello(fromId, msg) {
   }
   var color = PLAYER_COLORS[index % PLAYER_COLORS.length];
   var playerName = sanitizePlayerName(name, index);
-  var isHost = hostId === null;
-  if (isHost) hostId = fromId;
 
   players.set(fromId, {
     playerName: playerName,
@@ -118,21 +111,28 @@ function onHello(fromId, msg) {
     startLevel: 1,
     lastPingTime: Date.now()
   });
-  playerOrder.push(fromId);
+  if (roomState === ROOM_STATE.LOBBY) {
+    playerOrder.push(fromId);
+  }
 
-  party.sendTo(fromId, {
+  var welcomeMsg = {
     type: MSG.WELCOME,
     playerName: playerName,
     playerColor: color,
-    isHost: isHost,
     playerCount: players.size,
     roomState: roomState,
     startLevel: 1
-  });
+  };
+  if (roomState === ROOM_STATE.RESULTS && lastResults) {
+    welcomeMsg.results = lastResults.results;
+  }
+  party.sendTo(fromId, welcomeMsg);
 
-  broadcastLobbyUpdate();
-  updatePlayerList();
-  updateStartButton();
+  if (roomState === ROOM_STATE.LOBBY) {
+    broadcastLobbyUpdate();
+    updatePlayerList();
+    updateStartButton();
+  }
 }
 
 function onInput(fromId, msg) {
@@ -159,26 +159,17 @@ function onSoftDrop(fromId, speed) {
 }
 
 function onSetLevel(fromId, msg) {
-  if (roomState !== ROOM_STATE.LOBBY) return;
   var player = players.get(fromId);
   if (!player) return;
   var level = parseInt(msg.level, 10);
   if (isNaN(level) || level < 1 || level > 15) return;
   player.startLevel = level;
-  updatePlayerList();
-  broadcastLobbyUpdate();
+  if (roomState === ROOM_STATE.LOBBY) {
+    updatePlayerList();
+    broadcastLobbyUpdate();
+  }
 }
 
-function removePlayer(clientId, immediate) {
-  if (!players.has(clientId)) return;
-
-  if (roomState === ROOM_STATE.LOBBY) {
-    if (immediate) {
-      removeLobbyPlayer(clientId);
-    } else {
-      onPeerLeft(clientId);
-    }
-  } else {
-    onPeerLeft(clientId);
-  }
+function removePlayer(clientId) {
+  onPeerLeft(clientId);
 }
