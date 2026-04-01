@@ -37,6 +37,7 @@ function playAgain() {
 function startNewGame() {
   stopDisplayGame();
   paused = false;
+  autoPaused = false;
   lastResults = null;
   lastAliveState = {};
   // Add late joiners to playerOrder (preserving existing order)
@@ -107,6 +108,32 @@ function pauseGame() {
   onGamePaused();
 }
 
+// Check if all game participants are disconnected — auto-pause if so
+function allPlayersDisconnected() {
+  for (var i = 0; i < playerOrder.length; i++) {
+    if (!disconnectedQRs.has(playerOrder[i])) return false;
+  }
+  return playerOrder.length > 0;
+}
+
+function checkAllPlayersDisconnected() {
+  if (roomState !== ROOM_STATE.PLAYING && roomState !== ROOM_STATE.COUNTDOWN) return;
+  if (paused) return;
+  if (!allPlayersDisconnected()) return;
+  // Silent pause — no overlay, no broadcast (all controllers are gone)
+  paused = true;
+  autoPaused = true;
+  if (roomState === ROOM_STATE.COUNTDOWN) clearCountdownTimers();
+  if (displayGame) displayGame.pause();
+  if (music) music.pause();
+}
+
+function checkAutoResume() {
+  if (!autoPaused) return;
+  autoPaused = false;
+  resumeGame();
+}
+
 function resumeGame() {
   if (!paused) return;
   if (roomState !== ROOM_STATE.PLAYING && roomState !== ROOM_STATE.COUNTDOWN) return;
@@ -136,6 +163,7 @@ function returnToLobby() {
   countdownCallback = null;
   countdownRemaining = 0;
   paused = false;
+  autoPaused = false;
   releaseWakeLock();
 
   if (music) music.stop();

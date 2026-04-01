@@ -241,6 +241,7 @@ function onPeerLeft(clientId) {
     if (playerOrder.indexOf(clientId) >= 0) {
       // Active game participant — keep in Map for seamless reconnect
       showDisconnectQR(clientId);
+      checkAllPlayersDisconnected();
     } else {
       // Late joiner (never in the game) — remove silently
       players.delete(clientId);
@@ -339,15 +340,18 @@ function startLivenessCheck() {
     }
 
     // Check individual controller liveness
+    var newDisconnect = false;
     for (const entry of players) {
       const id = entry[0];
       const player = entry[1];
       if (player.lastPingTime && (now - player.lastPingTime > GameConstants.LIVENESS_TIMEOUT_MS)) {
         if (roomState !== ROOM_STATE.LOBBY && !disconnectedQRs.has(id)) {
           showDisconnectQR(id);
+          newDisconnect = true;
         }
       }
     }
+    if (newDisconnect) checkAllPlayersDisconnected();
   }, 1000);
 }
 
@@ -386,10 +390,9 @@ function fetchQR(text, callback) {
 }
 
 function showDisconnectQR(clientId) {
-  if (!joinUrl) {
-    disconnectedQRs.set(clientId, null);
-    return;
-  }
+  // Set immediately so allPlayersDisconnected() can check synchronously
+  disconnectedQRs.set(clientId, null);
+  if (!joinUrl) return;
   var rejoinUrl = joinUrl + '?rejoin=' + encodeURIComponent(clientId);
   fetchQR(rejoinUrl, function(qrMatrix) {
     if (!players.has(clientId)) return;

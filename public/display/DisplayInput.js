@@ -13,9 +13,15 @@ function handleControllerMessage(fromId, msg) {
     if (!msg || !msg.type) return;
 
     // Any message from a controller proves it's alive
+    var wasDisconnected = disconnectedQRs.has(fromId);
     disconnectedQRs.delete(fromId);
     var senderPlayer = players.get(fromId);
     if (senderPlayer) senderPlayer.lastPingTime = Date.now();
+
+    // Auto-resume if a game participant reconnects while auto-paused
+    if (wasDisconnected && autoPaused && playerOrder.indexOf(fromId) >= 0) {
+      checkAutoResume();
+    }
 
     switch (msg.type) {
       case MSG.HELLO:

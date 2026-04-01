@@ -38,6 +38,7 @@ function setRoomState(newState) {
 }
 
 var paused = false;
+var autoPaused = false;
 var boardRenderers = [];
 var uiRenderers = [];
 var animations = null;
