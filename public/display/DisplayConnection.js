@@ -236,6 +236,7 @@ function onPeerLeft(clientId) {
     softDropTimers.delete(clientId);
     if (displayGame) displayGame.handleSoftDropEnd(clientId);
   }
+  lastHardDropTime.delete(clientId);
 
   if (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN) {
     if (playerOrder.indexOf(clientId) >= 0) {

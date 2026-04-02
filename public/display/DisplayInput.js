@@ -8,6 +8,10 @@
 // Input validation: only accept known game actions (derived from protocol.js INPUT)
 var VALID_ACTIONS = new Set(Object.values(INPUT));
 
+// Per-player hard_drop rate limit — prevents queued messages from firing multiple drops
+var HARD_DROP_MIN_INTERVAL_MS = 200;
+var lastHardDropTime = new Map();
+
 function handleControllerMessage(fromId, msg) {
   try {
     if (!msg || !msg.type) return;
@@ -147,6 +151,15 @@ function onInput(fromId, msg) {
   if (roomState !== ROOM_STATE.PLAYING || paused) return;
   if (!displayGame) return;
   if (!VALID_ACTIONS.has(msg.action)) return;
+
+  // Rate-limit hard drops to prevent queued messages from rapid-firing after reconnect
+  if (msg.action === INPUT.HARD_DROP) {
+    var now = Date.now();
+    var last = lastHardDropTime.get(fromId) || 0;
+    if (now - last < HARD_DROP_MIN_INTERVAL_MS) return;
+    lastHardDropTime.set(fromId, now);
+  }
+
   displayGame.processInput(fromId, msg.action);
 }
 
