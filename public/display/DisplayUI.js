@@ -9,6 +9,10 @@
 // --- Layout Calculation ---
 function calculateLayout() {
   if (!ctx || playerOrder.length === 0) return;
+  // Sort by slot index so board positions match player colors (P1 left, P2 right, etc.)
+  playerOrder.sort(function(a, b) {
+    return (players.get(a)?.playerIndex ?? 0) - (players.get(b)?.playerIndex ?? 0);
+  });
   clearStampCache();
 
   var n = playerOrder.length;

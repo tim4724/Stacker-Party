@@ -250,6 +250,132 @@ describe('Display: onHello during non-LOBBY states', () => {
   });
 });
 
+// --- Player order sorted by slot index ---
+
+describe('Display: playerOrder sorted by slot index', () => {
+  let players, roomState, playerOrder;
+  let sentMessages;
+  let party;
+
+  const PLAYER_COLORS = ['#00f0f0', '#f0a000', '#0000f0', '#f00000'];
+
+  function nextAvailableSlot() {
+    var used = new Set();
+    for (const entry of players) used.add(entry[1].playerIndex);
+    for (var i = 0; i < 4; i++) { if (!used.has(i)) return i; }
+    return -1;
+  }
+
+  function sanitizePlayerName(name, index) {
+    return name || 'P' + (index + 1);
+  }
+
+  function onPeerJoined(clientId) {
+    if (players.has(clientId)) return;
+    var index = nextAvailableSlot();
+    if (index < 0) return;
+    var color = PLAYER_COLORS[index % PLAYER_COLORS.length];
+    players.set(clientId, {
+      playerName: 'P' + (index + 1),
+      playerColor: color,
+      playerIndex: index,
+      startLevel: 1,
+      lastPingTime: Date.now()
+    });
+    if (roomState === ROOM_STATE.LOBBY) {
+      playerOrder.push(clientId);
+    }
+  }
+
+  function removeLobbyPlayer(clientId) {
+    players.delete(clientId);
+    playerOrder = playerOrder.filter(function(id) { return id !== clientId; });
+  }
+
+  // Mirrors the sort added to calculateLayout / runGameLocally
+  function sortPlayerOrder() {
+    playerOrder.sort(function(a, b) {
+      return (players.get(a)?.playerIndex ?? 0) - (players.get(b)?.playerIndex ?? 0);
+    });
+  }
+
+  beforeEach(() => {
+    players = new Map();
+    roomState = ROOM_STATE.LOBBY;
+    playerOrder = [];
+    sentMessages = [];
+    party = {
+      sendTo: (to, msg) => { sentMessages.push({ to, msg }); },
+      broadcast: (msg) => { sentMessages.push({ to: '_all', msg }); }
+    };
+  });
+
+  test('playerOrder matches slot order after normal joins', () => {
+    onPeerJoined('p1');
+    onPeerJoined('p2');
+    sortPlayerOrder();
+    assert.deepStrictEqual(playerOrder, ['p1', 'p2']);
+    assert.strictEqual(players.get('p1').playerIndex, 0);
+    assert.strictEqual(players.get('p2').playerIndex, 1);
+  });
+
+  test('playerOrder re-sorted after P1 disconnects and reconnects with new clientId', () => {
+    onPeerJoined('p1');
+    onPeerJoined('p2');
+
+    // P1 disconnects from lobby
+    removeLobbyPlayer('p1');
+    assert.deepStrictEqual(playerOrder, ['p2']);
+
+    // P1 reconnects with new clientId — gets slot 0 back but is appended
+    onPeerJoined('p1-new');
+    assert.strictEqual(players.get('p1-new').playerIndex, 0, 'should reclaim slot 0');
+    assert.deepStrictEqual(playerOrder, ['p2', 'p1-new'], 'before sort: append order');
+
+    // Sort (as calculateLayout / runGameLocally now does)
+    sortPlayerOrder();
+    assert.deepStrictEqual(playerOrder, ['p1-new', 'p2'], 'after sort: slot order');
+  });
+
+  test('playerOrder re-sorted after P2 disconnects and reconnects', () => {
+    onPeerJoined('p1');
+    onPeerJoined('p2');
+    onPeerJoined('p3');
+
+    removeLobbyPlayer('p2');
+    onPeerJoined('p2-new');
+    assert.strictEqual(players.get('p2-new').playerIndex, 1);
+    assert.deepStrictEqual(playerOrder, ['p1', 'p3', 'p2-new']);
+
+    sortPlayerOrder();
+    assert.deepStrictEqual(playerOrder, ['p1', 'p2-new', 'p3']);
+  });
+
+  test('late joiners added at game start are sorted by slot', () => {
+    onPeerJoined('p1');
+    onPeerJoined('p2');
+    roomState = ROOM_STATE.PLAYING;
+
+    // Two late joiners during game (not added to playerOrder)
+    onPeerJoined('p4');
+    onPeerJoined('p3');
+    assert.strictEqual(players.get('p4').playerIndex, 2);
+    assert.strictEqual(players.get('p3').playerIndex, 3);
+
+    // Simulate startNewGame adding late joiners from players.keys()
+    for (const id of players.keys()) {
+      if (playerOrder.indexOf(id) < 0) playerOrder.push(id);
+    }
+    // Map insertion order: p1, p2, p4, p3 — slot order: p1(0), p2(1), p4(2), p3(3)
+    sortPlayerOrder();
+    assert.deepStrictEqual(playerOrder, ['p1', 'p2', 'p4', 'p3']);
+    assert.strictEqual(players.get(playerOrder[0]).playerIndex, 0);
+    assert.strictEqual(players.get(playerOrder[1]).playerIndex, 1);
+    assert.strictEqual(players.get(playerOrder[2]).playerIndex, 2);
+    assert.strictEqual(players.get(playerOrder[3]).playerIndex, 3);
+  });
+});
+
 // --- Controller-side tests (handleMessage guard) ---
 
 describe('Controller: handleMessage ignores broadcasts when gameCancelled or waitingForNextGame', () => {
