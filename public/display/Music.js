@@ -3,7 +3,7 @@
 // Music player — loops an audio track with playback rate scaling by level.
 // Track: "Lunar Joyride" by FoxSynergy (CC-BY 3.0)
 
-const MASTER_VOLUME = 0.12;
+const MASTER_VOLUME = 0.50;
 
 class Music {
   constructor() {
