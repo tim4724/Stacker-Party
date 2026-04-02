@@ -9,7 +9,7 @@
 var VALID_ACTIONS = new Set(Object.values(INPUT));
 
 // Per-player hard_drop rate limit — prevents queued messages from firing multiple drops
-var HARD_DROP_MIN_INTERVAL_MS = 200;
+var HARD_DROP_MIN_INTERVAL_MS = 150;
 var lastHardDropTime = new Map();
 
 function handleControllerMessage(fromId, msg) {
