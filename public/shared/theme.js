@@ -4,24 +4,25 @@
 // Design Tokens — single source of truth for the visual layer
 // ============================================================
 
-// --- Piece colors (index matches PIECE_TYPE_TO_ID: 1=I … 7=Z) ---
+// --- Piece colors (classic: 1=I…7=Z, hex: 1=L…7=Tp, garbage: 9) ---
 const PIECE_COLORS = {
   0: '#000000',    // empty
-  1: '#EE4444',    // I - red
-  2: '#00CED1',    // J - teal
-  3: '#FFD700',    // L - gold
-  4: '#7FFF00',    // O - lime
-  5: '#9B59F0',    // S - violet
-  6: '#FF1493',    // T - hot pink
-  7: '#FF8C00',    // Z - amber
-  8: '#808080'     // garbage - gray
+  1: '#EE4444',    // classic I / hex L - red
+  2: '#00CED1',    // classic J / hex S - teal
+  3: '#FFD700',    // classic L / hex T - gold
+  4: '#7FFF00',    // classic O / hex F - lime
+  5: '#9B59F0',    // classic S / hex Fm - violet
+  6: '#FF1493',    // classic T / hex I4 - hot pink
+  7: '#FF8C00',    // classic Z / hex Tp - amber
+  8: '#33AAFF',    // classic garbage - sky blue
+  9: '#808080'     // hex garbage - gray
 };
 
 // Ghost piece colors — computed from PIECE_COLORS via ghostColor() (CanvasUtils.js).
 // Requires CanvasUtils.js to be loaded first (see index.html script order).
 var GHOST_COLORS = {};
 if (typeof ghostColor === 'function') {
-  for (var _i = 1; _i <= 7; _i++) GHOST_COLORS[_i] = ghostColor(PIECE_COLORS[_i]);
+  for (var _i = 1; _i <= 8; _i++) GHOST_COLORS[_i] = ghostColor(PIECE_COLORS[_i]);
 } else if (typeof document !== 'undefined') {
   console.warn('ghostColor() not available — CanvasUtils.js must load before theme.js');
 }
@@ -51,7 +52,7 @@ const NEON_PIECE_COLORS = Object.assign({}, PIECE_COLORS, {
 // Neon ghost colors — computed from NEON_PIECE_COLORS
 var NEON_GHOST_COLORS = {};
 if (typeof ghostColor === 'function') {
-  for (var _n = 1; _n <= 7; _n++) NEON_GHOST_COLORS[_n] = ghostColor(NEON_PIECE_COLORS[_n]);
+  for (var _n = 1; _n <= 8; _n++) NEON_GHOST_COLORS[_n] = ghostColor(NEON_PIECE_COLORS[_n]);
 }
 
 // Level-based style tiers
@@ -181,7 +182,7 @@ if (typeof module !== 'undefined' && module.exports) {
       fill: 'rgba(' + r + ',' + g + ',' + b + ',' + fillA + ')'
     };
   };
-  for (var _k = 1; _k <= 7; _k++) {
+  for (var _k = 1; _k <= 8; _k++) {
     if (!GHOST_COLORS[_k]) GHOST_COLORS[_k] = _gc(PIECE_COLORS[_k]);
     if (!NEON_GHOST_COLORS[_k]) NEON_GHOST_COLORS[_k] = _gc(NEON_PIECE_COLORS[_k]);
   }

@@ -10,6 +10,14 @@
 // Lobby / Welcome
 // =====================================================================
 
+function updateControllerModeUI(mode) {
+  var opts = document.querySelectorAll('#mode-selector .mode-option');
+  for (var i = 0; i < opts.length; i++) {
+    opts[i].classList.toggle('selected', opts[i].getAttribute('data-mode') === mode);
+  }
+  if (welcomeBg) welcomeBg.setMode(mode);
+}
+
 function updateLevelDisplay() {
   if (levelDisplay) levelDisplay.textContent = startLevel;
   if (levelMinusBtn) levelMinusBtn.disabled = startLevel <= 1;
@@ -61,6 +69,8 @@ function onWelcome(data) {
   playerNameEl.textContent = playerName;
   if (data.startLevel != null) startLevel = data.startLevel;
 
+  if (data.gameMode) updateControllerModeUI(data.gameMode);
+
   if (data.roomState === 'playing' || data.roomState === 'countdown') {
     // Late joiner (not in active game) — display omits alive field
     if (data.alive === undefined) {
@@ -110,6 +120,7 @@ function onWelcome(data) {
 function onLobbyUpdate(data) {
   playerCount = data.playerCount;
   if (data.startLevel != null) startLevel = data.startLevel;
+  if (data.gameMode) updateControllerModeUI(data.gameMode);
   updateStartButton();
   if (currentScreen === 'lobby') updateLevelDisplay();
 }

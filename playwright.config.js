@@ -26,6 +26,12 @@ module.exports = defineConfig({
       use: { viewport: { width: 1920, height: 1080 } },
     },
     {
+      name: 'hex-display',
+      testDir: './tests/visual',
+      testMatch: 'hex-display.spec.js',
+      use: { viewport: { width: 1920, height: 1080 } },
+    },
+    {
       name: 'controller',
       testDir: './tests/visual',
       testMatch: 'controller.spec.js',

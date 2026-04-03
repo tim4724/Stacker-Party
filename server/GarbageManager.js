@@ -9,9 +9,10 @@ var GARBAGE_TABLE = constants.GARBAGE_TABLE;
 var GARBAGE_DELAY_MS = constants.GARBAGE_DELAY_MS;
 
 class GarbageManager {
-  constructor(rng) {
+  constructor(rng, boardWidth) {
     this.queues = new Map(); // playerId -> array of { lines, gapColumn, senderId, msLeft }
     this.rng = rng || Math.random;
+    this.boardWidth = boardWidth || BOARD_WIDTH;
   }
 
   addPlayer(playerId) {
@@ -43,10 +44,10 @@ class GarbageManager {
     return ready;
   }
 
-  processLineClear(senderId, linesCleared, getStackHeight, defenseLines) {
+  processLineClear(senderId, linesCleared, getStackHeight, defenseLines, garbageOverride) {
     if (linesCleared === 0) return { sent: 0, cancelled: 0, deliveries: [] };
 
-    const garbageLines = GARBAGE_TABLE[linesCleared] || 0;
+    const garbageLines = garbageOverride != null ? garbageOverride : (GARBAGE_TABLE[linesCleared] != null ? GARBAGE_TABLE[linesCleared] : linesCleared);
 
     // Cancel sender's incoming garbage
     const senderQueue = this.queues.get(senderId) || [];
@@ -108,7 +109,7 @@ class GarbageManager {
   }
 
   generateGapColumn() {
-    return Math.floor(this.rng() * BOARD_WIDTH);
+    return Math.floor(this.rng() * this.boardWidth);
   }
 }
 

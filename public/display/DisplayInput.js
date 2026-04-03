@@ -50,6 +50,9 @@ function handleControllerMessage(fromId, msg) {
       case MSG.SET_LEVEL:
         onSetLevel(fromId, msg);
         break;
+      case MSG.SET_MODE:
+        onSetMode(fromId, msg);
+        break;
       case MSG.LEAVE:
         removePlayer(fromId);
         break;
@@ -92,7 +95,8 @@ function onHello(fromId, msg) {
       playerColor: existing.playerColor,
       playerCount: players.size,
       roomState: roomState,
-      startLevel: existing.startLevel || 1
+      startLevel: existing.startLevel || 1,
+      gameMode: gameMode
     };
     if (!isLateJoiner) {
       welcomeMsg.alive = lastAliveState[fromId] != null ? lastAliveState[fromId] : true;
@@ -133,7 +137,8 @@ function onHello(fromId, msg) {
     playerColor: color,
     playerCount: players.size,
     roomState: roomState,
-    startLevel: 1
+    startLevel: 1,
+    gameMode: gameMode
   };
   if (roomState === ROOM_STATE.RESULTS && lastResults) {
     welcomeMsg.results = lastResults.results;
@@ -189,6 +194,13 @@ function onSetLevel(fromId, msg) {
     updatePlayerList();
     broadcastLobbyUpdate();
   }
+}
+
+function onSetMode(fromId, msg) {
+  if (roomState !== ROOM_STATE.LOBBY) return;
+  var mode = msg.mode;
+  if (mode !== 'classic' && mode !== 'hex') return;
+  setGameMode(mode);
 }
 
 function removePlayer(clientId) {

@@ -18,18 +18,19 @@ function mulberry32(seed) {
 }
 
 class Randomizer {
-  constructor(seed) {
+  constructor(seed, pieceTypes) {
     if (seed != null) {
       this.rng = mulberry32(seed);
     } else {
       this.rng = Math.random;
     }
+    this.pieceTypes = pieceTypes || PIECE_TYPES;
     this.bag = [];
   }
 
   next() {
     if (this.bag.length === 0) {
-      this.bag = [...PIECE_TYPES];
+      this.bag = [...this.pieceTypes];
       // Fisher-Yates shuffle
       for (let i = this.bag.length - 1; i > 0; i--) {
         const j = Math.floor(this.rng() * (i + 1));

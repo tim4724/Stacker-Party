@@ -155,6 +155,93 @@ class Animations {
     }
   }
 
+  addHexCellClear(br, cells, linesCleared) {
+    if (!Array.isArray(cells) || cells.length === 0) return;
+    var duration = THEME.timing.lineClear;
+    var isQuad = linesCleared >= 4;
+    var isTriple = linesCleared === 3;
+
+    this.active.push({
+      type: 'hexCellClear',
+      startTime: performance.now(),
+      duration: duration,
+      render: function(ctx, progress) {
+        var quadRgb = isQuad ? hexToRgb(THEME.color.quad) : null;
+        for (var ci = 0; ci < cells.length; ci++) {
+          var col = cells[ci][0], row = cells[ci][1];
+          if (row < 0) continue;
+          var pos = br._hexCenter(col, row);
+          var hs = br.hexSize;
+          if (progress < 0.25) {
+            var flashAlpha = 0.9 * (1 - (progress / 0.25) * 0.5);
+            br._drawHex.call(br, pos.x, pos.y, hs,
+              quadRgb ? 'rgba(' + quadRgb.r + ',' + quadRgb.g + ',' + quadRgb.b + ',' + flashAlpha + ')' : 'rgba(255, 255, 255, ' + flashAlpha + ')',
+              null);
+          } else {
+            var fadeAlpha = 0.5 * (1 - (progress - 0.25) / 0.75);
+            if (fadeAlpha <= 0) continue;
+            var shrink = hs * (1 - (progress - 0.25));
+            br._drawHex.call(br, pos.x, pos.y, shrink,
+              quadRgb ? 'rgba(' + quadRgb.r + ',' + quadRgb.g + ',' + quadRgb.b + ',' + fadeAlpha + ')' : 'rgba(255, 255, 255, ' + fadeAlpha + ')',
+              null);
+          }
+        }
+      }
+    });
+
+    // Text popup for multi-line clears
+    var firstCell = cells.find(function(c) { return c[1] >= 0; });
+    if (firstCell) {
+      var pos = br._hexCenter(Math.floor(HexConstants.HEX_COLS / 2), firstCell[1]);
+      if (isQuad) {
+        this.addTextPopup(pos.x, pos.y, 'QUAD!', THEME.color.quad, true, br.cellSize);
+      } else if (isTriple) {
+        this.addTextPopup(pos.x, pos.y, 'TRIPLE!', THEME.color.triple, true, br.cellSize);
+      } else if (linesCleared === 2) {
+        this.addTextPopup(pos.x, pos.y, 'DOUBLE', THEME.color.text.white, false, br.cellSize);
+      }
+    }
+
+    // Sparkle particles
+    for (var si = 0; si < cells.length; si++) {
+      var sc = cells[si][0], sr = cells[si][1];
+      if (sr < 0) continue;
+      var sparkPos = br._hexCenter(sc, sr);
+      var particleCount = isQuad ? 4 : 2;
+      for (var j = 0; j < particleCount; j++) {
+        this._addSparkle(
+          sparkPos.x + (Math.random() - 0.5) * br.hexW,
+          sparkPos.y,
+          isQuad ? THEME.color.quad : '#ffffff',
+          200 + Math.random() * 400,
+          br.cellSize
+        );
+      }
+    }
+  }
+
+  addHexLockFlash(br, blocks, pieceColor) {
+    if (!blocks || blocks.length === 0) return;
+    var occupied = new Set();
+    for (var i = 0; i < blocks.length; i++) occupied.add(blocks[i][0] + ',' + blocks[i][1]);
+    for (var k = 0; k < blocks.length; k++) {
+      var col = blocks[k][0], row = blocks[k][1];
+      if (row < 0 || row >= HexConstants.HEX_VISIBLE_ROWS) continue;
+      if (occupied.has(col + ',' + (row + 1))) continue;
+      var pos = br._hexCenter(col, row);
+      for (var j = 0; j < 5; j++) {
+        this._addSparkle(
+          pos.x + (Math.random() - 0.5) * br.hexW,
+          pos.y + br.hexSize,
+          pieceColor,
+          150 + Math.random() * 250,
+          br.cellSize,
+          0.08, 0.1
+        );
+      }
+    }
+  }
+
   addGarbageShake(boardX, boardY) {
     const duration = THEME.timing.garbageShake;
     this.active.push({

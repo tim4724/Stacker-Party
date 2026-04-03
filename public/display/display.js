@@ -116,6 +116,11 @@ if (urlParams.get('test') === '1' || debugCount > 0) {
       onCountdownDisplay('GO');
     },
 
+    setGameMode: function(mode) {
+      gameMode = mode;
+      updateModeUI(mode);
+    },
+
     setExtraGhosts: function(extraGhostsPerPlayer) {
       // Store for renderFrame to draw after each board render.
       // extraGhostsPerPlayer: array of arrays, one per player index.
@@ -207,6 +212,38 @@ startBtn.addEventListener('click', function() {
   startGame();
 });
 
+// --- Game mode selector ---
+var modeCards = document.querySelectorAll('#mode-selector .mode-option');
+
+function updateModeUI(mode) {
+  for (var i = 0; i < modeCards.length; i++) {
+    modeCards[i].classList.toggle('selected', modeCards[i].getAttribute('data-mode') === mode);
+  }
+}
+
+// Restore from localStorage
+var savedMode = localStorage.getItem('stacker_game_mode');
+if (savedMode === 'hex' || savedMode === 'classic') {
+  gameMode = savedMode;
+  updateModeUI(gameMode);
+  if (welcomeBg) welcomeBg.setMode(gameMode);
+}
+
+function setGameMode(mode) {
+  if (mode !== 'classic' && mode !== 'hex') return;
+  gameMode = mode;
+  updateModeUI(mode);
+  if (welcomeBg) welcomeBg.setMode(mode);
+  localStorage.setItem('stacker_game_mode', mode);
+  if (party && roomState === ROOM_STATE.LOBBY) broadcastLobbyUpdate();
+}
+
+for (var mi = 0; mi < modeCards.length; mi++) {
+  modeCards[mi].addEventListener('click', function() {
+    setGameMode(this.getAttribute('data-mode'));
+  });
+}
+
 playAgainBtn.addEventListener('click', function() {
   initMusic();
   playAgain();
@@ -275,20 +312,13 @@ fetch('/api/version').then(function(r) { return r.json(); }).then(function(data)
 var bgCanvas = document.getElementById('bg-canvas');
 if (bgCanvas) {
   welcomeBg = new WelcomeBackground(bgCanvas);
+  if (gameMode !== 'classic') welcomeBg.setMode(gameMode);
   welcomeBg.resize(window.innerWidth, window.innerHeight);
   welcomeBg.start();
 }
 
-// --- Debug mode: ?debug=N auto-injects N players with game boards ---
-if (debugCount > 0 && window.__TEST__) {
-  var debugNames = ['Emma', 'Jake', 'Sofia', 'Liam', 'Mia', 'Noah', 'Ava', 'Leo'];
-  var debugPlayers = [];
-  for (var di = 0; di < Math.min(debugCount, 8); di++) {
-    debugPlayers.push({ id: 'debug' + di, name: debugNames[di] || ('P' + (di + 1)) });
-  }
-  window.__TEST__.addPlayers(debugPlayers);
-
-  // Build game state with stacked boards
+// --- Debug state builders ---
+function _buildClassicDebugState(debugPlayers) {
   var VH = GameConstants.VISIBLE_HEIGHT;
   var debugGrids = [
     function() { var g = []; for (var r = 0; r < VH; r++) g.push([0,0,0,0,0,0,0,0,0,0]);
@@ -334,22 +364,71 @@ if (debugCount > 0 && window.__TEST__) {
   ];
   var debugLines = [24, 16, 10, 5, 20, 12, 8, 3];
   var debugLevels = [3, 2, 2, 1, 3, 2, 1, 1];
-
-  var debugState = { players: [], elapsed: 75000 };
+  var state = { players: [], elapsed: 75000 };
   for (var dj = 0; dj < debugPlayers.length; dj++) {
-    debugState.players.push({
-      id: debugPlayers[dj].id,
-      playerName: debugPlayers[dj].name,
+    state.players.push({
+      id: debugPlayers[dj].id, playerName: debugPlayers[dj].name,
       grid: debugGrids[dj % debugGrids.length](),
-      lines: debugLines[dj % debugLines.length],
-      level: debugLevels[dj % debugLevels.length],
-      alive: true,
-      currentPiece: debugPieces[dj % debugPieces.length],
+      lines: debugLines[dj % debugLines.length], level: debugLevels[dj % debugLevels.length],
+      alive: true, currentPiece: debugPieces[dj % debugPieces.length],
       ghostY: debugGhostY[dj % debugGhostY.length],
-      nextPieces: debugNext[dj % debugNext.length],
-      holdPiece: debugHold[dj % debugHold.length],
+      nextPieces: debugNext[dj % debugNext.length], holdPiece: debugHold[dj % debugHold.length],
       pendingGarbage: dj % 3 === 0 ? 3 : 0
     });
+  }
+  return state;
+}
+
+function _buildHexDebugState(debugPlayers) {
+  var HC = HexConstants.HEX_COLS;
+  var HV = HexConstants.HEX_VISIBLE_ROWS;
+  var GC = HexConstants.HEX_GARBAGE_CELL;
+  var types = HexConstants.HEX_PIECE_TYPES;
+  var emptyRow = function() { var r = []; for (var i = 0; i < HC; i++) r.push(0); return r; };
+  var fullRow = function(gap) { var r = []; for (var i = 0; i < HC; i++) r.push(i === gap ? 0 : GC); return r; };
+  var state = { players: [], elapsed: 75000 };
+  for (var dj = 0; dj < debugPlayers.length; dj++) {
+    var grid = []; for (var r = 0; r < HV; r++) grid.push(emptyRow());
+    for (var br = HV - 3; br < HV; br++) {
+      for (var bc = 0; bc < HC; bc++) {
+        if ((bc + br + dj) % 4 !== 0) grid[br][bc] = ((bc + br) % types.length) + 1;
+      }
+    }
+    grid[HV - 1] = fullRow((dj * 2 + 3) % HC);
+    var pt = types[dj % types.length];
+    var piece = new HexPieceModule.HexPiece(pt);
+    piece.anchorCol = 5; piece.anchorRow = 2;
+    var blocks = piece.getAbsoluteBlocks();
+    var ghostPiece = piece.clone(); ghostPiece.anchorRow = HV - 5;
+    state.players.push({
+      id: debugPlayers[dj].id, playerName: debugPlayers[dj].name,
+      grid: grid, lines: [24,16,10,5,20,12,8,3][dj % 8], level: [3,2,2,1,3,2,1,1][dj % 8],
+      alive: true,
+      currentPiece: { type: pt, typeId: piece.typeId, anchorCol: 5, anchorRow: 2, cells: piece.cells, blocks: blocks },
+      ghost: { anchorCol: ghostPiece.anchorCol, anchorRow: ghostPiece.anchorRow, blocks: ghostPiece.getAbsoluteBlocks() },
+      nextPieces: [types[(dj+1)%types.length], types[(dj+2)%types.length], types[(dj+3)%types.length]],
+      holdPiece: types[(dj+4)%types.length],
+      pendingGarbage: dj % 3 === 0 ? 3 : 0
+    });
+  }
+  return state;
+}
+
+// --- Debug mode: ?debug=N auto-injects N players with game boards ---
+if (debugCount > 0 && window.__TEST__) {
+  var debugNames = ['Emma', 'Jake', 'Sofia', 'Liam', 'Mia', 'Noah', 'Ava', 'Leo'];
+  var debugPlayers = [];
+  for (var di = 0; di < Math.min(debugCount, 8); di++) {
+    debugPlayers.push({ id: 'debug' + di, name: debugNames[di] || ('P' + (di + 1)) });
+  }
+  window.__TEST__.addPlayers(debugPlayers);
+
+  // Build game state — branch on game mode
+  var debugState;
+  if (gameMode === 'hex') {
+    debugState = _buildHexDebugState(debugPlayers);
+  } else {
+    debugState = _buildClassicDebugState(debugPlayers);
   }
   window.__TEST__.injectGameState(debugState);
   startRenderLoop();

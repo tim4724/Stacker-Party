@@ -19,8 +19,13 @@ function calculateLayout() {
   var w = window.innerWidth;
   var h = window.innerHeight;
   var padding = THEME.size.canvasPad;
-  var totalCellsWide = GameConstants.BOARD_WIDTH + 3 + 3;
-  var boardRows = GameConstants.VISIBLE_HEIGHT;
+  var isHex = gameMode === 'hex';
+  var boardCols = isHex ? HexConstants.HEX_COLS : GameConstants.BOARD_WIDTH;
+  var hexRows = HexConstants.HEX_VISIBLE_ROWS;
+  var boardRows = isHex
+    ? Math.sqrt(3) * (hexRows + 0.5) * boardCols / (1.5 * boardCols + 0.5)
+    : GameConstants.VISIBLE_HEIGHT;
+  var totalCellsWide = boardCols + 3 + 3;
   // Gaps scale with cellSize to stay proportional at all zoom levels
   function nameGap(cs) { return cs * 0.6; }
   var font = getDisplayFont();
@@ -67,8 +72,20 @@ function calculateLayout() {
     else { gridCols = 4; gridRows = 2; cellSize = cs4x2; }
   }
   if (!cellSize) cellSize = cellSizeFor(gridCols, gridRows);
-  var boardWidthPx = GameConstants.BOARD_WIDTH * cellSize;
-  var boardHeightPx = GameConstants.VISIBLE_HEIGHT * cellSize;
+  var boardWidthPx, boardHeightPx;
+  if (isHex) {
+    // Flat-top hex: colW = 1.5*hexS, hexH = sqrt(3)*hexS
+    var hexSw = boardCols * cellSize / (1.5 * boardCols + 0.5);
+    var hexSh = boardRows * cellSize / (Math.sqrt(3) * (hexRows + 0.5));
+    var hexS = Math.min(hexSw, hexSh);
+    var hexH = Math.sqrt(3) * hexS;
+    var hexColW = 1.5 * hexS;
+    boardWidthPx = hexColW * (boardCols - 1) + 2 * hexS;
+    boardHeightPx = hexH * (hexRows - 1) + hexH + hexH * 0.5;
+  } else {
+    boardWidthPx = boardCols * cellSize;
+    boardHeightPx = boardRows * cellSize;
+  }
 
   boardRenderers = [];
   uiRenderers = [];
@@ -91,8 +108,13 @@ function calculateLayout() {
     var boardX = padding + col * (cellAreaW + padding) + (cellAreaW - boardWidthPx) / 2;
     var boardY = padding + row * (cellAreaH + padding) + (cellAreaH - totalContentH) / 2 + nameArea;
     var playerIndex = players.get(playerOrder[i])?.playerIndex ?? i;
-    boardRenderers.push(new BoardRenderer(ctx, boardX, boardY, cellSize, playerIndex));
-    uiRenderers.push(new UIRenderer(ctx, boardX, boardY, cellSize, boardWidthPx, boardHeightPx, playerIndex));
+    if (isHex) {
+      boardRenderers.push(new HexBoardRenderer(ctx, boardX, boardY, cellSize, playerIndex));
+      uiRenderers.push(new HexUIRenderer(ctx, boardX, boardY, cellSize, boardWidthPx, boardHeightPx, playerIndex));
+    } else {
+      boardRenderers.push(new BoardRenderer(ctx, boardX, boardY, cellSize, playerIndex));
+      uiRenderers.push(new UIRenderer(ctx, boardX, boardY, cellSize, boardWidthPx, boardHeightPx, playerIndex));
+    }
   }
 }
 

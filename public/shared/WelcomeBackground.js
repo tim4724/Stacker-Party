@@ -2,23 +2,84 @@
 
 // Falling ghost-piece background animation for the welcome screen.
 // Renders translucent piece silhouettes on a canvas behind the DOM overlay.
+// Supports both classic (square blocks) and hex (hexagonal cells) modes.
+//
+// Piece data is derived from engine modules (GamePiece, HexPieceModule) at
+// runtime so it stays in sync automatically when pieces change.
 
 class WelcomeBackground {
-  // Piece shapes (each is a list of [row, col] filled cells)
-  static SHAPES = {
-    I: [[0,0],[0,1],[0,2],[0,3]],
-    O: [[0,0],[0,1],[1,0],[1,1]],
-    T: [[0,0],[0,1],[0,2],[1,1]],
-    S: [[0,1],[0,2],[1,0],[1,1]],
-    Z: [[0,0],[0,1],[1,1],[1,2]],
-    J: [[0,0],[1,0],[1,1],[1,2]],
-    L: [[0,2],[1,0],[1,1],[1,2]],
-  };
+  // Populated once from engine modules via _syncFromEngine()
+  static SHAPES = null;
+  static PIECE_KEYS = null;
+  static SHAPE_COLOR_INDEX = null;
+  static HEX_SHAPES = null;
+  static HEX_PIECE_KEYS = null;
+  static HEX_SHAPE_COLOR_INDEX = null;
+  static _synced = false;
 
-  static PIECE_KEYS = Object.keys(WelcomeBackground.SHAPES);
+  // Build classic piece shapes from GamePiece.PIECES.
+  // Deduplicates rotations (e.g. O piece has 4 identical states).
+  static _buildClassicShapes() {
+    var src = GamePiece.PIECES;
+    var shapes = {};
+    for (var key in src) {
+      var seen = [];
+      shapes[key] = [];
+      for (var i = 0; i < src[key].length; i++) {
+        var sig = JSON.stringify(src[key][i]);
+        if (seen.indexOf(sig) === -1) {
+          seen.push(sig);
+          shapes[key].push(src[key][i]);
+        }
+      }
+    }
+    return shapes;
+  }
 
-  // Maps shape key to PIECE_COLORS index (matches PIECE_TYPE_TO_ID)
-  static SHAPE_COLOR_INDEX = { I: 1, O: 4, T: 6, S: 5, Z: 7, J: 2, L: 3 };
+  // Build hex piece shapes from HexPieceModule.HEX_PIECES.
+  // Generates all unique rotations for each piece type.
+  static _buildHexShapes() {
+    var src = HexPieceModule.HEX_PIECES;
+    var shapes = {};
+    for (var key in src) {
+      shapes[key] = WelcomeBackground._generateHexRotations(src[key]);
+    }
+    return shapes;
+  }
+
+  // Generate all unique rotations of a hex piece via repeated 60° CW rotation.
+  static _generateHexRotations(baseCells) {
+    var rotations = [baseCells];
+    var current = baseCells;
+    for (var i = 0; i < 5; i++) {
+      var next = [];
+      for (var j = 0; j < current.length; j++) {
+        // rotateCW in axial: (q, r) → (-r, q + r)
+        next.push([-current[j][1], current[j][0] + current[j][1]]);
+      }
+      current = next;
+      var sig = JSON.stringify(current);
+      var isDupe = false;
+      for (var k = 0; k < rotations.length; k++) {
+        if (JSON.stringify(rotations[k]) === sig) { isDupe = true; break; }
+      }
+      if (!isDupe) rotations.push(current);
+    }
+    return rotations;
+  }
+
+  // One-time initialization: read piece data from engine modules.
+  static _syncFromEngine() {
+    // Classic pieces
+    WelcomeBackground.SHAPES = WelcomeBackground._buildClassicShapes();
+    WelcomeBackground.PIECE_KEYS = Object.keys(WelcomeBackground.SHAPES);
+    WelcomeBackground.SHAPE_COLOR_INDEX = GameConstants.PIECE_TYPE_TO_ID;
+
+    // Hex pieces
+    WelcomeBackground.HEX_SHAPES = WelcomeBackground._buildHexShapes();
+    WelcomeBackground.HEX_PIECE_KEYS = Object.keys(WelcomeBackground.HEX_SHAPES);
+    WelcomeBackground.HEX_SHAPE_COLOR_INDEX = HexConstants.HEX_PIECE_TYPE_TO_ID;
+  }
 
   constructor(canvas, poolSize = 15) {
     this.canvas = canvas;
@@ -29,6 +90,13 @@ class WelcomeBackground {
     this.h = 0;
     this.rafId = null;
     this.lastTime = null;
+    this.mode = 'classic';
+
+    if (!WelcomeBackground._synced) {
+      WelcomeBackground._syncFromEngine();
+      WelcomeBackground._synced = true;
+    }
+
     this._initPool();
   }
 
@@ -52,6 +120,20 @@ class WelcomeBackground {
     }
     this._prevW = w;
     this._prevH = h;
+  }
+
+  setMode(mode) {
+    if (mode === this.mode) return;
+    this.mode = mode;
+    // Replace all pool shapes with new mode shapes (keep positions/speeds)
+    for (let i = 0; i < this.pool.length; i++) {
+      const old = this.pool[i];
+      const shape = this._makeShape();
+      shape.x = old.x;
+      shape.y = old.y;
+      shape.speed = old.speed;
+      this.pool[i] = shape;
+    }
   }
 
   start() {
@@ -96,10 +178,14 @@ class WelcomeBackground {
   }
 
   _makeShape() {
+    if (this.mode === 'hex') return this._makeHexShape();
+    return this._makeClassicShape();
+  }
+
+  _makeClassicShape() {
     const key = WelcomeBackground.PIECE_KEYS[Math.floor(Math.random() * WelcomeBackground.PIECE_KEYS.length)];
-    const blocks = WelcomeBackground.SHAPES[key];
-    const rotation = Math.floor(Math.random() * 4);
-    const rotated = this._rotate(blocks, rotation);
+    const rotations = WelcomeBackground.SHAPES[key];
+    const rotated = rotations[Math.floor(Math.random() * rotations.length)];
     const blockSize = 16 + Math.random() * 32; // 16-48px
     // Larger shapes fall slower for parallax depth feel
     const speed = 15 + (48 - blockSize) / 32 * 25; // 15-40 px/s
@@ -113,10 +199,37 @@ class WelcomeBackground {
     const color = typeof PIECE_COLORS !== 'undefined' ? PIECE_COLORS[colorIdx] : '#4444ff';
 
     return {
+      hex: false,
       blocks: rotated,
       blockSize,
       speed,
       drift,
+      opacity,
+      color,
+      x: 0,
+      y: 0,
+    };
+  }
+
+  _makeHexShape() {
+    const keys = WelcomeBackground.HEX_PIECE_KEYS;
+    const key = keys[Math.floor(Math.random() * keys.length)];
+    const rotations = WelcomeBackground.HEX_SHAPES[key];
+    const cells = rotations[Math.floor(Math.random() * rotations.length)];
+    const blockSize = 12 + Math.random() * 20; // 12-32px (hex radius)
+    const speed = 15 + (32 - blockSize) / 20 * 25;
+    const boost = (key === 'T' || key === 'F') ? 0.03 : 0;
+    const opacity = 0.05 + Math.random() * 0.04 + boost;
+
+    const colorIdx = WelcomeBackground.HEX_SHAPE_COLOR_INDEX[key];
+    const color = typeof PIECE_COLORS !== 'undefined' ? PIECE_COLORS[colorIdx] : '#4444ff';
+
+    return {
+      hex: true,
+      cells: cells,
+      blockSize,
+      speed,
+      drift: 0,
       opacity,
       color,
       x: 0,
@@ -135,17 +248,6 @@ class WelcomeBackground {
     shape.x = cellW * (col + 0.1 + Math.random() * 0.8);
     shape.y = -shape.blockSize * 4 - Math.random() * 100;
     return shape;
-  }
-
-  _rotate(blocks, times) {
-    let b = blocks;
-    for (let t = 0; t < times; t++) {
-      b = b.map(([r, c]) => [c, -r]);
-    }
-    // Normalize so min row/col = 0
-    const minR = Math.min(...b.map(([r]) => r));
-    const minC = Math.min(...b.map(([, c]) => c));
-    return b.map(([r, c]) => [r - minR, c - minC]);
   }
 
   _loop = (timestamp) => {
@@ -172,18 +274,50 @@ class WelcomeBackground {
         continue;
       }
 
-      // Draw blocks as rounded rects
       ctx.fillStyle = this._rgba(p.color, p.opacity);
-      const r = Math.min(3, p.blockSize * 0.12);
-      for (const [row, col] of p.blocks) {
-        const bx = p.x + col * p.blockSize;
-        const by = p.y + row * p.blockSize;
-        ctx.beginPath();
-        ctx.roundRect(bx, by, p.blockSize - 1, p.blockSize - 1, r);
-        ctx.fill();
+
+      if (p.hex) {
+        this._drawHexPiece(ctx, p);
+      } else {
+        this._drawClassicPiece(ctx, p);
       }
     }
   };
+
+  _drawClassicPiece(ctx, p) {
+    const r = Math.min(3, p.blockSize * 0.12);
+    for (const [col, row] of p.blocks) {
+      const bx = p.x + col * p.blockSize;
+      const by = p.y + row * p.blockSize;
+      ctx.beginPath();
+      ctx.roundRect(bx, by, p.blockSize - 1, p.blockSize - 1, r);
+      ctx.fill();
+    }
+  }
+
+  _drawHexPiece(ctx, p) {
+    const size = p.blockSize;
+    for (const [q, r] of p.cells) {
+      // Axial to pixel (flat-top hex)
+      const cx = p.x + size * 1.5 * q;
+      const cy = p.y + size * Math.sqrt(3) * (r + q / 2);
+      this._drawHexagon(ctx, cx, cy, size * 0.92);
+    }
+  }
+
+  _drawHexagon(ctx, cx, cy, size) {
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      // Flat-top: start at 0°, step 60°
+      const angle = Math.PI / 3 * i;
+      const hx = cx + size * Math.cos(angle);
+      const hy = cy + size * Math.sin(angle);
+      if (i === 0) ctx.moveTo(hx, hy);
+      else ctx.lineTo(hx, hy);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
 
   _rgba(hex, alpha) {
     let rgb = this._rgbCache && this._rgbCache[hex];

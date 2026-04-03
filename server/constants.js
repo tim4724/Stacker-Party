@@ -64,5 +64,6 @@ exports.PIECE_TYPE_TO_ID = PIECE_TYPE_TO_ID;
 exports.GARBAGE_CELL = GARBAGE_CELL;
 exports.SOFT_DROP_TIMEOUT_MS = SOFT_DROP_TIMEOUT_MS;
 exports.LIVENESS_TIMEOUT_MS = LIVENESS_TIMEOUT_MS;
+exports.GAME_MODES = { CLASSIC: 'classic', HEX: 'hex' };
 
 })(typeof module !== 'undefined' ? module.exports : (window.GameConstants = {}));

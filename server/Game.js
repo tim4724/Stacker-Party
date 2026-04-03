@@ -4,12 +4,14 @@
 (function(exports) {
 
 var PlayerBoard = ((typeof require !== 'undefined') ? require('./PlayerBoard.js') : window.GamePlayerBoard).PlayerBoard;
+var HexPlayerBoard = ((typeof require !== 'undefined') ? require('./HexPlayerBoard.js') : window.HexPlayerBoardModule).HexPlayerBoard;
+var HexConstants = ((typeof require !== 'undefined') ? require('./HexConstants.js') : window.HexConstants);
 var GarbageManager = ((typeof require !== 'undefined') ? require('./GarbageManager.js') : window.GameGarbageManager).GarbageManager;
 var LOGIC_TICK_MS = ((typeof require !== 'undefined') ? require('./constants.js') : window.GameConstants).LOGIC_TICK_MS;
 var mulberry32 = ((typeof require !== 'undefined') ? require('./Randomizer.js') : window.GameRandomizer).mulberry32;
 
 class Game {
-  constructor(players, callbacks, seed) {
+  constructor(players, callbacks, seed, gameMode) {
     this.callbacks = callbacks; // { onGameState, onEvent, onGameEnd }
     this.boards = new Map();
     this.playerIds = [];
@@ -20,14 +22,17 @@ class Game {
     // Shared seed so all players get the same piece sequence
     if (seed == null) seed = (Math.random() * 0xFFFFFFFF) >>> 0;
     this.seed = seed;
+    this.gameMode = gameMode || 'classic';
 
+    var BoardClass = this.gameMode === 'hex' ? HexPlayerBoard : PlayerBoard;
     for (const [id, opts] of players) {
-      const board = new PlayerBoard(id, seed, (opts && opts.startLevel) || 1);
+      const board = new BoardClass(id, seed, (opts && opts.startLevel) || 1);
       this.boards.set(id, board);
       this.playerIds.push(id);
     }
 
-    this.garbageManager = new GarbageManager(mulberry32(seed ^ 0x47617262));
+    var garbageBoardWidth = this.gameMode === 'hex' ? HexConstants.HEX_COLS : undefined;
+    this.garbageManager = new GarbageManager(mulberry32(seed ^ 0x47617262), garbageBoardWidth);
     for (const id of this.playerIds) {
       this.garbageManager.addPlayer(id);
     }
@@ -221,7 +226,8 @@ class Game {
       type: 'line_clear',
       playerId,
       lines,
-      rows: clearResult.fullRows || []
+      rows: clearResult.fullRows || [],
+      clearCells: clearResult.clearCells || null
     });
 
     // Cancel board-pending garbage first (already delivered, most urgent)

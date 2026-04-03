@@ -201,6 +201,17 @@ startBtn.addEventListener('click', function () {
   sendToDisplay(MSG.START_GAME);
 });
 
+// --- Mode selector ---
+var modeOptions = document.querySelectorAll('#mode-selector .mode-option');
+for (var mj = 0; mj < modeOptions.length; mj++) {
+  modeOptions[mj].addEventListener('click', function () {
+    var mode = this.getAttribute('data-mode');
+    vibrate(10);
+    updateControllerModeUI(mode);
+    sendToDisplay(MSG.SET_MODE, { mode: mode });
+  });
+}
+
 levelMinusBtn.addEventListener('click', function () {
   if (startLevel <= 1) return;
   vibrate(10);

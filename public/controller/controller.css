@@ -67,6 +67,7 @@ html, body {
   justify-content: center;
 }
 
+
 .controller-shell__brand {
   width: 100%;
   display: flex;
@@ -225,6 +226,78 @@ html, body {
   animation: fadeUp 0.5s 0.4s ease-out both, btnPulse 2.5s 1s ease-in-out infinite;
 }
 
+
+/* --- Mode Selector --- */
+#mode-selector {
+  display: flex;
+  width: min(85vw, 300px);
+  border-radius: var(--radius-lg);
+  border: 1.5px solid var(--border);
+  background: var(--bg-card);
+  overflow: hidden;
+  animation: fadeUp 0.4s 0.2s ease-out both;
+}
+
+.mode-option {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(0.9rem, 4.5vw, 1.1rem);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+}
+
+.mode-option .mode-icon {
+  width: 18px;
+  height: 18px;
+  opacity: 0.4;
+  transition: opacity 0.2s;
+}
+
+.mode-option .mode-icon--hex {
+  width: 22px;
+  height: 19px;
+}
+
+.badge-new {
+  font-size: 0.55rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--accent-cyan);
+  color: var(--bg-primary);
+  line-height: 1.4;
+  animation: badgePulse 2s ease-in-out infinite;
+}
+
+@keyframes badgePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.mode-option.selected {
+  background: color-mix(in srgb, var(--accent-cyan) 12%, transparent);
+  color: var(--text-primary);
+  box-shadow: inset 0 0 16px rgba(0, 200, 255, 0.06);
+}
+
+.mode-option.selected .mode-icon {
+  opacity: 1;
+}
+
+.mode-option:not(.selected):active {
+  background: color-mix(in srgb, white 5%, transparent);
+}
 
 #player-identity {
   display: flex;
