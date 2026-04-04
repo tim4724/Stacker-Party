@@ -257,15 +257,28 @@ html, body {
 }
 
 .mode-option .mode-icon {
-  width: 18px;
+  display: inline-block;
+  width: 26px;
   height: 18px;
+  background: currentColor;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
   opacity: 0.4;
   transition: opacity 0.2s;
 }
 
-.mode-option .mode-icon--hex {
-  width: 22px;
-  height: 19px;
+.mode-icon--classic {
+  -webkit-mask-image: url(/favicon-classic.svg);
+  mask-image: url(/favicon-classic.svg);
+}
+
+.mode-icon--hex {
+  -webkit-mask-image: url(/favicon-hex.svg);
+  mask-image: url(/favicon-hex.svg);
 }
 
 .badge-new {

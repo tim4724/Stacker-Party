@@ -152,15 +152,28 @@ html, body {
 }
 
 .mode-option .mode-icon {
-  width: clamp(16px, 2.2vh, 22px);
+  display: inline-block;
+  width: clamp(22px, 3vh, 30px);
   height: clamp(16px, 2.2vh, 22px);
+  background: currentColor;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
   opacity: 0.4;
   transition: opacity 0.2s;
 }
 
-.mode-option .mode-icon--hex {
-  width: clamp(20px, 2.8vh, 28px);
-  height: clamp(18px, 2.5vh, 24px);
+.mode-icon--classic {
+  -webkit-mask-image: url(/favicon-classic.svg);
+  mask-image: url(/favicon-classic.svg);
+}
+
+.mode-icon--hex {
+  -webkit-mask-image: url(/favicon-hex.svg);
+  mask-image: url(/favicon-hex.svg);
 }
 
 .badge-new {
