@@ -123,7 +123,7 @@ class HexUIRenderer {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.letterSpacing = '0.15em';
-    ctx.fillText(t('hold'), panelX + boxSize / 2, panelY);
+    ctx.fillText(t('hold'), panelX + boxSize / 2, panelY, boxSize);
     ctx.letterSpacing = '0px';
 
     var boxY = panelY + labelSize + this.cellSize * 0.2;
@@ -148,7 +148,7 @@ class HexUIRenderer {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.letterSpacing = '0.15em';
-    ctx.fillText(t('next'), panelX + boxWidth / 2, panelY);
+    ctx.fillText(t('next'), panelX + boxWidth / 2, panelY, boxWidth);
     ctx.letterSpacing = '0px';
 
     var nextCount = playerState.nextPieces ? Math.min(playerState.nextPieces.length, 3) : 0;
@@ -278,7 +278,7 @@ class HexUIRenderer {
     ctx.fillStyle = playerColor || 'rgba(0, 200, 255, 0.7)';
     ctx.font = '600 ' + labelSize + 'px ' + getDisplayFont();
     ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.letterSpacing = '0.1em';
-    ctx.fillText(t('scan_to_rejoin'), bx + bw / 2, groupY + outerSize + labelGap);
+    ctx.fillText(t('scan_to_rejoin'), bx + bw / 2, groupY + outerSize + labelGap, bw);
     ctx.letterSpacing = '0px';
   }
 

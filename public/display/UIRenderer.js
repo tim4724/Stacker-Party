@@ -109,7 +109,7 @@ class UIRenderer {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.letterSpacing = '0.15em';
-    ctx.fillText(t('hold'), panelX + boxSize / 2, panelY);
+    ctx.fillText(t('hold'), panelX + boxSize / 2, panelY, boxSize);
     ctx.letterSpacing = '0px';
 
     // Panel background with rounded rect
@@ -142,7 +142,7 @@ class UIRenderer {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.letterSpacing = '0.15em';
-    ctx.fillText(t('next'), panelX + boxWidth / 2, panelY);
+    ctx.fillText(t('next'), panelX + boxWidth / 2, panelY, boxWidth);
     ctx.letterSpacing = '0px';
 
     // Panel background
@@ -377,7 +377,7 @@ class UIRenderer {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.letterSpacing = '0.1em';
-    ctx.fillText(t('scan_to_rejoin'), bx + bw / 2, groupY + outerSize + labelGap);
+    ctx.fillText(t('scan_to_rejoin'), bx + bw / 2, groupY + outerSize + labelGap, bw);
     ctx.letterSpacing = '0px';
   }
 
