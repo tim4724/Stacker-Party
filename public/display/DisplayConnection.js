@@ -232,13 +232,7 @@ function onPeerJoined(clientId) {
 function onPeerLeft(clientId) {
   if (!players.has(clientId)) return;
 
-  // Clear soft drop timer
-  if (softDropTimers.has(clientId)) {
-    clearTimeout(softDropTimers.get(clientId));
-    softDropTimers.delete(clientId);
-    if (displayGame) displayGame.handleSoftDropEnd(clientId);
-  }
-  lastHardDropTime.delete(clientId);
+  cleanupPlayerInput(clientId);
 
   if (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN) {
     if (playerOrder.indexOf(clientId) >= 0) {

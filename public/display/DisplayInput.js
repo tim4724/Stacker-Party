@@ -203,6 +203,15 @@ function onSetMode(fromId, msg) {
   setGameMode(mode);
 }
 
+function cleanupPlayerInput(clientId) {
+  if (softDropTimers.has(clientId)) {
+    clearTimeout(softDropTimers.get(clientId));
+    softDropTimers.delete(clientId);
+    if (displayGame) displayGame.handleSoftDropEnd(clientId);
+  }
+  lastHardDropTime.delete(clientId);
+}
+
 function removePlayer(clientId) {
   onPeerLeft(clientId);
 }
