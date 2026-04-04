@@ -48,6 +48,17 @@
       <p id="qr-label">Scan to join</p>
       <p id="join-url"></p>
     </div>
+    <div id="mode-selector">
+      <button class="mode-option selected" data-mode="classic">
+        <span class="mode-icon mode-icon--classic"></span>
+        <span data-i18n="square">SQUARE</span>
+      </button>
+      <button class="mode-option" data-mode="hex">
+        <span class="mode-icon mode-icon--hex"></span>
+        <span data-i18n="hex">HEX</span>
+        <span class="badge-new" data-i18n="new_badge">NEW</span>
+      </button>
+    </div>
     <div id="player-list"></div>
     <button id="start-btn" class="btn btn-primary" disabled>Waiting for players...</button>
     <div id="lobby-footer" style="position:absolute;bottom:12px;left:0;right:0;text-align:center;font-size:11px;opacity:0.5;color:#fff;">
