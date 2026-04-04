@@ -76,14 +76,22 @@ class BaseUIRenderer {
     }
   }
 
+  _nextPanelLayout(playerState) {
+    var labelSize = Math.max(THEME.font.minPx.label, this.cellSize * THEME.font.cellScale.label);
+    var pieceSpacing = this.miniSize * 3;
+    var startY = this.boardY + labelSize + this.cellSize * 0.2;
+    var nextCount = playerState.nextPieces ? Math.min(playerState.nextPieces.length, 3) : 0;
+    var boxHeight = pieceSpacing * Math.max(nextCount, 3);
+    return { startY: startY, boxHeight: boxHeight, pieceSpacing: pieceSpacing };
+  }
+
   drawNextPanel(playerState) {
     var ctx = this.ctx;
     var panelX = this.boardX + this.boardWidth + this.panelGap;
     var panelY = this.boardY;
     var labelSize = Math.max(THEME.font.minPx.label, this.cellSize * THEME.font.cellScale.label);
     var boxWidth = this.miniSize * THEME.size.panelWidth;
-    var pieceSpacing = this.miniSize * 3;
-    var startY = panelY + labelSize + this.cellSize * 0.2;
+    var layout = this._nextPanelLayout(playerState);
 
     ctx.fillStyle = 'rgba(255, 255, 255, ' + THEME.opacity.label + ')';
     ctx.font = '700 ' + labelSize + 'px ' + getDisplayFont();
@@ -93,13 +101,11 @@ class BaseUIRenderer {
     ctx.fillText(t('next'), panelX + boxWidth / 2, panelY, boxWidth);
     ctx.letterSpacing = '0px';
 
-    var nextCount = playerState.nextPieces ? Math.min(playerState.nextPieces.length, 3) : 0;
-    var boxHeight = pieceSpacing * Math.max(nextCount, 3);
-    this._drawPanel(panelX, startY, boxWidth, boxHeight);
+    this._drawPanel(panelX, layout.startY, boxWidth, layout.boxHeight);
 
     if (playerState.nextPieces) {
       for (var i = 0; i < Math.min(playerState.nextPieces.length, 3); i++) {
-        var py = startY + i * pieceSpacing + pieceSpacing / 2;
+        var py = layout.startY + i * layout.pieceSpacing + layout.pieceSpacing / 2;
         var alpha = i === 0 ? 1.0 : 0.7 - i * 0.06;
         ctx.globalAlpha = alpha;
         this.drawMiniPiece(panelX + boxWidth / 2, py, playerState.nextPieces[i], this.miniSize);
@@ -111,14 +117,8 @@ class BaseUIRenderer {
   drawLevelLines(playerState) {
     var ctx = this.ctx;
     var panelX = this.boardX + this.boardWidth + this.panelGap;
-    var panelY = this.boardY;
-    var labelSize = Math.max(THEME.font.minPx.label, this.cellSize * THEME.font.cellScale.label);
-    var boxWidth = this.miniSize * THEME.size.panelWidth;
-    var pieceSpacing = this.miniSize * 3;
-    var startY = panelY + labelSize + this.cellSize * 0.2;
-    var nextCount = playerState.nextPieces ? Math.min(playerState.nextPieces.length, 3) : 0;
-    var boxHeight = pieceSpacing * Math.max(nextCount, 3);
-    var belowNextY = startY + boxHeight + this.cellSize * 0.5;
+    var layout = this._nextPanelLayout(playerState);
+    var belowNextY = layout.startY + layout.boxHeight + this.cellSize * 0.5;
 
     var lines = playerState.lines || 0;
     var level = playerState.level || 1;
