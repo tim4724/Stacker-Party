@@ -48,11 +48,13 @@ airconsole.onResume = function() {
 };
 
 // Wire ad events — pause and mute during ads, resume after.
+var _adPaused = false;
 var _adMutedByUs = false;
 airconsole.onAdShow = function() {
   console.log('[AirConsole] onAdShow — pausing for ad');
   if (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN) {
     if (!paused) {
+      _adPaused = true;
       paused = true;
       autoPaused = true;
       if (roomState === ROOM_STATE.COUNTDOWN) clearCountdownTimers();
@@ -65,6 +67,8 @@ airconsole.onAdShow = function() {
 airconsole.onAdComplete = function() {
   console.log('[AirConsole] onAdComplete — resuming after ad');
   if (_adMutedByUs) { _adMutedByUs = false; if (music) music.resume(); }
+  if (!_adPaused) return;
+  _adPaused = false;
   if (autoPaused) { autoPaused = false; resumeGame(); }
 };
 
