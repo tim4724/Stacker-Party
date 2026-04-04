@@ -184,7 +184,7 @@ const server = http.createServer((req, res) => {
           "script-src 'self' https://www.airconsole.com",
           "style-src 'self' 'unsafe-inline'",
           "font-src 'self'",
-          "connect-src 'self' https://www.airconsole.com wss://*.airconsole.com",
+          "connect-src 'self' https://www.airconsole.com",
           "img-src 'self' data: https://www.airconsole.com",
           "object-src 'none'",
           "frame-ancestors https://www.airconsole.com" + (APP_ENV !== 'production' ? " http://http.airconsole.com" : ""),

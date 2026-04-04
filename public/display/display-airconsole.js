@@ -100,11 +100,11 @@ if (_lobbyVersionLabel) {
 
 // Intercept showScreen(WELCOME) — in AirConsole there's no welcome screen.
 // display.js defines resetToWelcome() which shows WELCOME; we redirect to LOBBY.
+// No connectAndCreateRoom() here — resetToWelcome() already calls it after showScreen().
 var _originalShowScreen = showScreen;
 showScreen = function(name) {
   if (name === SCREEN.WELCOME) {
     _originalShowScreen(SCREEN.LOBBY);
-    connectAndCreateRoom();
     return;
   }
   _originalShowScreen(name);
