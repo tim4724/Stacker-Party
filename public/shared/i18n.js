@@ -183,7 +183,7 @@ var LOCALES = {
     level_n: 'Nível {level}', player: 'Jogador', level_heading: 'Nível',
     enter_name: 'Digite o nome...', touchpad: 'Touchpad',
     privacy: 'Privacidade',
-    stacked_by: 'Criado por Tim', music_by: 'Música por FoxSynergy',
+    stacked_by: 'Criado por Tim', music_by: 'Música de FoxSynergy',
     hex_lines_level: 'Linhas {lines}  Nível {level}',
     swipe: 'Deslizar', tap: 'Tocar', flick: 'Lançar',
     gesture_move: 'mover', gesture_rotate: 'girar',
@@ -221,8 +221,8 @@ var LOCALES = {
     hex_lines_level: 'Líneas {lines}  Nivel {level}',
     swipe: 'Deslizar', tap: 'Tocar', flick: 'Lanzar',
     gesture_move: 'mover', gesture_rotate: 'girar',
-    stacked_by: 'Creado por Tim', music_by: 'Música por FoxSynergy',
-    gesture_drop: 'soltar', gesture_hold: 'guardar',
+    stacked_by: 'Creado por Tim', music_by: 'Música de FoxSynergy',
+    gesture_drop: 'soltar', gesture_hold: 'mantener',
     _ordinal: '{n}º'
   },
 
@@ -255,7 +255,7 @@ var LOCALES = {
     hex_lines_level: '行数 {lines}  等级 {level}',
     swipe: '滑动', tap: '点按', flick: '快划',
     gesture_move: '移动', gesture_rotate: '旋转',
-    stacked_by: '开发者 Tim', music_by: '音乐 FoxSynergy',
+    stacked_by: '开发：Tim', music_by: '音乐：FoxSynergy',
     gesture_drop: '落下', gesture_hold: '暂存',
     _ordinal: '第{n}'
   },
@@ -290,7 +290,7 @@ var LOCALES = {
     hex_lines_level: 'ライン {lines}  レベル {level}',
     swipe: 'スワイプ', tap: 'タップ', flick: 'フリック',
     gesture_move: '移動', gesture_rotate: '回転',
-    stacked_by: '開発者 Tim', music_by: '音楽 FoxSynergy',
+    stacked_by: '開発：Tim', music_by: '音楽：FoxSynergy',
     gesture_drop: 'ドロップ', gesture_hold: 'ホールド',
     _ordinal: '{n}位'
   },
@@ -324,7 +324,7 @@ var LOCALES = {
     hex_lines_level: '라인 {lines}  레벨 {level}',
     swipe: '스와이프', tap: '탭', flick: '플릭',
     gesture_move: '이동', gesture_rotate: '회전',
-    stacked_by: '개발자 Tim', music_by: '음악 FoxSynergy',
+    stacked_by: '개발: Tim', music_by: '음악: FoxSynergy',
     gesture_drop: '드롭', gesture_hold: '홀드',
     _ordinal: '{n}위'
   },
@@ -334,7 +334,7 @@ var LOCALES = {
     ko: 'K.O.', go: 'СТАРТ', scan_to_rejoin: 'СКАН ДЛЯ ВОЗВРАТА',
     quad: 'КВАД!', triple: 'ТРИПЛ!', double: 'ДАБЛ',
     scan_to_join: 'Сканируйте для входа', square: 'КВАДРАТ', hex: 'ГЕКС',
-    new_badge: 'НОВО', waiting_for_players: 'Ожидание игроков...',
+    new_badge: 'НОВОЕ', waiting_for_players: 'Ожидание игроков...',
     start_n_players: {
       one: 'СТАРТ ({count} игрок)', few: 'СТАРТ ({count} игрока)',
       many: 'СТАРТ ({count} игроков)', other: 'СТАРТ ({count} игроков)'
@@ -365,7 +365,7 @@ var LOCALES = {
     hex_lines_level: 'Линии {lines}  Уровень {level}',
     swipe: 'Свайп', tap: 'Нажатие', flick: 'Смахивание',
     gesture_move: 'двигать', gesture_rotate: 'вращать',
-    stacked_by: 'Разработано Tim', music_by: 'Музыка FoxSynergy',
+    stacked_by: 'Разработка: Tim', music_by: 'Музыка: FoxSynergy',
     gesture_drop: 'бросить', gesture_hold: 'держать',
     _ordinal: '{n}-й'
   },
@@ -416,7 +416,7 @@ var LOCALES = {
     play_again: 'Tekrar oyna', play_again_upper: 'TEKRAR OYNA',
     new_game: 'Yeni oyun', new_game_upper: 'YENİ OYUN',
     continue_btn: 'Devam', continue_upper: 'DEVAM',
-    continue_anyway: 'YINE DE DEVAM ET',
+    continue_anyway: 'YİNE DE DEVAM ET',
     reconnect: 'YENİDEN BAĞLAN', rejoin: 'KATIL', join: 'KATIL',
     reconnecting: 'YENİDEN BAĞLANIYOR', disconnected: 'BAĞLANTI KESİLDİ',
     connecting: 'BAĞLANIYOR...', connection_lost: 'Bağlantı kesildi...',
@@ -432,7 +432,7 @@ var LOCALES = {
     level_n: 'Seviye {level}', player: 'Oyuncu', level_heading: 'Seviye',
     enter_name: 'İsim gir...', touchpad: 'Touchpad',
     privacy: 'Gizlilik',
-    stacked_by: 'Tim tarafından yapıldı', music_by: 'Müzik FoxSynergy',
+    stacked_by: 'Tim tarafından yapıldı', music_by: 'Müzik: FoxSynergy',
     hex_lines_level: 'Satır {lines}  Seviye {level}',
     swipe: 'Kaydır', tap: 'Dokun', flick: 'Fırlat',
     gesture_move: 'hareket', gesture_rotate: 'döndür',
