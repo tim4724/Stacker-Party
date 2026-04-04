@@ -52,9 +52,11 @@ html, body {
 }
 
 #new-game-btn {
-  padding: clamp(0.8rem, 1.6vh, 1.5rem) clamp(2.5rem, 5vw, 7rem);
+  min-width: clamp(9rem, 16vw, 14rem);
+  padding: clamp(0.6rem, 1.2vh, 1.2rem) clamp(1rem, 2vw, 2rem);
   font-size: clamp(1rem, 2.2vh, 1.8rem);
   letter-spacing: 0.08em;
+  text-align: center;
   animation: fadeUp 0.6s 0.3s ease-out both, btnPulse 2.5s 1s ease-in-out infinite;
 }
 
@@ -565,9 +567,11 @@ html, body {
 
 #play-again-btn,
 #new-game-results-btn {
-  padding: clamp(0.6rem, 1.2vh, 1.2rem) clamp(2rem, 4vw, 4rem);
+  min-width: clamp(9rem, 16vw, 14rem);
+  padding: clamp(0.6rem, 1.2vh, 1.2rem) clamp(1rem, 2vw, 2rem);
   font-size: clamp(0.85rem, 1.6vh, 1.2rem);
   letter-spacing: 0.06em;
+  text-align: center;
 }
 
 #play-again-btn {

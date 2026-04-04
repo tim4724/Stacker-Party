@@ -782,7 +782,7 @@ html, body {
 #pause-continue-btn,
 #pause-newgame-btn,
 #reconnect-rejoin-btn {
-  min-width: 9rem;
+  min-width: min(12rem, 45vw);
   padding: 14px 16px;
   font-size: 0.9rem;
   letter-spacing: 0.1em;
