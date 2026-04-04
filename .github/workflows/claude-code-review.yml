@@ -33,9 +33,9 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            Review this pull request. Read the diff and surrounding source files to understand
-            context (don't just rely on the diff alone). Use the repository's CLAUDE.md for
-            guidance on style and conventions.
+            Review this pull request. Read the diff first, then only read source files when
+            a specific finding requires surrounding context to verify. Do not speculatively
+            read files. Use the repository's CLAUDE.md for guidance on style and conventions.
 
             ANALYSIS — focus on:
             - Potential bugs or logic errors
@@ -60,12 +60,27 @@ jobs:
 
             If no findings survive filtering, post a short approval comment instead.
 
-            STALE COMMENT CLEANUP:
-            After posting, fetch existing review threads and resolve any from a previous bot
-            review where the issue has been fixed in the current diff:
-              gh api graphql -f query='{ repository(owner:"OWNER",name:"REPO") { pullRequest(number:PR) { reviewThreads(first:100) { nodes { id isResolved comments(first:1) { nodes { body path line author { login } } } } } } } }'
-              gh api graphql -f query='mutation { resolveReviewThread(input:{threadId:"<thread_node_id>"}) { thread { isResolved } } }'
-            Only resolve threads authored by this bot. Do not resolve threads from human reviewers.
-
           claude_args: |
-            --allowedTools "Read,Glob,Grep,Bash(git log:*),Bash(git blame:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr checks:*),Bash(gh api:*),mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*)"
+            --model claude-sonnet-4-6 --max-turns 10 --allowedTools "Read,Glob,Grep,Bash(git log:*),Bash(git blame:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr checks:*),Bash(gh api:*),mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*)"
+
+      - name: Resolve stale bot review threads
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Resolve stale review comments from previous bot reviews on this PR.
+
+            1. Fetch unresolved review threads:
+               gh api graphql -f query='{ repository(owner:"OWNER",name:"REPO") { pullRequest(number:PR) { reviewThreads(first:100) { nodes { id isResolved comments(first:1) { nodes { body path line author { login } } } } } } } }'
+            2. Filter to threads authored by "claude[bot]" that are unresolved.
+            3. For each, read the current source file at the commented path and line.
+            4. Judge whether the issue described in the comment has been fixed in the current code.
+            5. If fixed, resolve the thread:
+               gh api graphql -f query='mutation { resolveReviewThread(input:{threadId:"<id>"}) { thread { isResolved } } }'
+
+            Only resolve threads where you are confident the issue is fixed. Do not resolve threads from human reviewers. If there are no stale bot threads, exit immediately.
+          claude_args: |
+            --model claude-haiku-4-5 --max-turns 10 --allowedTools "Read,Grep,Bash(gh api:*)"
