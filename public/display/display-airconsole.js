@@ -23,10 +23,12 @@ airconsole.onReady = function(code) {
 // Wire AirConsole pause/resume — silently freeze the game engine.
 // No overlay, no broadcast to controllers. AirConsole auto-resumes
 // when the connection stabilizes.
+var _acPaused = false;
 airconsole.onPause = function() {
   console.log('[AirConsole] onPause — connection unstable');
   if (roomState !== ROOM_STATE.PLAYING && roomState !== ROOM_STATE.COUNTDOWN) return;
   if (paused) return;
+  _acPaused = true;
   paused = true;
   autoPaused = true;
   if (roomState === ROOM_STATE.COUNTDOWN) clearCountdownTimers();
@@ -36,6 +38,8 @@ airconsole.onPause = function() {
 
 airconsole.onResume = function() {
   console.log('[AirConsole] onResume — connection restored');
+  if (!_acPaused) return;
+  _acPaused = false;
   if (autoPaused) { autoPaused = false; resumeGame(); }
 };
 
