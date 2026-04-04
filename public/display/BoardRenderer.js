@@ -15,6 +15,13 @@ class BoardRenderer {
     this.boardWidth = COLS * cellSize;
     this.boardHeight = VISIBLE_ROWS * cellSize;
     this._styleTier = STYLE_TIERS.NORMAL;
+
+    // Cached rgba strings (stable between layout recalculations)
+    const rgb = this._accentRgb;
+    this._tintFill = rgb ? `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${THEME.opacity.tint})` : null;
+    this._gridStroke = rgb ? `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${THEME.opacity.grid})` : `rgba(255, 255, 255, ${THEME.opacity.grid})`;
+    this._borderStroke = rgb ? `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${THEME.opacity.strong})` : `rgba(255, 255, 255, ${THEME.opacity.soft})`;
+    this._accentRgbStr = rgb ? `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})` : null;
   }
 
   get styleTier() { return this._styleTier; }
@@ -31,18 +38,15 @@ class BoardRenderer {
     const ghostColors = isNeon ? NEON_GHOST_COLORS : GHOST_COLORS;
 
     // 1. Board background — player-color tinted (matches controller touch pad)
-    const rgb = this._accentRgb;
     ctx.fillStyle = THEME.color.bg.board;
     ctx.fillRect(this.x, this.y, this.boardWidth, this.boardHeight);
-    if (rgb) {
-      ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${THEME.opacity.tint})`;
+    if (this._tintFill) {
+      ctx.fillStyle = this._tintFill;
       ctx.fillRect(this.x, this.y, this.boardWidth, this.boardHeight);
     }
 
     // 2. Grid lines (batched into single stroke)
-    ctx.strokeStyle = rgb
-      ? `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${THEME.opacity.grid})`
-      : `rgba(255, 255, 255, ${THEME.opacity.grid})`;
+    ctx.strokeStyle = this._gridStroke;
     ctx.lineWidth = this.cellSize * THEME.stroke.grid;
     ctx.beginPath();
     for (let r = 1; r < VISIBLE_ROWS; r++) {
@@ -127,12 +131,15 @@ class BoardRenderer {
       for (const row of playerState.clearingRows) {
         if (row >= 0 && row < VISIBLE_ROWS) {
           const alpha = 0.3 + 0.2 * Math.sin(t * Math.PI);
-          ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+          ctx.globalAlpha = alpha;
+          ctx.fillStyle = '#ffffff';
           ctx.fillRect(this.x, this.y + row * this.cellSize, this.boardWidth, this.cellSize);
-          if (rgb) {
-            ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha * 0.3})`;
+          if (this._accentRgbStr) {
+            ctx.globalAlpha = alpha * THEME.opacity.tint;
+            ctx.fillStyle = this._accentRgbStr;
             ctx.fillRect(this.x, this.y + row * this.cellSize, this.boardWidth, this.cellSize);
           }
+          ctx.globalAlpha = 1;
         }
       }
     }
@@ -143,10 +150,7 @@ class BoardRenderer {
 
   _drawBoardBorder() {
     const ctx = this.ctx;
-    const rgb = this._accentRgb;
-    ctx.strokeStyle = rgb
-      ? `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${THEME.opacity.strong})`
-      : `rgba(255, 255, 255, ${THEME.opacity.soft})`;
+    ctx.strokeStyle = this._borderStroke;
     const bw = this.cellSize * THEME.stroke.border;
     ctx.lineWidth = bw;
     const half = bw / 2;

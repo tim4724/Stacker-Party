@@ -19,10 +19,34 @@ class BaseUIRenderer {
     this.miniSize = cellSize * THEME.font.cellScale.mini;
     this.panelGap = cellSize * THEME.size.panelGap;
     this._styleTier = STYLE_TIERS.NORMAL;
+
+    // Cached rgba strings for panel drawing
+    var rgb = this._accentRgb;
+    this._panelTintFill = rgb ? 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + THEME.opacity.tint + ')' : null;
+    this._panelStroke = rgb ? 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + THEME.opacity.soft + ')' : 'rgba(255, 255, 255, ' + THEME.opacity.tint + ')';
+
+    // Cached font strings
+    this._updateCachedFonts();
+  }
+
+  _updateCachedFonts() {
+    var font = getDisplayFont();
+    var labelSize = Math.max(THEME.font.minPx.label, this.cellSize * THEME.font.cellScale.label);
+    var valueSize = Math.max(THEME.font.minPx.label, this.cellSize * THEME.font.cellScale.label * 1.3);
+    this._labelSize = labelSize;
+    this._valueSize = valueSize;
+    this._rowHeight = labelSize + valueSize + this.cellSize * 0.4;
+    this._fontName = '700 ' + Math.max(THEME.font.minPx.name, this.cellSize * THEME.font.cellScale.name) + 'px ' + font;
+    this._fontLabel = '700 ' + labelSize + 'px ' + font;
+    this._fontValue = '700 ' + valueSize + 'px ' + font;
+    this._fontKO = '900 ' + Math.max(20, this.cellSize * 2) + 'px ' + font;
+    this._fontDisconnect = '600 ' + Math.max(10, this.cellSize * THEME.font.cellScale.name) + 'px ' + font;
+    this._cachedFontFamily = font;
   }
 
   render(playerState, timestamp) {
     this._styleTier = getStyleTier(playerState.level || 1);
+    if (getDisplayFont() !== this._cachedFontFamily) this._updateCachedFonts();
     this.drawPlayerName(playerState);
     this.drawHoldPanel(playerState);
     this.drawNextPanel(playerState);
@@ -45,9 +69,8 @@ class BaseUIRenderer {
     var ctx = this.ctx;
     var name = playerState.playerName || PLAYER_NAMES[this.playerIndex] || ('Player ' + (this.playerIndex + 1));
     var nameY = this.boardY - this.cellSize * 0.13;
-    var fontSize = Math.max(THEME.font.minPx.name, this.cellSize * THEME.font.cellScale.name);
     ctx.fillStyle = playerState.playerColor || THEME.color.text.white;
-    ctx.font = '700 ' + fontSize + 'px ' + getDisplayFont();
+    ctx.font = this._fontName;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
     ctx.fillText(name, this.boardX + this.cellSize * 0.07, nameY - this.cellSize * 0.07);
@@ -56,19 +79,18 @@ class BaseUIRenderer {
   drawHoldPanel(playerState) {
     var ctx = this.ctx;
     var panelY = this.boardY;
-    var labelSize = Math.max(THEME.font.minPx.label, this.cellSize * THEME.font.cellScale.label);
     var boxSize = this.miniSize * THEME.size.panelWidth;
     var panelX = this.boardX - this.panelGap - boxSize;
 
     ctx.fillStyle = 'rgba(255, 255, 255, ' + THEME.opacity.label + ')';
-    ctx.font = '700 ' + labelSize + 'px ' + getDisplayFont();
+    ctx.font = this._fontLabel;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.letterSpacing = '0.15em';
     ctx.fillText(t('hold'), panelX + boxSize / 2, panelY, boxSize);
     ctx.letterSpacing = '0px';
 
-    var boxY = panelY + labelSize + this.cellSize * 0.2;
+    var boxY = panelY + this._labelSize + this.cellSize * 0.2;
     this._drawPanel(panelX, boxY, boxSize, boxSize);
 
     if (playerState.holdPiece) {
@@ -77,9 +99,8 @@ class BaseUIRenderer {
   }
 
   _nextPanelLayout(playerState) {
-    var labelSize = Math.max(THEME.font.minPx.label, this.cellSize * THEME.font.cellScale.label);
     var pieceSpacing = this.miniSize * 3;
-    var startY = this.boardY + labelSize + this.cellSize * 0.2;
+    var startY = this.boardY + this._labelSize + this.cellSize * 0.2;
     var nextCount = playerState.nextPieces ? Math.min(playerState.nextPieces.length, 3) : 0;
     var boxHeight = pieceSpacing * Math.max(nextCount, 3);
     return { startY: startY, boxHeight: boxHeight, pieceSpacing: pieceSpacing };
@@ -89,12 +110,11 @@ class BaseUIRenderer {
     var ctx = this.ctx;
     var panelX = this.boardX + this.boardWidth + this.panelGap;
     var panelY = this.boardY;
-    var labelSize = Math.max(THEME.font.minPx.label, this.cellSize * THEME.font.cellScale.label);
     var boxWidth = this.miniSize * THEME.size.panelWidth;
     var layout = this._nextPanelLayout(playerState);
 
     ctx.fillStyle = 'rgba(255, 255, 255, ' + THEME.opacity.label + ')';
-    ctx.font = '700 ' + labelSize + 'px ' + getDisplayFont();
+    ctx.font = this._fontLabel;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.letterSpacing = '0.15em';
@@ -122,9 +142,7 @@ class BaseUIRenderer {
 
     var lines = playerState.lines || 0;
     var level = playerState.level || 1;
-    var lvlSize = Math.max(THEME.font.minPx.label, this.cellSize * THEME.font.cellScale.label);
-    var valueSize = Math.max(THEME.font.minPx.label, this.cellSize * THEME.font.cellScale.label * 1.3);
-    var rowHeight = lvlSize + valueSize + this.cellSize * 0.4;
+    var lvlSize = this._labelSize;
 
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
@@ -132,22 +150,22 @@ class BaseUIRenderer {
     // Level row
     ctx.fillStyle = 'rgba(255, 255, 255, ' + THEME.opacity.label + ')';
     ctx.letterSpacing = '0.15em';
-    ctx.font = '700 ' + lvlSize + 'px ' + getDisplayFont();
+    ctx.font = this._fontLabel;
     ctx.fillText(t('level'), panelX, belowNextY);
     ctx.letterSpacing = '0px';
     ctx.fillStyle = THEME.color.text.white;
-    ctx.font = '700 ' + valueSize + 'px ' + getDisplayFont();
+    ctx.font = this._fontValue;
     ctx.fillText('' + level, panelX, belowNextY + lvlSize + this.cellSize * 0.1);
 
     // Lines row
-    var linesY = belowNextY + rowHeight;
+    var linesY = belowNextY + this._rowHeight;
     ctx.fillStyle = 'rgba(255, 255, 255, ' + THEME.opacity.label + ')';
     ctx.letterSpacing = '0.15em';
-    ctx.font = '700 ' + lvlSize + 'px ' + getDisplayFont();
+    ctx.font = this._fontLabel;
     ctx.fillText(t('lines'), panelX, linesY);
     ctx.letterSpacing = '0px';
     ctx.fillStyle = THEME.color.text.white;
-    ctx.font = '700 ' + valueSize + 'px ' + getDisplayFont();
+    ctx.font = this._fontValue;
     ctx.fillText('' + lines, panelX, linesY + lvlSize + this.cellSize * 0.1);
   }
 
@@ -156,9 +174,8 @@ class BaseUIRenderer {
     ctx.save();
     this._clipBoardArea();
     this._fillBoardArea('rgba(30, 0, 0, 0.6)');
-    var fontSize = Math.max(20, this.cellSize * 2);
     ctx.fillStyle = '#cc2222';
-    ctx.font = '900 ' + fontSize + 'px ' + getDisplayFont();
+    ctx.font = this._fontKO;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(t('ko'), this.boardX + this.boardWidth / 2, this.boardY + this.boardHeight / 2);
@@ -209,7 +226,7 @@ class BaseUIRenderer {
     }
 
     ctx.fillStyle = playerColor || 'rgba(0, 200, 255, 0.7)';
-    ctx.font = '600 ' + labelSize + 'px ' + getDisplayFont();
+    ctx.font = this._fontDisconnect;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.letterSpacing = '0.1em';
@@ -220,21 +237,18 @@ class BaseUIRenderer {
   _drawPanel(x, y, w, h) {
     var ctx = this.ctx;
     var r = THEME.radius.panel(this.cellSize);
-    var rgb = this._accentRgb;
 
     ctx.fillStyle = THEME.color.bg.board;
     roundRect(ctx, x, y, w, h, r);
     ctx.fill();
 
-    if (rgb) {
-      ctx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + THEME.opacity.tint + ')';
+    if (this._panelTintFill) {
+      ctx.fillStyle = this._panelTintFill;
       roundRect(ctx, x, y, w, h, r);
       ctx.fill();
     }
 
-    ctx.strokeStyle = rgb
-      ? 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + THEME.opacity.soft + ')'
-      : 'rgba(255, 255, 255, ' + THEME.opacity.tint + ')';
+    ctx.strokeStyle = this._panelStroke;
     ctx.lineWidth = this.cellSize * THEME.stroke.border;
     roundRect(ctx, x, y, w, h, r);
     ctx.stroke();

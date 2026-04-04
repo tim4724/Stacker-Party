@@ -27,6 +27,12 @@ class HexBoardRenderer {
     this.boardHeight = geo.boardHeight;
     this._prevGhostKey = null;
     this._cachedPreviewCells = [];
+
+    // Cached rgba strings (stable between layout recalculations)
+    var rgb = this._accentRgb;
+    this._tintFill = rgb ? 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + THEME.opacity.tint + ')' : null;
+    this._gridStroke = rgb ? 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + THEME.opacity.grid + ')' : 'rgba(255,255,255,' + THEME.opacity.grid + ')';
+    this._wallStroke = rgb ? 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + THEME.opacity.strong + ')' : 'rgba(255,255,255,' + THEME.opacity.soft + ')';
   }
 
   get styleTier() { return this._styleTier; }
@@ -41,15 +47,7 @@ class HexBoardRenderer {
   }
 
   _hexPath(cx, cy, size) {
-    var ctx = this.ctx;
-    ctx.beginPath();
-    for (var i = 0; i < 6; i++) {
-      var a = Math.PI / 3 * i;
-      var hx = cx + size * Math.cos(a);
-      var hy = cy + size * Math.sin(a);
-      i === 0 ? ctx.moveTo(hx, hy) : ctx.lineTo(hx, hy);
-    }
-    ctx.closePath();
+    hexPath(this.ctx, cx, cy, size);
   }
 
   _drawHex(cx, cy, size, fill, stroke, alpha) {
@@ -69,104 +67,8 @@ class HexBoardRenderer {
   }
 
   _drawFilledHex(cx, cy, size, color) {
-    var ctx = this.ctx;
-    var tier = this._styleTier;
-
-    if (tier === STYLE_TIERS.NEON_FLAT) {
-      // Neon: dark fill with colored border
-      var rgb = hexToRgb(color);
-      if (!rgb) return;
-      var darkFill = 'rgba(' + (rgb.r * 0.2 | 0) + ',' + (rgb.g * 0.2 | 0) + ',' + (rgb.b * 0.2 | 0) + ',0.92)';
-      this._drawHex(cx, cy, size, darkFill, null);
-      var bw = Math.max(1, size * 0.12);
-      ctx.strokeStyle = color;
-      ctx.lineWidth = bw;
-      this._hexPath(cx, cy, size);
-      ctx.stroke();
-      // Top highlight line (vertices 4→5, the top-right edge)
-      ctx.save();
-      ctx.globalAlpha = 0.25;
-      ctx.beginPath();
-      var a4 = Math.PI / 3 * 4, a5 = Math.PI / 3 * 5;
-      ctx.moveTo(cx + size * 0.85 * Math.cos(a4), cy + size * 0.85 * Math.sin(a4));
-      ctx.lineTo(cx + size * 0.85 * Math.cos(a5), cy + size * 0.85 * Math.sin(a5));
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = Math.max(0.5, size * 0.04);
-      ctx.stroke();
-      ctx.restore();
-    } else if (tier === STYLE_TIERS.PILLOW) {
-      // Pillow: flat fill + radial gradient highlight
-      this._drawHex(cx, cy, size, color, null);
-      var rgb2 = hexToRgb(color);
-      var lum = rgb2 ? (rgb2.r * 0.299 + rgb2.g * 0.587 + rgb2.b * 0.114) / 255 : 0.5;
-      var hiAlpha = 0.14 + lum * 0.46;
-      ctx.save();
-      ctx.beginPath();
-      for (var ci = 0; ci < 6; ci++) {
-        var ca = Math.PI / 3 * ci;
-        var chx = cx + size * Math.cos(ca), chy = cy + size * Math.sin(ca);
-        ci === 0 ? ctx.moveTo(chx, chy) : ctx.lineTo(chx, chy);
-      }
-      ctx.closePath();
-      ctx.clip();
-      var g = ctx.createRadialGradient(cx - size * 0.1, cy - size * 0.2, 0, cx, cy, size * 0.9);
-      g.addColorStop(0, 'rgba(255,255,255,' + hiAlpha.toFixed(2) + ')');
-      g.addColorStop(0.6, 'rgba(255,255,255,0.03)');
-      g.addColorStop(1, 'rgba(0,0,0,0.2)');
-      ctx.fillStyle = g;
-      ctx.fill();
-      ctx.restore();
-      // Top edge highlight
-      ctx.save();
-      var edgeAlpha = 0.12 + lum * 0.38;
-      ctx.strokeStyle = 'rgba(255,255,255,' + edgeAlpha.toFixed(2) + ')';
-      ctx.lineWidth = Math.max(0.5, size * 0.05);
-      ctx.beginPath();
-      var ta4 = Math.PI / 3 * 4, ta5 = Math.PI / 3 * 5;
-      ctx.moveTo(cx + size * Math.cos(ta4), cy + size * Math.sin(ta4));
-      ctx.lineTo(cx + size * Math.cos(ta5), cy + size * Math.sin(ta5));
-      ctx.stroke();
-      // Bottom edge shadow
-      ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-      ctx.beginPath();
-      var ba1 = Math.PI / 3 * 1, ba2 = Math.PI / 3 * 2;
-      ctx.moveTo(cx + size * Math.cos(ba1), cy + size * Math.sin(ba1));
-      ctx.lineTo(cx + size * Math.cos(ba2), cy + size * Math.sin(ba2));
-      ctx.stroke();
-      ctx.restore();
-    } else {
-      // Normal: gradient fill with highlights and shadows
-      ctx.save();
-      ctx.beginPath();
-      for (var ni = 0; ni < 6; ni++) {
-        var na = Math.PI / 3 * ni;
-        var nhx = cx + size * Math.cos(na), nhy = cy + size * Math.sin(na);
-        ni === 0 ? ctx.moveTo(nhx, nhy) : ctx.lineTo(nhx, nhy);
-      }
-      ctx.closePath();
-      ctx.clip();
-      var ng = ctx.createLinearGradient(cx, cy - size, cx, cy + size);
-      ng.addColorStop(0, lightenColor(color, 15));
-      ng.addColorStop(1, darkenColor(color, 10));
-      ctx.fillStyle = ng;
-      ctx.fill();
-      // Top highlight
-      ctx.fillStyle = 'rgba(255,255,255,' + THEME.opacity.highlight + ')';
-      ctx.fillRect(cx - size * 0.5, cy - size * 0.88, size, size * 0.12);
-      // Left highlight
-      ctx.fillStyle = 'rgba(255,255,255,' + THEME.opacity.muted + ')';
-      ctx.fillRect(cx - size * 0.9, cy - size * 0.5, size * 0.1, size);
-      // Bottom shadow
-      ctx.fillStyle = 'rgba(0,0,0,' + THEME.opacity.shadow + ')';
-      ctx.fillRect(cx - size * 0.5, cy + size * 0.76, size, size * 0.12);
-      // Inner shine
-      ctx.fillStyle = 'rgba(255,255,255,' + THEME.opacity.subtle + ')';
-      var sh = size * 0.3;
-      ctx.fillRect(cx - size * 0.3, cy - size * 0.4, sh, sh * 0.5);
-      ctx.restore();
-      // Border
-      this._drawHex(cx, cy, size, null, 'rgba(255,255,255,0.15)');
-    }
+    var stamp = getHexStamp(this._styleTier, color, size);
+    this.ctx.drawImage(stamp, cx - size - 1, cy - stamp.height / 2);
   }
 
   render(playerState, timestamp) {
@@ -177,25 +79,52 @@ class HexBoardRenderer {
     var isNeon = newTier === STYLE_TIERS.NEON_FLAT;
     var colors = isNeon ? NEON_PIECE_COLORS : PIECE_COLORS;
     var ghostColors = isNeon ? NEON_GHOST_COLORS : GHOST_COLORS;
-    var rgb = this._accentRgb;
 
-    var sCell = hs * (1 - THEME.size.blockGap * 2);  // proportional gap matching square mode
+    var sCell = hs * (1 - THEME.size.blockGap * 2);
 
-    // Grid cells
+    // Grid cells — split into three passes to batch canvas state changes:
+    // Pass 1: fill empty cells (bg + tint), draw filled cells via stamp
+    // Pass 2: stroke grid lines for empty cells (single compound path)
     if (playerState.grid) {
-      for (var r = 0; r < playerState.grid.length; r++) {
-        for (var c = 0; c < playerState.grid[r].length; c++) {
+      var gridRows = playerState.grid.length;
+      // Pass 1: fills + stamps
+      for (var r = 0; r < gridRows; r++) {
+        var row = playerState.grid[r];
+        for (var c = 0; c < row.length; c++) {
           var pos = this._hexCenter(c, r);
-          var cellVal = playerState.grid[r][c];
-          if (cellVal > 0) {
-            this._drawFilledHex(pos.x, pos.y, sCell, colors[cellVal]);
+          if (row[c] > 0) {
+            this._drawFilledHex(pos.x, pos.y, sCell, colors[row[c]]);
           } else {
-            this._drawHex(pos.x, pos.y, sCell, THEME.color.bg.board, null);
-            if (rgb) this._drawHex(pos.x, pos.y, sCell, 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + THEME.opacity.tint + ')', null);
-            this._drawHex(pos.x, pos.y, sCell, null, rgb ? 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + THEME.opacity.grid + ')' : 'rgba(255,255,255,' + THEME.opacity.grid + ')');
+            hexPath(ctx, pos.x, pos.y, sCell);
+            ctx.fillStyle = THEME.color.bg.board;
+            ctx.fill();
+            if (this._tintFill) {
+              ctx.fillStyle = this._tintFill;
+              ctx.fill();
+            }
           }
         }
       }
+      // Pass 2: batched grid stroke for empty cells
+      ctx.beginPath();
+      for (var r2 = 0; r2 < gridRows; r2++) {
+        var row2 = playerState.grid[r2];
+        for (var c2 = 0; c2 < row2.length; c2++) {
+          if (row2[c2] === 0) {
+            var gp = this._hexCenter(c2, r2);
+            // Inline hex sub-path (no beginPath — compound path)
+            var _s = sCell;
+            ctx.moveTo(gp.x + _s * HEX_UNIT_VERTICES[0], gp.y + _s * HEX_UNIT_VERTICES[1]);
+            for (var vi = 2; vi < 12; vi += 2) {
+              ctx.lineTo(gp.x + _s * HEX_UNIT_VERTICES[vi], gp.y + _s * HEX_UNIT_VERTICES[vi + 1]);
+            }
+            ctx.closePath();
+          }
+        }
+      }
+      ctx.strokeStyle = this._gridStroke;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
     }
 
     // Ghost piece
@@ -291,10 +220,7 @@ class HexBoardRenderer {
 
   _drawWalls() {
     var ctx = this.ctx;
-    var rgb = this._accentRgb;
-    ctx.strokeStyle = rgb
-      ? 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + THEME.opacity.strong + ')'
-      : 'rgba(255,255,255,' + THEME.opacity.soft + ')';
+    ctx.strokeStyle = this._wallStroke;
     ctx.lineWidth = this.cellSize * THEME.stroke.border;
     HexConstants.traceHexOutline(ctx, this.x, this.y, this.hexSize, this.hexH, this.colW, HEX_COLS_N, HEX_VIS_ROWS);
     ctx.stroke();

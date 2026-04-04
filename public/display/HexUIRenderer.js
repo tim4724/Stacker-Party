@@ -67,14 +67,7 @@ class HexUIRenderer extends BaseUIRenderer {
   _drawMeterHex(cx, cy, sCell, fill, alpha) {
     var ctx = this.ctx;
     if (alpha != null) ctx.globalAlpha = alpha;
-    ctx.beginPath();
-    for (var v = 0; v < 6; v++) {
-      var a = Math.PI / 3 * v;
-      var hx = cx + sCell * Math.cos(a);
-      var hy = cy + sCell * Math.sin(a);
-      v === 0 ? ctx.moveTo(hx, hy) : ctx.lineTo(hx, hy);
-    }
-    ctx.closePath();
+    hexPath(ctx, cx, cy, sCell);
     ctx.fillStyle = fill;
     ctx.fill();
     if (alpha != null) ctx.globalAlpha = 1.0;
@@ -154,7 +147,7 @@ class HexUIRenderer extends BaseUIRenderer {
     var color = (isNeon ? NEON_PIECE_COLORS[typeId] : PIECE_COLORS[typeId]) || '#ffffff';
 
     var hexS = size * 0.45;
-    var drawS = hexS * (1 - THEME.size.blockGap * 2);  // proportional gap matching square mode
+    var drawS = hexS * (1 - THEME.size.blockGap * 2);
     var hexH = Math.sqrt(3) * hexS;   // height of flat-top hex (layout spacing)
     var colW = 1.5 * hexS;            // column spacing
     var cols = bounds.maxC - bounds.minC + 1;
@@ -165,31 +158,13 @@ class HexUIRenderer extends BaseUIRenderer {
     var ox = centerX - totalW / 2;
     var oy = centerY - totalH / 2;
 
+    var stamp = getMiniHexStamp(this._styleTier, color, drawS);
     var ctx = this.ctx;
     for (var i = 0; i < bounds.offsets.length; i++) {
       var o = bounds.offsets[i];
       var px = ox + colW * (o.col - bounds.minC) + hexS;
       var py = oy + hexH * (o.row - bounds.minR + 0.5 * (o.col & 1)) + hexH / 2;
-
-      // Mini hex with gradient (matches square mode mini blocks)
-      ctx.save();
-      ctx.beginPath();
-      for (var v = 0; v < 6; v++) {
-        var a = Math.PI / 3 * v;
-        var hx = px + drawS * Math.cos(a);
-        var hy = py + drawS * Math.sin(a);
-        v === 0 ? ctx.moveTo(hx, hy) : ctx.lineTo(hx, hy);
-      }
-      ctx.closePath();
-      ctx.clip();
-      var mg = ctx.createLinearGradient(px, py - drawS, px, py + drawS);
-      mg.addColorStop(0, color);
-      mg.addColorStop(1, darkenColor(color, 15));
-      ctx.fillStyle = mg;
-      ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,' + THEME.opacity.highlight + ')';
-      ctx.fillRect(px - drawS * 0.5, py - drawS * 0.88, drawS, drawS * 0.1);
-      ctx.restore();
+      ctx.drawImage(stamp, px - drawS - 1, py - stamp.height / 2);
     }
   }
 }

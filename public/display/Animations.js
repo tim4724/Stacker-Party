@@ -1,5 +1,8 @@
 'use strict';
 
+var _NO_SHAKE = Object.freeze({ x: 0, y: 0 });
+var _shakeResult = { x: 0, y: 0 };
+
 class Animations {
   constructor(ctx) {
     this.ctx = ctx;
@@ -12,7 +15,9 @@ class Animations {
     const duration = THEME.timing.lineClear;
     const boardWidth = GameConstants.BOARD_WIDTH * cellSize;
 
-    // Main line clear effect
+    // Main line clear effect — pre-compute color to avoid per-frame string allocation
+    var quadColor = isQuad ? THEME.color.quad : '#ffffff';
+
     this.active.push({
       type: 'lineClear',
       startTime: performance.now(),
@@ -21,51 +26,43 @@ class Animations {
       boardY,
       cellSize,
       rows,
-      isQuad,
       boardWidth,
+      quadColor,
       render(ctx, progress) {
-        const quadRgb = this.isQuad ? hexToRgb(THEME.color.quad) : null;
-        for (const row of this.rows) {
+        ctx.fillStyle = this.quadColor;
+        for (var ri = 0; ri < this.rows.length; ri++) {
+          var row = this.rows[ri];
           if (row < 0) continue;
-          const ry = this.boardY + row * this.cellSize;
-          const rh = this.cellSize;
+          var ry = this.boardY + row * this.cellSize;
+          var rh = this.cellSize;
 
           if (progress < 0.25) {
             // Phase 1: Bright flash sweep from center
-            const flashProgress = progress / 0.25;
-            const flashAlpha = 0.9 * (1 - flashProgress * 0.5);
-            const sweepWidth = flashProgress * this.boardWidth;
-            const sweepX = this.boardX + (this.boardWidth - sweepWidth) / 2;
-
-            ctx.fillStyle = quadRgb
-              ? `rgba(${quadRgb.r}, ${quadRgb.g}, ${quadRgb.b}, ${flashAlpha})`
-              : `rgba(255, 255, 255, ${flashAlpha})`;
+            var flashProgress = progress / 0.25;
+            ctx.globalAlpha = 0.9 * (1 - flashProgress * 0.5);
+            var sweepWidth = flashProgress * this.boardWidth;
+            var sweepX = this.boardX + (this.boardWidth - sweepWidth) / 2;
             ctx.fillRect(sweepX, ry, sweepWidth, rh);
           } else {
-            // Phase 2: Dissolve with sparkle particles
-            const fadeProgress = (progress - 0.25) / 0.75;
-            const alpha = 0.5 * (1 - fadeProgress);
-
-            // Scanline dissolve
-            const stripeCount = 6;
-            const stripeH = rh / stripeCount;
-            for (let s = 0; s < stripeCount; s++) {
-              const stripeAlpha = alpha * Math.max(0, 1 - (fadeProgress + s * 0.08));
+            // Phase 2: Scanline dissolve
+            var fadeProgress = (progress - 0.25) / 0.75;
+            var alpha = 0.5 * (1 - fadeProgress);
+            var stripeH = rh / 6;
+            for (var s = 0; s < 6; s++) {
+              var stripeAlpha = alpha * Math.max(0, 1 - (fadeProgress + s * 0.08));
               if (stripeAlpha <= 0) continue;
-              const color = quadRgb
-                ? `rgba(${quadRgb.r}, ${quadRgb.g}, ${quadRgb.b}, ${stripeAlpha})`
-                : `rgba(255, 255, 255, ${stripeAlpha})`;
-              ctx.fillStyle = color;
+              ctx.globalAlpha = stripeAlpha;
               // Stagger horizontal dissolve per stripe
-              const shrink = fadeProgress * (s % 2 === 0 ? 1 : -1) * this.boardWidth * 0.3;
-              const sx = this.boardX + (shrink > 0 ? shrink : 0);
-              const sw = this.boardWidth - Math.abs(shrink);
+              var shrink = fadeProgress * (s % 2 === 0 ? 1 : -1) * this.boardWidth * 0.3;
+              var sx = this.boardX + (shrink > 0 ? shrink : 0);
+              var sw = this.boardWidth - Math.abs(shrink);
               if (sw > 0) {
                 ctx.fillRect(sx, ry + s * stripeH, sw, stripeH * 0.6);
               }
             }
           }
         }
+        ctx.globalAlpha = 1;
       }
     });
 
@@ -113,17 +110,14 @@ class Animations {
       x, y, vx, vy, color,
       size: cs * (base + Math.random() * range),
       render(ctx, progress) {
-        const t = progress * this.duration / 1000;
-        const px = this.x + this.vx * t;
-        const py = this.y + this.vy * t + 80 * t * t; // gravity
-        const alpha = 1 - progress;
-        const sz = this.size * (1 - progress * 0.5);
-
-        ctx.save();
-        ctx.globalAlpha = alpha;
+        var t = progress * this.duration / 1000;
+        var px = this.x + this.vx * t;
+        var py = this.y + this.vy * t + 80 * t * t; // gravity
+        var sz = this.size * (1 - progress * 0.5);
+        ctx.globalAlpha = 1 - progress;
         ctx.fillStyle = this.color;
         ctx.fillRect(px - sz / 2, py - sz / 2, sz, sz);
-        ctx.restore();
+        ctx.globalAlpha = 1;
       }
     });
   }
@@ -167,23 +161,24 @@ class Animations {
     var boardX = br.x, boardY = br.y, hexSize = br.hexSize;
     var hexH = br.hexH, colW = br.colW;
 
+    // Pre-compute cell positions (avoids per-frame recalculation)
+    var cellPositions = [];
+    for (var pi = 0; pi < cells.length; pi++) {
+      var col = cells[pi][0], row = cells[pi][1];
+      if (row >= 0) {
+        cellPositions.push({
+          x: boardX + colW * col + hexSize,
+          y: boardY + hexH * (row + 0.5 * (col & 1)) + hexH / 2
+        });
+      }
+    }
+    var quadColor = isQuad ? THEME.color.quad : '#ffffff';
+
     function hexCenter(col, row) {
       return {
         x: boardX + colW * col + hexSize,
         y: boardY + hexH * (row + 0.5 * (col & 1)) + hexH / 2
       };
-    }
-    function drawHexFill(ctx, cx, cy, size, fill) {
-      ctx.beginPath();
-      for (var i = 0; i < 6; i++) {
-        var a = Math.PI / 3 * i;
-        var hx = cx + size * Math.cos(a);
-        var hy = cy + size * Math.sin(a);
-        i === 0 ? ctx.moveTo(hx, hy) : ctx.lineTo(hx, hy);
-      }
-      ctx.closePath();
-      ctx.fillStyle = fill;
-      ctx.fill();
     }
 
     this.active.push({
@@ -191,23 +186,24 @@ class Animations {
       startTime: performance.now(),
       duration: duration,
       render: function(ctx, progress) {
-        var quadRgb = isQuad ? hexToRgb(THEME.color.quad) : null;
-        for (var ci = 0; ci < cells.length; ci++) {
-          var col = cells[ci][0], row = cells[ci][1];
-          if (row < 0) continue;
-          var pos = hexCenter(col, row);
-          if (progress < 0.25) {
-            var flashAlpha = 0.9 * (1 - (progress / 0.25) * 0.5);
-            drawHexFill(ctx, pos.x, pos.y, hexSize,
-              quadRgb ? 'rgba(' + quadRgb.r + ',' + quadRgb.g + ',' + quadRgb.b + ',' + flashAlpha + ')' : 'rgba(255, 255, 255, ' + flashAlpha + ')');
-          } else {
-            var fadeAlpha = 0.5 * (1 - (progress - 0.25) / 0.75);
-            if (fadeAlpha <= 0) continue;
-            var shrink = hexSize * (1 - (progress - 0.25));
-            drawHexFill(ctx, pos.x, pos.y, shrink,
-              quadRgb ? 'rgba(' + quadRgb.r + ',' + quadRgb.g + ',' + quadRgb.b + ',' + fadeAlpha + ')' : 'rgba(255, 255, 255, ' + fadeAlpha + ')');
+        ctx.fillStyle = quadColor;
+        if (progress < 0.25) {
+          ctx.globalAlpha = 0.9 * (1 - (progress / 0.25) * 0.5);
+          for (var ci = 0; ci < cellPositions.length; ci++) {
+            hexPath(ctx, cellPositions[ci].x, cellPositions[ci].y, hexSize);
+            ctx.fill();
+          }
+        } else {
+          var fadeAlpha = 0.5 * (1 - (progress - 0.25) / 0.75);
+          if (fadeAlpha <= 0) { ctx.globalAlpha = 1; return; }
+          ctx.globalAlpha = fadeAlpha;
+          var shrink = hexSize * (1 - (progress - 0.25));
+          for (var ci = 0; ci < cellPositions.length; ci++) {
+            hexPath(ctx, cellPositions[ci].x, cellPositions[ci].y, shrink);
+            ctx.fill();
           }
         }
+        ctx.globalAlpha = 1;
       }
     });
 
@@ -352,14 +348,16 @@ class Animations {
       render(ctx, progress) {
         if (progress < 0.15) {
           // Initial white flash
-          const flashAlpha = (1 - progress / 0.15) * 0.7;
-          ctx.fillStyle = `rgba(255, 255, 255, ${flashAlpha})`;
+          ctx.globalAlpha = (1 - progress / 0.15) * 0.7;
+          ctx.fillStyle = '#ffffff';
           ctx.fillRect(this.boardX, this.boardY, this.boardWidth, this.boardHeight);
+          ctx.globalAlpha = 1;
         } else if (progress < 0.4) {
           // Red vignette
-          const redAlpha = ((0.4 - progress) / 0.25) * 0.4;
-          ctx.fillStyle = `rgba(255, 0, 0, ${redAlpha})`;
+          ctx.globalAlpha = ((0.4 - progress) / 0.25) * 0.4;
+          ctx.fillStyle = '#ff0000';
           ctx.fillRect(this.boardX, this.boardY, this.boardWidth, this.boardHeight);
+          ctx.globalAlpha = 1;
         }
       }
     });
@@ -381,14 +379,16 @@ class Animations {
    * @param {number} timestamp - DOMHighResTimeStamp from requestAnimationFrame
    */
   update(timestamp) {
-    this.active = this.active.filter(anim => {
-      const elapsed = timestamp - anim.startTime;
-      const progress = Math.min(elapsed / anim.duration, 1);
-      if (anim.update) {
-        anim.update(progress);
-      }
-      return progress < 1;
-    });
+    var arr = this.active;
+    var write = 0;
+    for (var i = 0; i < arr.length; i++) {
+      var anim = arr[i];
+      var elapsed = timestamp - anim.startTime;
+      var progress = Math.min(elapsed / anim.duration, 1);
+      if (anim.update) anim.update(progress);
+      if (progress < 1) arr[write++] = anim;
+    }
+    arr.length = write;
   }
 
   /**
@@ -408,12 +408,15 @@ class Animations {
   }
 
   getShakeOffsetForBoard(boardX, boardY) {
-    for (const anim of this.active) {
+    for (var i = 0; i < this.active.length; i++) {
+      var anim = this.active[i];
       if (anim.type === 'shake' && anim.boardX === boardX && anim.boardY === boardY) {
-        return { x: anim.offsetX || 0, y: anim.offsetY || 0 };
+        _shakeResult.x = anim.offsetX || 0;
+        _shakeResult.y = anim.offsetY || 0;
+        return _shakeResult;
       }
     }
-    return { x: 0, y: 0 };
+    return _NO_SHAKE;
   }
 }
 
