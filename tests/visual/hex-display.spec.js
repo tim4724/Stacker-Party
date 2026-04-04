@@ -34,7 +34,7 @@ test.describe('Hex Display', () => {
     await page.waitForTimeout(300);
     if (errors.length) console.log('JS errors:', errors);
     await expect(page).toHaveScreenshot('hex-01-1player.png', {
-      maxDiffPixelRatio: 0.01,
+      maxDiffPixelRatio: 0,
     });
   });
 
@@ -44,7 +44,7 @@ test.describe('Hex Display', () => {
     await injectHexGameState(page, 1, { emptyGrid: true });
     await page.waitForTimeout(200);
     await expect(page).toHaveScreenshot('hex-02-1player-empty.png', {
-      maxDiffPixelRatio: 0.01,
+      maxDiffPixelRatio: 0,
     });
   });
 
@@ -54,7 +54,7 @@ test.describe('Hex Display', () => {
     await injectHexGameState(page, 2, {});
     await page.waitForTimeout(200);
     await expect(page).toHaveScreenshot('hex-03-2players.png', {
-      maxDiffPixelRatio: 0.01,
+      maxDiffPixelRatio: 0,
     });
   });
 
@@ -64,7 +64,7 @@ test.describe('Hex Display', () => {
     await injectHexGameState(page, 4, {});
     await page.waitForTimeout(200);
     await expect(page).toHaveScreenshot('hex-04-4players.png', {
-      maxDiffPixelRatio: 0.01,
+      maxDiffPixelRatio: 0,
     });
   });
 
@@ -74,7 +74,7 @@ test.describe('Hex Display', () => {
     await injectHexGameState(page, 1, { level: 8 });
     await page.waitForTimeout(200);
     await expect(page).toHaveScreenshot('hex-05-tier-pillow.png', {
-      maxDiffPixelRatio: 0.01,
+      maxDiffPixelRatio: 0,
     });
   });
 
@@ -84,7 +84,7 @@ test.describe('Hex Display', () => {
     await injectHexGameState(page, 1, { level: 12 });
     await page.waitForTimeout(200);
     await expect(page).toHaveScreenshot('hex-06-tier-neon.png', {
-      maxDiffPixelRatio: 0.01,
+      maxDiffPixelRatio: 0,
     });
   });
 
@@ -94,7 +94,7 @@ test.describe('Hex Display', () => {
     await injectHexGameState(page, 1, { nearClear: true });
     await page.waitForTimeout(200);
     await expect(page).toHaveScreenshot('hex-07-clear-preview.png', {
-      maxDiffPixelRatio: 0.01,
+      maxDiffPixelRatio: 0,
     });
   });
 
@@ -109,7 +109,7 @@ test.describe('Hex Display', () => {
     }, { s: state });
     await page.waitForTimeout(200);
     await expect(page).toHaveScreenshot('hex-08-style-tiers.png', {
-      maxDiffPixelRatio: 0.01,
+      maxDiffPixelRatio: 0,
     });
   });
 
@@ -127,7 +127,7 @@ test.describe('Hex Display', () => {
     }, { s: state });
     await page.waitForTimeout(200);
     await expect(page).toHaveScreenshot('hex-09-ko-overlay.png', {
-      maxDiffPixelRatio: 0.01,
+      maxDiffPixelRatio: 0,
     });
   });
 
@@ -143,7 +143,7 @@ test.describe('Hex Display', () => {
     });
     await page.waitForTimeout(500);
     await expect(page).toHaveScreenshot('hex-10-disconnected.png', {
-      maxDiffPixelRatio: 0.01,
+      maxDiffPixelRatio: 0,
     });
   });
 });

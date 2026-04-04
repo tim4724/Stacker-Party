@@ -190,7 +190,7 @@ test.describe('Controller', () => {
       clearInterval(dropInterval);
     }
     await expect(host).toHaveScreenshot('10a-results-1p.png', {
-      maxDiffPixelRatio: 0.02,
+      maxDiffPixelRatio: 0,
     });
   });
 
@@ -216,7 +216,7 @@ test.describe('Controller', () => {
       clearInterval(dropInterval);
     }
     await expect(host).toHaveScreenshot('10b-results-winner.png', {
-      maxDiffPixelRatio: 0.02,
+      maxDiffPixelRatio: 0,
     });
   });
 
@@ -243,7 +243,7 @@ test.describe('Controller', () => {
       clearInterval(dropInterval);
     }
     await expect(loser).toHaveScreenshot('10c-results-loser.png', {
-      maxDiffPixelRatio: 0.02,
+      maxDiffPixelRatio: 0,
     });
   });
 
