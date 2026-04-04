@@ -32,8 +32,14 @@ airconsole.onReady = function(code) {
 // controller.js will overwrite roomCode with "controller.html" — that's fine,
 // we just need to ensure the if(roomCode) block executes.
 // AirConsole has no room concept — showRoomGone would show a "Room Not Found"
-// error when controller.js can't find a room code in the URL. Safe to silence.
-showRoomGone = function() {};
+// error when controller.js can't find a room code in the URL. Safe to silence
+// unless a specific message is passed (e.g. "Game is full").
+showRoomGone = function(heading) {
+  if (heading && _acStatusOverlay) {
+    _acStatusOverlay.textContent = heading;
+    _acStatusOverlay.classList.remove('hidden');
+  }
+};
 
 // Pre-set clientId (adapter maps real AirConsole device IDs at message time)
 clientId = 'ac_controller';

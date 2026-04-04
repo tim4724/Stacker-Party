@@ -143,7 +143,7 @@ function performDisconnect() {
   nameInput.focus();
 }
 
-function showRoomGone() {
+function showRoomGone(heading) {
   try { if (roomCode) sessionStorage.removeItem('clientId_' + roomCode); } catch (e) { /* iframe sandbox */ }
   gameCancelled = true;
   if (party) party.close();
@@ -151,7 +151,7 @@ function showRoomGone() {
   nameJoinBtn.classList.add('hidden');
   nameStatusText.textContent = '';
   nameStatusDetail.textContent = '';
-  roomGoneHeading.textContent = t('room_not_found');
+  roomGoneHeading.textContent = heading || t('room_not_found');
   roomGoneDetail.textContent = t('scan_qr_to_join');
   roomGoneMessage.classList.remove('hidden');
   showScreen('name');

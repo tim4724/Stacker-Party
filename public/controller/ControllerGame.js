@@ -168,8 +168,12 @@ function onGameEnd(data) {
 }
 
 function onError(data) {
-  if (data.message === 'Room not found' || data.message === 'Room is full') {
+  if (data.message === 'Room not found') {
     showRoomGone();
+    return;
+  }
+  if (data.message === 'Room is full') {
+    showRoomGone(t('game_full'));
     return;
   }
   showErrorState('', data.message || 'Unknown error');
