@@ -221,11 +221,7 @@ function stopDisplayGame() {
   if (displayGame) {
     displayGame = null;
   }
-  for (const entry of softDropTimers) {
-    clearTimeout(entry[1]);
-  }
-  softDropTimers.clear();
-  lastHardDropTime.clear();
+  resetAllPlayerInput();
   garbageDefenceEffects.clear();
   clearCountdownTimers();
 }

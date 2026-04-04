@@ -12,6 +12,9 @@ var VALID_ACTIONS = new Set(Object.values(INPUT));
 var HARD_DROP_MIN_INTERVAL_MS = 150;
 var lastHardDropTime = new Map();
 
+// Soft drop auto-timeout (owned here, used only by input handling)
+var softDropTimers = new Map();
+
 function handleControllerMessage(fromId, msg) {
   try {
     if (!msg || !msg.type) return;
@@ -54,7 +57,7 @@ function handleControllerMessage(fromId, msg) {
         onSetMode(fromId, msg);
         break;
       case MSG.LEAVE:
-        removePlayer(fromId);
+        onPeerLeft(fromId);
         break;
       case MSG.PING:
         party.sendTo(fromId, { type: MSG.PONG, t: msg.t });
@@ -212,6 +215,10 @@ function cleanupPlayerInput(clientId) {
   lastHardDropTime.delete(clientId);
 }
 
-function removePlayer(clientId) {
-  onPeerLeft(clientId);
+function resetAllPlayerInput() {
+  for (const entry of softDropTimers) {
+    clearTimeout(entry[1]);
+  }
+  softDropTimers.clear();
+  lastHardDropTime.clear();
 }
