@@ -337,14 +337,22 @@ test.describe.serial('AirConsole Integration', () => {
     });
     await s.ctrlPage.waitForTimeout(300);
 
+    // Start game — enters COUNTDOWN before PLAYING
     await s.ctrlFrame.locator('#start-btn').click();
-    await s.screenFrame.waitForFunction(() => roomState === 'playing', null, { timeout: 15000 });
+    await s.screenFrame.waitForFunction(() => roomState === 'countdown', null, { timeout: 10000 });
 
-    // Trigger pause
+    // Pause/resume during COUNTDOWN — verifies clearCountdownTimers() path
     await s.screenPage.evaluate(() => window.airconsole.triggerPause());
     await s.screenFrame.waitForFunction(() => paused === true, null, { timeout: 5000 });
+    await s.screenPage.evaluate(() => window.airconsole.triggerResume());
+    await s.screenFrame.waitForFunction(() => paused === false, null, { timeout: 5000 });
 
-    // Trigger resume
+    // Countdown resumes and game starts
+    await s.screenFrame.waitForFunction(() => roomState === 'playing', null, { timeout: 15000 });
+
+    // Pause/resume during PLAYING
+    await s.screenPage.evaluate(() => window.airconsole.triggerPause());
+    await s.screenFrame.waitForFunction(() => paused === true, null, { timeout: 5000 });
     await s.screenPage.evaluate(() => window.airconsole.triggerResume());
     await s.screenFrame.waitForFunction(() => paused === false, null, { timeout: 5000 });
 
