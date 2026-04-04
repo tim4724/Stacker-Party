@@ -41,3 +41,5 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Run E2E tests
         run: npm run test:e2e
+      - name: Run AirConsole E2E tests
+        run: npm run test:e2e:airconsole
