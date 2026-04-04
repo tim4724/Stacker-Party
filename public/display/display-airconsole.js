@@ -69,7 +69,7 @@ airconsole.onAdComplete = function() {
   if (_adMutedByUs) { _adMutedByUs = false; if (music) music.resume(); }
   if (!_adPaused) return;
   _adPaused = false;
-  if (autoPaused) { autoPaused = false; resumeGame(); }
+  if (autoPaused && !allPlayersDisconnected()) { autoPaused = false; resumeGame(); }
 };
 
 // Replace PartyConnection with a factory that returns AirConsoleAdapter.
