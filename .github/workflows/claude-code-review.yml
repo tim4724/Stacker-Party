@@ -115,6 +115,15 @@ jobs:
             For each finding you keep, post it as an inline comment on the PR.
             Then post a sticky summary comment with an overview of the review.
 
+            RESOLVE STALE COMMENTS:
+            After posting new comments, check each existing inline comment from a previous
+            review run. If the issue it raised has been fixed in the current diff, resolve
+            its review thread using the GraphQL API:
+              gh api graphql -f query='mutation { resolveReviewThread(input:{threadId:"<thread_node_id>"}) { thread { isResolved } } }'
+            To find thread IDs, use:
+              gh api graphql -f query='{ repository(owner:"OWNER",name:"REPO") { pullRequest(number:PR) { reviewThreads(first:100) { nodes { id isResolved comments(first:1) { nodes { body path line author { login } } } } } } } }'
+            Only resolve threads authored by this bot. Do not resolve threads from human reviewers.
+
             If no findings survive filtering, post a short approval comment instead.
 
           claude_args: |
