@@ -283,9 +283,11 @@ class Animations {
   }
 
   addTextPopup(x, y, text, color, hasGlow, cellSize) {
-    const duration = THEME.timing.textPopup;
-    const font = getDisplayFont();
-    const cs = cellSize ?? 30;
+    var duration = THEME.timing.textPopup;
+    var cs = cellSize ?? 30;
+    var fontStr = '900 ' + (cs * 0.73) + 'px ' + getDisplayFont();
+    var shadowSize = cs * 0.53;
+    var highlightY = -cs * 0.03;
 
     this.active.push({
       type: 'textPopup',
@@ -296,27 +298,27 @@ class Animations {
       text,
       color,
       hasGlow: hasGlow || false,
-      font,
+      fontStr,
       cs,
+      shadowSize,
+      highlightY,
       render(ctx, progress) {
         // Ease out for smooth motion
-        const ease = 1 - Math.pow(1 - progress, 3);
-        const alpha = progress < 0.8 ? 1 : 1 - (progress - 0.8) / 0.2;
-        const drift = ease * this.cs * 1.7;
-        const scale = progress < 0.15 ? 0.5 + (progress / 0.15) * 0.7 : 1.2 - ease * 0.2;
+        var ease = 1 - Math.pow(1 - progress, 3);
+        var alpha = progress < 0.8 ? 1 : 1 - (progress - 0.8) / 0.2;
 
         ctx.save();
-        ctx.translate(this.x, this.y - drift);
-        ctx.scale(scale, scale);
+        ctx.translate(this.x, this.y - ease * this.cs * 1.7);
+        ctx.scale(progress < 0.15 ? 0.5 + (progress / 0.15) * 0.7 : 1.2 - ease * 0.2, progress < 0.15 ? 0.5 + (progress / 0.15) * 0.7 : 1.2 - ease * 0.2);
         ctx.globalAlpha = alpha;
 
         if (this.hasGlow) {
           ctx.shadowColor = this.color;
-          ctx.shadowBlur = this.cs * 0.53;
+          ctx.shadowBlur = this.shadowSize;
         }
 
         ctx.fillStyle = this.color;
-        ctx.font = `900 ${this.cs * 0.73}px ${this.font}`;
+        ctx.font = this.fontStr;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(this.text, 0, 0);
@@ -325,7 +327,7 @@ class Animations {
         if (this.hasGlow) {
           ctx.shadowBlur = 0;
           ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-          ctx.fillText(this.text, 0, -this.cs * 0.03);
+          ctx.fillText(this.text, 0, this.highlightY);
         }
 
         ctx.restore();

@@ -1,5 +1,7 @@
 'use strict';
 
+var _SQRT3 = Math.sqrt(3);
+
 // Falling ghost-piece background animation for the welcome screen.
 // Renders translucent piece silhouettes on a canvas behind the DOM overlay.
 // Supports both classic (square blocks) and hex (hexagonal cells) modes.
@@ -302,7 +304,7 @@ class WelcomeBackground {
     for (const [q, r] of p.cells) {
       // Axial to pixel (flat-top hex)
       const cx = p.x + size * 1.5 * q;
-      const cy = p.y + size * Math.sqrt(3) * (r + q / 2);
+      const cy = p.y + size * _SQRT3 * (r + q / 2);
       this._drawHexagon(ctx, cx, cy, size * 0.92);
     }
   }
