@@ -327,7 +327,6 @@ function _stampHexPillow(c, cx, cy, size, color) {
   c.strokeStyle = 'rgba(255,255,255,' + edgeAlpha.toFixed(2) + ')';
   c.lineWidth = Math.max(0.5, size * 0.05);
   c.beginPath();
-  var a4 = Math.PI / 3 * 4, a5 = Math.PI / 3 * 5;
   c.moveTo(cx + size * HEX_UNIT_VERTICES[8], cy + size * HEX_UNIT_VERTICES[9]);   // vertex 4
   c.lineTo(cx + size * HEX_UNIT_VERTICES[10], cy + size * HEX_UNIT_VERTICES[11]); // vertex 5
   c.stroke();
