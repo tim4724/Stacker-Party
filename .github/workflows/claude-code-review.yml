@@ -36,8 +36,46 @@ jobs:
             echo 'COMMENTS_EOF'
           } >> "$GITHUB_OUTPUT"
 
-      - name: Run Claude Code Review
-        id: claude-review
+      - name: Draft review (analysis pass)
+        id: draft-review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          use_sticky_comment: false
+          track_progress: false
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            STEP 1 OF 2: DRAFT REVIEW (analysis only — do NOT post comments yet)
+
+            Analyze this pull request thoroughly. Read the diff and surrounding source files
+            to understand context (don't just rely on the diff alone).
+            Focus on:
+            - Code quality and best practices
+            - Potential bugs or issues
+            - Performance considerations
+            - Security concerns
+            - Test coverage
+
+            Use the repository's CLAUDE.md for guidance on style and conventions.
+
+            Write your draft review as a single structured document to stdout. For each finding use this format:
+
+            ### [SEVERITY: bug|concern|nit|praise] FILE: <path> LINE: <line_number>
+            <your analysis>
+
+            Be thorough in this pass — include anything that catches your eye, even if you're
+            not sure it's a real issue. The next step will filter out false alarms.
+
+            EXISTING REVIEW COMMENTS (from previous reviews — note which are still relevant):
+            ${{ steps.existing-comments.outputs.comments }}
+
+          claude_args: |
+            --allowedTools "Read,Glob,Grep,Bash(git log:*),Bash(git blame:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr checks:*)"
+
+      - name: Publish review (filtering pass)
+        id: publish-review
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -47,18 +85,37 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            Please review this pull request with a focus on:
-            - Code quality and best practices
-            - Potential bugs or issues
-            - Performance considerations
-            - Security concerns
-            - Test coverage
+            STEP 2 OF 2: FILTER AND PUBLISH REVIEW
 
-            Use the repository's CLAUDE.md for guidance on style and conventions.
-            Provide detailed feedback using inline comments for specific issues.
+            Below is a draft review from the analysis pass. Your job is to critically evaluate
+            each finding and only publish the ones that are genuinely worth raising.
 
-            EXISTING REVIEW COMMENTS (from previous reviews — evaluate each on its merits: re-raise if still valid, drop if addressed or not valid):
-            ${{ steps.existing-comments.outputs.comments }}
+            DRAFT REVIEW:
+            ${{ steps.draft-review.outputs.claude_response }}
+
+            FILTERING RULES:
+            - RECLASSIFY findings where the reviewer suspected a bug but concluded it's actually
+              correct. These are not bugs — but if the code was confusing enough to trigger a
+              false alarm, it may be worth a nit suggesting a clarifying comment or rename.
+            - DROP vague or speculative concerns that lack concrete evidence of a problem.
+            - KEEP style nits only when code deviates from the existing codebase style.
+              Do not impose external style preferences — match what the project already does.
+            - KEEP genuine bugs, real security issues, meaningful performance problems, and
+              missing test coverage for important code paths.
+            - KEEP praise for particularly good patterns (sparingly — max 1-2).
+            - REVISE kept findings for clarity and conciseness. Remove hedging language.
+              Ensure severity labels accurately reflect the finding after filtering.
+
+            Before publishing, re-read the relevant source files to verify the draft's claims
+            are accurate. Drop any finding that doesn't hold up against the actual code.
+
+            Before posting inline comments, fetch existing PR comments to avoid duplicating
+            feedback that was already posted by a previous review run.
+
+            For each finding you keep, post it as an inline comment on the PR.
+            Then post a sticky summary comment with an overview of the review.
+
+            If no findings survive filtering, post a short approval comment instead.
 
           claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --allowedTools "Read,Glob,Grep,Bash(git log:*),Bash(git blame:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr checks:*),Bash(gh api:*),mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*)"
