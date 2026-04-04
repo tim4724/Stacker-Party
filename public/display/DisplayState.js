@@ -64,9 +64,6 @@ var countdownCallback = null;
 var goTimeout = null;
 var goOverlayTimer = null;
 
-// Soft drop auto-timeout
-var softDropTimers = new Map();
-
 // Controller liveness
 var livenessInterval = null;
 
