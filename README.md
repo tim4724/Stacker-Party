@@ -31,6 +31,8 @@ The display browser runs the game engine and renders all player boards. Controll
 - Competitive mode with garbage lines
 - Rotation with wall kicks
 - 7-bag randomizer
+- Localized UI (11 languages)
+- AirConsole platform support (`screen.html` / `controller.html`)
 
 ## Quick Start
 
@@ -64,6 +66,7 @@ public/
   display/   # Display client: game authority, Canvas renderer
   controller/# Phone touch controller
   shared/    # Protocol, relay connection, colors, theme, shared UI
+scripts/     # Build and code-generation scripts (AirConsole HTML generator)
 tests/       # Unit tests (node:test) and Playwright visual snapshots
 artwork/     # Banner, favicon, and cover art generators (Playwright)
 ```
@@ -87,6 +90,9 @@ npm test
 
 # E2E lifecycle tests
 npm run test:e2e
+
+# AirConsole E2E tests
+npm run test:e2e:airconsole
 
 # Visual snapshot tests
 npm run test:visual

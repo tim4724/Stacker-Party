@@ -5,11 +5,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm test                     # Unit tests (node:test)
+npm test                       # Unit tests (node:test)
 node --test tests/board.test.js  # Single unit test
-npm run test:e2e             # Playwright E2E lifecycle tests
-npm run test:visual          # Playwright visual snapshot tests
-npm run test:visual:update   # Update snapshots after UI changes
+npm run test:e2e               # Playwright E2E lifecycle tests
+npm run test:e2e:airconsole    # Playwright E2E AirConsole tests
+npm run test:visual            # Playwright visual snapshot tests
+npm run test:visual:update     # Update snapshots after UI changes
 ```
 
 ## Key Rules
