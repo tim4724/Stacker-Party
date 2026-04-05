@@ -241,14 +241,14 @@ playerListEl.addEventListener('click', function(e) {
 });
 
 // --- QR Code Rendering ---
-function renderQR(canvas, qrMatrix) {
+function renderQR(canvas, qrMatrix, targetCssSize) {
   if (!qrMatrix || !qrMatrix.modules) return;
   var size = qrMatrix.size;
   var modules = qrMatrix.modules;
 
   var dpr = window.devicePixelRatio || 1;
   var rect = canvas.getBoundingClientRect();
-  var cssSize = Math.min(rect.width, rect.height) || 180;
+  var cssSize = targetCssSize || Math.min(rect.width, rect.height) || 180;
   var cellPx = Math.floor((cssSize * dpr) / size);
   var totalPx = cellPx * size;
 

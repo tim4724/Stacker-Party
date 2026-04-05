@@ -335,7 +335,7 @@ function showDisconnectQR(clientId) {
       return;
     }
     var offscreen = document.createElement('canvas');
-    renderQR(offscreen, qrMatrix);
+    renderQR(offscreen, qrMatrix, 512);
     disconnectedQRs.set(clientId, offscreen);
   });
 }
