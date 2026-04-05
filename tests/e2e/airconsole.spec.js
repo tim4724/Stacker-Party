@@ -340,6 +340,7 @@ test.describe.serial('AirConsole Integration', () => {
     // Pause/resume during COUNTDOWN — verifies clearCountdownTimers() path
     await s.screenPage.evaluate(() => window.airconsole.triggerPause());
     await s.screenFrame.waitForFunction(() => paused === true, null, { timeout: 5000 });
+    expect(await s.screenFrame.evaluate(() => countdownTimer == null)).toBe(true);
     await s.screenPage.evaluate(() => window.airconsole.triggerResume());
     await s.screenFrame.waitForFunction(() => paused === false, null, { timeout: 5000 });
 
@@ -378,6 +379,7 @@ test.describe.serial('AirConsole Integration', () => {
     // Ad during COUNTDOWN — verifies clearCountdownTimers() path
     await s.screenPage.evaluate(() => window.airconsole.triggerAdShow());
     await s.screenFrame.waitForFunction(() => paused === true, null, { timeout: 5000 });
+    expect(await s.screenFrame.evaluate(() => countdownTimer == null)).toBe(true);
     await s.screenPage.evaluate(() => window.airconsole.triggerAdComplete());
     await s.screenFrame.waitForFunction(() => paused === false, null, { timeout: 5000 });
 

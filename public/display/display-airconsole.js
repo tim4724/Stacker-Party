@@ -67,11 +67,21 @@ airconsole.onAdShow = function() {
 
 airconsole.onAdComplete = function() {
   console.log('[AirConsole] onAdComplete — resuming after ad');
-  if (_adMutedByUs) { _adMutedByUs = false; if (music) music.resume(); }
-  if (!_adPaused) return;
+  var adWasMuted = _adMutedByUs;
+  if (_adMutedByUs) _adMutedByUs = false;
+  if (!_adPaused) { if (adWasMuted && music) music.resume(); return; }
   _adPaused = false;
   if (_acPaused) return;
-  if (autoPaused && !allPlayersDisconnected()) { autoPaused = false; resumeGame(); }
+  var canResume = autoPaused && !allPlayersDisconnected();
+  if (adWasMuted && (canResume || !paused)) { if (music) music.resume(); }
+  if (canResume) { autoPaused = false; resumeGame(); }
+};
+
+// Guard checkAutoResume — don't resume while ad or platform pause is active.
+var _origCheckAutoResume = checkAutoResume;
+checkAutoResume = function() {
+  if (_adPaused || _acPaused) return;
+  _origCheckAutoResume();
 };
 
 // Replace PartyConnection with a factory that returns AirConsoleAdapter.
