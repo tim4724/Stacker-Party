@@ -389,6 +389,14 @@ async function generate() {
   }, null, { timeout: 10000 });
   await host.waitForTimeout(300);
 
+  // Hide pause/mute buttons so they don't distract in the banner
+  for (const ctrl of controllers) {
+    await ctrl.evaluate(() => {
+      document.getElementById('mute-btn').style.display = 'none';
+      document.getElementById('pause-btn').style.display = 'none';
+    });
+  }
+
   // Screenshot each controller
   const controllerBase64s = [];
   for (let i = 0; i < controllers.length; i++) {
