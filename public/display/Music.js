@@ -50,7 +50,7 @@ class Music {
     if (this._loaded) return;
     this._loaded = true;
     try {
-      const response = await fetch('/shared/music/lunar-joyride.mp3');
+      const response = await fetch('shared/music/lunar-joyride.mp3');
       const arrayBuffer = await response.arrayBuffer();
       this.buffer = await this.ctx.decodeAudioData(arrayBuffer);
       // If start() was called before load finished, begin now

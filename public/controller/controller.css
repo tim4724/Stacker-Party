@@ -270,13 +270,13 @@ html, body {
 }
 
 .mode-icon--classic {
-  -webkit-mask-image: url(/favicon-classic.svg);
-  mask-image: url(/favicon-classic.svg);
+  -webkit-mask-image: url(../favicon-classic.svg);
+  mask-image: url(../favicon-classic.svg);
 }
 
 .mode-icon--hex {
-  -webkit-mask-image: url(/favicon-hex.svg);
-  mask-image: url(/favicon-hex.svg);
+  -webkit-mask-image: url(../favicon-hex.svg);
+  mask-image: url(../favicon-hex.svg);
 }
 
 .badge-new {
