@@ -88,9 +88,9 @@ class BaseBoard {
   }
 
   isValidPosition(piece) {
-    // Classic Piece: getBlocks() returns static array, offset by x/y — no allocation
-    // HexPiece: must use getAbsoluteBlocks() for axial→offset conversion
-    if (piece.x != null) {
+    // Classic Piece has getBlocks() (static array) + x/y offset — no allocation.
+    // HexPiece lacks getBlocks(); uses _absoluteBlocksFast() for axial→offset conversion.
+    if (piece.getBlocks) {
       const blocks = piece.getBlocks();
       const px = piece.x, py = piece.y;
       for (let i = 0; i < blocks.length; i++) {
@@ -113,7 +113,7 @@ class BaseBoard {
 
   lockPiece() {
     if (!this.currentPiece) return;
-    if (this.currentPiece.x != null) {
+    if (this.currentPiece.getBlocks) {
       const blocks = this.currentPiece.getBlocks();
       const px = this.currentPiece.x, py = this.currentPiece.y;
       for (let i = 0; i < blocks.length; i++) {
