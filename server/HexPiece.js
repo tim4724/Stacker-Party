@@ -46,6 +46,7 @@ class HexPiece {
     this.cells = HEX_PIECES[type].map(function(c) { return { q: c[0], r: c[1] }; });
     this.anchorCol = 5;  // center of 11-col grid
     this.anchorRow = 0;
+    this._rotId = 0;    // incremented on rotate, used for ghost cache key
     // In odd-q (flat-top), column parity affects offset row mapping,
     // so we must compute the actual minimum offset row of all blocks.
     this._adjustAnchorRow();
@@ -95,10 +96,12 @@ class HexPiece {
     p.cells = this.cells.map(function(c) { return { q: c.q, r: c.r }; });
     p.anchorCol = this.anchorCol;
     p.anchorRow = this.anchorRow;
+    p._rotId = this._rotId;
     return p;
   }
 
   rotateCW() {
+    this._rotId++;
     this.cells = this.cells.map(function(c) {
       var rot = rotateCW(c.q, c.r);
       return { q: rot.q, r: rot.r };
@@ -106,6 +109,7 @@ class HexPiece {
   }
 
   rotateCCW() {
+    this._rotId++;
     this.cells = this.cells.map(function(c) {
       var rot = rotateCCW(c.q, c.r);
       return { q: rot.q, r: rot.r };

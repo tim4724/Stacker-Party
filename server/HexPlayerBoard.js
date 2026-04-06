@@ -37,7 +37,7 @@ class HexPlayerBoard extends BaseBoard {
     this._cachedGhost = null;
     this._ghostKeyCol = -1;
     this._ghostKeyRow = -1;
-    this._ghostKeyType = '';
+    this._ghostKeyRot = -1;
     this._ghostKeyGV = -1;
 
     // Visible grid cache (re-sliced only when gridVersion changes)
@@ -92,7 +92,7 @@ class HexPlayerBoard extends BaseBoard {
 
   _ghostOf(piece) {
     if (piece.anchorCol === this._ghostKeyCol && piece.anchorRow === this._ghostKeyRow &&
-        piece.type === this._ghostKeyType && this.gridVersion === this._ghostKeyGV) {
+        piece._rotId === this._ghostKeyRot && this.gridVersion === this._ghostKeyGV) {
       return this._cachedGhost;
     }
     let g = piece.clone();
@@ -103,7 +103,7 @@ class HexPlayerBoard extends BaseBoard {
     }
     this._cachedGhost = g;
     this._ghostKeyCol = piece.anchorCol; this._ghostKeyRow = piece.anchorRow;
-    this._ghostKeyType = piece.type; this._ghostKeyGV = this.gridVersion;
+    this._ghostKeyRot = piece._rotId; this._ghostKeyGV = this.gridVersion;
     return g;
   }
 
