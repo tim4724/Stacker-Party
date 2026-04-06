@@ -112,67 +112,72 @@ function computeHexGeometry(boardCols, visRows, cellSize) {
 
 // Trace the closed outline of a hex board on a canvas context.
 // bx, by: board origin. hs: hexSize. hexH: hex height. colW: column spacing.
-// cols: column count. visRows: visible row count.
-// Produces a single closed path suitable for both stroking and clipping.
-function traceHexOutline(ctx, bx, by, hs, hexH, colW, cols, visRows) {
+// Compute the outline vertices for a hex board as a flat array of [x, y] pairs.
+// Used by both traceHexOutline (canvas path) and HexBoardRenderer (pre-computed cache).
+function computeHexOutlineVerts(bx, by, hs, hexH, colW, cols, visRows) {
+  var verts = [];
   var lastRow = visRows - 1;
   var lastCol = cols - 1;
 
   function hc(col, row) {
-    return { x: bx + colW * col + hs, y: by + hexH * (row + 0.5 * (col & 1)) + hexH / 2 };
+    return [bx + colW * col + hs, by + hexH * (row + 0.5 * (col & 1)) + hexH / 2];
   }
   function hv(cx, cy, i) {
     var a = Math.PI / 3 * i;
-    return { x: cx + hs * Math.cos(a), y: cy + hs * Math.sin(a) };
+    return [cx + hs * Math.cos(a), cy + hs * Math.sin(a)];
   }
 
-  ctx.beginPath();
   // Top border: left-to-right across row 0
   var p0 = hc(0, 0);
-  var v = hv(p0.x, p0.y, 4);
-  ctx.moveTo(v.x, v.y);
+  verts.push(hv(p0[0], p0[1], 4));
   for (var c = 0; c <= lastCol; c++) {
     var pt = hc(c, 0);
-    v = hv(pt.x, pt.y, 5);
-    ctx.lineTo(v.x, v.y);
+    verts.push(hv(pt[0], pt[1], 5));
     if (c < lastCol) {
       if (c % 2 === 0) {
-        v = hv(pt.x, pt.y, 0);
-        ctx.lineTo(v.x, v.y);
+        verts.push(hv(pt[0], pt[1], 0));
       } else {
         var pn = hc(c + 1, 0);
-        v = hv(pn.x, pn.y, 4);
-        ctx.lineTo(v.x, v.y);
+        verts.push(hv(pn[0], pn[1], 4));
       }
     }
   }
   // Right wall: top-to-bottom along last col
   for (var r = 0; r <= lastRow; r++) {
     var pr = hc(lastCol, r);
-    v = hv(pr.x, pr.y, 0); ctx.lineTo(v.x, v.y);
-    v = hv(pr.x, pr.y, 1); ctx.lineTo(v.x, v.y);
+    verts.push(hv(pr[0], pr[1], 0));
+    verts.push(hv(pr[0], pr[1], 1));
   }
   // Bottom border: right-to-left across last row
   for (var c2 = lastCol; c2 >= 0; c2--) {
     var pb = hc(c2, lastRow);
-    v = hv(pb.x, pb.y, 2);
-    ctx.lineTo(v.x, v.y);
+    verts.push(hv(pb[0], pb[1], 2));
     if (c2 > 0) {
       if (c2 % 2 === 0) {
         var pp = hc(c2 - 1, lastRow);
-        v = hv(pp.x, pp.y, 1);
-        ctx.lineTo(v.x, v.y);
+        verts.push(hv(pp[0], pp[1], 1));
       } else {
-        v = hv(pb.x, pb.y, 3);
-        ctx.lineTo(v.x, v.y);
+        verts.push(hv(pb[0], pb[1], 3));
       }
     }
   }
   // Left wall: bottom-to-top along col 0
   for (var r2 = lastRow; r2 >= 0; r2--) {
     var pl = hc(0, r2);
-    v = hv(pl.x, pl.y, 3); ctx.lineTo(v.x, v.y);
-    v = hv(pl.x, pl.y, 4); ctx.lineTo(v.x, v.y);
+    verts.push(hv(pl[0], pl[1], 3));
+    verts.push(hv(pl[0], pl[1], 4));
+  }
+  return verts;
+}
+
+// Trace the hex board outline as a closed canvas path (for stroking/clipping).
+// cols: column count. visRows: visible row count.
+function traceHexOutline(ctx, bx, by, hs, hexH, colW, cols, visRows) {
+  var verts = computeHexOutlineVerts(bx, by, hs, hexH, colW, cols, visRows);
+  ctx.beginPath();
+  ctx.moveTo(verts[0][0], verts[0][1]);
+  for (var i = 1; i < verts.length; i++) {
+    ctx.lineTo(verts[i][0], verts[i][1]);
   }
   ctx.closePath();
 }
@@ -187,5 +192,6 @@ exports.HEX_PIECE_TYPES = HEX_PIECE_TYPES;
 exports.HEX_PIECE_TYPE_TO_ID = HEX_PIECE_TYPE_TO_ID;
 exports.HEX_GARBAGE_CELL = HEX_GARBAGE_CELL;
 exports.findClearableZigzags = findClearableZigzags;
+exports.computeHexOutlineVerts = computeHexOutlineVerts;
 
 })(typeof module !== 'undefined' ? module.exports : (window.HexConstants = {}));

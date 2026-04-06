@@ -40,7 +40,9 @@ class HexBoardRenderer {
     this._cachedGridTier = null;
 
     // Pre-compute hex outline vertices (only changes on layout recalculation)
-    this._outlineVerts = this._computeOutlineVerts();
+    this._outlineVerts = HexConstants.computeHexOutlineVerts(
+      this.x, this.y, this.hexSize, this.hexH, this.colW, HEX_COLS_N, HEX_VIS_ROWS
+    );
 
     // Cached rgba strings (stable between layout recalculations)
     var rgb = this._accentRgb;
@@ -273,64 +275,6 @@ class HexBoardRenderer {
     gc.strokeStyle = this._gridStroke;
     gc.lineWidth = 1.5;
     gc.stroke();
-  }
-
-  // Pre-compute outline vertices — must stay in sync with HexConstants.traceHexOutline
-  _computeOutlineVerts() {
-    var verts = [];
-    var bx = this.x, by = this.y, hs = this.hexSize;
-    var hexH = this.hexH, colW = this.colW;
-    var lastRow = HEX_VIS_ROWS - 1, lastCol = HEX_COLS_N - 1;
-
-    function hc(col, row) {
-      return [bx + colW * col + hs, by + hexH * (row + 0.5 * (col & 1)) + hexH / 2];
-    }
-    function hv(cx, cy, i) {
-      var a = Math.PI / 3 * i;
-      return [cx + hs * Math.cos(a), cy + hs * Math.sin(a)];
-    }
-
-    // Top border
-    var p0 = hc(0, 0);
-    verts.push(hv(p0[0], p0[1], 4));
-    for (var c = 0; c <= lastCol; c++) {
-      var pt = hc(c, 0);
-      verts.push(hv(pt[0], pt[1], 5));
-      if (c < lastCol) {
-        if (c % 2 === 0) {
-          verts.push(hv(pt[0], pt[1], 0));
-        } else {
-          var pn = hc(c + 1, 0);
-          verts.push(hv(pn[0], pn[1], 4));
-        }
-      }
-    }
-    // Right wall
-    for (var r = 0; r <= lastRow; r++) {
-      var pr = hc(lastCol, r);
-      verts.push(hv(pr[0], pr[1], 0));
-      verts.push(hv(pr[0], pr[1], 1));
-    }
-    // Bottom border
-    for (var c2 = lastCol; c2 >= 0; c2--) {
-      var pb = hc(c2, lastRow);
-      verts.push(hv(pb[0], pb[1], 2));
-      if (c2 > 0) {
-        if (c2 % 2 === 0) {
-          var pp = hc(c2 - 1, lastRow);
-          verts.push(hv(pp[0], pp[1], 1));
-        } else {
-          verts.push(hv(pb[0], pb[1], 3));
-        }
-      }
-    }
-    // Left wall
-    for (var r2 = lastRow; r2 >= 0; r2--) {
-      var pl = hc(0, r2);
-      verts.push(hv(pl[0], pl[1], 3));
-      verts.push(hv(pl[0], pl[1], 4));
-    }
-    return verts;
   }
 
   _drawWalls() {
