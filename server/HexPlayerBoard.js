@@ -36,7 +36,7 @@ class HexPlayerBoard extends BaseBoard {
 
     // Pre-allocated block arrays for getState() — avoids per-frame allocation.
     // Each board instance gets its own arrays so multi-player snapshots don't alias.
-    // Sized for 4 cells per piece — update if a 5+ cell piece is ever added.
+    // Pre-sized for 4 cells; auto-expands in getState() if needed.
     this._stateBlocksCurrent = [[0,0],[0,0],[0,0],[0,0]];
     this._stateBlocksGhost = [[0,0],[0,0],[0,0],[0,0]];
 
@@ -105,9 +105,7 @@ class HexPlayerBoard extends BaseBoard {
     }
     let g = piece.clone();
     for (let i = 0; i < HEX_TOTAL_ROWS; i++) {
-      const n = this._hexDrop(g);
-      if (!n) break;
-      g = n;
+      if (!this._hexDrop(g)) break;
     }
     this._cachedGhost = g;
     this._ghostKeyCol = piece.anchorCol; this._ghostKeyRow = piece.anchorRow;
