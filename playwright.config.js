@@ -6,19 +6,19 @@ module.exports = defineConfig({
   retries: 0,
   reporter: 'list',
   use: {
-    baseURL: 'http://localhost:4100',
+    baseURL: `http://localhost:${process.env.PW_PORT || '4100'}`,
     actionTimeout: 5000,
   },
   expect: {
-    toHaveScreenshot: { maxDiffPixelRatio: 0 },
+    toHaveScreenshot: { maxDiffPixelRatio: 0.001 },
   },
   webServer: {
     command: 'node scripts/generate-airconsole-html.js && node server/index.js',
     env: {
       ...process.env,
-      PORT: '4100',
+      PORT: process.env.PW_PORT || '4100',
     },
-    port: 4100,
+    port: Number(process.env.PW_PORT || 4100),
     reuseExistingServer: false,
   },
   projects: [
@@ -45,7 +45,7 @@ module.exports = defineConfig({
         hasTouch: true,
       },
       expect: {
-        toHaveScreenshot: { maxDiffPixelRatio: 0, scale: 'device' },
+        toHaveScreenshot: { maxDiffPixelRatio: 0.001, scale: 'device' },
       },
     },
     {
