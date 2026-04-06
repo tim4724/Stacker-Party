@@ -566,9 +566,8 @@ describe('HexPlayerBoard - zigzag line clears', () => {
     }, null);
     assert.equal(result.linesCleared, 1, 'only one zigzag clears');
     // All cleared cells should be at row 4 (zigzag-down wins tie-break)
-    for (var key in result.clearCells) {
-      var row = parseInt(key.split(',')[1]);
-      assert.equal(row, 4, 'cleared cell at row 4 (zigzag-down)');
+    for (var i = 0; i < result.clearCells.length; i++) {
+      assert.equal(result.clearCells[i][1], 4, 'cleared cell at row 4 (zigzag-down)');
     }
   });
 

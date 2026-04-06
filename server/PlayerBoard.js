@@ -55,30 +55,27 @@ class PlayerBoard extends BaseBoard {
   }
 
   _drop(piece) {
-    var test = piece.clone();
-    test.y += 1;
-    if (this.isValidPosition(test)) {
-      return test;
-    }
+    piece.y += 1;
+    if (this.isValidPosition(piece)) return piece;
+    piece.y -= 1;
     return null;
   }
 
   _isOnSurface() {
     if (!this.currentPiece) return false;
-    var test = this.currentPiece.clone();
-    test.y += 1;
-    return !this.isValidPosition(test);
+    this.currentPiece.y += 1;
+    var blocked = !this.isValidPosition(this.currentPiece);
+    this.currentPiece.y -= 1;
+    return blocked;
   }
 
   _preDropToVisible() {
     if (!this.currentPiece) return;
     var targetY = BUFFER_ROWS - 1;
     while (this.currentPiece.y < targetY) {
-      var test = this.currentPiece.clone();
-      test.y += 1;
-      if (this.isValidPosition(test)) {
-        this.currentPiece.y = test.y;
-      } else {
+      this.currentPiece.y += 1;
+      if (!this.isValidPosition(this.currentPiece)) {
+        this.currentPiece.y -= 1;
         break;
       }
     }
@@ -136,15 +133,7 @@ class PlayerBoard extends BaseBoard {
 
   hardDrop() {
     if (!this.currentPiece || !this.alive) return null;
-    while (true) {
-      const test = this.currentPiece.clone();
-      test.y += 1;
-      if (this.isValidPosition(test)) {
-        this.currentPiece.y = test.y;
-      } else {
-        break;
-      }
-    }
+    this.currentPiece.y = this.getGhostY();
     return this._lockAndProcess();
   }
 

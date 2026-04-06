@@ -140,9 +140,8 @@ class HexBoardRenderer {
       var ghostBlocks = playerState.ghost.blocks;
       if (ghostBlocks) {
         // Cache key from ghost anchor + piece type (avoids per-frame string building)
-        var ghost = playerState.ghost;
-        var gkCol = ghost.anchorCol;
-        var gkRow = ghost.anchorRow;
+        var gkCol = playerState.ghost.anchorCol;
+        var gkRow = playerState.ghost.anchorRow;
         var gkType = playerState.currentPiece.typeId;
         var gkVersion = playerState.gridVersion;
 
@@ -163,12 +162,8 @@ class HexBoardRenderer {
             function(col, row) { return grid[row][col] > 0 || ghostSet[col + ',' + row]; },
             function(col, row) { return grid[row][col] === 0 && ghostSet[col + ',' + row]; }
           );
-          // Convert string-keyed clearCells to array for rendering
-          this._cachedPreviewCells = [];
-          for (var key in result.clearCells) {
-            var parts = key.split(',');
-            this._cachedPreviewCells.push([parseInt(parts[0]), parseInt(parts[1])]);
-          }
+          // findClearableZigzags returns clearCells as [[col, row], ...]
+          this._cachedPreviewCells = result.clearCells;
         }
 
         // Draw cached preview highlights

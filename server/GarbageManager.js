@@ -4,9 +4,9 @@
 (function(exports) {
 
 var constants = (typeof require !== 'undefined') ? require('./constants') : window.GameConstants;
-var BOARD_WIDTH = constants.BOARD_WIDTH;
 var GARBAGE_TABLE = constants.GARBAGE_TABLE;
 var GARBAGE_DELAY_MS = constants.GARBAGE_DELAY_MS;
+var DEFAULT_BOARD_WIDTH = constants.BOARD_WIDTH;
 
 class GarbageManager {
   constructor(rng, boardWidth) {
@@ -14,7 +14,7 @@ class GarbageManager {
     this._pendingTotals = new Map(); // playerId -> total pending lines
     this._readyGarbage = [];
     this.rng = rng || Math.random;
-    this.boardWidth = boardWidth || BOARD_WIDTH;
+    this.boardWidth = boardWidth || DEFAULT_BOARD_WIDTH;
   }
 
   addPlayer(playerId) {

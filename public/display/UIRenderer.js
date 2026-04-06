@@ -25,6 +25,9 @@ for (const [type, blocks] of Object.entries(MINI_PIECES)) {
 
 const PIECE_TYPE_TO_ID = GameConstants.PIECE_TYPE_TO_ID;
 
+var _getIndicatorColor = function(e) { return e.color; };
+var _getDefenceColor = function() { return THEME.color.text.white; };
+
 class UIRenderer extends BaseUIRenderer {
   getGarbageMeterLayout() {
     return {
@@ -65,7 +68,7 @@ class UIRenderer extends BaseUIRenderer {
     ctx.fill();
   }
 
-  drawGarbageIndicatorEffects(effects, timestamp) {
+  _drawGarbageEffects(effects, timestamp, getColor, highlightAlpha) {
     if (!Array.isArray(effects) || effects.length === 0) return;
 
     const ctx = this.ctx;
@@ -87,10 +90,10 @@ class UIRenderer extends BaseUIRenderer {
           const y = meter.y + row * meter.cellSize;
           const bx = meter.x + inset;
           const by = y + inset;
-          ctx.fillStyle = effect.color;
+          ctx.fillStyle = getColor(effect);
           roundRect(ctx, bx, by, bw, bh, r);
           ctx.fill();
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+          ctx.fillStyle = 'rgba(255, 255, 255, ' + highlightAlpha + ')';
           ctx.fillRect(bx + inset, by + inset, bw - inset * 2, inset);
         }
       }
@@ -99,38 +102,12 @@ class UIRenderer extends BaseUIRenderer {
     }
   }
 
+  drawGarbageIndicatorEffects(effects, timestamp) {
+    this._drawGarbageEffects(effects, timestamp, _getIndicatorColor, 0.2);
+  }
+
   drawGarbageDefenceEffects(effects, timestamp) {
-    if (!Array.isArray(effects) || effects.length === 0) return;
-
-    const ctx = this.ctx;
-    const meter = this.getGarbageMeterLayout();
-    const now = timestamp || performance.now();
-    const inset = meter.cellSize * THEME.size.blockGap;
-    const r = THEME.radius.block(meter.cellSize);
-    const bw = meter.cellSize - inset * 2;
-    const bh = meter.cellSize - inset * 2;
-
-    try {
-      for (const effect of effects) {
-        const elapsed = now - effect.startTime;
-        if (elapsed < 0 || elapsed >= effect.duration) continue;
-        ctx.globalAlpha = (1 - elapsed / effect.duration) * (effect.maxAlpha || 0.9);
-
-        for (let row = effect.rowStart; row < effect.rowStart + effect.lines; row++) {
-          if (row < 0 || row >= meter.rows) continue;
-          const y = meter.y + row * meter.cellSize;
-          const bx = meter.x + inset;
-          const by = y + inset;
-          ctx.fillStyle = THEME.color.text.white;
-          roundRect(ctx, bx, by, bw, bh, r);
-          ctx.fill();
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-          ctx.fillRect(bx + inset, by + inset, bw - inset * 2, inset);
-        }
-      }
-    } finally {
-      ctx.globalAlpha = 1.0;
-    }
+    this._drawGarbageEffects(effects, timestamp, _getDefenceColor, 0.3);
   }
 
   drawMiniPiece(centerX, centerY, pieceType, size) {

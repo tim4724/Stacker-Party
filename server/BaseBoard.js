@@ -271,9 +271,7 @@ class BaseBoard {
     while (this.gravityCounter >= gravityFrames && dropsThisTick < MAX_DROPS_PER_TICK) {
       this.gravityCounter -= gravityFrames;
       dropsThisTick++;
-      const dropped = this._drop(this.currentPiece);
-      if (dropped) {
-        this.currentPiece = dropped;
+      if (this._drop(this.currentPiece)) {
         if (this._isOnSurface()) {
           if (this.lockTimer === null) {
             this.lockTimer = LOCK_DELAY_MS;

@@ -8,6 +8,16 @@
 var lastThrottled = null;
 var lastMusicLevel = 0;
 
+// Returns all effects if any is still active; otherwise clears the map entry and returns [].
+function getOrClearEffects(effectsMap, playerId, timestamp) {
+  var effects = effectsMap.get(playerId) || [];
+  for (var i = 0; i < effects.length; i++) {
+    if (timestamp - effects[i].startTime < effects[i].duration) return effects;
+  }
+  effectsMap.delete(playerId);
+  return [];
+}
+
 function startRenderLoop() {
   if (rafId != null) return;
   rafId = requestAnimationFrame(renderLoop);
@@ -130,32 +140,10 @@ function renderFrame(timestamp) {
       }
 
       var pInfo = players.get(playerData.id);
-      var activeGarbageIndicatorEffects = garbageIndicatorEffects.get(playerData.id) || [];
-      var hasActiveIndicator = false;
-      for (var gi = 0; gi < activeGarbageIndicatorEffects.length; gi++) {
-        if (timestamp - activeGarbageIndicatorEffects[gi].startTime < activeGarbageIndicatorEffects[gi].duration) {
-          hasActiveIndicator = true;
-          break;
-        }
-      }
-      if (!hasActiveIndicator) {
-        garbageIndicatorEffects.delete(playerData.id);
-        activeGarbageIndicatorEffects = [];
-      }
-      var activeGarbageDefenceEffects = garbageDefenceEffects.get(playerData.id) || [];
-      var hasActiveDefence = false;
-      for (var gd = 0; gd < activeGarbageDefenceEffects.length; gd++) {
-        if (timestamp - activeGarbageDefenceEffects[gd].startTime < activeGarbageDefenceEffects[gd].duration) {
-          hasActiveDefence = true;
-          break;
-        }
-      }
-      if (!hasActiveDefence) {
-        garbageDefenceEffects.delete(playerData.id);
-        activeGarbageDefenceEffects = [];
-      }
-      // playerData is a fresh snapshot per frame (getState() allocates new objects);
-      // mutating it here avoids Object.assign overhead.
+      var activeGarbageIndicatorEffects = getOrClearEffects(garbageIndicatorEffects, playerData.id, timestamp);
+      var activeGarbageDefenceEffects = getOrClearEffects(garbageDefenceEffects, playerData.id, timestamp);
+      // playerData contains live references (blocks, cells, grid rows) —
+      // consume within this frame. Mutating here avoids Object.assign overhead.
       playerData.garbageIndicatorEffects = activeGarbageIndicatorEffects;
       playerData.garbageDefenceEffects = activeGarbageDefenceEffects;
       playerData.playerName = pInfo?.playerName || PLAYER_NAMES[j];

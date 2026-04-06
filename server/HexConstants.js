@@ -75,18 +75,20 @@ function findClearableZigzags(cols, totalRows, isFilled, ghostContributes, minRo
   });
 
   // Greedily select non-overlapping zigzags
-  var clearCells = {};
+  var usedCells = {};   // string-key set for fast overlap detection
+  var clearCells = [];  // flat array of [col, row] pairs
   var linesCleared = 0;
   for (var zi = 0; zi < allZigzags.length; zi++) {
     var zag = allZigzags[zi];
     var overlaps = false;
     for (var ci = 0; ci < zag.length; ci++) {
-      if (clearCells[zag[ci][0] + ',' + zag[ci][1]]) { overlaps = true; break; }
+      if (usedCells[zag[ci][0] + ',' + zag[ci][1]]) { overlaps = true; break; }
     }
     if (!overlaps) {
       linesCleared++;
       for (var cj = 0; cj < zag.length; cj++) {
-        clearCells[zag[cj][0] + ',' + zag[cj][1]] = true;
+        usedCells[zag[cj][0] + ',' + zag[cj][1]] = true;
+        clearCells.push([zag[cj][0], zag[cj][1]]);
       }
     }
   }
