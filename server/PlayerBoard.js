@@ -247,8 +247,9 @@ class PlayerBoard extends BaseBoard {
     }
   }
 
+  // Returns snapshot for rendering. grid and nextPieces are cached references —
+  // callers must treat the returned object as read-only.
   getState() {
-    // Return only visible rows (cached; re-sliced only when grid changes)
     if (this.gridVersion !== this._visibleGridVersion) {
       this._visibleGrid = this.grid.slice(BUFFER_ROWS);
       this._visibleGridVersion = this.gridVersion;

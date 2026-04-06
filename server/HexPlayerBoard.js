@@ -275,6 +275,8 @@ class HexPlayerBoard extends BaseBoard {
     return ghost.anchorRow;
   }
 
+  // Returns snapshot for rendering. grid and nextPieces are cached references —
+  // callers must treat the returned object as read-only.
   getState() {
     if (this.gridVersion !== this._visibleGridVersion) {
       this._visibleGrid = this.grid.slice(HEX_BUFFER_ROWS);

@@ -405,7 +405,7 @@ class Animations {
 
     for (const anim of this.active) {
       if (anim.render) {
-        anim.render(ctx, anim._progress);
+        anim.render(ctx, anim._progress ?? 0);
       }
     }
   }

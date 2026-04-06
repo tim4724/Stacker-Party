@@ -30,6 +30,7 @@ class GarbageManager {
   /**
    * Called each game tick to count down garbage delays.
    * Returns an array of { playerId, lines, gapColumn, senderId } for garbage that is ready.
+   * NOTE: the returned array is reused — do not store references across tick() calls.
    */
   tick(deltaMs) {
     this._readyGarbage.length = 0;

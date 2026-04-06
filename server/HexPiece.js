@@ -78,6 +78,7 @@ class HexPiece {
   // Non-allocating version for hot paths (isValidPosition, lockPiece).
   // Returns a shared scratch array — caller must consume before the next call.
   _absoluteBlocksFast() {
+    while (_absBlocksScratch.length < this.cells.length) _absBlocksScratch.push([0, 0]);
     var ac = this.anchorCol, ar = this.anchorRow;
     var aq = ac, aRr = ar - ((ac - (ac & 1)) >> 1);
     for (var i = 0; i < this.cells.length; i++) {
