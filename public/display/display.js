@@ -259,6 +259,9 @@ if (bgCanvas && urlParams.get('test') !== '1') {
 // --- Debug or normal init ---
 if (debugCount > 0 && window.__TEST__) {
   initDebugMode(debugCount);
+} else if (urlParams.get('test') === '1') {
+  // Test mode: skip relay connection — tests inject state directly
+  fetchBaseUrl();
 } else {
   fetchBaseUrl();
   connectAndCreateRoom();

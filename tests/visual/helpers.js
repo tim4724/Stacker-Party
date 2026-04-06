@@ -175,8 +175,14 @@ const STABLE_URL = 'https://couch-games.com/ABCD';
 async function stabilizeDisplayLobby(page) {
   var response = await page.request.get('/api/qr?text=' + encodeURIComponent(STABLE_URL));
   var qrMatrix = await response.json();
+  // Wait for layout to settle before rendering QR at a fixed CSS size
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await page.evaluate(({ url, matrix }) => {
     document.getElementById('join-url').textContent = url;
+    // Strip join-pop animations so scale transform doesn't cause anti-aliasing jitter
+    document.querySelectorAll('.player-card.join-pop').forEach(function(el) {
+      el.classList.remove('join-pop');
+    });
     renderQR(document.getElementById('qr-code'), matrix);
   }, { url: STABLE_URL, matrix: qrMatrix });
   await page.waitForTimeout(50);
