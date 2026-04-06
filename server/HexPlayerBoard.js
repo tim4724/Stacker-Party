@@ -290,9 +290,8 @@ class HexPlayerBoard extends BaseBoard {
     return out;
   }
 
-  // Returns snapshot for rendering. grid, nextPieces, blocks, and cells are live
-  // references — callers must treat the returned object as read-only and consume it
-  // before the next tick. cells objects are mutated in place on rotation.
+  // Returns snapshot for rendering. grid, nextPieces, and blocks are live references —
+  // callers must treat the returned object as read-only and consume before the next tick.
   getState() {
     if (this.gridVersion !== this._visibleGridVersion) {
       this._visibleGrid = this.grid.slice(HEX_BUFFER_ROWS);
@@ -311,6 +310,7 @@ class HexPlayerBoard extends BaseBoard {
     if (this.currentPiece) {
       var abs = this.currentPiece._absoluteBlocksFast();
       cpBlocks = this._stateBlocksCurrent;
+      while (cpBlocks.length < abs.length) cpBlocks.push([0, 0]);
       for (var bi = 0; bi < abs.length; bi++) {
         cpBlocks[bi][0] = abs[bi][0];
         cpBlocks[bi][1] = abs[bi][1] - HEX_BUFFER_ROWS;
@@ -320,6 +320,7 @@ class HexPlayerBoard extends BaseBoard {
     if (ghost) {
       var gAbs = ghost._absoluteBlocksFast();
       ghostBlocks = this._stateBlocksGhost;
+      while (ghostBlocks.length < gAbs.length) ghostBlocks.push([0, 0]);
       for (var gi = 0; gi < gAbs.length; gi++) {
         ghostBlocks[gi][0] = gAbs[gi][0];
         ghostBlocks[gi][1] = gAbs[gi][1] - HEX_BUFFER_ROWS;
