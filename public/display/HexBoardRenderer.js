@@ -8,7 +8,7 @@ var HEX_VIS_ROWS = HexConstants.HEX_VISIBLE_ROWS;
 var HEX_COLS_N = HexConstants.HEX_COLS;
 var _hexScratch = { x: 0, y: 0 };
 var _hexLocalScratch = { x: 0, y: 0 };
-var _GHOST_KEY_STRIDE = 32; // must exceed HEX_VIS_ROWS (21)
+var _GHOST_KEY_STRIDE = 32; // must exceed max(HEX_VIS_ROWS, HEX_COLS) for collision-free keys
 
 
 class HexBoardRenderer {

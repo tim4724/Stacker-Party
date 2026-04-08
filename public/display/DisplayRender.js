@@ -169,8 +169,8 @@ function renderFrame(timestamp) {
               var gbx = ghost.blocks[bl][0];
               var gby = ghost.blocks[bl][1];
               // Hex ghosts use absolute [col, row]; square ghosts use x/ghostY offsets
-              var drawCol = ghost.x != null ? ghost.x + gbx : gbx;
-              var drawRow = ghost.ghostY != null ? ghost.ghostY + gby : gby;
+              var drawCol = 'x' in ghost ? ghost.x + gbx : gbx;
+              var drawRow = 'ghostY' in ghost ? ghost.ghostY + gby : gby;
               br.drawGhostBlock(drawCol, drawRow, gc);
             }
           }
