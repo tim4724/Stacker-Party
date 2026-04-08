@@ -189,7 +189,7 @@ class HexBoardRenderer {
     } else {
       this._prevGhostCol = -1; this._prevGhostRow = -1;
       this._prevGhostType = -1; this._prevGhostGV = -1;
-      this._cachedPreviewCells = [];
+      this._cachedPreviewCells.length = 0;
     }
 
     // Current piece
