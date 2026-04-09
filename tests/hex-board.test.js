@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const { HexPlayerBoard } = require('../server/HexPlayerBoard');
 const { HexPiece } = require('../server/HexPiece');
 const { offsetToAxial, axialToOffset } = require('../server/HexPiece');
-const { HEX_COLS, HEX_TOTAL_ROWS, HEX_BUFFER_ROWS, HEX_VISIBLE_ROWS } = require('../server/HexConstants');
+const { HEX_COLS, HEX_TOTAL_ROWS, HEX_BUFFER_ROWS, HEX_VISIBLE_ROWS, HEX_GARBAGE_CELL } = require('../server/HexConstants');
 const { LOCK_DELAY_MS, LINE_CLEAR_DELAY_MS } = require('../server/constants');
 const { Game } = require('../server/Game');
 
@@ -587,6 +587,163 @@ describe('HexPlayerBoard - zigzag line clears', () => {
 
     // Should NOT start another clear cycle
     assert.equal(b.clearingCells, null);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Clear preview vs actual clear consistency
+// ---------------------------------------------------------------------------
+describe('HexPlayerBoard - clear preview matches actual clear', () => {
+  it('findClearableZigzags with ghost matches actual clear after lock', () => {
+    // Simulate what the renderer does: check if ghost + grid would clear,
+    // then verify actual clear after locking produces the same result.
+    var { findClearableZigzags } = require('../server/HexConstants');
+    var b = new HexPlayerBoard('p1', 42, 1);
+    // Fill the bottom row except one column (gap at col 5)
+    for (var c = 0; c < HEX_COLS; c++) {
+      if (c !== 5) b.grid[HEX_TOTAL_ROWS - 1][c] = 1;
+    }
+    b.spawnPiece();
+    // Move piece to drop position and get ghost
+    var state = b.getState();
+    if (!state.ghost || !state.ghost.blocks) return; // skip if no ghost available
+
+    // Simulate renderer's preview calculation (visible coordinates)
+    var grid = state.grid;
+    var ghostBlocks = state.ghost.blocks;
+    var ghostSet = {};
+    var STRIDE = 100;
+    for (var gi = 0; gi < ghostBlocks.length; gi++) {
+      ghostSet[ghostBlocks[gi][0] * STRIDE + ghostBlocks[gi][1]] = true;
+    }
+    var previewResult = findClearableZigzags(
+      HEX_COLS, grid.length,
+      function(col, row) { return grid[row][col] > 0 || ghostSet[col * STRIDE + row]; },
+      function(col, row) { return grid[row][col] === 0 && ghostSet[col * STRIDE + row]; }
+    );
+
+    // Now do the actual drop
+    var dropResult = b.hardDrop();
+
+    // Both should agree on whether lines clear
+    assert.equal(previewResult.linesCleared > 0, dropResult.linesCleared > 0,
+      'preview and actual should agree on whether lines clear');
+
+    // If both clear, the cleared cell count should match
+    if (previewResult.linesCleared > 0 && dropResult.linesCleared > 0) {
+      assert.equal(previewResult.clearCells.length, dropResult.clearCells.length,
+        'preview and actual should clear the same number of cells');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Garbage + zigzag clear interaction
+// ---------------------------------------------------------------------------
+describe('HexPlayerBoard - garbage and zigzag clear interaction', () => {
+  it('garbage row alone never triggers a zigzag clear', () => {
+    var b = new HexPlayerBoard('p1', 42, 1);
+    b.spawnPiece();
+    // Add garbage and apply it directly
+    b.addPendingGarbage(3, 2);
+    b._applyPendingGarbage();
+    // Bottom 3 rows should be garbage with a gap at col 2
+    for (var i = 0; i < 3; i++) {
+      var row = b.grid[HEX_TOTAL_ROWS - 1 - i];
+      assert.equal(row[2], 0, 'gap column should be empty');
+      assert.equal(row[0], HEX_GARBAGE_CELL, 'non-gap column should be garbage');
+    }
+    // No clearing should be in progress
+    assert.equal(b.clearingCells, null);
+  });
+
+  it('no zigzag clear check after garbage application', () => {
+    var b = new HexPlayerBoard('p1', 42, 1);
+    b.spawnPiece();
+    // Fill a zigzag-down row completely
+    for (var c = 0; c < HEX_COLS; c++) b.grid[HEX_TOTAL_ROWS - 2][c] = 1;
+    // Apply garbage (shifts everything up, does not re-check for clears)
+    b.addPendingGarbage(1, 0);
+    b._applyPendingGarbage();
+    // The full row is now at HEX_TOTAL_ROWS - 3, but no clear should have triggered
+    assert.equal(b.clearingCells, null, 'garbage application should not trigger line clears');
+  });
+
+  it('garbage applied after zigzag line clear finishes', () => {
+    var b = new HexPlayerBoard('p1', 42, 1);
+    // Fill the bottom row completely
+    for (var c = 0; c < HEX_COLS; c++) b.grid[HEX_TOTAL_ROWS - 1][c] = 1;
+    b.spawnPiece();
+    b.addPendingGarbage(2, 3);
+    var result = b.hardDrop();
+    if (result.linesCleared > 0) {
+      // Garbage should still be pending during clearing animation
+      assert.ok(b.pendingGarbage.length > 0, 'garbage pending during clear animation');
+      b._finishClearLines();
+    }
+    // After finishing, garbage should have been applied
+    assert.equal(b.pendingGarbage.length, 0, 'garbage applied after clear finishes');
+  });
+
+  it('filling gap in garbage zigzag-down clears on next piece lock', () => {
+    var b = new HexPlayerBoard('p1', 42, 1);
+    b.spawnPiece();
+    // Apply garbage with gap at column 5
+    b.addPendingGarbage(1, 5);
+    b._applyPendingGarbage();
+    // Fill the gap to complete the garbage row
+    b.grid[HEX_TOTAL_ROWS - 1][5] = 1;
+    // Drop a piece to trigger line clear detection
+    b.spawnPiece();
+    var result = b.hardDrop();
+    // The completed garbage row should clear
+    assert.ok(result.linesCleared >= 1, 'should clear the completed garbage row');
+  });
+
+  it('multiple garbage batches with different gaps do not complete each other', () => {
+    var b = new HexPlayerBoard('p1', 42, 1);
+    b.spawnPiece();
+    // Two garbage batches with different gap columns
+    b.addPendingGarbage(1, 3);
+    b.addPendingGarbage(1, 7);
+    b._applyPendingGarbage();
+    // Each garbage row should have a gap — neither is full
+    var row1 = b.grid[HEX_TOTAL_ROWS - 1];
+    var row2 = b.grid[HEX_TOTAL_ROWS - 2];
+    assert.ok(row1.includes(0), 'second garbage row has a gap');
+    assert.ok(row2.includes(0), 'first garbage row has a gap');
+    // No clearing in progress
+    assert.equal(b.clearingCells, null);
+  });
+
+  it('gap column is adjusted to prevent auto-clearable zigzag', () => {
+    var { findClearableZigzags } = require('../server/HexConstants');
+    var b = new HexPlayerBoard('p1', 42, 1);
+    b.spawnPiece();
+    // Fill all odd columns in the current bottom row.
+    // After splice(0,1) + push, this row moves up and garbage lands below it.
+    // A zigzag-up spanning both rows would clear if the gap is at an odd column.
+    for (var c = 0; c < HEX_COLS; c++) {
+      if (c & 1) b.grid[HEX_TOTAL_ROWS - 1][c] = 1;
+    }
+    // Request gap at odd column 3 — this would auto-clear without the fix
+    b.applyGarbage(1, 3);
+    var grid = b.grid;
+    var result = findClearableZigzags(HEX_COLS, HEX_TOTAL_ROWS,
+      function(col, row) { return grid[row][col] !== 0; }, null, HEX_BUFFER_ROWS);
+    assert.equal(result.linesCleared, 0, 'garbage should not create auto-clearable zigzag');
+    // The garbage row should still have exactly one gap
+    var garbageRow = grid[HEX_TOTAL_ROWS - 1];
+    var gaps = garbageRow.filter(function(v) { return v === 0; }).length;
+    assert.equal(gaps, 1, 'garbage row should have exactly one gap');
+  });
+
+  it('gap column stays unchanged when it does not cause auto-clear', () => {
+    var b = new HexPlayerBoard('p1', 42, 1);
+    b.spawnPiece();
+    // Empty board — no zigzag possible regardless of gap column
+    b.applyGarbage(1, 5);
+    assert.equal(b.grid[HEX_TOTAL_ROWS - 1][5], 0, 'gap at requested column 5');
   });
 });
 

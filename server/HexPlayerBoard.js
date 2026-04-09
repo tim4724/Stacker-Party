@@ -256,10 +256,29 @@ class HexPlayerBoard extends BaseBoard {
     lines = Math.min(lines, HEX_TOTAL_ROWS);
     this.grid.splice(0, lines);
     for (let i = 0; i < lines; i++) {
-      const row = new Array(HEX_COLS).fill(HEX_GARBAGE_CELL);
-      row[gapColumn % HEX_COLS] = 0;
-      this.grid.push(row);
+      this.grid.push(new Array(HEX_COLS).fill(0));
     }
+
+    // Baseline: clearable zigzags that already exist (empty bottom rows).
+    const grid = this.grid;
+    const isFilled = function(col, row) { return grid[row][col] !== 0; };
+    const baseline = findClearableZigzags(HEX_COLS, HEX_TOTAL_ROWS, isFilled, null, HEX_BUFFER_ROWS);
+
+    // Try gap columns until one doesn't add new clearable zigzags.
+    // The original gapColumn is tried first; if it creates new clears, shift by 1.
+    const firstGarbageRow = HEX_TOTAL_ROWS - lines;
+    let gap = gapColumn % HEX_COLS;
+    for (let attempt = 0; attempt < HEX_COLS; attempt++) {
+      gap = (gapColumn + attempt) % HEX_COLS;
+      for (let i = 0; i < lines; i++) {
+        const row = grid[firstGarbageRow + i];
+        for (let c = 0; c < HEX_COLS; c++) row[c] = HEX_GARBAGE_CELL;
+        row[gap] = 0;
+      }
+      const result = findClearableZigzags(HEX_COLS, HEX_TOTAL_ROWS, isFilled, null, HEX_BUFFER_ROWS);
+      if (result.linesCleared <= baseline.linesCleared) break;
+    }
+
     this.gridVersion++;
   }
 

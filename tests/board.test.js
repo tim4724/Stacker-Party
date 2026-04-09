@@ -3,7 +3,7 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const { PlayerBoard } = require('../server/PlayerBoard');
-const { BOARD_WIDTH, BOARD_HEIGHT, BUFFER_ROWS, LINE_CLEAR_DELAY_MS, LOCK_DELAY_MS } = require('../server/constants');
+const { BOARD_WIDTH, BOARD_HEIGHT, BUFFER_ROWS, LINE_CLEAR_DELAY_MS, LOCK_DELAY_MS, GARBAGE_CELL } = require('../server/constants');
 
 function makeBoard() {
   return new PlayerBoard('test-player');
@@ -678,5 +678,81 @@ describe('PlayerBoard - game over', () => {
     }
     const result = board.spawnPiece();
     assert.strictEqual(result, false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Garbage + line clear interaction
+// ---------------------------------------------------------------------------
+describe('PlayerBoard - garbage and line clear interaction', () => {
+  test('garbage row alone never triggers a line clear', () => {
+    const board = makeBoard();
+    board.spawnPiece();
+    // Add garbage and apply it (no line clear, so garbage is applied immediately)
+    board.addPendingGarbage(3, 4);
+    board._applyPendingGarbage();
+    // Bottom 3 rows should be garbage with a gap
+    for (let i = 0; i < 3; i++) {
+      const row = board.grid[BOARD_HEIGHT - 1 - i];
+      assert.equal(row[4], 0, 'gap column should be empty');
+      assert.equal(row[0], GARBAGE_CELL, 'non-gap column should be garbage');
+    }
+    // No clearing should be in progress
+    assert.equal(board.clearingRows, null);
+  });
+
+  test('filling the gap in a garbage row triggers a line clear', () => {
+    const board = makeBoard();
+    board.spawnPiece();
+    // Apply garbage with gap at column 5
+    board.addPendingGarbage(1, 5);
+    board._applyPendingGarbage();
+    const garbageRow = BOARD_HEIGHT - 1;
+    assert.equal(board.grid[garbageRow][5], 0);
+    // Fill the gap manually to simulate a piece landing there
+    board.grid[garbageRow][5] = 1;
+    // Now lock a piece (spawn fresh to trigger detection)
+    board.spawnPiece();
+    const result = board.hardDrop();
+    // The garbage row is now full, so it should clear
+    assert.ok(result.linesCleared >= 1, 'should clear the completed garbage row');
+  });
+
+  test('garbage applied after line clear finishes, not during', () => {
+    const board = makeBoard();
+    // Fill the bottom row completely
+    board.grid[BOARD_HEIGHT - 1] = new Array(BOARD_WIDTH).fill(1);
+    board.spawnPiece();
+    // Add pending garbage before the piece locks
+    board.addPendingGarbage(2, 3);
+    const result = board.hardDrop();
+    if (result.linesCleared > 0) {
+      // During clearing animation, garbage should still be pending
+      assert.ok(board.pendingGarbage.length > 0 || board.clearingRows === null,
+        'garbage not yet applied during clearing animation');
+      // Finish the clear
+      board._finishClearLines();
+    }
+    // After finishing, garbage should have been applied
+    assert.equal(board.pendingGarbage.length, 0, 'garbage applied after clear finishes');
+  });
+
+  test('no line clear check after garbage application', () => {
+    const board = makeBoard();
+    board.spawnPiece();
+    // Set up a nearly-full row, then add garbage that fills the gap column
+    // but in a DIFFERENT row. The existing row should NOT clear until next lock.
+    const targetRow = BOARD_HEIGHT - 2;
+    for (let c = 0; c < BOARD_WIDTH; c++) {
+      if (c !== 3) board.grid[targetRow][c] = 1;
+    }
+    // Fill the gap to make the row complete
+    board.grid[targetRow][3] = 1;
+    // Apply garbage (adds at bottom, shifts everything up)
+    board.addPendingGarbage(1, 0);
+    board._applyPendingGarbage();
+    // The row that was full is now at targetRow - 1 (shifted up)
+    // No clearing should have been triggered
+    assert.equal(board.clearingRows, null, 'garbage application should not trigger line clears');
   });
 });
