@@ -543,20 +543,10 @@ html, body {
     inset 0 2px 6px rgba(0, 0, 0, 0.5),
     inset 0 0 20px rgba(0, 0, 0, 0.2),
     0 1px 0 rgba(255, 255, 255, 0.04);
-  background-color: var(--bg-board);
+  background-color: color-mix(in srgb, var(--player-color, transparent) 6%, var(--bg-board));
   background-image: radial-gradient(circle, color-mix(in srgb, var(--player-color, white) 18%, transparent) 1px, transparent 1px);
   background-size: 18px 18px;
   cursor: crosshair;
-}
-
-#touch-pad::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-color: var(--player-color, transparent);
-  opacity: 0.08;
-  pointer-events: none;
-  z-index: 0;
 }
 
 #touch-pad:active {
@@ -807,8 +797,8 @@ html, body {
   pointer-events: none;
 }
 
-#game-screen.countdown #touch-pad::before {
-  opacity: 0;
+#game-screen.countdown #touch-pad {
+  background-color: var(--bg-board);
 }
 
 /* Paused state — disable touch input */
