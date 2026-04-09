@@ -339,11 +339,11 @@ class WelcomeBackground {
     const sCell = size * 0.94;
     const hasStamps = typeof getHexStamp === 'function';
     if (hasStamps) {
-      const stamp = getHexStamp(STYLE_TIERS.NORMAL, p.color, sCell);
+      const stamp = getHexStamp(STYLE_TIERS.NORMAL, p.color, _SQRT3 * sCell);
       for (const [q, r] of p.cells) {
         const cx = p.x + size * 1.5 * q;
         const cy = p.y + size * _SQRT3 * (r + q / 2);
-        ctx.drawImage(stamp, cx - sCell - 1, cy - stamp.cssH / 2, stamp.cssW, stamp.cssH);
+        ctx.drawImage(stamp, cx - stamp.cssW / 2, cy - stamp.cssH / 2, stamp.cssW, stamp.cssH);
       }
     } else {
       for (const [q, r] of p.cells) {

@@ -13,7 +13,7 @@ describe('HexPiece', () => {
   it('creates a piece with correct type and cells', () => {
     var p = new HexPiece('T');
     assert.equal(p.type, 'T');
-    assert.equal(p.typeId, 3);
+    assert.equal(p.typeId, 6);
     assert.equal(p.cells.length, 4);
   });
 
@@ -42,7 +42,7 @@ describe('HexPiece', () => {
   });
 
   it('all 7 piece types create valid pieces', () => {
-    var types = ['L', 'S', 'T', 'F', 'Fm', 'I4', 'Tp'];
+    var types = ['I', 'J', 'L', 'O', 'S', 'T', 'Z'];
     for (var t of types) {
       var p = new HexPiece(t);
       var blocks = p.getAbsoluteBlocks();
@@ -54,13 +54,13 @@ describe('HexPiece', () => {
     }
   });
 
-  it('I4 has 4 cells', () => {
-    var p = new HexPiece('I4');
+  it('I has 4 cells', () => {
+    var p = new HexPiece('I');
     assert.equal(p.cells.length, 4);
   });
 
-  it('Tp (tripod) has 4 cells and 2 unique rotations', () => {
-    var p = new HexPiece('Tp');
+  it('T (tripod) has 4 cells and 2 unique rotations', () => {
+    var p = new HexPiece('T');
     assert.equal(p.cells.length, 4);
     var seen = new Set();
     var cells = p.cells.map(c => ({ q: c.q, r: c.r }));
@@ -106,7 +106,7 @@ describe('HexPiece - coordinate math', () => {
   });
 
   it('6 CW rotations return to original (hex symmetry)', () => {
-    var p = new HexPiece('I4');
+    var p = new HexPiece('I');
     var original = JSON.stringify(p.cells);
     for (var i = 0; i < 6; i++) p.rotateCW();
     assert.equal(JSON.stringify(p.cells), original);

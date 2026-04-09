@@ -84,6 +84,8 @@ function darkenColor(hex, percent) {
   return cached;
 }
 
+var _SQRT3 = Math.sqrt(3);
+
 // Precomputed unit vertices for flat-top hexagons (0°, 60°, 120°, ...).
 // Flat array [cos0, sin0, cos1, sin1, ...] for cache-line friendliness.
 var HEX_UNIT_VERTICES = [];
@@ -170,30 +172,6 @@ function getBlockStamp(tier, color, cellSize) {
   return oc;
 }
 
-function getMiniBlockStamp(tier, color, miniSize) {
-  var size = Math.round(miniSize);
-  var key = 'mi_' + tier + '_' + color + '_' + size + '_' + _stampDpr;
-  var stamp = _stampCache.get(key);
-  if (stamp) return stamp;
-  var inset = size * THEME.size.blockGap;
-  var s = size - inset * 2;
-  var r = THEME.radius.mini(size);
-  var oc = _createStampCanvas(size);
-  var c = oc.getContext('2d');
-  c.setTransform(_stampDpr, 0, 0, _stampDpr, 0, 0);
-
-  if (tier === STYLE_TIERS.PILLOW) {
-    _stampPillow(c, size, inset, s, r, color);
-  } else if (tier === STYLE_TIERS.NEON_FLAT) {
-    _stampNeonFlat(c, size, inset, s, r, color);
-  } else {
-    _stampMiniNormal(c, size, inset, s, r, color);
-  }
-
-  _stampCache.set(key, oc);
-  return oc;
-}
-
 function getGarbageStamp(cellSize) {
   var size = Math.round(cellSize);
   var key = 'g_' + size + '_' + _stampDpr;
@@ -222,13 +200,19 @@ function clearStampCache() {
 }
 
 // ============================================================
-// Hex stamp cache — pre-renders each (tier, color, hexSize)
+// Hex stamp cache — pre-renders each (tier, color, height)
 // hexagon to an offscreen canvas for single drawImage() blits.
+// size = drawn height (matches square cellSize for proportions).
 // ============================================================
 
-function _createHexStampCanvas(hexSize) {
-  var w = Math.ceil(2 * hexSize) + 2;   // +2 for stroke bleed
-  var h = Math.ceil(Math.sqrt(3) * hexSize) + 2;
+function getHexStamp(tier, color, size) {
+  var sizeKey = Math.round(size * 10);
+  var key = 'hx_' + tier + '_' + color + '_' + sizeKey + '_' + _stampDpr;
+  var stamp = _stampCache.get(key);
+  if (stamp) return stamp;
+  var cr = size / _SQRT3;  // circumradius for hex path
+  var w = Math.ceil(2 * cr) + 2;   // +2 for stroke bleed
+  var h = Math.ceil(size) + 2;
   var pw = Math.ceil(w * _stampDpr);
   var ph = Math.ceil(h * _stampDpr);
   var oc;
@@ -236,161 +220,96 @@ function _createHexStampCanvas(hexSize) {
   else { oc = document.createElement('canvas'); oc.width = pw; oc.height = ph; }
   oc.cssW = w;
   oc.cssH = h;
-  return oc;
-}
-
-function getHexStamp(tier, color, hexSize) {
-  // Use rounded-tenth key to avoid cache explosion from float drift,
-  // but render at exact size to prevent blurriness
-  var sizeKey = Math.round(hexSize * 10);
-  var key = 'hx_' + tier + '_' + color + '_' + sizeKey + '_' + _stampDpr;
-  var stamp = _stampCache.get(key);
-  if (stamp) return stamp;
-  var size = hexSize;
-  var oc = _createHexStampCanvas(size);
   var c = oc.getContext('2d');
   c.setTransform(_stampDpr, 0, 0, _stampDpr, 0, 0);
-  var cx = size + 1, cy = oc.cssH / 2;  // +1 for stroke padding
+  var cx = cr + 1, cy = h / 2;  // +1 for stroke padding
 
   if (tier === STYLE_TIERS.PILLOW) {
-    _stampHexPillow(c, cx, cy, size, color);
+    _stampHexPillow(c, cx, cy, cr, size, color);
   } else if (tier === STYLE_TIERS.NEON_FLAT) {
-    _stampHexNeonFlat(c, cx, cy, size, color);
+    _stampHexNeonFlat(c, cx, cy, cr, size, color);
   } else {
-    _stampHexNormal(c, cx, cy, size, color);
+    _stampHexNormal(c, cx, cy, cr, size, color);
   }
 
   _stampCache.set(key, oc);
   return oc;
 }
 
-function getMiniHexStamp(tier, color, hexSize) {
-  var sizeKey = Math.round(hexSize * 10);
-  var key = 'mhx_' + tier + '_' + color + '_' + sizeKey + '_' + _stampDpr;
-  var stamp = _stampCache.get(key);
-  if (stamp) return stamp;
-  var size = hexSize;
-  var oc = _createHexStampCanvas(size);
-  var c = oc.getContext('2d');
-  c.setTransform(_stampDpr, 0, 0, _stampDpr, 0, 0);
-  var cx = size + 1, cy = oc.cssH / 2;
-
-  if (tier === STYLE_TIERS.PILLOW) {
-    _stampHexPillow(c, cx, cy, size, color);
-  } else if (tier === STYLE_TIERS.NEON_FLAT) {
-    _stampHexNeonFlat(c, cx, cy, size, color);
-  } else {
-    _stampHexMiniNormal(c, cx, cy, size, color);
-  }
-
-  _stampCache.set(key, oc);
-  return oc;
-}
-
-function _stampHexNormal(c, cx, cy, size, color) {
-  // Clip to hex shape
-  hexPath(c, cx, cy, size);
+function _stampHexNormal(c, cx, cy, cr, size, color) {
+  // cr = circumradius (for hex path), size = drawn height (for proportions)
+  hexPath(c, cx, cy, cr);
   c.save();
   c.clip();
-  // Gradient fill
-  var ng = c.createLinearGradient(cx, cy - size, cx, cy + size);
+  var ng = c.createLinearGradient(cx, cy - cr, cx, cy + cr);
   ng.addColorStop(0, lightenColor(color, 15));
   ng.addColorStop(1, darkenColor(color, 10));
   c.fillStyle = ng;
   c.fill();
-  // Top highlight
   c.fillStyle = 'rgba(255,255,255,' + THEME.opacity.highlight + ')';
-  c.fillRect(cx - size * 0.5, cy - size * 0.88, size, size * 0.12);
-  // Left highlight
+  c.fillRect(cx - cr * 0.5, cy - cr * 0.88, cr, size * 0.08);
   c.fillStyle = 'rgba(255,255,255,' + THEME.opacity.muted + ')';
-  c.fillRect(cx - size * 0.9, cy - size * 0.5, size * 0.1, size);
-  // Bottom shadow
+  c.fillRect(cx - cr * 0.9, cy - cr * 0.5, size * 0.07, cr);
   c.fillStyle = 'rgba(0,0,0,' + THEME.opacity.shadow + ')';
-  c.fillRect(cx - size * 0.5, cy + size * 0.76, size, size * 0.12);
-  // Inner shine
+  c.fillRect(cx - cr * 0.5, cy + cr * 0.76, cr, size * 0.08);
   c.fillStyle = 'rgba(255,255,255,' + THEME.opacity.subtle + ')';
-  var sh = size * 0.3;
-  c.fillRect(cx - size * 0.3, cy - size * 0.4, sh, sh * 0.5);
+  var sh = size * 0.25;
+  c.fillRect(cx - cr * 0.25, cy - cr * 0.4, sh, sh * 0.5);
   c.restore();
-  // Border
-  hexPath(c, cx, cy, size);
-  c.strokeStyle = 'rgba(255,255,255,0.15)';
-  c.lineWidth = 1.5;
-  c.stroke();
 }
 
-function _stampHexPillow(c, cx, cy, size, color) {
-  // Flat fill
-  hexPath(c, cx, cy, size);
+function _stampHexPillow(c, cx, cy, cr, size, color) {
+  hexPath(c, cx, cy, cr);
   c.fillStyle = color;
   c.fill();
-  // Clip + radial gradient
   var rgb = hexToRgb(color);
   var lum = rgb ? (rgb.r * 0.299 + rgb.g * 0.587 + rgb.b * 0.114) / 255 : 0.5;
   var hiAlpha = 0.14 + lum * 0.46;
-  hexPath(c, cx, cy, size);
+  hexPath(c, cx, cy, cr);
   c.save();
   c.clip();
-  var g = c.createRadialGradient(cx - size * 0.1, cy - size * 0.2, 0, cx, cy, size * 0.9);
+  var g = c.createRadialGradient(cx - cr * 0.05, cy - cr * 0.1, 0, cx, cy, cr * 0.9);
   g.addColorStop(0, 'rgba(255,255,255,' + hiAlpha.toFixed(2) + ')');
   g.addColorStop(0.6, 'rgba(255,255,255,0.03)');
   g.addColorStop(1, 'rgba(0,0,0,0.2)');
   c.fillStyle = g;
   c.fill();
   c.restore();
-  // Top edge highlight
   var edgeAlpha = 0.12 + lum * 0.38;
   c.strokeStyle = 'rgba(255,255,255,' + edgeAlpha.toFixed(2) + ')';
-  c.lineWidth = Math.max(0.5, size * 0.05);
+  c.lineWidth = Math.max(0.5, size * 0.04);
   c.beginPath();
-  c.moveTo(cx + size * HEX_UNIT_VERTICES[8], cy + size * HEX_UNIT_VERTICES[9]);   // vertex 4
-  c.lineTo(cx + size * HEX_UNIT_VERTICES[10], cy + size * HEX_UNIT_VERTICES[11]); // vertex 5
+  c.moveTo(cx + cr * HEX_UNIT_VERTICES[8], cy + cr * HEX_UNIT_VERTICES[9]);
+  c.lineTo(cx + cr * HEX_UNIT_VERTICES[10], cy + cr * HEX_UNIT_VERTICES[11]);
   c.stroke();
-  // Bottom edge shadow
   c.strokeStyle = 'rgba(0,0,0,0.25)';
   c.beginPath();
-  c.moveTo(cx + size * HEX_UNIT_VERTICES[2], cy + size * HEX_UNIT_VERTICES[3]);  // vertex 1
-  c.lineTo(cx + size * HEX_UNIT_VERTICES[4], cy + size * HEX_UNIT_VERTICES[5]);  // vertex 2
+  c.moveTo(cx + cr * HEX_UNIT_VERTICES[2], cy + cr * HEX_UNIT_VERTICES[3]);
+  c.lineTo(cx + cr * HEX_UNIT_VERTICES[4], cy + cr * HEX_UNIT_VERTICES[5]);
   c.stroke();
 }
 
-function _stampHexNeonFlat(c, cx, cy, size, color) {
+function _stampHexNeonFlat(c, cx, cy, cr, size, color) {
   var rgb = hexToRgb(color);
   if (!rgb) return;
-  // Dark fill
   var darkFill = 'rgba(' + (rgb.r * 0.2 | 0) + ',' + (rgb.g * 0.2 | 0) + ',' + (rgb.b * 0.2 | 0) + ',0.92)';
-  hexPath(c, cx, cy, size);
+  hexPath(c, cx, cy, cr);
   c.fillStyle = darkFill;
   c.fill();
-  // Colored border
-  var bw = Math.max(1, size * 0.12);
+  var bw = Math.max(1, size * 0.08);
   c.strokeStyle = color;
   c.lineWidth = bw;
-  hexPath(c, cx, cy, size);
+  hexPath(c, cx, cy, cr);
   c.stroke();
-  // Top highlight line (vertices 4→5)
+  var insetScale = 1 - bw / cr;
   c.globalAlpha = 0.25;
   c.beginPath();
-  c.moveTo(cx + size * 0.85 * HEX_UNIT_VERTICES[8], cy + size * 0.85 * HEX_UNIT_VERTICES[9]);
-  c.lineTo(cx + size * 0.85 * HEX_UNIT_VERTICES[10], cy + size * 0.85 * HEX_UNIT_VERTICES[11]);
+  c.moveTo(cx + cr * insetScale * HEX_UNIT_VERTICES[8], cy + cr * insetScale * HEX_UNIT_VERTICES[9]);
+  c.lineTo(cx + cr * insetScale * HEX_UNIT_VERTICES[10], cy + cr * insetScale * HEX_UNIT_VERTICES[11]);
   c.strokeStyle = '#fff';
-  c.lineWidth = Math.max(0.5, size * 0.04);
+  c.lineWidth = Math.max(0.5, size * 0.025);
   c.stroke();
   c.globalAlpha = 1;
-}
-
-function _stampHexMiniNormal(c, cx, cy, size, color) {
-  hexPath(c, cx, cy, size);
-  c.save();
-  c.clip();
-  var mg = c.createLinearGradient(cx, cy - size, cx, cy + size);
-  mg.addColorStop(0, color);
-  mg.addColorStop(1, darkenColor(color, 15));
-  c.fillStyle = mg;
-  c.fill();
-  c.fillStyle = 'rgba(255,255,255,' + THEME.opacity.highlight + ')';
-  c.fillRect(cx - size * 0.5, cy - size * 0.88, size, size * 0.1);
-  c.restore();
 }
 
 // --- Square stamp drawing helpers (draw at 0,0 on offscreen context) ---
@@ -462,17 +381,6 @@ function _stampNeonFlat(c, size, inset, s, r, color) {
   c.moveTo(inset + r + bw, inset + bw);
   c.lineTo(size - inset - r - bw, inset + bw);
   c.stroke();
-}
-
-function _stampMiniNormal(c, size, inset, s, r, color) {
-  var g = c.createLinearGradient(0, 0, 0, size);
-  g.addColorStop(0, color);
-  g.addColorStop(1, darkenColor(color, 15));
-  c.fillStyle = g;
-  roundRect(c, inset, inset, s, s, r);
-  c.fill();
-  c.fillStyle = 'rgba(255, 255, 255, ' + THEME.opacity.highlight + ')';
-  c.fillRect(inset + r, inset, s - r * 2, size * 0.06);
 }
 
 // Shared font detection — returns the preferred display font family string.

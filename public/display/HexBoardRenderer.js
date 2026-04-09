@@ -8,6 +8,7 @@ var HEX_VIS_ROWS = HexConstants.HEX_VISIBLE_ROWS;
 var HEX_COLS_N = HexConstants.HEX_COLS;
 var _hexScratch = { x: 0, y: 0 };
 var _hexLocalScratch = { x: 0, y: 0 };
+var _GHOST_KEY_STRIDE = 32; // must exceed max(HEX_VIS_ROWS, HEX_COLS) for collision-free keys
 
 
 class HexBoardRenderer {
@@ -27,6 +28,10 @@ class HexBoardRenderer {
     this.colW = geo.colW;
     this.boardWidth = geo.boardWidth;
     this.boardHeight = geo.boardHeight;
+    // Pre-compute cell size with apothem-based gap (stable post-construction)
+    this._sCell = this.hexSize - cellSize * THEME.size.blockGap * 2 / _SQRT3;
+    this._stampHeight = _SQRT3 * this._sCell;
+    this._gridLineWidth = Math.max(1.5, this._stampHeight * THEME.stroke.grid);
     this._prevGhostCol = -1;
     this._prevGhostRow = -1;
     this._prevGhostType = -1;
@@ -39,16 +44,75 @@ class HexBoardRenderer {
     this._cachedGridVersion = -1;
     this._cachedGridTier = null;
 
-    // Pre-compute hex outline vertices (only changes on layout recalculation)
-    this._outlineVerts = HexConstants.computeHexOutlineVerts(
+    // Pre-compute hex outline vertices: inner (for bg clip) and outer (for border stroke)
+    var borderHalf = cellSize * THEME.stroke.border / 2;
+    this._bgOutlineVerts = HexConstants.computeHexOutlineVerts(
       this.x, this.y, this.hexSize, this.hexH, this.colW, HEX_COLS_N, HEX_VIS_ROWS
+    );
+    this._outlineVerts = HexConstants.computeHexOutlineVerts(
+      this.x, this.y, this.hexSize, this.hexH, this.colW, HEX_COLS_N, HEX_VIS_ROWS, borderHalf
     );
 
     // Cached rgba strings (stable between layout recalculations)
     var rgb = this._accentRgb;
     this._tintFill = rgb ? 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + THEME.opacity.tint + ')' : null;
-    this._gridStroke = rgb ? 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + THEME.opacity.grid + ')' : 'rgba(255,255,255,' + THEME.opacity.grid + ')';
+    var gridAlpha = THEME.opacity.grid + (rgb ? (1 - (rgb.r * 0.299 + rgb.g * 0.587 + rgb.b * 0.114) / 255) * 0.08 : 0);
+    this._gridStroke = rgb ? 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + gridAlpha.toFixed(2) + ')' : 'rgba(255,255,255,' + THEME.opacity.grid + ')';
     this._wallStroke = rgb ? 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + THEME.opacity.strong + ')' : 'rgba(255,255,255,' + THEME.opacity.soft + ')';
+
+    // Board background + grid cache (built lazily on first render)
+    this._boardBgCache = null;
+  }
+
+  _buildBoardBgCache() {
+    var dpr = window.devicePixelRatio || 1;
+    var w = Math.ceil(this.boardWidth);
+    var h = Math.ceil(this.boardHeight);
+    var pw = Math.ceil(w * dpr);
+    var ph = Math.ceil(h * dpr);
+    var oc;
+    if (typeof OffscreenCanvas !== 'undefined') oc = new OffscreenCanvas(pw, ph);
+    else { oc = document.createElement('canvas'); oc.width = pw; oc.height = ph; }
+    oc.cssW = w;
+    oc.cssH = h;
+    var gc = oc.getContext('2d');
+    gc.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // 1. Clip to hex outline and fill board background + tint
+    var bgv = this._bgOutlineVerts;
+    var ox = this.x, oy = this.y;
+    gc.save();
+    gc.beginPath();
+    gc.moveTo(bgv[0][0] - ox, bgv[0][1] - oy);
+    for (var i = 1; i < bgv.length; i++) gc.lineTo(bgv[i][0] - ox, bgv[i][1] - oy);
+    gc.closePath();
+    gc.clip();
+    gc.fillStyle = THEME.color.bg.board;
+    gc.fill();
+    if (this._tintFill) {
+      gc.fillStyle = this._tintFill;
+      gc.fill();
+    }
+    gc.restore();
+
+    // 2. Grid lines at full hexSize (cells touch at boundaries, like square mode)
+    var hs = this.hexSize;
+    gc.beginPath();
+    for (var row = 0; row < HEX_VIS_ROWS; row++) {
+      for (var col = 0; col < HEX_COLS_N; col++) {
+        var pos = this._hexCenterLocal(col, row);
+        gc.moveTo(pos.x + hs * HEX_UNIT_VERTICES[0], pos.y + hs * HEX_UNIT_VERTICES[1]);
+        for (var vi = 2; vi < 12; vi += 2) {
+          gc.lineTo(pos.x + hs * HEX_UNIT_VERTICES[vi], pos.y + hs * HEX_UNIT_VERTICES[vi + 1]);
+        }
+        gc.closePath();
+      }
+    }
+    gc.strokeStyle = this._gridStroke;
+    gc.lineWidth = this._gridLineWidth;
+    gc.stroke();
+
+    return oc;
   }
 
   get styleTier() { return this._styleTier; }
@@ -70,13 +134,9 @@ class HexBoardRenderer {
     return _hexLocalScratch;
   }
 
-  _hexPath(cx, cy, size) {
-    hexPath(this.ctx, cx, cy, size);
-  }
-
   _drawHex(cx, cy, size, fill, stroke, alpha) {
     var ctx = this.ctx;
-    this._hexPath(cx, cy, size);
+    hexPath(ctx, cx, cy, size);
     if (fill) {
       if (alpha != null) ctx.globalAlpha = alpha;
       ctx.fillStyle = fill;
@@ -85,14 +145,21 @@ class HexBoardRenderer {
     }
     if (stroke) {
       ctx.strokeStyle = stroke;
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = this._gridLineWidth;
       ctx.stroke();
     }
   }
 
+  // Draw a ghost block at grid (col, row) — used by test harness for extra ghosts
+  drawGhostBlock(col, row, gc) {
+    if (row < 0 || row >= HEX_VIS_ROWS || col < 0 || col >= HEX_COLS_N) return;
+    var pos = this._hexCenter(col, row);
+    this._drawHex(pos.x, pos.y, this._sCell, gc.fill, gc.outline);
+  }
+
   _drawFilledHex(cx, cy, size, color) {
-    var stamp = getHexStamp(this._styleTier, color, size);
-    this.ctx.drawImage(stamp, cx - size - 1, cy - stamp.cssH / 2, stamp.cssW, stamp.cssH);
+    var stamp = getHexStamp(this._styleTier, color, this._stampHeight);
+    this.ctx.drawImage(stamp, cx - stamp.cssW / 2, cy - stamp.cssH / 2, stamp.cssW, stamp.cssH);
   }
 
   render(playerState, timestamp) {
@@ -104,9 +171,15 @@ class HexBoardRenderer {
     var colors = isNeon ? NEON_PIECE_COLORS : PIECE_COLORS;
     var ghostColors = isNeon ? NEON_GHOST_COLORS : GHOST_COLORS;
 
-    var sCell = hs * (1 - THEME.size.blockGap * 2);
+    var sCell = this._sCell;
 
-    // Grid cells — cached to offscreen canvas, redrawn only when gridVersion changes
+    // 1. Board background + grid lines (cached, single blit)
+    if (!this._boardBgCache) this._boardBgCache = this._buildBoardBgCache();
+    var bgc = this._boardBgCache;
+    ctx.drawImage(bgc, 0, 0, bgc.width, bgc.height,
+      this.x, this.y, Math.ceil(this.boardWidth), Math.ceil(this.boardHeight));
+
+    // 2. Filled blocks — cached to offscreen canvas, redrawn only when gridVersion changes
     if (playerState.grid) {
       var gv = playerState.gridVersion ?? -1;
       if (gv !== this._cachedGridVersion || newTier !== this._cachedGridTier) {
@@ -129,7 +202,7 @@ class HexBoardRenderer {
           var gb = ghost.blocks[gi];
           if (gb[1] >= 0 && gb[1] < HEX_VIS_ROWS) {
             var gp = this._hexCenter(gb[0], gb[1]);
-            this._drawHex(gp.x, gp.y, sCell, gc.fill, gc.outline, 0.4);
+            this._drawHex(gp.x, gp.y, sCell, gc.fill, gc.outline);
           }
         }
       }
@@ -153,14 +226,14 @@ class HexBoardRenderer {
           this._prevGhostGV = gkVersion;
           var ghostSet = {};
           for (var gi2 = 0; gi2 < ghostBlocks.length; gi2++) {
-            ghostSet[ghostBlocks[gi2][0] + ',' + ghostBlocks[gi2][1]] = true;
+            ghostSet[ghostBlocks[gi2][0] * _GHOST_KEY_STRIDE + ghostBlocks[gi2][1]] = true;
           }
           var gridRows = playerState.grid.length;
           var grid = playerState.grid;
           var result = HexConstants.findClearableZigzags(
             HEX_COLS_N, gridRows,
-            function(col, row) { return grid[row][col] > 0 || ghostSet[col + ',' + row]; },
-            function(col, row) { return grid[row][col] === 0 && ghostSet[col + ',' + row]; }
+            function(col, row) { return grid[row][col] > 0 || ghostSet[col * _GHOST_KEY_STRIDE + row]; },
+            function(col, row) { return grid[row][col] === 0 && ghostSet[col * _GHOST_KEY_STRIDE + row]; }
           );
           // findClearableZigzags returns clearCells as [[col, row], ...]
           this._cachedPreviewCells = result.clearCells;
@@ -178,7 +251,7 @@ class HexBoardRenderer {
     } else {
       this._prevGhostCol = -1; this._prevGhostRow = -1;
       this._prevGhostType = -1; this._prevGhostGV = -1;
-      this._cachedPreviewCells = [];
+      this._cachedPreviewCells.length = 0;
     }
 
     // Current piece
@@ -232,44 +305,18 @@ class HexBoardRenderer {
     gc.setTransform(dpr, 0, 0, dpr, 0, 0);
     gc.clearRect(0, 0, w, h);
 
+    // Only render filled block stamps (background + grid drawn on main canvas)
     var gridRows = grid.length;
-    // Pass 1: fills + stamps
     for (var r = 0; r < gridRows; r++) {
       var row = grid[r];
       for (var c = 0; c < row.length; c++) {
-        var pos = this._hexCenterLocal(c, r);
         if (row[c] > 0) {
-          var stamp = getHexStamp(this._styleTier, colors[row[c]], sCell);
-          gc.drawImage(stamp, pos.x - sCell - 1, pos.y - stamp.cssH / 2, stamp.cssW, stamp.cssH);
-        } else {
-          hexPath(gc, pos.x, pos.y, sCell);
-          gc.fillStyle = THEME.color.bg.board;
-          gc.fill();
-          if (this._tintFill) {
-            gc.fillStyle = this._tintFill;
-            gc.fill();
-          }
+          var pos = this._hexCenterLocal(c, r);
+          var stamp = getHexStamp(this._styleTier, colors[row[c]], this._stampHeight);
+          gc.drawImage(stamp, pos.x - stamp.cssW / 2, pos.y - stamp.cssH / 2, stamp.cssW, stamp.cssH);
         }
       }
     }
-    // Pass 2: batched grid stroke for empty cells
-    gc.beginPath();
-    for (var r2 = 0; r2 < gridRows; r2++) {
-      var row2 = grid[r2];
-      for (var c2 = 0; c2 < row2.length; c2++) {
-        if (row2[c2] === 0) {
-          var gp = this._hexCenterLocal(c2, r2);
-          gc.moveTo(gp.x + sCell * HEX_UNIT_VERTICES[0], gp.y + sCell * HEX_UNIT_VERTICES[1]);
-          for (var vi = 2; vi < 12; vi += 2) {
-            gc.lineTo(gp.x + sCell * HEX_UNIT_VERTICES[vi], gp.y + sCell * HEX_UNIT_VERTICES[vi + 1]);
-          }
-          gc.closePath();
-        }
-      }
-    }
-    gc.strokeStyle = this._gridStroke;
-    gc.lineWidth = 1.5;
-    gc.stroke();
   }
 
   _drawWalls() {

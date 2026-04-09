@@ -4,16 +4,16 @@
 // Design Tokens — single source of truth for the visual layer
 // ============================================================
 
-// --- Piece colors (classic: 1=I…7=Z, hex: 1=L…7=Tp, garbage: 9) ---
+// --- Piece colors (1=I…7=Z, shared by square and hex modes, garbage: 8-9) ---
 const PIECE_COLORS = {
   0: '#000000',    // empty
-  1: '#EE4444',    // classic I / hex L - red
-  2: '#00CED1',    // classic J / hex S - teal
-  3: '#FFD700',    // classic L / hex T - gold
-  4: '#7FFF00',    // classic O / hex F - lime
-  5: '#9B59F0',    // classic S / hex Fm - violet
-  6: '#FF1493',    // classic T / hex I4 - hot pink
-  7: '#FF8C00',    // classic Z / hex Tp - amber
+  1: '#EE4444',    // I - red
+  2: '#00CED1',    // J - teal
+  3: '#FFD700',    // L - gold
+  4: '#7FFF00',    // O - lime
+  5: '#9B59F0',    // S - violet
+  6: '#FF1493',    // T - hot pink
+  7: '#FF8C00',    // Z - amber
   8: '#33AAFF',    // classic garbage - sky blue
   9: '#808080'     // hex garbage - gray
 };
@@ -109,7 +109,7 @@ const THEME = Object.freeze({
     tint:      0.06,  // player color surface tints
     subtle:    0.08,  // ghost fills, inner shines, scanlines
     muted:     0.10,  // dot patterns
-    grid:      0.14,  // grid lines
+    grid:      0.18,  // grid lines
     soft:      0.15,  // borders, soft accents
     highlight: 0.22,  // block top highlight
     shadow:    0.25,  // block bottom shadow
@@ -122,7 +122,6 @@ const THEME = Object.freeze({
   // ---- Border Radii (functions of cell/block size) ----
   radius: Object.freeze({
     block: (size) => size * 0.12,
-    mini:  (size) => size * 0.1,
     panel: (size) => size * 0.2,
   }),
 

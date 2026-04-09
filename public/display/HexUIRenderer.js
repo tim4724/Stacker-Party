@@ -6,6 +6,8 @@
 
 var HEX_MINI_PIECES = HexPieceModule.HEX_PIECES;
 var HEX_TYPE_TO_ID = HexConstants.HEX_PIECE_TYPE_TO_ID;
+var _getIndicatorColor = function(e) { return e.color; };
+var _getDefenceColor = function() { return THEME.color.text.white; };
 
 // Compute bounding boxes for flat-top hex mini pieces using odd-q offset conversion.
 var HEX_MINI_BOUNDS = {};
@@ -47,75 +49,82 @@ class HexUIRenderer extends BaseUIRenderer {
     this._hexSize = geo.hexSize;
     this._hexH = geo.hexH;
     this._colW = geo.colW;
+    // Pre-compute stable meter/cell values
+    this._sCell = geo.hexSize - cellSize * THEME.size.blockGap * 2 / _SQRT3;
+    this._gridLineWidth = _SQRT3 * this._sCell * THEME.stroke.grid;
+    this._meterX = boardX - cellSize * 1.07;
   }
 
   drawGarbageMeter(pendingGarbage) {
-    var hs = this._hexSize;
-    var sCell = hs * (1 - THEME.size.blockGap * 2);
-    var maxLines = HexConstants.HEX_VISIBLE_ROWS;
-    var lines = Math.min(pendingGarbage, maxLines);
+    var sCell = this._sCell;
+    var lines = Math.min(pendingGarbage, HexConstants.HEX_VISIBLE_ROWS);
+    if (lines === 0) return;
 
-    for (var row = 0; row < lines; row++) {
-      for (var cell = 0; cell < 2; cell++) {
-        var pos = this._getMeterPos(row, cell);
-        this._drawMeterHex(pos.x, pos.y, sCell, '#808080', null);
-      }
-    }
-  }
-
-  // Helper: draw a hex at a meter cell position
-  _drawMeterHex(cx, cy, sCell, fill, alpha) {
     var ctx = this.ctx;
-    if (alpha != null) ctx.globalAlpha = alpha;
-    hexPath(ctx, cx, cy, sCell);
-    ctx.fillStyle = fill;
-    ctx.fill();
-    if (alpha != null) ctx.globalAlpha = 1.0;
-  }
-
-  // Get meter hex center for a given garbage row index and cell index (0 or 1)
-  _getMeterPos(garbageRow, cell) {
-    var hs = this._hexSize;
+    var mx = this._meterX;
     var hexH = this._hexH;
-    var colW = this._colW;
-    var evenX = this.boardX - colW - hs * 0.4;
-    var oddX = evenX + colW;
-    var row = HexConstants.HEX_VISIBLE_ROWS - 1 - garbageRow;
-    return {
-      x: cell ? oddX : evenX,
-      y: this.boardY + hexH * (row + 0.5 * cell) + hexH / 2
-    };
+    var baseY = this.boardY;
+
+    // Single-pass: build compound path, then stroke + fill
+    ctx.beginPath();
+    for (var i = 0; i < lines; i++) {
+      var row = HexConstants.HEX_VISIBLE_ROWS - 1 - i;
+      var cy = baseY + hexH * row + hexH / 2;
+      ctx.moveTo(mx + sCell * HEX_UNIT_VERTICES[0], cy + sCell * HEX_UNIT_VERTICES[1]);
+      for (var vi = 2; vi < 12; vi += 2) {
+        ctx.lineTo(mx + sCell * HEX_UNIT_VERTICES[vi], cy + sCell * HEX_UNIT_VERTICES[vi + 1]);
+      }
+      ctx.closePath();
+    }
+    ctx.strokeStyle = 'rgba(255, 255, 255, ' + THEME.opacity.label + ')';
+    ctx.lineWidth = this._gridLineWidth;
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255, 255, 255, ' + THEME.opacity.muted + ')';
+    ctx.fill();
   }
 
   _drawGarbageEffects(effects, timestamp, getColor) {
     if (!Array.isArray(effects) || effects.length === 0) return;
-    var hs = this._hexSize;
-    var sCell = hs * (1 - THEME.size.blockGap * 2);
+    var sCell = this._sCell;
+    var ctx = this.ctx;
+    var mx = this._meterX;
+    var hexH = this._hexH;
+    var baseY = this.boardY;
     var now = timestamp || performance.now();
 
-    for (var ei = 0; ei < effects.length; ei++) {
-      var effect = effects[ei];
-      var elapsed = now - effect.startTime;
-      if (elapsed < 0 || elapsed >= effect.duration) continue;
-      var alpha = (1 - elapsed / effect.duration) * (effect.maxAlpha || 0.9);
-      var color = getColor(effect);
+    try {
+      for (var ei = 0; ei < effects.length; ei++) {
+        var effect = effects[ei];
+        var elapsed = now - effect.startTime;
+        if (elapsed < 0 || elapsed >= effect.duration) continue;
+        ctx.globalAlpha = (1 - elapsed / effect.duration) * (effect.maxAlpha || 0.9);
+        ctx.fillStyle = getColor(effect);
 
-      for (var row = effect.rowStart; row < effect.rowStart + effect.lines; row++) {
-        if (row < 0 || row >= HexConstants.HEX_VISIBLE_ROWS) continue;
-        for (var cell = 0; cell < 2; cell++) {
-          var pos = this._getMeterPos(row, cell);
-          this._drawMeterHex(pos.x, pos.y, sCell, color, alpha);
+        // Batch all rows of this effect into one fill call
+        ctx.beginPath();
+        for (var row = effect.rowStart; row < effect.rowStart + effect.lines; row++) {
+          if (row < 0 || row >= HexConstants.HEX_VISIBLE_ROWS) continue;
+          var visRow = HexConstants.HEX_VISIBLE_ROWS - 1 - row;
+          var cy = baseY + hexH * visRow + hexH / 2;
+          ctx.moveTo(mx + sCell * HEX_UNIT_VERTICES[0], cy + sCell * HEX_UNIT_VERTICES[1]);
+          for (var vi = 2; vi < 12; vi += 2) {
+            ctx.lineTo(mx + sCell * HEX_UNIT_VERTICES[vi], cy + sCell * HEX_UNIT_VERTICES[vi + 1]);
+          }
+          ctx.closePath();
         }
+        ctx.fill();
       }
+    } finally {
+      ctx.globalAlpha = 1.0;
     }
   }
 
   drawGarbageIndicatorEffects(effects, timestamp) {
-    this._drawGarbageEffects(effects, timestamp, function(e) { return e.color; });
+    this._drawGarbageEffects(effects, timestamp, _getIndicatorColor);
   }
 
   drawGarbageDefenceEffects(effects, timestamp) {
-    this._drawGarbageEffects(effects, timestamp, function() { return THEME.color.text.white; });
+    this._drawGarbageEffects(effects, timestamp, _getDefenceColor);
   }
 
   // Trace the hex board outline as a closed path (matching the zigzag walls)
@@ -148,7 +157,7 @@ class HexUIRenderer extends BaseUIRenderer {
 
     var hexS = size * 0.45;
     var drawS = hexS * (1 - THEME.size.blockGap * 2);
-    var hexH = Math.sqrt(3) * hexS;   // height of flat-top hex (layout spacing)
+    var hexH = _SQRT3 * hexS;   // height of flat-top hex (layout spacing)
     var colW = 1.5 * hexS;            // column spacing
     var cols = bounds.maxC - bounds.minC + 1;
     var rows = bounds.maxR - bounds.minR + 1;
@@ -158,13 +167,13 @@ class HexUIRenderer extends BaseUIRenderer {
     var ox = centerX - totalW / 2;
     var oy = centerY - totalH / 2;
 
-    var stamp = getMiniHexStamp(this._styleTier, color, drawS);
+    var stamp = getHexStamp(this._styleTier, color, _SQRT3 * drawS);
     var ctx = this.ctx;
     for (var i = 0; i < bounds.offsets.length; i++) {
       var o = bounds.offsets[i];
       var px = ox + colW * (o.col - bounds.minC) + hexS;
       var py = oy + hexH * (o.row - bounds.minR + 0.5 * (o.col & 1)) + hexH / 2;
-      ctx.drawImage(stamp, px - drawS - 1, py - stamp.cssH / 2, stamp.cssW, stamp.cssH);
+      ctx.drawImage(stamp, px - stamp.cssW / 2, py - stamp.cssH / 2, stamp.cssW, stamp.cssH);
     }
   }
 }

@@ -100,11 +100,14 @@ class BaseUIRenderer {
   }
 
   _nextPanelLayout(playerState) {
+    var nextCount = playerState.nextPieces ? Math.min(playerState.nextPieces.length, 3) : 0;
+    if (this._cachedNextLayout && this._cachedNextCount === nextCount) return this._cachedNextLayout;
     var pieceSpacing = this.miniSize * 3;
     var startY = this.boardY + this._labelSize + this.cellSize * 0.2;
-    var nextCount = playerState.nextPieces ? Math.min(playerState.nextPieces.length, 3) : 0;
     var boxHeight = pieceSpacing * Math.max(nextCount, 3);
-    return { startY: startY, boxHeight: boxHeight, pieceSpacing: pieceSpacing };
+    this._cachedNextCount = nextCount;
+    this._cachedNextLayout = { startY: startY, boxHeight: boxHeight, pieceSpacing: pieceSpacing };
+    return this._cachedNextLayout;
   }
 
   drawNextPanel(playerState, layout) {

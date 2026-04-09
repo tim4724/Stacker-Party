@@ -248,12 +248,12 @@ function createAllColorsGrid() {
   return grid;
 }
 
-// Build a game state with all 4 style tiers visible (4 players, one per tier)
+// Build a game state with all 3 style tiers visible (3 players, one per tier)
 // Each board shows all 7 piece colors + garbage
 function buildStyleTierGameState(playerIds) {
-  const tierLevels = [3, 8, 13]; // Normal, Square, Neon
+  const tierLevels = [3, 8, 13]; // Normal, Pillow, Neon
   const tierLines  = [20, 70, 120]; // lines matching those levels
-  const tierNames  = ['Normal', 'Square', 'Neon'];
+  const tierNames  = ['Normal', 'Pillow', 'Neon'];
   const allColorsGrid = createAllColorsGrid();
 
   const tierPiece = { typeId: 6, x: 4, y: 3, blocks: [[1, 0], [0, 1], [1, 1], [2, 1]] };
@@ -291,24 +291,10 @@ function buildStyleTierGameState(playerIds) {
 // AND all 7 ghost outlines at the bottom, all at the same style tier.
 // Uses extraGhosts (rendered by BoardRenderer) for the 6 non-active ghost pieces.
 function buildAllPiecesGhostState(playerIds, tierLevel) {
-  const tierLevelMap = { 3: 'Normal', 8: 'Square', 13: 'Neon' };
+  const tierLevelMap = { 3: 'Normal', 8: 'Pillow', 13: 'Neon' };
   const tierName = tierLevelMap[tierLevel] || 'Normal';
 
-  // All 7 pieces as solid blocks in rows 2-6
-  function createShowcaseGrid() {
-    const grid = Array.from({ length: 22 }, () => Array(10).fill(0));
-    // I(1) horizontal
-    grid[2] = [0, 0, 0, 1, 1, 1, 1, 0, 0, 0];
-    // J(2) + O(4) + L(3)
-    grid[3] = [2, 0, 0, 4, 4, 0, 0, 0, 0, 3];
-    grid[4] = [2, 2, 2, 4, 4, 5, 5, 0, 3, 3];
-    // S(5) + T(6) + Z(7)
-    grid[5] = [0, 0, 6, 0, 5, 5, 7, 7, 3, 0];
-    grid[6] = [0, 6, 6, 6, 0, 0, 0, 7, 7, 0];
-    return grid;
-  }
-
-  // All 7 piece definitions for active + ghost placement
+  // All 7 piece definitions (blocks are [col, row] offsets from position)
   const allPieces = [
     { typeId: 1, blocks: [[0,0],[1,0],[2,0],[3,0]] },  // I
     { typeId: 2, blocks: [[0,0],[0,1],[1,1],[2,1]] },  // J
@@ -319,39 +305,56 @@ function buildAllPiecesGhostState(playerIds, tierLevel) {
     { typeId: 7, blocks: [[0,0],[1,0],[1,1],[2,1]] },  // Z
   ];
 
-  // Ghost row positions — spread across rows 10-18, spaced by 2 rows per piece
-  // Active piece ghost at row 10, extra ghosts at rows 12, 14, 16, 18 etc.
-  // Place them at different x positions so they don't overlap
-  const ghostPositions = [
-    { x: 0, ghostY: 12 },  // I at cols 0-3
-    { x: 0, ghostY: 15 },  // J at cols 0-2
-    { x: 4, ghostY: 15 },  // L at cols 4-6
-    { x: 8, ghostY: 15 },  // O at cols 8-9
-    { x: 0, ghostY: 18 },  // S at cols 0-2
-    { x: 4, ghostY: 18 },  // T at cols 4-6
-    { x: 7, ghostY: 18 },  // Z at cols 7-9
+  // Solid pieces in rows 2-6, ghosts in rows 12-18 (same positions)
+  const piecePositions = [
+    { x: 0, y: 2 },   // I at cols 0-3
+    { x: 0, y: 5 },   // J at cols 0-2
+    { x: 4, y: 5 },   // L at cols 4-6
+    { x: 8, y: 5 },   // O at cols 8-9
+    { x: 0, y: 8 },   // S at cols 0-2
+    { x: 4, y: 8 },   // T at cols 4-6
+    { x: 7, y: 8 },   // Z at cols 7-9
   ];
 
-  const pieceLabels = ['I', 'J', 'L', 'O', 'S', 'T', 'Z', 'I'];
+  const ghostPositions = piecePositions.map(p => ({ x: p.x, ghostY: p.y + 10 }));
+
+  // 6 pieces as solid blocks (T is the active piece, shown separately)
+  function createShowcaseGrid() {
+    const grid = Array.from({ length: 22 }, () => Array(10).fill(0));
+    for (let i = 0; i < allPieces.length; i++) {
+      if (allPieces[i].typeId === 6) continue; // T is the active piece
+      const pos = piecePositions[i];
+      for (const [bx, by] of allPieces[i].blocks) {
+        grid[pos.y + by][pos.x + bx] = allPieces[i].typeId;
+      }
+    }
+    return grid;
+  }
+
+  // 6 extra ghost definitions (T excluded — it's the active ghost)
+  const extraPieces = allPieces.filter(p => p.typeId !== 6);
+
+  // Active piece: T, same on all boards
+  const tIdx = allPieces.findIndex(p => p.typeId === 6);
+  const activeDef = allPieces[tIdx];
+  const activeX = piecePositions[tIdx].x;
+  const activeGhostY = ghostPositions[tIdx].ghostY;
+
+  // Extra ghosts: all pieces except T (same on all boards)
+  const extras = [];
+  for (let i = 0; i < allPieces.length; i++) {
+    if (i === tIdx) continue;
+    extras.push({
+      typeId: allPieces[i].typeId,
+      x: ghostPositions[i].x,
+      ghostY: ghostPositions[i].ghostY,
+      blocks: allPieces[i].blocks.map(b => b.slice()),
+    });
+  }
 
   const extraGhostsPerPlayer = [];
 
   const players = playerIds.map((id, index) => {
-    const activeIdx = index % 7;
-    const activePos = ghostPositions[activeIdx];
-    const activeDef = allPieces[activeIdx];
-
-    // Build extra ghosts for the other 6 piece types
-    const extras = [];
-    for (let i = 0; i < 7; i++) {
-      if (i === activeIdx) continue;
-      extras.push({
-        typeId: allPieces[i].typeId,
-        x: ghostPositions[i].x,
-        ghostY: ghostPositions[i].ghostY,
-        blocks: allPieces[i].blocks.map(b => b.slice()),
-      });
-    }
     extraGhostsPerPlayer.push(extras);
 
     return {
@@ -363,15 +366,15 @@ function buildAllPiecesGhostState(playerIds, tierLevel) {
       grid: createShowcaseGrid(),
       currentPiece: {
         typeId: activeDef.typeId,
-        x: activePos.x,
+        x: activeX,
         y: 8,
         blocks: activeDef.blocks.map(b => b.slice()),
       },
-      ghostY: activePos.ghostY,
+      ghostY: activeGhostY,
       holdPiece: null,
       nextPieces: [],
       pendingGarbage: 0,
-      playerName: tierName + ' ' + pieceLabels[index % 8],
+      playerName: tierName + ' ' + (index + 1),
       playerColor: PLAYER_COLORS[index % PLAYER_COLORS.length],
     };
   });

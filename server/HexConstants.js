@@ -13,8 +13,8 @@ var HEX_VISIBLE_ROWS = 21;
 
 // 7 hex piece types (1-indexed to match grid cell values)
 // All 4-hex pieces
-var HEX_PIECE_TYPES = ['L', 'S', 'T', 'F', 'Fm', 'I4', 'Tp'];
-var HEX_PIECE_TYPE_TO_ID = { L: 1, S: 2, T: 3, F: 4, Fm: 5, I4: 6, Tp: 7 };
+var HEX_PIECE_TYPES = ['I', 'J', 'L', 'O', 'S', 'T', 'Z'];
+var HEX_PIECE_TYPE_TO_ID = { I: 1, J: 2, L: 3, O: 4, S: 5, T: 6, Z: 7 };
 var HEX_GARBAGE_CELL = 9;
 
 // ===================== ZIGZAG CLEAR DETECTION =====================
@@ -112,11 +112,10 @@ function computeHexGeometry(boardCols, visRows, cellSize) {
   };
 }
 
-// Trace the closed outline of a hex board on a canvas context.
-// bx, by: board origin. hs: hexSize. hexH: hex height. colW: column spacing.
 // Compute the outline vertices for a hex board as a flat array of [x, y] pairs.
+// bx, by: board origin. hs: hexSize. hexH: hex height. colW: column spacing.
 // Used by both traceHexOutline (canvas path) and HexBoardRenderer (pre-computed cache).
-function computeHexOutlineVerts(bx, by, hs, hexH, colW, cols, visRows) {
+function computeHexOutlineVerts(bx, by, hs, hexH, colW, cols, visRows, outset) {
   var verts = [];
   var lastRow = visRows - 1;
   var lastCol = cols - 1;
@@ -169,6 +168,33 @@ function computeHexOutlineVerts(bx, by, hs, hexH, colW, cols, visRows) {
     verts.push(hv(pl[0], pl[1], 3));
     verts.push(hv(pl[0], pl[1], 4));
   }
+
+  // Offset each vertex outward along the average normal of its two adjacent edges.
+  // This ensures uniform perpendicular distance from the original outline.
+  if (outset) {
+    var n = verts.length;
+    var offset = [];
+    for (var oi = 0; oi < n; oi++) {
+      var prev = verts[(oi - 1 + n) % n];
+      var curr = verts[oi];
+      var next = verts[(oi + 1) % n];
+      // Edge normals (outward = right-hand perpendicular for CW winding)
+      var n1x = curr[1] - prev[1], n1y = prev[0] - curr[0];
+      var n2x = next[1] - curr[1], n2y = curr[0] - next[0];
+      var l1 = Math.sqrt(n1x * n1x + n1y * n1y) || 1;
+      var l2 = Math.sqrt(n2x * n2x + n2y * n2y) || 1;
+      n1x /= l1; n1y /= l1;
+      n2x /= l2; n2y /= l2;
+      // Average normal, scaled to maintain perpendicular offset distance
+      var ax = n1x + n2x, ay = n1y + n2y;
+      var dot = ax * n1x + ay * n1y;
+      if (Math.abs(dot) < 0.001) dot = 1;
+      var scale = outset / dot;
+      offset.push([curr[0] + ax * scale, curr[1] + ay * scale]);
+    }
+    return offset;
+  }
+
   return verts;
 }
 

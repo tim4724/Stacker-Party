@@ -7,15 +7,18 @@
 
 var lastThrottled = null;
 var lastMusicLevel = 0;
+var _NO_SHAKE = Object.freeze({ x: 0, y: 0 });
 
 // Returns all effects if any is still active; otherwise clears the map entry and returns [].
+var _EMPTY_EFFECTS = Object.freeze([]);
 function getOrClearEffects(effectsMap, playerId, timestamp) {
-  var effects = effectsMap.get(playerId) || [];
+  var effects = effectsMap.get(playerId);
+  if (!effects) return _EMPTY_EFFECTS;
   for (var i = 0; i < effects.length; i++) {
     if (timestamp - effects[i].startTime < effects[i].duration) return effects;
   }
   effectsMap.delete(playerId);
-  return [];
+  return _EMPTY_EFFECTS;
 }
 
 function startRenderLoop() {
@@ -115,7 +118,8 @@ function renderFrame(timestamp) {
         id: playerOrder[i],
         alive: true,
         lines: 0, level: pInfo?.startLevel || 1,
-        garbageIndicatorEffects: [],
+        garbageIndicatorEffects: _EMPTY_EFFECTS,
+        garbageDefenceEffects: _EMPTY_EFFECTS,
         playerName: pInfo?.playerName || PLAYER_NAMES[i],
         playerColor: pInfo?.playerColor || PLAYER_COLORS[i]
       };
@@ -132,7 +136,7 @@ function renderFrame(timestamp) {
 
       var shake = animations
         ? animations.getShakeOffsetForBoard(boardRenderers[j].x, boardRenderers[j].y)
-        : { x: 0, y: 0 };
+        : _NO_SHAKE;
 
       if (shake.x !== 0 || shake.y !== 0) {
         ctx.save();
@@ -160,12 +164,12 @@ function renderFrame(timestamp) {
         for (var eg = 0; eg < extras.length; eg++) {
           var ghost = extras[eg];
           var gc = ghostColorSet[ghost.typeId] || { outline: 'rgba(255,255,255,0.12)', fill: 'rgba(255,255,255,0.06)' };
-          for (var bl = 0; bl < ghost.blocks.length; bl++) {
-            var gbx = ghost.blocks[bl][0];
-            var gby = ghost.blocks[bl][1];
-            var drawRow = ghost.ghostY + gby;
-            var drawCol = ghost.x + gbx;
-            if (drawRow >= 0 && drawRow < GameConstants.VISIBLE_HEIGHT && drawCol >= 0 && drawCol < GameConstants.BOARD_WIDTH) {
+          if (ghost.blocks) {
+            for (var bl = 0; bl < ghost.blocks.length; bl++) {
+              var gbx = ghost.blocks[bl][0];
+              var gby = ghost.blocks[bl][1];
+              var drawCol = ghost.x + gbx;
+              var drawRow = ghost.ghostY + gby;
               br.drawGhostBlock(drawCol, drawRow, gc);
             }
           }

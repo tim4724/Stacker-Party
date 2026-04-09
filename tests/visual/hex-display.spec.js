@@ -6,7 +6,7 @@ const {
   waitForFont,
   waitForGameRender,
 } = require('./helpers');
-const { buildHexGameState, buildHexStyleTierState, buildPlayerIds, buildPlayers } = require('./hex-fixtures');
+const { buildHexGameState, buildHexStyleTierState, buildHexAllPiecesGhostState, buildPlayerIds, buildPlayers } = require('./hex-fixtures');
 
 async function injectHexPlayers(page, count) {
   const playerList = buildPlayers(count);
@@ -91,6 +91,23 @@ test.describe('Hex Display', () => {
     await waitForGameRender(page);
     await expect(page).toHaveScreenshot('hex-08-style-tiers.png');
   });
+
+  for (const [tierName, tierLevel] of [['normal', 3], ['pillow', 8], ['neon', 13]]) {
+    test(`hex mode - all pieces + ghosts ${tierName}`, async ({ page }) => {
+      await page.setViewportSize({ width: 2560, height: 1440 });
+      await gotoDisplayTest(page);
+      await injectHexPlayers(page, 8);
+      const playerIds = buildPlayerIds(8);
+      const result = buildHexAllPiecesGhostState(playerIds, tierLevel);
+      await page.evaluate(({ s, extraGhosts }) => {
+        window.__TEST__.setGameMode('hex');
+        window.__TEST__.setExtraGhosts(extraGhosts);
+        window.__TEST__.injectGameState(s);
+      }, { s: result.state, extraGhosts: result.extraGhostsPerPlayer });
+      await waitForGameRender(page);
+      await expect(page).toHaveScreenshot(`hex-08b-pieces-${tierName}.png`);
+    });
+  }
 
   test('hex mode - KO overlay', async ({ page }) => {
     await gotoDisplayTest(page);

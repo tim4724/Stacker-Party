@@ -30,8 +30,10 @@ var _getDefenceColor = function() { return THEME.color.text.white; };
 
 class UIRenderer extends BaseUIRenderer {
   getGarbageMeterLayout() {
+    // cx = center of meter cell (matches hex meter positioning)
+    var cx = this.boardX - this.cellSize * 1.07;
     return {
-      x: this.boardX - this.cellSize * 1.07,
+      x: cx - this.cellSize / 2,
       y: this.boardY,
       cellSize: this.cellSize,
       rows: GameConstants.VISIBLE_HEIGHT
@@ -78,6 +80,7 @@ class UIRenderer extends BaseUIRenderer {
     const r = THEME.radius.block(meter.cellSize);
     const bw = meter.cellSize - inset * 2;
     const bh = meter.cellSize - inset * 2;
+    const bx = meter.x + inset;
 
     try {
       for (const effect of effects) {
@@ -85,15 +88,21 @@ class UIRenderer extends BaseUIRenderer {
         if (elapsed < 0 || elapsed >= effect.duration) continue;
         ctx.globalAlpha = (1 - elapsed / effect.duration) * (effect.maxAlpha || 0.9);
 
+        // Batched fill: compound path for all rows in this effect
+        ctx.beginPath();
         for (let row = effect.rowStart; row < effect.rowStart + effect.lines; row++) {
           if (row < 0 || row >= meter.rows) continue;
-          const y = meter.y + row * meter.cellSize;
-          const bx = meter.x + inset;
-          const by = y + inset;
-          ctx.fillStyle = getColor(effect);
-          roundRect(ctx, bx, by, bw, bh, r);
-          ctx.fill();
-          ctx.fillStyle = 'rgba(255, 255, 255, ' + highlightAlpha + ')';
+          const by = meter.y + row * meter.cellSize + inset;
+          _addRoundRectSubPath(ctx, bx, by, bw, bh, r);
+        }
+        ctx.fillStyle = getColor(effect);
+        ctx.fill();
+
+        // Batched highlight stripe
+        ctx.fillStyle = 'rgba(255, 255, 255, ' + highlightAlpha + ')';
+        for (let row = effect.rowStart; row < effect.rowStart + effect.lines; row++) {
+          if (row < 0 || row >= meter.rows) continue;
+          const by = meter.y + row * meter.cellSize + inset;
           ctx.fillRect(bx + inset, by + inset, bw - inset * 2, inset);
         }
       }
@@ -119,7 +128,7 @@ class UIRenderer extends BaseUIRenderer {
     const tier = this._styleTier;
     const isNeon = tier === STYLE_TIERS.NEON_FLAT;
     const color = (isNeon ? NEON_PIECE_COLORS[typeId] : PIECE_COLORS[typeId]) || '#ffffff';
-    const stamp = getMiniBlockStamp(tier, color, size);
+    const stamp = getBlockStamp(tier, color, size);
 
     const offsetX = centerX - (bounds.w * size) / 2;
     const offsetY = centerY - (bounds.h * size) / 2;
