@@ -83,7 +83,7 @@ class HexUIRenderer extends BaseUIRenderer {
     ctx.fill();
   }
 
-  _drawGarbageEffects(effects, timestamp, getColor) {
+  _drawGarbageEffects(effects, timestamp, getColor, highlightAlpha) {
     if (!Array.isArray(effects) || effects.length === 0) return;
     var sCell = this._sCell;
     var ctx = this.ctx;
@@ -91,6 +91,11 @@ class HexUIRenderer extends BaseUIRenderer {
     var hexH = this._hexH;
     var baseY = this.boardY;
     var now = timestamp || performance.now();
+
+    // Highlight stripe proportions (matches square mode's top-edge bevel feel)
+    var stripeInset = sCell * 0.08;
+    var stripeH = sCell * 0.16;
+    var halfStripeW = sCell / 2;
 
     try {
       for (var ei = 0; ei < effects.length; ei++) {
@@ -113,6 +118,18 @@ class HexUIRenderer extends BaseUIRenderer {
           ctx.closePath();
         }
         ctx.fill();
+
+        // Batched highlight stripe along each hex's top flat edge
+        if (highlightAlpha > 0) {
+          ctx.fillStyle = 'rgba(255, 255, 255, ' + highlightAlpha + ')';
+          for (var hRow = effect.rowStart; hRow < effect.rowStart + effect.lines; hRow++) {
+            if (hRow < 0 || hRow >= HexConstants.HEX_VISIBLE_ROWS) continue;
+            var hVisRow = HexConstants.HEX_VISIBLE_ROWS - 1 - hRow;
+            var hCy = baseY + hexH * hVisRow + hexH / 2;
+            var topY = hCy - hexH / 2 + stripeInset;
+            ctx.fillRect(mx - halfStripeW, topY, sCell, stripeH);
+          }
+        }
       }
     } finally {
       ctx.globalAlpha = 1.0;
@@ -120,11 +137,11 @@ class HexUIRenderer extends BaseUIRenderer {
   }
 
   drawGarbageIndicatorEffects(effects, timestamp) {
-    this._drawGarbageEffects(effects, timestamp, _getIndicatorColor);
+    this._drawGarbageEffects(effects, timestamp, _getIndicatorColor, 0.2);
   }
 
   drawGarbageDefenceEffects(effects, timestamp) {
-    this._drawGarbageEffects(effects, timestamp, _getDefenceColor);
+    this._drawGarbageEffects(effects, timestamp, _getDefenceColor, 0.3);
   }
 
   // Trace the hex board outline as a closed path (matching the zigzag walls)
