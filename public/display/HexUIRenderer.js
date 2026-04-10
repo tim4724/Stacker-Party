@@ -96,9 +96,13 @@ class HexUIRenderer extends BaseUIRenderer {
     // Square uses cellSize * blockGap (~0.03 * cellSize); sCell ≈ 0.61 * cellSize
     // (hexSize = cellSize * 11/17 ≈ 0.647, minus the apothem-based gap), so we
     // target a similar absolute thickness via a small fraction of sCell.
+    // Anchor the stripe to the hex's actual flat-top vertex (hCy - sCell*√3/2)
+    // rather than the cell boundary, so the stripe stays inside the drawn hex
+    // regardless of future gap-constant tweaks.
     var stripeInset = sCell * 0.05;
     var stripeH = sCell * 0.06;
     var halfStripeW = sCell / 2;
+    var topEdgeOffset = sCell * _SQRT3 / 2;
 
     try {
       for (var ei = 0; ei < effects.length; ei++) {
@@ -130,7 +134,7 @@ class HexUIRenderer extends BaseUIRenderer {
         for (var hRow = effect.rowStart; hRow < effect.rowStart + effect.lines; hRow++) {
           if (hRow < 0 || hRow >= HexConstants.HEX_VISIBLE_ROWS) continue;
           var hCy = baseY + hexH * hRow + hexH / 2;
-          var topY = hCy - hexH / 2 + stripeInset;
+          var topY = hCy - topEdgeOffset + stripeInset;
           ctx.fillRect(mx - halfStripeW, topY, sCell, stripeH);
         }
       }
