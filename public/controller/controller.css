@@ -299,7 +299,7 @@ html, body {
 .mode-option.selected {
   background: rgba(var(--accent-cyan-rgb), 0.12);
   color: var(--text-primary);
-  box-shadow: inset 0 0 16px rgba(0, 200, 255, 0.06);
+  box-shadow: inset 0 0 16px rgba(var(--accent-cyan-rgb), 0.06);
 }
 
 .mode-option.selected .mode-icon {

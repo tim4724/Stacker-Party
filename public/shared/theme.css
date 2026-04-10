@@ -12,27 +12,28 @@
    * the -rgb tuple and both the solid and translucent uses update.
    */
 
-  /* Backgrounds */
+  /* Backgrounds (dark → light) */
   --bg-primary-rgb: 6, 6, 15;
   --bg-primary: rgb(var(--bg-primary-rgb));
+  --bg-board: #0c0c12;
   --bg-secondary: #0c0c1a;
   --bg-card-rgb: 18, 18, 42;
   --bg-card: rgb(var(--bg-card-rgb));
-  --bg-board: #0c0c12;
   --bg-glass: rgba(255, 255, 255, 0.06);
 
   /* Text */
   --text-primary: #e0e0ff;
   --text-secondary: rgba(240, 244, 255, 0.6);
   --color-white: #ffffff;
-  --text-cyan: rgba(0, 200, 255, 0.9);
+  --text-cyan: rgba(var(--accent-cyan-rgb), 0.9);
 
   /* Accents */
   --accent-blue-rgb: 68, 68, 255;
   --accent-blue: rgb(var(--accent-blue-rgb));
-  --accent-cyan-rgb: 0, 204, 255;
+  --accent-cyan-rgb: 0, 200, 255;
   --accent-cyan: rgb(var(--accent-cyan-rgb));
-  --accent-green: #00ff88;
+  --accent-green-rgb: 0, 255, 136;
+  --accent-green: rgb(var(--accent-green-rgb));
   --accent-green-dark: #00dd77;
 
   /* Semantic */
@@ -61,8 +62,8 @@
   --overlay-bg: rgba(var(--bg-primary-rgb), 0.88);
 
   /* Glows */
-  --glow-cyan: rgba(0, 200, 255, 0.15);
-  --glow-green: rgba(0, 255, 136, 0.3);
+  --glow-cyan: rgba(var(--accent-cyan-rgb), 0.15);
+  --glow-green: rgba(var(--accent-green-rgb), 0.3);
   --glow-blue: rgba(var(--accent-blue-rgb), 0.06);
 
   /* Opacities */

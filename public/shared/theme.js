@@ -76,8 +76,8 @@ const THEME = Object.freeze({
     bg: Object.freeze({
       primary:   '#06060f',
       board:     '#0c0c12',
-      secondary: '#12121c',
-      card:      '#1a1a2a',
+      secondary: '#0c0c1a',
+      card:      '#12122a',
     }),
     text: Object.freeze({
       primary: '#e0e0ff',
@@ -85,7 +85,7 @@ const THEME = Object.freeze({
     }),
     accent: Object.freeze({
       blue:      '#4444ff',
-      cyan:      '#00ccff',
+      cyan:      '#00c8ff',
       green:     '#00ff88',
       greenDark: '#00dd77',
     }),

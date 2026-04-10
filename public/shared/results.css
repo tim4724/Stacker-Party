@@ -6,7 +6,7 @@
 
 @keyframes btnPulse {
   0%, 100% { box-shadow: 0 0 20px var(--glow-green); }
-  50% { box-shadow: 0 0 36px rgba(0, 255, 136, 0.5); }
+  50% { box-shadow: 0 0 36px rgba(var(--accent-green-rgb), 0.5); }
 }
 
 @keyframes resultRowIn {
