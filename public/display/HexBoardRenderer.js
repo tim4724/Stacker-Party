@@ -57,7 +57,8 @@ class HexBoardRenderer {
     var rgb = this._accentRgb;
     this._tintFill = rgb ? 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + THEME.opacity.tint + ')' : null;
     var gridAlpha = THEME.opacity.grid + (rgb ? (1 - (rgb.r * 0.299 + rgb.g * 0.587 + rgb.b * 0.114) / 255) * 0.08 : 0);
-    this._gridStroke = rgb ? 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + gridAlpha.toFixed(2) + ')' : 'rgba(255,255,255,' + THEME.opacity.grid + ')';
+    this._gridAlpha = gridAlpha;
+    this._gridStrokeOpaque = rgb ? 'rgb(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ')' : 'rgb(255,255,255)';
     this._wallStroke = rgb ? 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + THEME.opacity.strong + ')' : 'rgba(255,255,255,' + THEME.opacity.soft + ')';
 
     // Board background + grid cache (built lazily on first render)
@@ -95,22 +96,32 @@ class HexBoardRenderer {
     }
     gc.restore();
 
-    // 2. Grid lines at full hexSize (cells touch at boundaries, like square mode)
+    // 2. Grid lines — draw opaque on a temp canvas, then composite at target alpha.
+    //    Each hex cell draws all 6 edges, so shared interior edges overlap.
+    //    Without this technique the overlaps double the effective alpha.
     var hs = this.hexSize;
-    gc.beginPath();
+    var tc;
+    if (typeof OffscreenCanvas !== 'undefined') tc = new OffscreenCanvas(pw, ph);
+    else { tc = document.createElement('canvas'); tc.width = pw; tc.height = ph; }
+    var tctx = tc.getContext('2d');
+    tctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    tctx.beginPath();
     for (var row = 0; row < HEX_VIS_ROWS; row++) {
       for (var col = 0; col < HEX_COLS_N; col++) {
         var pos = this._hexCenterLocal(col, row);
-        gc.moveTo(pos.x + hs * HEX_UNIT_VERTICES[0], pos.y + hs * HEX_UNIT_VERTICES[1]);
+        tctx.moveTo(pos.x + hs * HEX_UNIT_VERTICES[0], pos.y + hs * HEX_UNIT_VERTICES[1]);
         for (var vi = 2; vi < 12; vi += 2) {
-          gc.lineTo(pos.x + hs * HEX_UNIT_VERTICES[vi], pos.y + hs * HEX_UNIT_VERTICES[vi + 1]);
+          tctx.lineTo(pos.x + hs * HEX_UNIT_VERTICES[vi], pos.y + hs * HEX_UNIT_VERTICES[vi + 1]);
         }
-        gc.closePath();
+        tctx.closePath();
       }
     }
-    gc.strokeStyle = this._gridStroke;
-    gc.lineWidth = this._gridLineWidth;
-    gc.stroke();
+    tctx.strokeStyle = this._gridStrokeOpaque;
+    tctx.lineWidth = this._gridLineWidth;
+    tctx.stroke();
+    gc.globalAlpha = this._gridAlpha;
+    gc.drawImage(tc, 0, 0, w, h);
+    gc.globalAlpha = 1;
 
     return oc;
   }
