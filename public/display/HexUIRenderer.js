@@ -93,8 +93,9 @@ class HexUIRenderer extends BaseUIRenderer {
     var now = timestamp || performance.now();
 
     // Highlight stripe proportions (matches square mode's top-edge bevel feel).
-    // Square uses cellSize * blockGap (~0.03 * cellSize); sCell ≈ 0.54 * cellSize,
-    // so we target a similar absolute thickness via a small fraction of sCell.
+    // Square uses cellSize * blockGap (~0.03 * cellSize); sCell ≈ 0.61 * cellSize
+    // (hexSize = cellSize * 11/17 ≈ 0.647, minus the apothem-based gap), so we
+    // target a similar absolute thickness via a small fraction of sCell.
     var stripeInset = sCell * 0.05;
     var stripeH = sCell * 0.06;
     var halfStripeW = sCell / 2;
