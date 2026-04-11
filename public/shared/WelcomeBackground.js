@@ -83,6 +83,27 @@ class WelcomeBackground {
     return rotations;
   }
 
+  // Opacity boost derived from perceived luminance of the piece color.
+  // Low-luminance colors get a boost so background pieces stay visible on
+  // the dark canvas. Auto-adjusts when the palette changes — see PR #71 for
+  // the historical incident where this logic went stale after a rebrand.
+  //
+  // Threshold rationale (ITU-R BT.601 luma weights: 0.299 R + 0.587 G + 0.114 B):
+  //   <115 → +0.06  hot pink / pure blue / royal blue (darkest pieces)
+  //   <135 → +0.03  red, violet, old dark-purple (medium-dark)
+  //   ≥135 →   0    teal, amber, lime, gold (already bright enough)
+  static _opacityBoost(hex) {
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || '');
+    if (!m) return 0;
+    const r = parseInt(m[1], 16);
+    const g = parseInt(m[2], 16);
+    const b = parseInt(m[3], 16);
+    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+    if (lum < 115) return 0.06;
+    if (lum < 135) return 0.03;
+    return 0;
+  }
+
   // One-time initialization: read piece data from engine modules.
   static _syncFromEngine() {
     // Classic pieces
@@ -205,14 +226,16 @@ class WelcomeBackground {
     // Larger shapes fall slower for parallax depth feel
     const speed = 15 + (48 - blockSize) / 32 * 25; // 15-40 px/s
     const drift = 0;
-    // Base opacity close to original; boost low-luminance colors so they stay visible.
-    // Note: 'T' still exists in classic mode (removed only from the hex set).
-    const boost = key === 'J' ? 0.06 : (key === 'T' || key === 'L') ? 0.03 : 0;
-    const opacity = 0.05 + Math.random() * 0.04 + boost; // base 0.05-0.09
 
     // Use correct color for this piece type
     const colorIdx = WelcomeBackground.SHAPE_COLOR_INDEX[key];
     const color = typeof PIECE_COLORS !== 'undefined' ? PIECE_COLORS[colorIdx] : '#4444ff';
+
+    // Base opacity close to original; boost low-luminance colors so they stay
+    // visible against the dark background. Derived from color at runtime so it
+    // auto-adjusts if the palette changes.
+    const boost = WelcomeBackground._opacityBoost(color);
+    const opacity = 0.05 + Math.random() * 0.04 + boost; // base 0.05-0.09
 
     return {
       hex: false,
@@ -234,12 +257,13 @@ class WelcomeBackground {
     const cells = rotations[Math.floor(Math.random() * rotations.length)];
     const blockSize = 12 + Math.random() * 20; // 12-32px (hex radius)
     const speed = 15 + (32 - blockSize) / 20 * 25;
-    // Boost opacity for cooler/darker pieces so they stay visible on dark bg
-    const boost = (key === 'p' || key === 'J') ? 0.03 : 0;
-    const opacity = 0.05 + Math.random() * 0.04 + boost;
 
     const colorIdx = WelcomeBackground.HEX_SHAPE_COLOR_INDEX[key];
     const color = typeof HEX_PIECE_COLORS !== 'undefined' ? HEX_PIECE_COLORS[colorIdx] : '#4444ff';
+
+    // Boost low-luminance colors so they stay visible against the dark bg.
+    const boost = WelcomeBackground._opacityBoost(color);
+    const opacity = 0.05 + Math.random() * 0.04 + boost;
 
     return {
       hex: true,
