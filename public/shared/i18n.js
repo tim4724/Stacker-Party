@@ -154,7 +154,7 @@ var LOCALES = {
     imprint_page_title: 'Impressum — Stacker Party',
     privacy_page_title: 'Datenschutz — Stacker Party',
     back_to_game: '← Zurück',
-    privacy_title: 'DATENSCHUTZERKLÄRUNG',
+    privacy_title: 'DATENSCHUTZ\u00ADERKLÄRUNG',
     privacy_controller: 'Verantwortlicher',
     privacy_controller_intro: 'Verantwortlicher im Sinne der DSGVO ist:',
     privacy_postal_address: 'Postanschrift:',
