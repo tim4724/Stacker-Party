@@ -98,7 +98,9 @@ function buildHexAllPiecesGhostState(playerIds, tierLevel) {
   var tierLevelMap = { 3: 'Normal', 8: 'Pillow', 13: 'Neon' };
   var tierName = tierLevelMap[tierLevel] || 'Normal';
 
-  // 7 pieces as solid blocks in rows 2-6 (J is the active piece, shown separately)
+  // 7 pieces as solid blocks (J is the active piece, shown separately).
+  // Positions are verified collision-free under the v2 piece set; moving
+  // anything here is easy to accidentally break — see node check in PR #71.
   function createShowcaseGrid() {
     var grid = createHexGrid();
     var placements = [
@@ -106,9 +108,9 @@ function buildHexAllPiecesGhostState(playerIds, tierLevel) {
       { type: 'O',  col: 6, row: 2 },
       { type: 'S',  col: 2, row: 4 },
       { type: 'Z',  col: 5, row: 4 },
-      { type: 'I',  col: 5, row: 6 },
       { type: 'p',  col: 9, row: 4 },
-      { type: 'L',  col: 8, row: 7 },
+      { type: 'I',  col: 5, row: 6 },
+      { type: 'L',  col: 2, row: 9 },
     ];
     for (var pi = 0; pi < placements.length; pi++) {
       var pl = placements[pi];
@@ -126,15 +128,16 @@ function buildHexAllPiecesGhostState(playerIds, tierLevel) {
     return grid;
   }
 
-  // Ghost positions: 7 extra ghosts (J is the active piece)
+  // Ghost positions: 7 extra ghosts (J is the active piece).
+  // Same collision-free layout as the active side, shifted down.
   var ghostPlacements = [
-    { type: 'q',  col: 2, row: 10 },
-    { type: 'O',  col: 6, row: 10 },
-    { type: 'S',  col: 2, row: 13 },
-    { type: 'Z',  col: 5, row: 13 },
+    { type: 'q',  col: 2, row: 12 },
+    { type: 'O',  col: 6, row: 12 },
+    { type: 'S',  col: 2, row: 14 },
+    { type: 'Z',  col: 5, row: 14 },
+    { type: 'p',  col: 9, row: 14 },
     { type: 'I',  col: 5, row: 16 },
-    { type: 'p',  col: 9, row: 13 },
-    { type: 'L',  col: 8, row: 17 },
+    { type: 'L',  col: 2, row: 19 },
   ];
 
   // Active piece (same on all boards): J-piece falling, ghost near bottom
@@ -144,7 +147,7 @@ function buildHexAllPiecesGhostState(playerIds, tierLevel) {
   var activeBlocks = activePiece.getAbsoluteBlocks();
   var ghostPiece = new HexPiece('J');
   ghostPiece.anchorCol = 9;
-  ghostPiece.anchorRow = 14;
+  ghostPiece.anchorRow = 18;
   var ghostBlocks = ghostPiece.getAbsoluteBlocks();
 
   // Extra ghosts: the other 6 piece types (same on all boards)
