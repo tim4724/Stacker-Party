@@ -117,6 +117,7 @@ class BaseUIRenderer {
     if (this._cachedNextLayout && this._cachedNextCount === nextCount) return this._cachedNextLayout;
     var pieceSpacing = this.miniSize * this._nextPieceSpacingUnits();
     var startY = this.boardY + this._labelSize + this.cellSize * 0.2;
+    // 3 = minimum visible slot count (unrelated to _nextPieceSpacingUnits() above)
     var boxHeight = pieceSpacing * Math.max(nextCount, 3);
     this._cachedNextCount = nextCount;
     this._cachedNextLayout = { startY: startY, boxHeight: boxHeight, pieceSpacing: pieceSpacing };
