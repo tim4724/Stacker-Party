@@ -145,6 +145,8 @@ const server = http.createServer((req, res) => {
     urlPath = '/display/index.html';
   } else if (urlPath === '/privacy') {
     urlPath = '/privacy.html';
+  } else if (urlPath === '/imprint') {
+    urlPath = '/imprint.html';
   } else if (urlPath.length > 1 && !urlPath.includes('.') && urlPath.split('/').filter(Boolean).length === 1) {
     // Single path segment with no file extension -> room code -> serve controller
     urlPath = '/controller/index.html';

@@ -1,5 +1,5 @@
 (function() {
-  // --- Tetromino definitions (relative cells) ---
+  // --- Square piece definitions (relative cells) ---
   const COLORS = {
     I: '#EE4444',  // Red
     T: '#9B59F0',  // Violet
@@ -55,7 +55,7 @@
   // hexSolo: {x, y, size, color} for single hex cells
   // Presets — pieces in outer bands, clear center for text (~y:160-350)
   // Each piece gets its own zone to avoid overlap.
-  // At size=48: tetromino ≈ 200×100px, hex piece ≈ 120×80px
+  // At size=48: square piece ≈ 200×100px, hex piece ≈ 120×80px
   // Grid zones: TL(0-250,0-130) TR(260-512,0-130) BL(0-250,370-512) BR(260-512,370-512)
   //             ML(0-100,130-370) MR(410-512,130-370)
   const PRESETS = {

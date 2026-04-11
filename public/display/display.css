@@ -72,8 +72,18 @@ html, body {
 
 .footer-row {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
   gap: 6px;
+  max-width: 100%;
+}
+
+.footer-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 
 #welcome-footer a,

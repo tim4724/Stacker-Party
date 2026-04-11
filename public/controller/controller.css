@@ -122,13 +122,35 @@ html, body {
   line-height: 1.3;
 }
 
-.privacy-link {
+.legal-links {
   position: absolute;
   bottom: calc(env(safe-area-inset-bottom) + 16px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: clamp(0.85rem, 4vw, 1rem);
   color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.legal-links a {
+  color: inherit;
   text-decoration: none;
-  padding: 8px 16px;
+  padding: 8px 4px;
+  transition: color var(--transition-fast);
+}
+
+.legal-links a:hover,
+.legal-links a:focus-visible {
+  color: var(--accent-cyan);
+}
+
+.legal-links a:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 #lobby-screen.controller-shell {

@@ -1,0 +1,144 @@
+/* Shared styles for the /privacy and /imprint pages. */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: clamp(16px, 2vw, 18px);
+  line-height: 1.8;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.legal-shell {
+  position: relative;
+  width: 100%;
+  max-width: 960px;
+  padding: clamp(2rem, 6vh, 4rem) 1.5rem clamp(2rem, 4vh, 3rem);
+  background:
+    radial-gradient(ellipse at 50% 0%, var(--glow-blue) 0%, transparent 50%);
+}
+
+.back-link {
+  position: absolute;
+  top: clamp(1rem, 2.5vh, 1.5rem);
+  left: clamp(1rem, 2.5vw, 1.5rem);
+  font-size: 14px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  padding: 8px 12px;
+  border-radius: 4px;
+  opacity: var(--opacity-label);
+  transition: color var(--transition-fast), opacity var(--transition-fast);
+}
+
+.back-link:hover,
+.back-link:focus-visible {
+  color: var(--accent-cyan);
+  opacity: 1;
+}
+
+.back-link:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+}
+
+h1 {
+  font-size: clamp(1.5rem, 5vw, 2.6rem);
+  line-height: 1.15;
+  overflow-wrap: break-word;
+  margin-bottom: clamp(1.5rem, 4vh, 2.5rem);
+  animation: fadeDown 0.5s ease-out both;
+}
+
+h1.gradient-title {
+  display: inline-block;
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan), var(--accent-green));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+dl {
+  animation: fadeUp 0.5s 0.15s ease-out both;
+}
+
+dt {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-top: 1.6rem;
+}
+
+dt:first-child {
+  margin-top: 0;
+}
+
+dd {
+  margin: 0.3rem 0 0 0;
+}
+
+a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: filter var(--transition-fast);
+}
+
+a:hover,
+a:focus-visible {
+  color: var(--accent-cyan);
+  filter: drop-shadow(0 0 6px rgba(var(--accent-cyan-rgb), 0.3));
+}
+
+a:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+::selection {
+  background: rgba(var(--accent-cyan-rgb), 0.2);
+  color: var(--text-primary);
+}
+
+.objection {
+  margin-top: 2.5rem;
+  padding: 1.3rem 1.5rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-cyan);
+  border-radius: 6px;
+  animation: fadeUp 0.5s 0.25s ease-out both;
+}
+
+.objection h2 {
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin: 0 0 0.8rem 0;
+}
+
+.objection p {
+  margin: 0;
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5em;
+  margin-top: 2.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+  opacity: var(--opacity-label);
+  animation: fadeUp 0.5s 0.3s ease-out both;
+}

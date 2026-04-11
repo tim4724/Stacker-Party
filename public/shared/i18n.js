@@ -67,17 +67,39 @@ var LOCALES = {
     enter_name: 'Enter name...',
     touchpad: 'Touchpad',
     privacy: 'Privacy',
+    imprint: 'Imprint',
+    back_to_game: '← Back',
 
     // Privacy page
     privacy_title: 'PRIVACY NOTICE',
+    privacy_controller: 'controller',
+    privacy_controller_intro: 'Controller within the meaning of the GDPR is:',
+    privacy_postal_address: 'Postal address:',
+    privacy_see_imprint: 'see imprint',
     privacy_data: 'data',
-    privacy_data_detail: 'IP addresses are processed by the web server and the WebSocket relay to serve the site and enable multiplayer communication. They appear in temporary server logs and are not stored persistently or shared with third parties. Processing is based on legitimate interest in operating the service (Art. 6(1)(f) GDPR).',
+    privacy_data_detail: 'IP addresses are processed by the web server and the WebSocket relay to serve the site and enable multiplayer communication. They appear in server access logs, which are retained for a maximum of 7 days for security purposes (abuse detection and operational troubleshooting) and then automatically deleted. Logs are not shared with third parties. Processing is based on legitimate interest in operating the service (Art. 6(1)(f) GDPR).',
     privacy_tracking: 'tracking',
-    privacy_tracking_detail: 'No cookies, analytics, or third-party services are used.',
+    privacy_tracking_detail: 'No cookies, no analytics, no third-party services, and no tracking-related local storage are used.',
     privacy_gameplay: 'gameplay',
-    privacy_gameplay_detail: 'Player names and inputs are relayed between players during a session and exist only in memory. Nothing is stored.',
-    privacy_contact: 'contact',
-    privacy_updated: 'last updated march 2026',
+    privacy_gameplay_detail: 'Player names and inputs are relayed between players during a session and exist only in memory. Nothing is stored. Processing is based on legitimate interest in operating the service (Art. 6(1)(f) GDPR).',
+    privacy_hosting: 'hosting',
+    privacy_hosting_detail: 'Processing takes place exclusively on servers operated by the controller within Germany. No processors within the meaning of Art. 28 GDPR are engaged. No personal data is transferred to third countries.',
+    privacy_rights: 'your rights',
+    privacy_rights_detail: 'You have the right to access (Art. 15 GDPR), rectification (Art. 16), erasure (Art. 17), and restriction of processing (Art. 18). To exercise these rights, contact the controller using the e-mail address above. Your separate right to object under Art. 21 GDPR is set out below.',
+    privacy_authority: 'supervisory authority',
+    privacy_authority_detail: 'You have the right to lodge a complaint with a data protection supervisory authority (Art. 77 GDPR). The competent authority is: Bayerisches Landesamt für Datenschutzaufsicht (BayLDA), Promenade 18, 91522 Ansbach.',
+    privacy_automated: 'automated decisions',
+    privacy_automated_detail: 'No automated decision-making within the meaning of Art. 22 GDPR takes place.',
+    privacy_objection: 'Right to object (Art. 21 GDPR)',
+    privacy_objection_detail: 'You have the right at any time, on grounds relating to your particular situation, to object to the processing of personal data concerning you which is based on legitimate interest (Art. 6(1)(f) GDPR) — Art. 21(1) GDPR. An informal e-mail to the address stated in the imprint is sufficient to exercise this right.',
+    privacy_updated: 'Last updated April 2026',
+
+    // Imprint page
+    imprint_title: 'IMPRINT',
+    imprint_notice: 'Information pursuant to § 5 DDG',
+    imprint_contact: 'contact',
+    imprint_page_title: 'Imprint — Stacker Party',
+    privacy_page_title: 'Privacy — Stacker Party',
 
     // Credits
     stacked_by: 'Stacked by Tim',
@@ -125,15 +147,35 @@ var LOCALES = {
     n_lines: { one: '{count} Zeile', other: '{count} Zeilen' },
     level_n: 'Level {level}', player: 'Spieler', level_heading: 'Level',
     enter_name: 'Name eingeben...', touchpad: 'Touchpad', privacy: 'Datenschutz',
-    privacy_title: 'DATENSCHUTZHINWEIS',
+    imprint: 'Impressum',
+    imprint_title: 'IMPRESSUM',
+    imprint_notice: 'Angaben gemäß § 5 DDG',
+    imprint_contact: 'Kontakt',
+    imprint_page_title: 'Impressum — Stacker Party',
+    privacy_page_title: 'Datenschutz — Stacker Party',
+    back_to_game: '← Zurück',
+    privacy_title: 'DATENSCHUTZ\u00ADERKLÄRUNG',
+    privacy_controller: 'Verantwortlicher',
+    privacy_controller_intro: 'Verantwortlicher im Sinne der DSGVO ist:',
+    privacy_postal_address: 'Postanschrift:',
+    privacy_see_imprint: 'siehe Impressum',
     privacy_data: 'Daten',
-    privacy_data_detail: 'IP-Adressen werden vom Webserver und dem WebSocket-Relay zur Bereitstellung der Seite und zur Ermöglichung der Multiplayer-Kommunikation verarbeitet. Sie erscheinen in temporären Server-Logs und werden weder dauerhaft gespeichert noch an Dritte weitergegeben. Die Verarbeitung erfolgt auf Grundlage des berechtigten Interesses am Betrieb des Dienstes (Art. 6 Abs. 1 lit. f DSGVO).',
+    privacy_data_detail: 'IP-Adressen werden vom Webserver und dem WebSocket-Relay zur Bereitstellung der Seite und zur Ermöglichung der Multiplayer-Kommunikation verarbeitet. Sie erscheinen in Zugriffslogs, die zu Sicherheitszwecken (Missbrauchserkennung und Betriebsanalyse) für maximal 7 Tage gespeichert und anschließend automatisch gelöscht werden. Die Logs werden nicht an Dritte weitergegeben. Die Verarbeitung erfolgt auf Grundlage des berechtigten Interesses am Betrieb des Dienstes (Art. 6 Abs. 1 lit. f DSGVO).',
     privacy_tracking: 'Tracking',
-    privacy_tracking_detail: 'Es werden keine Cookies, Analysedienste oder Drittanbieterdienste verwendet.',
+    privacy_tracking_detail: 'Es werden keine Cookies, keine Analysedienste, keine Drittanbieterdienste und kein Tracking-bezogener Local Storage eingesetzt.',
     privacy_gameplay: 'Spielbetrieb',
-    privacy_gameplay_detail: 'Spielernamen und Eingaben werden während einer Sitzung zwischen den Spielern übertragen und existieren nur im Arbeitsspeicher. Es wird nichts gespeichert.',
-    privacy_contact: 'Kontakt',
-    privacy_updated: 'Zuletzt aktualisiert März 2026',
+    privacy_gameplay_detail: 'Spielernamen und Eingaben werden während einer Sitzung zwischen den Spielern übertragen und existieren ausschließlich im Arbeitsspeicher. Es wird nichts gespeichert. Die Verarbeitung erfolgt auf Grundlage des berechtigten Interesses am Betrieb des Dienstes (Art. 6 Abs. 1 lit. f DSGVO).',
+    privacy_hosting: 'Hosting',
+    privacy_hosting_detail: 'Die Verarbeitung erfolgt ausschließlich auf Servern des Verantwortlichen innerhalb Deutschlands. Es werden keine Auftragsverarbeiter im Sinne des Art. 28 DSGVO eingesetzt. Eine Übermittlung personenbezogener Daten in Drittländer findet nicht statt.',
+    privacy_rights: 'Rechte der Betroffenen',
+    privacy_rights_detail: 'Sie haben das Recht auf Auskunft (Art. 15 DSGVO), Berichtigung (Art. 16), Löschung (Art. 17) sowie Einschränkung der Verarbeitung (Art. 18). Zur Ausübung dieser Rechte wenden Sie sich bitte an den Verantwortlichen unter der oben angegebenen E-Mail-Adresse. Ihr gesondertes Widerspruchsrecht nach Art. 21 DSGVO finden Sie weiter unten.',
+    privacy_authority: 'Aufsichtsbehörde',
+    privacy_authority_detail: 'Sie haben das Recht, sich bei einer Datenschutz-Aufsichtsbehörde zu beschweren (Art. 77 DSGVO). Zuständig ist: Bayerisches Landesamt für Datenschutzaufsicht (BayLDA), Promenade 18, 91522 Ansbach.',
+    privacy_automated: 'Automatisierte Entscheidungsfindung',
+    privacy_automated_detail: 'Eine automatisierte Entscheidungsfindung im Sinne des Art. 22 DSGVO findet nicht statt.',
+    privacy_objection: 'Widerspruchsrecht (Art. 21 DSGVO)',
+    privacy_objection_detail: 'Sie haben das Recht, aus Gründen, die sich aus Ihrer besonderen Situation ergeben, jederzeit gegen die Verarbeitung Sie betreffender personenbezogener Daten, die auf Grundlage des berechtigten Interesses (Art. 6 Abs. 1 lit. f DSGVO) erfolgt, Widerspruch einzulegen (Art. 21 Abs. 1 DSGVO). Zur Ausübung Ihres Widerspruchsrechts genügt eine formlose E-Mail an die im Impressum angegebene Adresse.',
+    privacy_updated: 'Zuletzt aktualisiert April 2026',
     stacked_by: 'Entwickelt von Tim', music_by: 'Musik von FoxSynergy',
     hex_lines_level: 'Zeilen {lines}  Level {level}',
     swipe: 'Wischen', tap: 'Tippen', flick: 'Schnippen',
@@ -168,7 +210,7 @@ var LOCALES = {
     n_lines: { one: '{count} ligne', other: '{count} lignes' },
     level_n: 'Niveau {level}', player: 'Joueur', level_heading: 'Niveau',
     enter_name: 'Entrez votre nom...', touchpad: 'Pavé tactile',
-    privacy: 'Confidentialité',
+    privacy: 'Confidentialité', imprint: 'Mentions légales', back_to_game: '← Retour',
     hex_lines_level: 'Lignes {lines}  Niveau {level}',
     swipe: 'Glisser', tap: 'Appuyer', flick: 'Lancer',
     gesture_move: 'déplacer', gesture_rotate: 'tourner',
@@ -203,7 +245,7 @@ var LOCALES = {
     n_lines: { one: '{count} linha', other: '{count} linhas' },
     level_n: 'Nível {level}', player: 'Jogador', level_heading: 'Nível',
     enter_name: 'Digite o nome...', touchpad: 'Touchpad',
-    privacy: 'Privacidade',
+    privacy: 'Privacidade', imprint: 'Aviso legal', back_to_game: '← Voltar',
     stacked_by: 'Criado por Tim', music_by: 'Música de FoxSynergy',
     hex_lines_level: 'Linhas {lines}  Nível {level}',
     swipe: 'Deslizar', tap: 'Tocar', flick: 'Lançar',
@@ -238,7 +280,7 @@ var LOCALES = {
     n_lines: { one: '{count} línea', other: '{count} líneas' },
     level_n: 'Nivel {level}', player: 'Jugador', level_heading: 'Nivel',
     enter_name: 'Escribe tu nombre...', touchpad: 'Touchpad',
-    privacy: 'Privacidad',
+    privacy: 'Privacidad', imprint: 'Aviso legal', back_to_game: '← Volver',
     hex_lines_level: 'Líneas {lines}  Nivel {level}',
     swipe: 'Deslizar', tap: 'Tocar', flick: 'Lanzar',
     gesture_move: 'mover', gesture_rotate: 'girar',
@@ -272,7 +314,7 @@ var LOCALES = {
     game_in_progress: '游戏进行中，请等待新游戏开始。',
     n_lines: { other: '{count} 行' },
     level_n: '等级 {level}', player: '玩家', level_heading: '等级',
-    enter_name: '输入名字...', touchpad: '触控板', privacy: '隐私',
+    enter_name: '输入名字...', touchpad: '触控板', privacy: '隐私', imprint: '法律声明', back_to_game: '← 返回',
     hex_lines_level: '行数 {lines}  等级 {level}',
     swipe: '滑动', tap: '点按', flick: '快划',
     gesture_move: '移动', gesture_rotate: '旋转',
@@ -307,7 +349,7 @@ var LOCALES = {
     n_lines: { other: '{count}ライン' },
     level_n: 'レベル {level}', player: 'プレイヤー', level_heading: 'レベル',
     enter_name: '名前を入力...', touchpad: 'タッチパッド',
-    privacy: 'プライバシー',
+    privacy: 'プライバシー', imprint: '運営者情報', back_to_game: '← 戻る',
     hex_lines_level: 'ライン {lines}  レベル {level}',
     swipe: 'スワイプ', tap: 'タップ', flick: 'フリック',
     gesture_move: '移動', gesture_rotate: '回転',
@@ -341,7 +383,7 @@ var LOCALES = {
     game_in_progress: '게임 진행 중입니다. 새 게임을 기다려주세요.',
     n_lines: { other: '{count}줄' },
     level_n: '레벨 {level}', player: '플레이어', level_heading: '레벨',
-    enter_name: '이름 입력...', touchpad: '터치패드', privacy: '개인정보',
+    enter_name: '이름 입력...', touchpad: '터치패드', privacy: '개인정보', imprint: '법적 고지', back_to_game: '← 돌아가기',
     hex_lines_level: '라인 {lines}  레벨 {level}',
     swipe: '스와이프', tap: '탭', flick: '플릭',
     gesture_move: '이동', gesture_rotate: '회전',
@@ -382,7 +424,7 @@ var LOCALES = {
     },
     level_n: 'Уровень {level}', player: 'Игрок', level_heading: 'Уровень',
     enter_name: 'Введите имя...', touchpad: 'Тачпад',
-    privacy: 'Конфиденциальность',
+    privacy: 'Конфиденциальность', imprint: 'Выходные данные', back_to_game: '← Назад',
     hex_lines_level: 'Линии {lines}  Уровень {level}',
     swipe: 'Свайп', tap: 'Нажатие', flick: 'Смахивание',
     gesture_move: 'двигать', gesture_rotate: 'вращать',
@@ -417,7 +459,7 @@ var LOCALES = {
     n_lines: { one: '{count} linea', other: '{count} linee' },
     level_n: 'Livello {level}', player: 'Giocatore', level_heading: 'Livello',
     enter_name: 'Inserisci nome...', touchpad: 'Touchpad',
-    privacy: 'Privacy',
+    privacy: 'Privacy', imprint: 'Note legali', back_to_game: '← Indietro',
     stacked_by: 'Creato da Tim', music_by: 'Musica di FoxSynergy',
     hex_lines_level: 'Linee {lines}  Livello {level}',
     swipe: 'Scorrere', tap: 'Toccare', flick: 'Lanciare',
@@ -452,7 +494,7 @@ var LOCALES = {
     n_lines: { one: '{count} satır', other: '{count} satır' },
     level_n: 'Seviye {level}', player: 'Oyuncu', level_heading: 'Seviye',
     enter_name: 'İsim gir...', touchpad: 'Touchpad',
-    privacy: 'Gizlilik',
+    privacy: 'Gizlilik', imprint: 'Künye', back_to_game: '← Geri',
     stacked_by: 'Yapımcı: Tim', music_by: 'Müzik: FoxSynergy',
     hex_lines_level: 'Satır {lines}  Seviye {level}',
     swipe: 'Kaydır', tap: 'Dokun', flick: 'Fırlat',
@@ -550,7 +592,8 @@ function tOrdinal(n) {
 }
 
 /**
- * Translate all static HTML elements with data-i18n or data-i18n-placeholder attributes.
+ * Translate all static HTML elements with data-i18n, data-i18n-placeholder,
+ * or data-i18n-title attributes.
  */
 function translatePage() {
   if (typeof document === 'undefined') return;
@@ -563,6 +606,11 @@ function translatePage() {
   var phs = document.querySelectorAll('[data-i18n-placeholder]');
   for (var j = 0; j < phs.length; j++) {
     phs[j].placeholder = t(phs[j].getAttribute('data-i18n-placeholder'));
+  }
+
+  var titleEl = document.querySelector('title[data-i18n-title]');
+  if (titleEl) {
+    titleEl.textContent = t(titleEl.getAttribute('data-i18n-title'));
   }
 
   document.documentElement.lang = _locale;

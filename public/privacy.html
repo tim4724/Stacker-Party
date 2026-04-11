@@ -1,113 +1,52 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Privacy — Stacker Party</title>
+  <title data-i18n-title="privacy_page_title">Datenschutz — Stacker Party</title>
   <link rel="icon" href="/favicon-classic.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/shared/fonts/orbitron.css">
   <link rel="stylesheet" href="/shared/theme.css">
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-
-    body {
-      background: var(--bg-primary);
-      color: var(--text-secondary);
-      font-family: system-ui, -apple-system, sans-serif;
-      font-size: clamp(16px, 2vw, 18px);
-      line-height: 1.8;
-      min-height: 100dvh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-
-    .privacy-shell {
-      width: 100%;
-      max-width: 960px;
-      padding: clamp(2rem, 6vh, 4rem) 1.5rem clamp(2rem, 4vh, 3rem);
-      background:
-        radial-gradient(ellipse at 50% 0%, var(--glow-blue) 0%, transparent 50%);
-    }
-
-    h1 {
-      font-size: clamp(1.8rem, 5vw, 2.6rem);
-      margin-bottom: clamp(1.5rem, 4vh, 2.5rem);
-      animation: fadeDown 0.5s ease-out both;
-    }
-
-    dl {
-      animation: fadeUp 0.5s 0.15s ease-out both;
-    }
-
-    dt {
-      color: var(--text-primary);
-      font-weight: 600;
-      font-size: 15px;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      margin-top: 1.6rem;
-    }
-
-    dt:first-child {
-      margin-top: 0;
-    }
-
-    dd {
-      margin: 0.3rem 0 0 0;
-    }
-
-    a {
-      color: var(--text-secondary);
-      text-decoration: none;
-      transition: filter var(--transition-fast);
-    }
-
-    a:hover {
-      color: var(--accent-cyan);
-      filter: drop-shadow(0 0 6px rgba(var(--accent-cyan-rgb), 0.3));
-    }
-
-    ::selection {
-      background: rgba(var(--accent-cyan-rgb), 0.2);
-      color: var(--text-primary);
-    }
-
-    h1.gradient-title {
-      display: inline-block;
-      background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan), var(--accent-green));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-
-    .footer {
-      margin-top: 2.5rem;
-      padding-top: 1rem;
-      border-top: 1px solid var(--border);
-      font-size: 14px;
-      opacity: var(--opacity-label);
-      animation: fadeUp 0.5s 0.3s ease-out both;
-    }
-  </style>
+  <link rel="stylesheet" href="/shared/legal.css">
 </head>
 <body>
-  <div class="privacy-shell">
-    <h1 class="gradient-title" data-i18n="privacy_title">PRIVACY NOTICE</h1>
+  <main class="legal-shell">
+    <a href="/" class="back-link" data-i18n="back_to_game">← Zurück</a>
+    <h1 class="gradient-title" data-i18n="privacy_title">DATENSCHUTZ&shy;ERKLÄRUNG</h1>
     <dl>
-      <dt data-i18n="privacy_data">data</dt>
-      <dd data-i18n="privacy_data_detail">IP addresses are processed by the web server and the WebSocket relay to serve the site and enable multiplayer communication. They appear in temporary server logs and are not stored persistently or shared with third parties. Processing is based on legitimate interest in operating the service (Art. 6(1)(f) GDPR).</dd>
-      <dt data-i18n="privacy_tracking">tracking</dt>
-      <dd data-i18n="privacy_tracking_detail">No cookies, analytics, or third-party services are used.</dd>
-      <dt data-i18n="privacy_gameplay">gameplay</dt>
-      <dd data-i18n="privacy_gameplay_detail">Player names and inputs are relayed between players during a session and exist only in memory. Nothing is stored.</dd>
-      <dt data-i18n="privacy_contact">contact</dt>
+      <dt data-i18n="privacy_controller">Verantwortlicher</dt>
+      <dd data-i18n="privacy_controller_intro">Verantwortlicher im Sinne der DSGVO ist:</dd>
       <dd>Tim Vogel</dd>
       <dd><a href="mailto:info@couch-games.com">info@couch-games.com</a></dd>
+      <dd><span data-i18n="privacy_postal_address">Postanschrift:</span> <a href="/imprint" data-i18n="privacy_see_imprint">siehe Impressum</a></dd>
+      <dt data-i18n="privacy_data">Daten</dt>
+      <dd data-i18n="privacy_data_detail">IP-Adressen werden vom Webserver und dem WebSocket-Relay zur Bereitstellung der Seite und zur Ermöglichung der Multiplayer-Kommunikation verarbeitet. Sie erscheinen in Zugriffslogs, die zu Sicherheitszwecken (Missbrauchserkennung und Betriebsanalyse) für maximal 7 Tage gespeichert und anschließend automatisch gelöscht werden. Die Logs werden nicht an Dritte weitergegeben. Die Verarbeitung erfolgt auf Grundlage des berechtigten Interesses am Betrieb des Dienstes (Art. 6 Abs. 1 lit. f DSGVO).</dd>
+      <dt data-i18n="privacy_tracking">Tracking</dt>
+      <dd data-i18n="privacy_tracking_detail">Es werden keine Cookies, keine Analysedienste, keine Drittanbieterdienste und kein Tracking-bezogener Local Storage eingesetzt.</dd>
+      <dt data-i18n="privacy_gameplay">Spielbetrieb</dt>
+      <dd data-i18n="privacy_gameplay_detail">Spielernamen und Eingaben werden während einer Sitzung zwischen den Spielern übertragen und existieren ausschließlich im Arbeitsspeicher. Es wird nichts gespeichert. Die Verarbeitung erfolgt auf Grundlage des berechtigten Interesses am Betrieb des Dienstes (Art. 6 Abs. 1 lit. f DSGVO).</dd>
+      <dt data-i18n="privacy_hosting">Hosting</dt>
+      <dd data-i18n="privacy_hosting_detail">Die Verarbeitung erfolgt ausschließlich auf Servern des Verantwortlichen innerhalb Deutschlands. Es werden keine Auftragsverarbeiter im Sinne des Art. 28 DSGVO eingesetzt. Eine Übermittlung personenbezogener Daten in Drittländer findet nicht statt.</dd>
+      <dt data-i18n="privacy_rights">Rechte der Betroffenen</dt>
+      <dd data-i18n="privacy_rights_detail">Sie haben das Recht auf Auskunft (Art. 15 DSGVO), Berichtigung (Art. 16), Löschung (Art. 17) sowie Einschränkung der Verarbeitung (Art. 18). Zur Ausübung dieser Rechte wenden Sie sich bitte an den Verantwortlichen unter der oben angegebenen E-Mail-Adresse. Ihr gesondertes Widerspruchsrecht nach Art. 21 DSGVO finden Sie weiter unten.</dd>
+      <dt data-i18n="privacy_authority">Aufsichtsbehörde</dt>
+      <dd data-i18n="privacy_authority_detail">Sie haben das Recht, sich bei einer Datenschutz-Aufsichtsbehörde zu beschweren (Art. 77 DSGVO). Zuständig ist: Bayerisches Landesamt für Datenschutzaufsicht (BayLDA), Promenade 18, 91522 Ansbach.</dd>
+      <dd><a href="https://www.lda.bayern.de" target="_blank" rel="noopener noreferrer">www.lda.bayern.de</a></dd>
+      <dt data-i18n="privacy_automated">Automatisierte Entscheidungsfindung</dt>
+      <dd data-i18n="privacy_automated_detail">Eine automatisierte Entscheidungsfindung im Sinne des Art. 22 DSGVO findet nicht statt.</dd>
     </dl>
-    <p class="footer" data-i18n="privacy_updated">last updated march 2026</p>
-  </div>
+    <section class="objection" aria-labelledby="objection-heading">
+      <h2 id="objection-heading" data-i18n="privacy_objection">Widerspruchsrecht (Art. 21 DSGVO)</h2>
+      <p data-i18n="privacy_objection_detail">Sie haben das Recht, aus Gründen, die sich aus Ihrer besonderen Situation ergeben, jederzeit gegen die Verarbeitung Sie betreffender personenbezogener Daten, die auf Grundlage des berechtigten Interesses (Art. 6 Abs. 1 lit. f DSGVO) erfolgt, Widerspruch einzulegen (Art. 21 Abs. 1 DSGVO). Zur Ausübung Ihres Widerspruchsrechts genügt eine formlose E-Mail an die im Impressum angegebene Adresse.</p>
+    </section>
+    <p class="footer">
+      <span data-i18n="privacy_updated">Zuletzt aktualisiert April 2026</span>
+      <span aria-hidden="true">·</span>
+      <a href="/imprint" data-i18n="imprint">Impressum</a>
+    </p>
+  </main>
   <script src="/shared/i18n.js"></script>
   <script src="/shared/i18n-fallback.js"></script>
+  <script src="/shared/legal-back.js"></script>
 </body>
 </html>
