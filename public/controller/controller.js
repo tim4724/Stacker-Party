@@ -273,11 +273,15 @@ window.addEventListener('popstate', function () {
   }
 });
 
+window.addEventListener('pagehide', function () {
+  try { localStorage.removeItem('clientId_' + roomCode); } catch (e) { /* iframe sandbox */ }
+});
+
 // =====================================================================
 // Initialize
 // =====================================================================
 
-if (hadStoredId || rejoinId) {
+if (hadStoredId || rejoinId || skipNameScreen) {
   playerName = savedName || null;
   nameInput.value = savedName;
   nameJoinBtn.disabled = true;

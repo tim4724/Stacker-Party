@@ -40,6 +40,7 @@ var glowEl = null;
 
 // Rejoin
 var rejoinId = new URLSearchParams(location.search).get('rejoin');
+var skipNameScreen = false;
 
 // --- Viewport ---
 function getViewportMetrics() {

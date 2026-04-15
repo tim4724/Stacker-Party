@@ -44,10 +44,8 @@ showRoomGone = function(heading) {
 // Pre-set clientId (adapter maps real AirConsole device IDs at message time)
 clientId = 'ac_controller';
 
-// Force hadStoredId so controller.js auto-connects on load (skips name screen).
-// controller.js parses location.pathname to get roomCode and checks
-// sessionStorage['clientId_' + roomCode]. We pre-set that key here.
-try { sessionStorage.setItem('clientId_' + (location.pathname.split('/').filter(Boolean)[0] || 'controller.html'), clientId); } catch (e) { /* iframe sandbox */ }
+// Skip the name screen — AirConsole manages identity via the SDK.
+skipNameScreen = true;
 
 // Replace PartyConnection with a factory that returns AirConsoleAdapter.
 PartyConnection = function() {
