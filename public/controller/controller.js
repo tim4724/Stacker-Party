@@ -126,7 +126,16 @@ function submitName() {
     if (name) localStorage.setItem('stacker_player_name', name);
     else localStorage.removeItem('stacker_player_name');
   } catch (e) { /* iframe sandbox */ }
-  try { localStorage.setItem('clientId_' + roomCode, clientId); } catch (e) { /* iframe sandbox */ }
+  try {
+    // Clean up clientIds from previous rooms — a player is only in one room at a time
+    for (var i = localStorage.length - 1; i >= 0; i--) {
+      var key = localStorage.key(i);
+      if (key && key.indexOf('clientId_') === 0 && key !== 'clientId_' + roomCode) {
+        localStorage.removeItem(key);
+      }
+    }
+    localStorage.setItem('clientId_' + roomCode, clientId);
+  } catch (e) { /* iframe sandbox */ }
   nameJoinBtn.disabled = true;
   nameJoinBtn.textContent = t('connecting');
   nameInput.disabled = true;

@@ -25,6 +25,7 @@ function connect() {
       });
     } else if (type === 'peer_left') {
       if (msg.clientId === 'display') {
+        try { localStorage.removeItem('clientId_' + roomCode); } catch (e) { /* iframe sandbox */ }
         if (currentScreen === 'game') {
           reconnectOverlay.classList.remove('hidden');
           reconnectHeading.textContent = t('reconnecting');
@@ -33,7 +34,11 @@ function connect() {
         }
       }
     } else if (type === 'error') {
-      showRoomGone();
+      if (msg.message === 'Not in a room') {
+        connect();
+      } else {
+        showRoomGone();
+      }
     }
   };
 
