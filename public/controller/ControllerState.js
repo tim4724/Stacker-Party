@@ -67,8 +67,6 @@ function syncViewportLayout() {
     if (welcomeBg) {
       welcomeBg.resize(metrics.width, metrics.height);
     }
-    // Detect soft keyboard in landscape — viewport height shrinks significantly
-    var isLandscape = metrics.width > metrics.height;
   });
 }
 
