@@ -44,14 +44,16 @@ html, body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  /* No safe-area here — each screen type handles its own insets */
 }
 
+/* Shell screens (name, lobby, gameover) — single source of safe-area */
 .controller-shell {
   padding:
     max(env(safe-area-inset-top), 8px)
-    12px
-    calc(env(safe-area-inset-bottom) + 16px);
+    max(env(safe-area-inset-right), 12px)
+    max(env(safe-area-inset-bottom), 16px)
+    max(env(safe-area-inset-left), 12px);
   background: none;
 }
 
@@ -112,7 +114,7 @@ html, body {
 
 .join-url-hint {
   position: absolute;
-  bottom: calc(env(safe-area-inset-bottom) + 12px);
+  bottom: max(env(safe-area-inset-bottom), 12px);
   left: 12px;
   right: 12px;
   font-size: clamp(1rem, 4.5vw, 1.2rem);
@@ -124,7 +126,7 @@ html, body {
 
 .legal-links {
   position: absolute;
-  bottom: calc(env(safe-area-inset-bottom) + 16px);
+  bottom: max(env(safe-area-inset-bottom), 8px);
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -875,3 +877,220 @@ body.airconsole #lobby-back-btn { display: none !important; }
 }
 body.airconsole #ac-status-overlay { display: flex; }
 body.airconsole #ac-status-overlay.hidden { display: none; }
+
+/* --- Results scrolling — scroll on the list, not the body,
+   so box-shadow glow on .is-me rows isn't clipped --- */
+#results-list {
+  overflow-y: auto;
+  padding: 4px;
+}
+
+/* --- Landscape layout --- */
+@media (orientation: landscape) {
+  /* Shell screens: widen frame and reduce vertical spacing */
+  .controller-shell__frame {
+    width: min(100%, 520px);
+  }
+
+  .controller-shell__title {
+    display: none;
+  }
+
+  .controller-shell__body {
+    gap: 10px;
+    margin-top: 0;
+  }
+
+  .controller-shell__actions,
+  #name-form {
+    max-width: 360px;
+    margin-top: 8px;
+    gap: 8px;
+  }
+
+  #mode-selector {
+    width: min(85vw, 400px);
+  }
+
+  .status-banner {
+    min-height: 36px;
+    padding: 0.4rem 1rem;
+    font-size: clamp(0.85rem, 3vw, 1rem);
+    white-space: nowrap;
+  }
+
+  /* Lobby: spread elements evenly */
+  .controller-shell__frame--lobby {
+    justify-content: stretch;
+  }
+
+  .controller-shell__frame--lobby .controller-shell__body {
+    flex: 1;
+    justify-content: space-evenly;
+  }
+
+  .controller-shell__frame--lobby .controller-shell__actions {
+    margin-top: 0;
+    max-width: none;
+  }
+
+  #lobby-join-url {
+    display: none;
+  }
+
+  /* Results: list left, buttons right.
+     .screen already applies safe-area padding, so just use regular padding here. */
+  .controller-shell__frame--results {
+    flex-direction: row;
+    align-items: stretch;
+    width: 100%;
+    max-width: 100%;
+    gap: 16px;
+    padding: 12px;
+  }
+
+  .controller-shell__frame--results .controller-shell__brand {
+    display: none;
+  }
+
+  .controller-shell__body--results {
+    flex: 1;
+    min-width: 0;
+    justify-content: center;
+  }
+
+  #results-list {
+    gap: 8px;
+  }
+
+  .result-row {
+    gap: 10px;
+    padding: 10px 12px;
+  }
+
+  #gameover-actions {
+    max-width: none;
+    width: min(40vw, 220px);
+    margin-top: 0;
+    flex-shrink: 0;
+    justify-content: center;
+  }
+
+  /* Game screen: symmetric 3-column grid.
+     All safe-area on the grid itself — children use plain padding only.
+     Background fills behind the notch; only content is inset. */
+  #game-screen {
+    --side-col: max(56px, 10vw);
+    display: grid;
+    grid-template-columns: minmax(var(--side-col), auto) 1fr var(--side-col);
+    grid-template-rows: 1fr;
+    column-gap: 8px;
+    align-items: stretch;
+    padding:
+      env(safe-area-inset-top)
+      env(safe-area-inset-right)
+      env(safe-area-inset-bottom)
+      env(safe-area-inset-left);
+    background: var(--bg-board);
+  }
+
+  /* Right column: buttons at top, horizontally centred.
+     column-reverse puts pause (last in DOM) on top, mute below. */
+  #game-top-bar {
+    grid-column: 3;
+    grid-row: 1;
+    flex-direction: column-reverse;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 6px 8px 6px 0;
+    gap: 14px;
+  }
+
+  /* Hide player name from the right column */
+  #game-top-bar .game-name-label {
+    display: none;
+  }
+
+  #mute-btn {
+    margin-left: 0;
+  }
+
+  /* Player name: shown center-top inside touch area via data attribute.
+     Can't use position:fixed on the original because filter on dead/paused
+     states creates a containing block for fixed children. */
+  #touch-area::after {
+    content: attr(data-player-name);
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 700;
+    font-size: clamp(1rem, 5vw, 1.3rem);
+    letter-spacing: 0.05em;
+    color: var(--player-color, var(--text-primary));
+    white-space: nowrap;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  /* Ping: placed in right column, pushed to bottom */
+  #game-bottom-bar {
+    grid-column: 3;
+    grid-row: 1;
+    align-self: end;
+    justify-self: center;
+    padding: 0 8px 4px;
+    background: none;
+    white-space: nowrap;
+  }
+
+  /* Left column: gesture hints, vertically centred.
+     min-width matches the button column (icon-btn = 56px + padding). */
+  #gesture-hints {
+    grid-column: 1;
+    grid-row: 1;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 2px;
+    width: auto;
+    padding: 4px 0 4px 8px;
+    flex-shrink: 0;
+  }
+
+  .hint-bar-item__icon {
+    height: 28px;
+  }
+
+  .hint-bar-item__icon svg {
+    transform: scale(1.1);
+  }
+
+  /* Centre column: touchpad, full height */
+  #touch-area {
+    grid-column: 2;
+    grid-row: 1;
+    min-height: 0;
+    padding: 6px 0;
+  }
+}
+
+/* Landscape keyboard open — show only the input field */
+.keyboard-compact .controller-shell__brand,
+.keyboard-compact .controller-shell__actions,
+.keyboard-compact .legal-links,
+.keyboard-compact #room-gone-message,
+.keyboard-compact .controller-shell__copy {
+  display: none !important;
+}
+
+.keyboard-compact .controller-shell {
+  padding: 4px 12px;
+  justify-content: center;
+}
+
+.keyboard-compact .controller-shell__body {
+  margin-top: 0;
+  gap: 0;
+}

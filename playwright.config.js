@@ -55,6 +55,20 @@ module.exports = defineConfig({
       },
     },
     {
+      name: 'controller-landscape',
+      testDir: './tests/visual',
+      testMatch: 'controller-landscape.spec.js',
+      use: {
+        viewport: { width: 844, height: 390 },
+        deviceScaleFactor: devices['iPhone 14'].deviceScaleFactor,
+        isMobile: true,
+        hasTouch: true,
+      },
+      expect: {
+        toHaveScreenshot: { maxDiffPixelRatio: 0.001, scale: 'device' },
+      },
+    },
+    {
       name: 'e2e',
       testDir: './tests/e2e',
       testIgnore: /airconsole.*\.spec\.js/,

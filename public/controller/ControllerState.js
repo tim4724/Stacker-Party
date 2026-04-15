@@ -65,8 +65,12 @@ function syncViewportLayout() {
     var metrics = getViewportMetrics();
     document.documentElement.style.setProperty('--app-height', metrics.height + 'px');
     if (welcomeBg) {
-      welcomeBg.resize(window.innerWidth, window.innerHeight);
+      welcomeBg.resize(metrics.width, metrics.height);
     }
+    // Detect soft keyboard in landscape — viewport height shrinks significantly
+    var isLandscape = metrics.width > metrics.height;
+    var keyboardOpen = isLandscape && metrics.height < 250;
+    document.documentElement.classList.toggle('keyboard-compact', keyboardOpen);
   });
 }
 

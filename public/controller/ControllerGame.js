@@ -69,6 +69,7 @@ function onWelcome(data) {
 
   playerName = data.playerName || playerName || t('player');
   playerNameEl.textContent = playerName;
+  touchArea.setAttribute('data-player-name', playerName);
   if (data.startLevel != null) startLevel = data.startLevel;
 
   if (data.gameMode) updateControllerModeUI(data.gameMode);
