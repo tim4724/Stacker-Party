@@ -7,20 +7,7 @@
 // callbacks and calls party.connect() — works with AirConsole instead.
 // =====================================================================
 
-// Neutralize localStorage in AirConsole mode — AC manages identity, nickname,
-// and resets audio state per session, so persisting anything is dead weight
-// and could pick up stale values from previous sessions in the AC iframe
-// storage partition. Reads return null; writes are silently dropped.
-// NOTE: controller-airconsole.js has the same noop — keep the two in sync.
-var _acNoopStorage = {
-  getItem: function() { return null; },
-  setItem: function() {},
-  removeItem: function() {},
-  clear: function() {},
-  key: function() { return null; },
-  length: 0
-};
-try { Object.defineProperty(window, 'localStorage', { value: _acNoopStorage, configurable: true }); } catch (e) { /* read-only */ }
+AirConsoleAdapter.neutralizeLocalStorage();
 
 // DisplayState.js already read muted from real localStorage before this
 // bootstrap ran — reset it here so AC starts unmuted regardless.
@@ -116,15 +103,7 @@ connectAndCreateRoom = function() {
   // AirConsole-profile language before the adapter fires 'created'.
   var _adapterOnReady = airconsole.onReady;
   airconsole.onReady = function(code) {
-    // Prefer the AirConsole-profile language over navigator.language. Only
-    // override the initial detectLocale result when AC's language is actually
-    // supported; otherwise setLocale would silently coerce to 'en' and
-    // discard a valid navigator.language fallback.
-    if (typeof airconsole.getLanguage === 'function') {
-      var acLang = airconsole.getLanguage();
-      var acCode = acLang && acLang.toLowerCase().split('-')[0];
-      if (acCode && LOCALES[acCode]) { setLocale(acLang); translatePage(); }
-    }
+    AirConsoleAdapter.applyLocale(airconsole);
     if (_adapterOnReady) _adapterOnReady.call(airconsole, code);
   };
   if (_acEarlyReady && party && !party.connected) {

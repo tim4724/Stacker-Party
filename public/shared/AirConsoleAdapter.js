@@ -184,6 +184,38 @@ class AirConsoleAdapter {
   }
 }
 
+// Neutralize window.localStorage — AirConsole manages identity and resets audio
+// state per session, so persisting anything is dead weight and could pick up
+// stale values from previous sessions in the AC iframe storage partition.
+AirConsoleAdapter.neutralizeLocalStorage = function() {
+  var noop = {
+    getItem: function() { return null; },
+    setItem: function() {},
+    removeItem: function() {},
+    clear: function() {},
+    key: function() { return null; },
+    length: 0
+  };
+  try {
+    Object.defineProperty(window, 'localStorage', { value: noop, configurable: true });
+  } catch (e) { /* read-only */ }
+};
+
+// Prefer the user's AirConsole-profile language over navigator.language. Only
+// override the initial detectLocale result when AC's language is actually
+// supported; otherwise setLocale would silently coerce to 'en' and discard a
+// valid navigator.language fallback. Relies on i18n globals (LOCALES,
+// setLocale, translatePage) being loaded by call time.
+AirConsoleAdapter.applyLocale = function(airconsole) {
+  if (typeof airconsole.getLanguage !== 'function') return;
+  var acLang = airconsole.getLanguage();
+  var acCode = acLang && acLang.toLowerCase().split('-')[0];
+  if (acCode && typeof LOCALES !== 'undefined' && LOCALES[acCode]) {
+    setLocale(acLang);
+    translatePage();
+  }
+};
+
 if (typeof window !== 'undefined') {
   window.AirConsoleAdapter = AirConsoleAdapter;
 }
