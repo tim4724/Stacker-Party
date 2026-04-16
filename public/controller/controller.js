@@ -19,7 +19,8 @@ function handleMessage(data) {
     // WELCOME (re-admission), GAME_END (show results), RETURN_TO_LOBBY, LOBBY_UPDATE, ERROR
     if (waitingForNextGame && data.type !== MSG.WELCOME && data.type !== MSG.GAME_END
         && data.type !== MSG.RETURN_TO_LOBBY && data.type !== MSG.LOBBY_UPDATE
-        && data.type !== MSG.ERROR && data.type !== MSG.PONG) return;
+        && data.type !== MSG.ERROR && data.type !== MSG.PONG
+        && data.type !== MSG.DISPLAY_CLOSED) return;
 
     switch (data.type) {
       case MSG.WELCOME:
