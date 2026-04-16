@@ -597,6 +597,8 @@ function translatePage() {
     phs[j].placeholder = t(phs[j].getAttribute('data-i18n-placeholder'));
   }
 
+  // data-i18n-html renders the locale string as HTML. Only use for trusted
+  // locale content — never pass user input through this attribute.
   var htmlEls = document.querySelectorAll('[data-i18n-html]');
   for (var h = 0; h < htmlEls.length; h++) {
     htmlEls[h].innerHTML = t(htmlEls[h].getAttribute('data-i18n-html'));

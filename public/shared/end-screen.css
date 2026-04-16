@@ -60,6 +60,9 @@
   opacity: 1;
 }
 
+/* Hide via opacity (not display) so the toast's vertical slot stays
+   reserved — prevents the steps list and footer from jumping when the
+   toast shows/hides. */
 .end-toast.hidden {
   opacity: 0;
   pointer-events: none;

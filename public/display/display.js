@@ -157,6 +157,9 @@ startBtn.addEventListener('click', function() {
 
 // Goodbye to controllers on intentional close/navigate-away so they
 // immediately see the end screen instead of a "reconnecting" overlay.
+// Best-effort: pagehide also fires on bfcache freeze (iOS Safari) where
+// the WebSocket send may not complete before the page is frozen.
+// Controllers fall back to the existing reconnect overlay in that case.
 window.addEventListener('pagehide', function() {
   if (party) {
     try { party.broadcast({ type: MSG.DISPLAY_CLOSED }); } catch (_) {}

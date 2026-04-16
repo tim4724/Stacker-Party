@@ -82,7 +82,10 @@ showScreen = function(name) {
 
 // Override showEndScreen to surface errors via the AirConsole status overlay
 // instead of the end screen (AirConsole has its own home/lobby navigation).
+// Still clear game state so stale incoming messages can't re-trigger game logic.
 showEndScreen = function(toastKey) {
+  gameCancelled = true;
+  stopPing();
   if (_acStatusOverlay) {
     _acStatusOverlay.textContent = toastKey ? t(toastKey) : '';
     _acStatusOverlay.classList.toggle('hidden', !toastKey);
