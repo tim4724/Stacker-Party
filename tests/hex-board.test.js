@@ -678,7 +678,8 @@ describe('HexPlayerBoard - clear preview matches actual clear', () => {
       var seen = Object.create(null);
       for (var r = 0; r < 6; r++) {
         var key = p.cells[0].q + ',' + p.cells[0].r;
-        assert.ok(!seen[key],
+        // `key in seen` rather than `!seen[key]` — r=0 is falsy and would mask a collision.
+        assert.ok(!(key in seen),
           type + ' cells[0] collides between rotations ' + seen[key] + ' and ' + r);
         seen[key] = r;
         p.rotateCW();
