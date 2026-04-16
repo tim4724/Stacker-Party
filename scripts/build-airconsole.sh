@@ -27,10 +27,15 @@ cp -r "$PROJECT_DIR/public/controller" "$BUILD_DIR/controller"
 cp "$PROJECT_DIR/public/favicon.svg" "$BUILD_DIR/favicon.svg" 2>/dev/null || true
 cp "$PROJECT_DIR/public/favicon.ico" "$BUILD_DIR/favicon.ico" 2>/dev/null || true
 
-# Copy engine modules (from server/ to engine/ for browser access)
+# Copy engine modules (from server/ to engine/ for browser access).
+# Every server/*.js except index.js is assumed to be a browser-compatible
+# UMD engine module and gets bundled into the AC ZIP — if a Node-only
+# utility is ever added to server/, exclude it here.
 mkdir -p "$BUILD_DIR/engine"
-for f in constants.js Randomizer.js GarbageManager.js Piece.js PlayerBoard.js Game.js; do
-  cp "$PROJECT_DIR/server/$f" "$BUILD_DIR/engine/$f"
+for f in "$PROJECT_DIR"/server/*.js; do
+  name="$(basename "$f")"
+  [ "$name" = "index.js" ] && continue
+  cp "$f" "$BUILD_DIR/engine/$name"
 done
 
 # Copy AirConsole entry points to root

@@ -36,25 +36,19 @@ function handleControllerMessage(fromId, msg) {
         onSoftDrop(fromId, msg.speed);
         break;
       case MSG.START_GAME:
-        // Brief race window: a new host's START_GAME is accepted here as soon
-        // as the display's players map reflects them, even before the next
-        // broadcastLobbyUpdate() has shipped LOBBY_UPDATE to refresh the
-        // controllers' isHost flags. The new host's button is momentarily
-        // hidden on their screen but would be accepted — next LOBBY_UPDATE
-        // (always broadcast on peer_joined/peer_left) closes the window.
-        if (fromId === getHostClientId()) startGame();
+        startGame();
         break;
       case MSG.PLAY_AGAIN:
-        if (fromId === getHostClientId()) playAgain();
+        playAgain();
         break;
       case MSG.RETURN_TO_LOBBY:
-        if (fromId === getHostClientId()) returnToLobby();
+        returnToLobby();
         break;
       case MSG.PAUSE_GAME:
-        if (playerOrder.indexOf(fromId) >= 0) pauseGame();
+        pauseGame();
         break;
       case MSG.RESUME_GAME:
-        if (playerOrder.indexOf(fromId) >= 0) resumeGame();
+        resumeGame();
         break;
       case MSG.SET_LEVEL:
         onSetLevel(fromId, msg);
