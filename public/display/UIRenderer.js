@@ -1,8 +1,13 @@
 'use strict';
 
-// BaseUIRenderer: shared rendering for hold/next panels, level/lines,
-// player name, and panel backgrounds. Mode-specific subclasses override
-// drawMiniPiece() and the garbage/KO/overlay methods.
+// UIRenderer: rendering for hold/next panels, level/lines, player name,
+// panel backgrounds, garbage meter, KO overlay, disconnected overlay, and
+// mini hex pieces.
+
+var HEX_MINI_PIECES = PieceModule.PIECES;
+var HEX_TYPE_TO_ID = GameConstants.PIECE_TYPE_TO_ID;
+var _getIndicatorColor = function(e) { return e.color; };
+var _getDefenceColor = function() { return THEME.color.text.white; };
 
 // Disconnected-overlay fallback tints (used when a player color is not
 // provided). Derived once from the theme accent-cyan token so the canvas
@@ -10,7 +15,43 @@
 var _DISCONNECT_TEXT_FALLBACK = rgbaFromHex(THEME.color.accent.cyan, 0.7);
 var _DISCONNECT_QR_BORDER = rgbaFromHex(THEME.color.accent.cyan, 0.15);
 
-class BaseUIRenderer {
+// Compute bounding boxes for flat-top hex mini pieces using odd-q offset conversion.
+var HEX_MINI_BOUNDS = {};
+(function() {
+  for (var type in HEX_MINI_PIECES) {
+    var cells = HEX_MINI_PIECES[type];
+    var offsets = cells.map(function(c) {
+      return PieceModule.axialToOffset(c[0], c[1]);
+    });
+    var minC = Infinity, maxC = -Infinity, minR = Infinity, maxR = -Infinity;
+    for (var i = 0; i < offsets.length; i++) {
+      minC = Math.min(minC, offsets[i].col);
+      maxC = Math.max(maxC, offsets[i].col);
+      minR = Math.min(minR, offsets[i].row);
+      maxR = Math.max(maxR, offsets[i].row);
+    }
+    // Normalize: shift so minC starts at 0 (preserve column parity)
+    var shiftC = minC - (minC & 1);  // round down to even
+    var shiftR = minR;
+    var shifted = offsets.map(function(o) { return { col: o.col - shiftC, row: o.row - shiftR }; });
+    // Recompute bounds after shift
+    var sMinC = Infinity, sMaxC = -Infinity, sMinR = Infinity, sMaxR = -Infinity;
+    for (var j = 0; j < shifted.length; j++) {
+      sMinC = Math.min(sMinC, shifted[j].col);
+      sMaxC = Math.max(sMaxC, shifted[j].col);
+      sMinR = Math.min(sMinR, shifted[j].row);
+      sMaxR = Math.max(sMaxR, shifted[j].row);
+    }
+    HEX_MINI_BOUNDS[type] = { minC: sMinC, maxC: sMaxC, minR: sMinR, maxR: sMaxR, offsets: shifted };
+  }
+})();
+
+// L and J pieces occupy 3 offset rows in default orientation, so each
+// next-slot needs extra vertical room. 3.5 * miniSize gives a comfortable
+// gap without shrinking the pieces.
+var NEXT_PIECE_SPACING_UNITS = 3.5;
+
+class UIRenderer {
   constructor(ctx, boardX, boardY, cellSize, boardWidthPx, boardHeightPx, playerIndex) {
     this.ctx = ctx;
     this.boardX = boardX;
@@ -33,6 +74,16 @@ class BaseUIRenderer {
 
     // Cached font strings
     this._updateCachedFonts();
+
+    // Hex geometry (shared with BoardRenderer and DisplayUI)
+    var geo = GameConstants.computeHexGeometry(GameConstants.COLS, GameConstants.VISIBLE_ROWS, cellSize);
+    this._hexSize = geo.hexSize;
+    this._hexH = geo.hexH;
+    this._colW = geo.colW;
+    // Pre-compute stable meter/cell values
+    this._sCell = geo.hexSize - cellSize * THEME.size.blockGap * 2 / _SQRT3;
+    this._gridLineWidth = _SQRT3 * this._sCell * THEME.stroke.grid;
+    this._meterX = boardX - cellSize * 1.07;
   }
 
   _updateCachedFonts() {
@@ -105,17 +156,12 @@ class BaseUIRenderer {
     }
   }
 
-  // Per-slot vertical spacing in the next panel, in units of miniSize.
-  // Subclasses override when their pieces need more vertical room — e.g.
-  // HexUIRenderer bumps this to accommodate the 3-row L/J pieces.
-  _nextPieceSpacingUnits() { return 3; }
-
   _nextPanelLayout(playerState) {
     var nextCount = playerState.nextPieces ? Math.min(playerState.nextPieces.length, 3) : 0;
     if (this._cachedNextLayout && this._cachedNextCount === nextCount) return this._cachedNextLayout;
-    var pieceSpacing = this.miniSize * this._nextPieceSpacingUnits();
+    var pieceSpacing = this.miniSize * NEXT_PIECE_SPACING_UNITS;
     var startY = this.boardY + this._labelSize + this.cellSize * 0.2;
-    // 3 = minimum visible slot count (unrelated to _nextPieceSpacingUnits() above)
+    // 3 = minimum visible slot count
     var boxHeight = pieceSpacing * Math.max(nextCount, 3);
     this._cachedNextCount = nextCount;
     this._cachedNextLayout = { startY: startY, boxHeight: boxHeight, pieceSpacing: pieceSpacing };
@@ -196,15 +242,6 @@ class BaseUIRenderer {
     ctx.restore();
   }
 
-  _clipBoardArea() {
-    // Default: no clipping needed for rectangular boards
-  }
-
-  _fillBoardArea(color) {
-    this.ctx.fillStyle = color;
-    this.ctx.fillRect(this.boardX, this.boardY, this.boardWidth, this.boardHeight);
-  }
-
   drawDisconnectedOverlay(qrImg, playerColor) {
     var ctx = this.ctx;
     var bx = this.boardX, by = this.boardY, bw = this.boardWidth, bh = this.boardHeight;
@@ -275,6 +312,149 @@ class BaseUIRenderer {
     ctx.lineWidth = this.cellSize * THEME.stroke.border;
     ctx.stroke();
   }
+
+  drawGarbageMeter(pendingGarbage) {
+    var sCell = this._sCell;
+    var lines = Math.min(pendingGarbage, GameConstants.VISIBLE_ROWS);
+    if (lines === 0) return;
+
+    var ctx = this.ctx;
+    var mx = this._meterX;
+    var hexH = this._hexH;
+    var baseY = this.boardY;
+
+    // Single-pass: build compound path, then stroke + fill
+    ctx.beginPath();
+    for (var i = 0; i < lines; i++) {
+      var row = GameConstants.VISIBLE_ROWS - 1 - i;
+      var cy = baseY + hexH * row + hexH / 2;
+      ctx.moveTo(mx + sCell * HEX_UNIT_VERTICES[0], cy + sCell * HEX_UNIT_VERTICES[1]);
+      for (var vi = 2; vi < 12; vi += 2) {
+        ctx.lineTo(mx + sCell * HEX_UNIT_VERTICES[vi], cy + sCell * HEX_UNIT_VERTICES[vi + 1]);
+      }
+      ctx.closePath();
+    }
+    ctx.strokeStyle = 'rgba(255, 255, 255, ' + THEME.opacity.label + ')';
+    ctx.lineWidth = this._gridLineWidth;
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255, 255, 255, ' + THEME.opacity.muted + ')';
+    ctx.fill();
+  }
+
+  _drawGarbageEffects(effects, timestamp, getColor, highlightAlpha) {
+    if (!Array.isArray(effects) || effects.length === 0) return;
+    if (highlightAlpha == null) highlightAlpha = 0;
+    var sCell = this._sCell;
+    var ctx = this.ctx;
+    var mx = this._meterX;
+    var hexH = this._hexH;
+    var baseY = this.boardY;
+    var now = timestamp || performance.now();
+
+    // Highlight stripe sized/positioned to match a top-edge bevel, anchored
+    // to the hex's flat-top vertex (hCy - sCell*√3/2) rather than the cell
+    // boundary so it stays inside the drawn hex if gap constants change.
+    var stripeInset = sCell * 0.05;
+    var stripeH = sCell * 0.06;
+    var halfStripeW = sCell / 2;
+    var topEdgeOffset = sCell * _SQRT3 / 2;
+
+    try {
+      for (var ei = 0; ei < effects.length; ei++) {
+        var effect = effects[ei];
+        var elapsed = now - effect.startTime;
+        if (elapsed < 0 || elapsed >= effect.duration) continue;
+        ctx.globalAlpha = (1 - elapsed / effect.duration) * (effect.maxAlpha || 0.9);
+        ctx.fillStyle = getColor(effect);
+
+        // Batch all rows of this effect into one fill call.
+        // `effect.rowStart` is already in top-down grid coords (row 0 = top of
+        // board) per DisplayGame.onGarbageCancelled, so use `row` directly —
+        // matching drawGarbageMeter, which positions cells via the same
+        // top-down row index.
+        ctx.beginPath();
+        for (var row = effect.rowStart; row < effect.rowStart + effect.lines; row++) {
+          if (row < 0 || row >= GameConstants.VISIBLE_ROWS) continue;
+          var cy = baseY + hexH * row + hexH / 2;
+          ctx.moveTo(mx + sCell * HEX_UNIT_VERTICES[0], cy + sCell * HEX_UNIT_VERTICES[1]);
+          for (var vi = 2; vi < 12; vi += 2) {
+            ctx.lineTo(mx + sCell * HEX_UNIT_VERTICES[vi], cy + sCell * HEX_UNIT_VERTICES[vi + 1]);
+          }
+          ctx.closePath();
+        }
+        ctx.fill();
+
+        // Batched highlight stripe along each hex's top flat edge
+        ctx.fillStyle = 'rgba(255, 255, 255, ' + highlightAlpha + ')';
+        for (var hRow = effect.rowStart; hRow < effect.rowStart + effect.lines; hRow++) {
+          if (hRow < 0 || hRow >= GameConstants.VISIBLE_ROWS) continue;
+          var hCy = baseY + hexH * hRow + hexH / 2;
+          var topY = hCy - topEdgeOffset + stripeInset;
+          ctx.fillRect(mx - halfStripeW, topY, sCell, stripeH);
+        }
+      }
+    } finally {
+      ctx.globalAlpha = 1.0;
+    }
+  }
+
+  drawGarbageIndicatorEffects(effects, timestamp) {
+    this._drawGarbageEffects(effects, timestamp, _getIndicatorColor, 0.2);
+  }
+
+  drawGarbageDefenceEffects(effects, timestamp) {
+    this._drawGarbageEffects(effects, timestamp, _getDefenceColor, 0.3);
+  }
+
+  // Trace the hex board outline as a closed path (matching the zigzag walls)
+  _boardOutlinePath() {
+    GameConstants.traceHexOutline(
+      this.ctx, this.boardX, this.boardY,
+      this._hexSize, this._hexH, this._colW,
+      GameConstants.COLS, GameConstants.VISIBLE_ROWS
+    );
+  }
+
+  _fillBoardArea(color) {
+    this.ctx.fillStyle = color;
+    this._boardOutlinePath();
+    this.ctx.fill();
+  }
+
+  _clipBoardArea() {
+    this._boardOutlinePath();
+    this.ctx.clip();
+  }
+
+  // Draw a flat-top hex mini piece in hold/next panels
+  drawMiniPiece(centerX, centerY, pieceType, size) {
+    var bounds = HEX_MINI_BOUNDS[pieceType];
+    if (!bounds) return;
+    var typeId = HEX_TYPE_TO_ID[pieceType];
+    var isNeon = this._styleTier === STYLE_TIERS.NEON_FLAT;
+    var color = (isNeon ? NEON_PIECE_COLORS[typeId] : PIECE_COLORS[typeId]) || '#ffffff';
+
+    var hexS = size * 0.45;
+    var drawS = hexS * (1 - THEME.size.blockGap * 2);
+    var hexH = _SQRT3 * hexS;   // height of flat-top hex (layout spacing)
+    var colW = 1.5 * hexS;            // column spacing
+    var cols = bounds.maxC - bounds.minC + 1;
+    var rows = bounds.maxR - bounds.minR + 1;
+    var totalW = colW * (cols - 1) + 2 * hexS;
+    // Total height: row spacing * (rows-1) + hex height + half hex for odd col stagger
+    var totalH = hexH * rows + hexH * 0.5;
+    var ox = centerX - totalW / 2;
+    var oy = centerY - totalH / 2;
+
+    var stamp = getHexStamp(this._styleTier, color, _SQRT3 * drawS);
+    var ctx = this.ctx;
+    for (var i = 0; i < bounds.offsets.length; i++) {
+      var o = bounds.offsets[i];
+      var px = ox + colW * (o.col - bounds.minC) + hexS;
+      var py = oy + hexH * (o.row - bounds.minR + 0.5 * (o.col & 1)) + hexH / 2;
+      ctx.drawImage(stamp, px - stamp.cssW / 2, py - stamp.cssH / 2, stamp.cssW, stamp.cssH);
+    }
+  }
 }
 
-window.BaseUIRenderer = BaseUIRenderer;
+window.UIRenderer = UIRenderer;

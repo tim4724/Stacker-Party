@@ -21,11 +21,9 @@ const ENGINE_FILES = new Set([
   'constants.js',
   'Game.js',
   'GarbageManager.js',
-  'BaseBoard.js',
   'Randomizer.js',
-  'HexConstants.js',
-  'HexPiece.js',
-  'HexPlayerBoard.js',
+  'Piece.js',
+  'PlayerBoard.js',
 ]);
 
 // --- MIME types ---

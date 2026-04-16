@@ -95,7 +95,7 @@ class Animations {
     // Text popup for multi-line clears
     var firstCell = cells.find(function(c) { return c[1] >= 0; });
     if (firstCell) {
-      var pos = hexCenter(Math.floor(HexConstants.HEX_COLS / 2), firstCell[1]);
+      var pos = hexCenter(Math.floor(GameConstants.COLS / 2), firstCell[1]);
       if (isQuad) {
         this.addTextPopup(pos.x, pos.y, t('quad'), THEME.color.quad, true, br.cellSize);
       } else if (isTriple) {
@@ -129,7 +129,7 @@ class Animations {
     for (var i = 0; i < blocks.length; i++) occupied.add(blocks[i][0] + ',' + blocks[i][1]);
     for (var k = 0; k < blocks.length; k++) {
       var col = blocks[k][0], row = blocks[k][1];
-      if (row < 0 || row >= HexConstants.HEX_VISIBLE_ROWS) continue;
+      if (row < 0 || row >= GameConstants.VISIBLE_ROWS) continue;
       if (occupied.has(col + ',' + (row + 1))) continue;
       var pos = br._hexCenter(col, row);
       for (var j = 0; j < 5; j++) {

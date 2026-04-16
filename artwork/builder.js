@@ -1,7 +1,7 @@
 (function() {
   // Hex piece definitions (axial coords) — mirrors the game set in
-  // server/HexPiece.js (8 pieces: I O S Z q p L J).
-  const HEX_PIECES = {
+  // server/Piece.js (8 pieces: I O S Z q p L J).
+  const PIECES = {
     hI: [[-1,0],[0,0],[1,0],[2,0]],       // I — straight
     hO: [[-1,0],[0,0],[0,-1],[1,-1]],     // O — rhombus
     hS: [[-2,1],[-1,1],[0,0],[1,0]],      // S — ribbon
@@ -21,7 +21,7 @@
     hL: '#FF1493',  // hot pink
     hJ: '#3377FF',  // royal blue
   };
-  const HEX_PIECE_TYPES = Object.keys(HEX_PIECES);
+  const HEX_PIECE_TYPES = Object.keys(PIECES);
   const HEX_SOLO_COLORS = ['#FFD700','#00CED1','#FF1493','#3377FF'];
 
   // --- Layout presets ---
@@ -261,23 +261,23 @@
     if (!visible) return;
     pctx.globalAlpha = opacity;
 
-    // Draw hex pieces using the game's HexBoardRenderer._drawFilledHex
-    _renderHexPieces(pctx, preset, size, tier);
+    // Draw hex pieces using the game's BoardRenderer._drawFilledHex
+    _renderPieces(pctx, preset, size, tier);
 
     pctx.globalAlpha = 1;
   }
 
-  // Shared hex piece rendering — uses the game's actual HexBoardRenderer
-  function _renderHexPieces(ctx, preset, size, tier) {
+  // Shared hex piece rendering — uses the game's actual BoardRenderer
+  function _renderPieces(ctx, preset, size, tier) {
     var hexR = size * 0.52;
     var hexSpacing = hexR + size * 0.04;
     var sCell = hexR * (1 - THEME.size.blockGap * 2);
-    // Create a temporary HexBoardRenderer to use its _drawFilledHex method
-    var hbr = new HexBoardRenderer(ctx, 0, 0, size, 0);
+    // Create a temporary BoardRenderer to use its _drawFilledHex method
+    var hbr = new BoardRenderer(ctx, 0, 0, size, 0);
     hbr._styleTier = tier;
     var hpDefs = preset.hexPieces || [];
     hpDefs.forEach(function(hp, i) {
-      var cells = HEX_PIECES[hp.type];
+      var cells = PIECES[hp.type];
       var color = HEX_PIECE_COLORS[hp.type];
       var matchedRot = hp.rot != null ? hp.rot : (preset.pieces && preset.pieces[i] ? preset.pieces[i].rot : 0);
       var ox = hp.x + size * 2;

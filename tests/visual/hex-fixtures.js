@@ -1,8 +1,8 @@
 // @ts-check
 // Visual test fixtures for hex (flat-top) mode
 
-const { HEX_COLS, HEX_VISIBLE_ROWS } = require('../../server/HexConstants.js');
-const { HexPiece } = require('../../server/HexPiece.js');
+const { COLS: HEX_COLS, VISIBLE_ROWS: HEX_VISIBLE_ROWS } = require('../../server/constants.js');
+const { Piece } = require('../../server/Piece.js');
 const { PLAYER_COLORS } = require('../../public/shared/theme.js');
 
 function createHexGrid() {
@@ -38,7 +38,7 @@ function buildHexGameState(playerIds, options) {
 
     var pieceTypes = ['I', 'O', 'S', 'Z', 'q', 'p', 'L', 'J'];
     var pieceType = pieceTypes[i % pieceTypes.length];
-    var piece = new HexPiece(pieceType);
+    var piece = new Piece(pieceType);
     piece.anchorCol = 5;
     piece.anchorRow = 2;
 
@@ -114,7 +114,7 @@ function buildHexAllPiecesGhostState(playerIds, tierLevel) {
     ];
     for (var pi = 0; pi < placements.length; pi++) {
       var pl = placements[pi];
-      var piece = new HexPiece(pl.type);
+      var piece = new Piece(pl.type);
       piece.anchorCol = pl.col;
       piece.anchorRow = pl.row;
       var blocks = piece.getAbsoluteBlocks();
@@ -141,11 +141,11 @@ function buildHexAllPiecesGhostState(playerIds, tierLevel) {
   ];
 
   // Active piece (same on all boards): J-piece falling, ghost near bottom
-  var activePiece = new HexPiece('J');
+  var activePiece = new Piece('J');
   activePiece.anchorCol = 9;
   activePiece.anchorRow = 8;
   var activeBlocks = activePiece.getAbsoluteBlocks();
-  var ghostPiece = new HexPiece('J');
+  var ghostPiece = new Piece('J');
   ghostPiece.anchorCol = 9;
   ghostPiece.anchorRow = 18;
   var ghostBlocks = ghostPiece.getAbsoluteBlocks();
@@ -154,7 +154,7 @@ function buildHexAllPiecesGhostState(playerIds, tierLevel) {
   var extraGhosts = [];
   for (var gi = 0; gi < ghostPlacements.length; gi++) {
     var gpl = ghostPlacements[gi];
-    var gp = new HexPiece(gpl.type);
+    var gp = new Piece(gpl.type);
     gp.anchorCol = gpl.col;
     gp.anchorRow = gpl.row;
     var gBlocks = gp.getAbsoluteBlocks();

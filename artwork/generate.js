@@ -7,8 +7,8 @@ const path = require('path');
 const fs = require('fs');
 // fixtures no longer needed — banner uses its own buildBannerGameState()
 const { PLAYER_COLORS } = require('../public/shared/theme.js');
-const { HexPiece } = require('../server/HexPiece.js');
-const { HEX_COLS, HEX_VISIBLE_ROWS } = require('../server/HexConstants.js');
+const { Piece } = require('../server/Piece.js');
+const { COLS: HEX_COLS, VISIBLE_ROWS: HEX_VISIBLE_ROWS } = require('../server/constants.js');
 
 const NAMES = ['Emma', 'Jake', 'Sofia', 'Liam'];
 const BANNER_DIR = __dirname;
@@ -126,7 +126,7 @@ function buildBannerGameState() {
 }
 
 // --- Hex banner state ---
-// Hex cell IDs follow the v2 game mapping (server/HexConstants.js):
+// Hex cell IDs follow the v2 game mapping (server/constants.js):
 //   1=I, 2=O, 3=S, 4=Z, 5=q, 6=p, 7=L, 8=J, 9=garbage.
 function hexBannerGrid1() {
   // Emma — Neon (level 13), busier board. Height ~9
@@ -196,7 +196,7 @@ function buildHexBannerGameState() {
   return {
     players: NAMES.map((name, i) => {
       const pieceType = HEX_BANNER_PIECE_TYPES[i];
-      const piece = new HexPiece(pieceType);
+      const piece = new Piece(pieceType);
       piece.anchorCol = 5;
       piece.anchorRow = 2;
       const blocks = piece.getAbsoluteBlocks();

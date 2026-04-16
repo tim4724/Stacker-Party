@@ -9,8 +9,8 @@
     body {
       overflow: hidden;
       background: #06060f;
-      width: 1280px;
-      height: 640px;
+      width: 1024px;
+      height: 1024px;
       position: relative;
     }
 
@@ -27,14 +27,13 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      /* Radial glow behind title, matching welcome screen */
       background: radial-gradient(ellipse at 50% 50%, rgba(0, 80, 200, 0.18) 0%, transparent 55%);
     }
 
     h1 {
       font-family: 'Orbitron', sans-serif;
       font-weight: 900;
-      font-size: 128px;
+      font-size: 110px;
       letter-spacing: 0.06em;
       background: linear-gradient(135deg, #4444ff, #00c8ff, #00ff88);
       -webkit-background-clip: text;
@@ -51,9 +50,8 @@
       font-size: 0.38em;
       font-weight: 600;
       letter-spacing: 0.55em;
-      margin-top: 0.28em;
+      margin-top: 0.32em;
       text-transform: uppercase;
-      /* Opt out of gradient text clip so subtitle renders with opaque color */
       -webkit-text-fill-color: #e0e0ff;
       color: #e0e0ff;
       opacity: 0.82;
@@ -85,33 +83,29 @@
       J: [[1,0],[0,0],[-1,0],[-1,-1]],
     };
 
-    // Speed-lines drop layout — adapted from the cover-art c3 design for
-    // a 1280×640 frame with the title block centered. Distribution is
-    // 3 top + 2 lower-sides + 3 bottom. The lower-side pieces (q, Z) sit
-    // just below the title's text-glow zone (~y>447) so they don't visually
-    // collide with the text — they're "to the side" and "below" rather than
-    // "behind" the title.
+    // Cover-art c3 layout — 8 pieces spread around the 1024×1024 frame with
+    // the title centered. Top half has shorter trails (less room above);
+    // bottom half has longer trails. Position of green O has been nudged so
+    // it sits well above the title text.
     const DROPS = [
-      // Top band — short trails (no room above them)
-      { type: 'O', x: 240,  y: 80,  size: 32, trailLen: 70 },
-      { type: 'p', x: 620,  y: 70,  size: 34, trailLen: 60 },
-      { type: 'S', x: 950,  y: 85,  size: 36, trailLen: 80 },
-      // Lower-sides — just below the title-glow zone
-      { type: 'q', x: 70,   y: 460, size: 34, trailLen: 370 },
-      { type: 'Z', x: 1100, y: 430, size: 32, trailLen: 370 },
-      // Bottom band — long trails
-      { type: 'L', x: 240,  y: 540, size: 36, trailLen: 470 },
-      { type: 'I', x: 540,  y: 540, size: 42, trailLen: 470 },
-      { type: 'J', x: 900,  y: 540, size: 36, trailLen: 470 },
+      // Top half — pushed up to reduce the top gap
+      { type: 'L', x: 130, y: 220, size: 50, trailLen: 220 },
+      { type: 'S', x: 700, y: 70,  size: 46, trailLen: 280 },
+      { type: 'q', x: 440, y: 320, size: 42, trailLen: 200 },
+      { type: 'O', x: 880, y: 290, size: 38, trailLen: 200 },
+      // Mid-low
+      { type: 'Z', x: 60,  y: 610, size: 38, trailLen: 180 },
+      // Bottom half — pushed down to reduce the bottom gap
+      { type: 'p', x: 760, y: 770, size: 44, trailLen: 240 },
+      { type: 'I', x: 220, y: 780, size: 48, trailLen: 320 },
+      { type: 'J', x: 540, y: 880, size: 42, trailLen: 240 },
     ];
 
     // ---- Canvas + geometry ----
-    // Hardcoded to the social-preview frame size so local file:// preview
-    // matches the captured PNG. Playwright captures this same 1280×640.
     const SQRT3 = Math.sqrt(3);
     const canvas = document.getElementById('bg');
-    const W = 1280;
-    const H = 640;
+    const W = 1024;
+    const H = 1024;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = W * dpr;
     canvas.height = H * dpr;
@@ -144,7 +138,6 @@
       ctx.closePath();
     }
 
-    // ---- Color helpers ----
     function hexToRgb(hex) {
       const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
       return m ? { r: parseInt(m[1],16), g: parseInt(m[2],16), b: parseInt(m[3],16) } : null;
@@ -165,7 +158,6 @@
       return `rgba(${c.r},${c.g},${c.b},${a})`;
     }
 
-    // ---- Hex cell with pillow-style gradient + inner highlight ----
     function drawHexCell(cx, cy, r, color) {
       const grad = ctx.createLinearGradient(cx, cy - r, cx, cy + r);
       grad.addColorStop(0, lighten(color, 18));
@@ -176,7 +168,6 @@
       ctx.strokeStyle = rgba(color, 0.55);
       ctx.lineWidth = 1.2;
       ctx.stroke();
-      // Inner top highlight
       ctx.fillStyle = 'rgba(255,255,255,0.18)';
       ctx.beginPath();
       ctx.ellipse(cx, cy - r * 0.45, r * 0.55, r * 0.18, 0, 0, Math.PI * 2);
@@ -193,11 +184,7 @@
       }
     }
 
-    // ---- Per-column motion-blur streaks (matches cover-art c3) ----
-    // For each occupied column of the piece, emit a single soft blurred trail
-    // anchored to the topmost cell's flat top edge. Width = hexSize (the flat
-    // top edge length of a flat-top hex), so the streak lines up exactly with
-    // the cell silhouette.
+    // Per-column motion-blur streaks (matches cover-variations c3).
     function drawCellStreaks(ax, ay, type, hexSize, length, color, opts = {}) {
       const cells = PIECES[type];
       const topByCol = new Map();
@@ -228,13 +215,19 @@
     }
 
     // ---- Render ----
-    // Draw all streaks first so pieces sit on top of their own trails.
+    // Streaks first so pieces sit on top of their own trails.
     for (const d of DROPS) {
       drawCellStreaks(d.x, d.y, d.type, d.size, d.trailLen, PIECE_COLORS[d.type]);
     }
     for (const d of DROPS) {
       drawPiece(d.x, d.y, d.type, d.size);
     }
+    // Subtle center darken so the title reads cleanly above the dense lower band.
+    const dim = ctx.createRadialGradient(W/2, H/2, 80, W/2, H/2, 420);
+    dim.addColorStop(0, 'rgba(6,6,15,0.65)');
+    dim.addColorStop(1, 'rgba(6,6,15,0)');
+    ctx.fillStyle = dim;
+    ctx.fillRect(0, 0, W, H);
   </script>
 </body>
 </html>

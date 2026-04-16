@@ -1,11 +1,11 @@
 'use strict';
 
-// UMD: works in Node.js (require) and browser (window.HexPieceModule)
+// UMD: works in Node.js (require) and browser (window.PieceModule)
 // Flat-top hexagons with odd-q offset coordinates.
 (function(exports) {
 
-var hexConst = (typeof require !== 'undefined') ? require('./HexConstants') : window.HexConstants;
-var HEX_PIECE_TYPE_TO_ID = hexConst.HEX_PIECE_TYPE_TO_ID;
+var constants = (typeof require !== 'undefined') ? require('./constants') : window.GameConstants;
+var PIECE_TYPE_TO_ID = constants.PIECE_TYPE_TO_ID;
 
 // ===================== HEX MATH (flat-top, odd-q offset) =====================
 function offsetToAxial(col, row) {
@@ -17,7 +17,7 @@ function axialToOffset(q, r) {
 }
 
 // Scratch arrays for getAbsoluteBlocks — avoids allocation on every call.
-// All HEX_PIECES have exactly 4 cells; update if a 5+ cell piece is added.
+// All PIECES have exactly 4 cells; update if a 5+ cell piece is added.
 var _absBlocksScratch = [[0,0],[0,0],[0,0],[0,0]];
 
 // ===================== PIECE DEFINITIONS =====================
@@ -27,7 +27,7 @@ var _absBlocksScratch = [[0,0],[0,0],[0,0],[0,0]];
 //   silhouettes (chevron ribbon + stem) read more like lowercase q and p.
 // - L and J are new 4-chain pieces with a single 60° bend, giving true L/J
 //   silhouettes. Default orientations were chosen for visual readability.
-var HEX_PIECES = {
+var PIECES = {
   I:  [[-1,0],[0,0],[1,0],[2,0]],
   O:  [[-1,0],[0,0],[0,-1],[1,-1]],
   S:  [[-2,1],[-1,1],[0,0],[1,0]],
@@ -51,11 +51,11 @@ var KICKS = [
 ];
 
 // ===================== HEX PIECE CLASS =====================
-class HexPiece {
+class Piece {
   constructor(type) {
     this.type = type;
-    this.typeId = HEX_PIECE_TYPE_TO_ID[type];
-    this.cells = HEX_PIECES[type].map(function(c) { return { q: c[0], r: c[1] }; });
+    this.typeId = PIECE_TYPE_TO_ID[type];
+    this.cells = PIECES[type].map(function(c) { return { q: c[0], r: c[1] }; });
     this.anchorCol = 5;  // center of 11-col grid
     this.anchorRow = 0;
     this._rotId = 0;    // incremented on rotate, used for ghost cache key
@@ -112,7 +112,7 @@ class HexPiece {
   }
 
   clone() {
-    var p = Object.create(HexPiece.prototype);
+    var p = Object.create(Piece.prototype);
     p.type = this.type;
     p.typeId = this.typeId;
     p.cells = this.cells.map(function(c) { return { q: c.q, r: c.r }; });
@@ -143,10 +143,10 @@ class HexPiece {
   }
 }
 
-exports.HEX_PIECES = HEX_PIECES;
+exports.PIECES = PIECES;
 exports.KICKS = KICKS;
-exports.HexPiece = HexPiece;
+exports.Piece = Piece;
 exports.offsetToAxial = offsetToAxial;
 exports.axialToOffset = axialToOffset;
 
-})(typeof module !== 'undefined' ? module.exports : (window.HexPieceModule = {}));
+})(typeof module !== 'undefined' ? module.exports : (window.PieceModule = {}));

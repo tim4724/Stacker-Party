@@ -5,7 +5,7 @@ var _SQRT3 = Math.sqrt(3);
 // Falling ghost-piece background animation for the welcome screen.
 // Renders translucent hex piece silhouettes on a canvas behind the DOM overlay.
 //
-// Piece data is derived from HexPieceModule at runtime so it stays in sync
+// Piece data is derived from PieceModule at runtime so it stays in sync
 // automatically when pieces change.
 
 // Inline flat-top hex path for use when CanvasUtils.js is not loaded (controller).
@@ -22,7 +22,7 @@ function _wbHexPath(ctx, cx, cy, size) {
 }
 
 class WelcomeBackground {
-  // Populated once from HexPieceModule via _syncFromEngine()
+  // Populated once from PieceModule via _syncFromEngine()
   static SHAPES = null;
   static PIECE_KEYS = null;
   static SHAPE_COLOR_INDEX = null;
@@ -70,16 +70,16 @@ class WelcomeBackground {
     return 0;
   }
 
-  // One-time initialization: read piece data from HexPieceModule.
+  // One-time initialization: read piece data from PieceModule.
   static _syncFromEngine() {
-    var src = HexPieceModule.HEX_PIECES;
+    var src = PieceModule.PIECES;
     var shapes = {};
     for (var key in src) {
       shapes[key] = WelcomeBackground._generateHexRotations(src[key]);
     }
     WelcomeBackground.SHAPES = shapes;
     WelcomeBackground.PIECE_KEYS = Object.keys(shapes);
-    WelcomeBackground.SHAPE_COLOR_INDEX = HexConstants.HEX_PIECE_TYPE_TO_ID;
+    WelcomeBackground.SHAPE_COLOR_INDEX = GameConstants.PIECE_TYPE_TO_ID;
   }
 
   constructor(canvas, poolSize = 15) {
@@ -227,12 +227,12 @@ class WelcomeBackground {
       }
 
       ctx.globalAlpha = p.opacity;
-      this._drawHexPiece(ctx, p);
+      this._drawPiece(ctx, p);
       ctx.globalAlpha = 1;
     }
   };
 
-  _drawHexPiece(ctx, p) {
+  _drawPiece(ctx, p) {
     const size = p.blockSize;
     const sCell = size * 0.94;
     const hasStamps = typeof getHexStamp === 'function';

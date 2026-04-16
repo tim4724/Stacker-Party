@@ -1,17 +1,17 @@
 'use strict';
 
-// HexBoardRenderer: renders a flat-top hex grid board on canvas.
+// BoardRenderer: renders a flat-top hex grid board on canvas.
 // Same interface as BoardRenderer but with flat-top hex orientation.
 // Columns are vertically aligned (no zigzag on horizontal movement).
 
-var HEX_VIS_ROWS = HexConstants.HEX_VISIBLE_ROWS;
-var HEX_COLS_N = HexConstants.HEX_COLS;
+var HEX_VIS_ROWS = GameConstants.VISIBLE_ROWS;
+var HEX_COLS_N = GameConstants.COLS;
 var _hexScratch = { x: 0, y: 0 };
 var _hexLocalScratch = { x: 0, y: 0 };
 var _GHOST_KEY_STRIDE = 32; // must exceed max(HEX_VIS_ROWS, HEX_COLS) for collision-free keys
 
 
-class HexBoardRenderer {
+class BoardRenderer {
   constructor(ctx, x, y, cellSize, playerIndex) {
     this.ctx = ctx;
     this.x = x;
@@ -22,7 +22,7 @@ class HexBoardRenderer {
     this._accentRgb = hexToRgb(this.accentColor);
     this._styleTier = STYLE_TIERS.NORMAL;
 
-    var geo = HexConstants.computeHexGeometry(HEX_COLS_N, HEX_VIS_ROWS, cellSize);
+    var geo = GameConstants.computeHexGeometry(HEX_COLS_N, HEX_VIS_ROWS, cellSize);
     this.hexSize = geo.hexSize;
     this.hexH = geo.hexH;
     this.colW = geo.colW;
@@ -48,10 +48,10 @@ class HexBoardRenderer {
 
     // Pre-compute hex outline vertices: inner (for bg clip) and outer (for border stroke)
     var borderHalf = cellSize * THEME.stroke.border / 2;
-    this._bgOutlineVerts = HexConstants.computeHexOutlineVerts(
+    this._bgOutlineVerts = GameConstants.computeHexOutlineVerts(
       this.x, this.y, this.hexSize, this.hexH, this.colW, HEX_COLS_N, HEX_VIS_ROWS
     );
-    this._outlineVerts = HexConstants.computeHexOutlineVerts(
+    this._outlineVerts = GameConstants.computeHexOutlineVerts(
       this.x, this.y, this.hexSize, this.hexH, this.colW, HEX_COLS_N, HEX_VIS_ROWS, borderHalf
     );
 
@@ -252,7 +252,7 @@ class HexBoardRenderer {
           }
           var gridRows = playerState.grid.length;
           var grid = playerState.grid;
-          var result = HexConstants.findClearableZigzags(
+          var result = GameConstants.findClearableZigzags(
             HEX_COLS_N, gridRows,
             function(col, row) { return grid[row][col] > 0 || ghostSet[col * _GHOST_KEY_STRIDE + row]; },
             function(col, row) { return grid[row][col] === 0 && ghostSet[col * _GHOST_KEY_STRIDE + row]; }

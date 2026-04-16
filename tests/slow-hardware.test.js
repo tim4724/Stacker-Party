@@ -4,9 +4,8 @@ const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const { Game } = require('../server/Game');
 const { LOGIC_TICK_MS, MAX_DROPS_PER_TICK } = require('../server/constants');
-const { HEX_TOTAL_ROWS, HEX_BUFFER_ROWS } = require('../server/HexConstants');
-const BOARD_HEIGHT = HEX_TOTAL_ROWS;
-const BUFFER_ROWS = HEX_BUFFER_ROWS;
+const { TOTAL_ROWS, BUFFER_ROWS } = require('../server/constants');
+const BOARD_HEIGHT = TOTAL_ROWS;
 
 // Helpers
 

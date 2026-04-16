@@ -73,10 +73,10 @@ if (urlParams.get('test') === '1' || debugCount > 0) {
 // =====================================================================
 
 function _buildHexDebugState(debugPlayers) {
-  var HC = HexConstants.HEX_COLS;
-  var HV = HexConstants.HEX_VISIBLE_ROWS;
-  var GC = HexConstants.HEX_GARBAGE_CELL;
-  var types = HexConstants.HEX_PIECE_TYPES;
+  var HC = GameConstants.COLS;
+  var HV = GameConstants.VISIBLE_ROWS;
+  var GC = GameConstants.GARBAGE_CELL;
+  var types = GameConstants.PIECE_TYPES;
   var emptyRow = function() { var r = []; for (var i = 0; i < HC; i++) r.push(0); return r; };
   var fullRow = function(gap) { var r = []; for (var i = 0; i < HC; i++) r.push(i === gap ? 0 : GC); return r; };
   var state = { players: [], elapsed: 75000 };
@@ -89,7 +89,7 @@ function _buildHexDebugState(debugPlayers) {
     }
     grid[HV - 1] = fullRow((dj * 2 + 3) % HC);
     var pt = types[dj % types.length];
-    var piece = new HexPieceModule.HexPiece(pt);
+    var piece = new PieceModule.Piece(pt);
     piece.anchorCol = 5; piece.anchorRow = 2;
     var blocks = piece.getAbsoluteBlocks();
     var ghostPiece = piece.clone(); ghostPiece.anchorRow = HV - 5;

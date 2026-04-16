@@ -19,9 +19,9 @@ function calculateLayout() {
   var w = window.innerWidth;
   var h = window.innerHeight;
   var padding = THEME.size.canvasPad;
-  var boardCols = HexConstants.HEX_COLS;
-  var hexRows = HexConstants.HEX_VISIBLE_ROWS;
-  var boardRows = HexConstants.computeHexGeometry(boardCols, hexRows, 1).boardHeight;
+  var boardCols = GameConstants.COLS;
+  var hexRows = GameConstants.VISIBLE_ROWS;
+  var boardRows = GameConstants.computeHexGeometry(boardCols, hexRows, 1).boardHeight;
   var totalCellsWide = boardCols + 3 + 3;
   // Gaps scale with cellSize to stay proportional at all zoom levels
   function nameGap(cs) { return cs * 0.6; }
@@ -69,7 +69,7 @@ function calculateLayout() {
     else { gridCols = 4; gridRows = 2; cellSize = cs4x2; }
   }
   if (!cellSize) cellSize = cellSizeFor(gridCols, gridRows);
-  var geo = HexConstants.computeHexGeometry(boardCols, hexRows, cellSize);
+  var geo = GameConstants.computeHexGeometry(boardCols, hexRows, cellSize);
   var boardWidthPx = geo.boardWidth;
   var boardHeightPx = geo.boardHeight;
 
@@ -94,8 +94,8 @@ function calculateLayout() {
     var boardX = padding + col * (cellAreaW + padding) + (cellAreaW - boardWidthPx) / 2;
     var boardY = padding + row * (cellAreaH + padding) + (cellAreaH - totalContentH) / 2 + nameArea;
     var playerIndex = players.get(playerOrder[i])?.playerIndex ?? i;
-    boardRenderers.push(new HexBoardRenderer(ctx, boardX, boardY, cellSize, playerIndex));
-    uiRenderers.push(new HexUIRenderer(ctx, boardX, boardY, cellSize, boardWidthPx, boardHeightPx, playerIndex));
+    boardRenderers.push(new BoardRenderer(ctx, boardX, boardY, cellSize, playerIndex));
+    uiRenderers.push(new UIRenderer(ctx, boardX, boardY, cellSize, boardWidthPx, boardHeightPx, playerIndex));
   }
 }
 

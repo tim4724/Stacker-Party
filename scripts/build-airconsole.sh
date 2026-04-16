@@ -29,7 +29,7 @@ cp "$PROJECT_DIR/public/favicon.ico" "$BUILD_DIR/favicon.ico" 2>/dev/null || tru
 
 # Copy engine modules (from server/ to engine/ for browser access)
 mkdir -p "$BUILD_DIR/engine"
-for f in constants.js Randomizer.js GarbageManager.js BaseBoard.js HexConstants.js HexPiece.js HexPlayerBoard.js Game.js; do
+for f in constants.js Randomizer.js GarbageManager.js Piece.js PlayerBoard.js Game.js; do
   cp "$PROJECT_DIR/server/$f" "$BUILD_DIR/engine/$f"
 done
 

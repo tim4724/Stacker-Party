@@ -2,23 +2,29 @@
 
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { HexPlayerBoard } = require('../server/HexPlayerBoard');
-const { HexPiece } = require('../server/HexPiece');
-const { offsetToAxial, axialToOffset } = require('../server/HexPiece');
-const { HEX_COLS, HEX_TOTAL_ROWS, HEX_BUFFER_ROWS, HEX_VISIBLE_ROWS, HEX_GARBAGE_CELL } = require('../server/HexConstants');
-const { LOCK_DELAY_MS, LINE_CLEAR_DELAY_MS } = require('../server/constants');
+const { PlayerBoard } = require('../server/PlayerBoard');
+const { Piece } = require('../server/Piece');
+const { offsetToAxial, axialToOffset } = require('../server/Piece');
+const {
+  LOCK_DELAY_MS, LINE_CLEAR_DELAY_MS,
+  COLS: HEX_COLS,
+  TOTAL_ROWS: HEX_TOTAL_ROWS,
+  BUFFER_ROWS: HEX_BUFFER_ROWS,
+  VISIBLE_ROWS: HEX_VISIBLE_ROWS,
+  GARBAGE_CELL: HEX_GARBAGE_CELL,
+} = require('../server/constants');
 const { Game } = require('../server/Game');
 
-describe('HexPiece', () => {
+describe('Piece', () => {
   it('creates a piece with correct type and cells', () => {
-    var p = new HexPiece('L');
+    var p = new Piece('L');
     assert.equal(p.type, 'L');
     assert.equal(p.typeId, 7);
     assert.equal(p.cells.length, 4);
   });
 
   it('getAbsoluteBlocks returns valid offset coordinates', () => {
-    var p = new HexPiece('q');
+    var p = new Piece('q');
     var blocks = p.getAbsoluteBlocks();
     assert.equal(blocks.length, 4);
     for (var b of blocks) {
@@ -28,14 +34,14 @@ describe('HexPiece', () => {
   });
 
   it('clone creates independent copy', () => {
-    var p = new HexPiece('S');
+    var p = new Piece('S');
     var c = p.clone();
     c.anchorCol = 0;
     assert.notEqual(p.anchorCol, c.anchorCol);
   });
 
   it('rotateCW changes cell positions', () => {
-    var p = new HexPiece('L');
+    var p = new Piece('L');
     var before = JSON.stringify(p.cells);
     p.rotateCW();
     assert.notEqual(JSON.stringify(p.cells), before);
@@ -44,7 +50,7 @@ describe('HexPiece', () => {
   it('all 8 piece types create valid pieces', () => {
     var types = ['I', 'O', 'S', 'Z', 'q', 'p', 'L', 'J'];
     for (var t of types) {
-      var p = new HexPiece(t);
+      var p = new Piece(t);
       var blocks = p.getAbsoluteBlocks();
       assert.ok(blocks.length >= 3, t + ' has cells');
       for (var b of blocks) {
@@ -55,7 +61,7 @@ describe('HexPiece', () => {
   });
 
   it('I has 4 cells', () => {
-    var p = new HexPiece('I');
+    var p = new Piece('I');
     assert.equal(p.cells.length, 4);
   });
 
@@ -65,7 +71,7 @@ describe('HexPiece', () => {
     // single bend; q/p are triangle-plus-pendant shapes. Both lack the
     // 3-fold symmetry that made old T repeat every 120°.
     for (var type of ['L', 'J', 'q', 'p']) {
-      var p = new HexPiece(type);
+      var p = new Piece(type);
       var seen = new Set();
       var cells = p.cells.map(c => ({ q: c.q, r: c.r }));
       for (var i = 0; i < 6; i++) {
@@ -78,7 +84,7 @@ describe('HexPiece', () => {
   });
 });
 
-describe('HexPiece - coordinate math', () => {
+describe('Piece - coordinate math', () => {
   it('offsetToAxial and axialToOffset roundtrip for even column', () => {
     var col = 4, row = 10;
     var ax = offsetToAxial(col, row);
@@ -96,14 +102,14 @@ describe('HexPiece - coordinate math', () => {
   });
 
   it('rotateCCW changes cell positions', () => {
-    var p = new HexPiece('L');
+    var p = new Piece('L');
     var before = JSON.stringify(p.cells);
     p.rotateCCW();
     assert.notEqual(JSON.stringify(p.cells), before);
   });
 
   it('rotateCW then rotateCCW returns to original', () => {
-    var p = new HexPiece('L');
+    var p = new Piece('L');
     var original = JSON.stringify(p.cells);
     p.rotateCW();
     p.rotateCCW();
@@ -111,29 +117,29 @@ describe('HexPiece - coordinate math', () => {
   });
 
   it('6 CW rotations return to original (hex symmetry)', () => {
-    var p = new HexPiece('I');
+    var p = new Piece('I');
     var original = JSON.stringify(p.cells);
     for (var i = 0; i < 6; i++) p.rotateCW();
     assert.equal(JSON.stringify(p.cells), original);
   });
 });
 
-describe('HexPlayerBoard', () => {
+describe('PlayerBoard', () => {
   it('creates board with correct dimensions', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     assert.equal(b.grid.length, HEX_TOTAL_ROWS);
     assert.equal(b.grid[0].length, HEX_COLS);
   });
 
   it('spawns a piece in the visible area', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     assert.ok(b.currentPiece);
     assert.ok(b.currentPiece.anchorRow >= HEX_BUFFER_ROWS - 1);
   });
 
   it('moveLeft and moveRight change piece position', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     var startCol = b.currentPiece.anchorCol;
     b.moveLeft();
@@ -143,7 +149,7 @@ describe('HexPlayerBoard', () => {
   });
 
   it('hardDrop locks piece and returns result', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     var result = b.hardDrop();
     assert.ok(result);
@@ -152,7 +158,7 @@ describe('HexPlayerBoard', () => {
   });
 
   it('hold swaps current piece', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     var firstType = b.currentPiece.type;
     b.hold();
@@ -162,7 +168,7 @@ describe('HexPlayerBoard', () => {
   });
 
   it('getState returns valid state object', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     var state = b.getState();
     assert.equal(state.grid.length, HEX_VISIBLE_ROWS);
@@ -172,16 +178,16 @@ describe('HexPlayerBoard', () => {
   });
 
   it('garbage adds rows at bottom', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.applyGarbage(2, 3);
     assert.ok(b.grid[HEX_TOTAL_ROWS - 1][0] > 0);
     assert.equal(b.grid[HEX_TOTAL_ROWS - 1][3], 0); // gap column
   });
 });
 
-describe('HexPlayerBoard - rotation and wall kicks', () => {
+describe('PlayerBoard - rotation and wall kicks', () => {
   it('rotateCW changes piece orientation', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     var before = JSON.stringify(b.currentPiece.cells);
     b.rotateCW();
@@ -189,12 +195,12 @@ describe('HexPlayerBoard - rotation and wall kicks', () => {
   });
 
   it('rotateCW returns false when no currentPiece', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     assert.equal(b.rotateCW(), false);
   });
 
   it('wall kick allows rotation near left edge', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     // Move piece to left wall
     for (var i = 0; i < HEX_COLS; i++) b.moveLeft();
@@ -204,7 +210,7 @@ describe('HexPlayerBoard - rotation and wall kicks', () => {
   });
 
   it('wall kick allows rotation near right edge', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     for (var i = 0; i < HEX_COLS; i++) b.moveRight();
     var result = b.rotateCW();
@@ -214,13 +220,13 @@ describe('HexPlayerBoard - rotation and wall kicks', () => {
   // I piece spans 2 cells to one side of its anchor, so rotations against a wall
   // need a ±2 wall kick. A ±1 kick alone cannot bring it back in-bounds.
   it('I piece rotates at every valid position on an empty board', () => {
-    var { HexPiece } = require('../server/HexPiece');
-    var { HEX_TOTAL_ROWS } = require('../server/HexConstants');
+    var { Piece } = require('../server/Piece');
+    var { TOTAL_ROWS: HEX_TOTAL_ROWS } = require('../server/constants');
     for (var rotStep = 0; rotStep < 6; rotStep++) {
       for (var ac = -3; ac < HEX_COLS + 3; ac++) {
         for (var ar = 0; ar < HEX_TOTAL_ROWS; ar++) {
-          var b = new HexPlayerBoard('p', 1, 1);
-          var piece = new HexPiece('I');
+          var b = new PlayerBoard('p', 1, 1);
+          var piece = new Piece('I');
           for (var k = 0; k < rotStep; k++) piece.rotateCW();
           piece._adjustAnchorRow();
           piece.anchorCol = ac;
@@ -235,9 +241,9 @@ describe('HexPlayerBoard - rotation and wall kicks', () => {
   });
 });
 
-describe('HexPlayerBoard - movement boundaries', () => {
+describe('PlayerBoard - movement boundaries', () => {
   it('moveLeft returns false at left wall', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     // Move all the way left until blocked
     var moved = true;
@@ -246,7 +252,7 @@ describe('HexPlayerBoard - movement boundaries', () => {
   });
 
   it('moveRight returns false at right wall', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     var moved = true;
     while (moved) moved = b.moveRight();
@@ -254,17 +260,17 @@ describe('HexPlayerBoard - movement boundaries', () => {
   });
 
   it('moveLeft returns false when no currentPiece', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     assert.equal(b.moveLeft(), false);
   });
 
   it('moveRight returns false when no currentPiece', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     assert.equal(b.moveRight(), false);
   });
 });
 
-describe('HexPlayerBoard - lateral up-bias', () => {
+describe('PlayerBoard - lateral up-bias', () => {
   // In flat-top hex, a horizontal move is always a diagonal in screen space.
   // We bias up: first lateral from anchor goes up by one half-hex; the next
   // returns down to anchor. y is measured in half-hex units as
@@ -275,13 +281,13 @@ describe('HexPlayerBoard - lateral up-bias', () => {
   }
 
   it('first lateral press from spawn moves up one half-hex', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     var y0 = y(b.currentPiece);
     assert.equal(b.moveLeft(), true);
     assert.equal(y(b.currentPiece), y0 - 1, 'left goes up');
 
-    var b2 = new HexPlayerBoard('p2', 42, 1);
+    var b2 = new PlayerBoard('p2', 42, 1);
     b2.spawnPiece();
     var y0r = y(b2.currentPiece);
     assert.equal(b2.moveRight(), true);
@@ -289,7 +295,7 @@ describe('HexPlayerBoard - lateral up-bias', () => {
   });
 
   it('second consecutive lateral press returns to anchor y', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     var anchorY = b.currentPiece._anchorY;
     b.moveLeft();
@@ -298,7 +304,7 @@ describe('HexPlayerBoard - lateral up-bias', () => {
   });
 
   it('alternates up/anchor across four presses in the same direction', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     var anchorY = b.currentPiece._anchorY;
     var expected = [anchorY - 1, anchorY, anchorY - 1, anchorY];
@@ -309,7 +315,7 @@ describe('HexPlayerBoard - lateral up-bias', () => {
   });
 
   it('L then R returns to starting col and row', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     var startCol = b.currentPiece.anchorCol;
     var startRow = b.currentPiece.anchorRow;
@@ -323,7 +329,7 @@ describe('HexPlayerBoard - lateral up-bias', () => {
     // After player moves up, gravity ticks. The piece must stay one half-hex
     // above the new anchor — otherwise a second up-press could fully cancel
     // the gravity drop and the player would be hovering.
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     b.moveLeft();  // piece is 1 half-hex above anchor
     var anchorYBefore = b.currentPiece._anchorY;
@@ -336,7 +342,7 @@ describe('HexPlayerBoard - lateral up-bias', () => {
   });
 
   it('no climbing: after L + gravity, next L returns to anchor (down)', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     var y0 = y(b.currentPiece);
     b.moveLeft();            // y0 - 1
@@ -349,7 +355,7 @@ describe('HexPlayerBoard - lateral up-bias', () => {
     // Pattern "gravity, L": one lateral UP after a gravity tick saves half a
     // cell vs pure gravity. Holding L across further ticks cannot compound —
     // the UP budget is preserved (not refunded) through gravity.
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     var y0 = y(b.currentPiece);
     b._hexDrop(b.currentPiece);   // y0 + 2, at anchor
@@ -361,7 +367,7 @@ describe('HexPlayerBoard - lateral up-bias', () => {
   });
 
   it('rotation re-baselines the up-bias anchor to current y', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     b.moveLeft();  // piece is above anchor
     assert.equal(b.rotateCW(), true, 'rotation should succeed at spawn');
@@ -370,9 +376,9 @@ describe('HexPlayerBoard - lateral up-bias', () => {
   });
 
   it('fallback takes opposite diagonal when primary is blocked', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     // Use an O piece at anchor (5, 3) — O cells at (4,3),(5,3),(5,2),(6,3).
-    b.currentPiece = new HexPiece('O');
+    b.currentPiece = new Piece('O');
     b.currentPiece.anchorCol = 5;
     b.currentPiece.anchorRow = 3;
     b.currentPiece._anchorY = 2 * 3 + 1;  // at anchor
@@ -388,8 +394,8 @@ describe('HexPlayerBoard - lateral up-bias', () => {
   });
 
   it('returns false when both primary and fallback are blocked', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
-    b.currentPiece = new HexPiece('O');
+    var b = new PlayerBoard('p1', 42, 1);
+    b.currentPiece = new Piece('O');
     b.currentPiece.anchorCol = 5;
     b.currentPiece.anchorRow = 3;
     b.currentPiece._anchorY = 2 * 3 + 1;
@@ -403,9 +409,9 @@ describe('HexPlayerBoard - lateral up-bias', () => {
   });
 });
 
-describe('HexPlayerBoard - gravity and tick', () => {
+describe('PlayerBoard - gravity and tick', () => {
   it('tick drops piece over time', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     var startRow = b.currentPiece.anchorRow;
     // Tick enough to trigger at least one gravity drop
@@ -415,7 +421,7 @@ describe('HexPlayerBoard - gravity and tick', () => {
   });
 
   it('tick returns null during clearing delay', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     for (var c = 0; c < HEX_COLS; c++) b.grid[HEX_TOTAL_ROWS - 1][c] = 1;
     b.spawnPiece();
     b.hardDrop();
@@ -424,7 +430,7 @@ describe('HexPlayerBoard - gravity and tick', () => {
   });
 
   it('tick finishes clearing after delay expires', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     for (var c = 0; c < HEX_COLS; c++) b.grid[HEX_TOTAL_ROWS - 1][c] = 1;
     b.spawnPiece();
     b.hardDrop();
@@ -435,20 +441,20 @@ describe('HexPlayerBoard - gravity and tick', () => {
   });
 
   it('tick returns null when not alive', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.alive = false;
     assert.equal(b.tick(16), null);
   });
 
   it('tick returns null when no currentPiece', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     assert.equal(b.tick(16), null);
   });
 });
 
-describe('HexPlayerBoard - soft drop', () => {
+describe('PlayerBoard - soft drop', () => {
   it('softDropStart resets gravityCounter', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.gravityCounter = 100;
     b.softDropStart();
     assert.equal(b.gravityCounter, 0);
@@ -456,7 +462,7 @@ describe('HexPlayerBoard - soft drop', () => {
   });
 
   it('softDropStart does not reset gravityCounter if already dropping', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.softDropping = true;
     b.gravityCounter = 50;
     b.softDropStart();
@@ -464,23 +470,23 @@ describe('HexPlayerBoard - soft drop', () => {
   });
 
   it('softDropEnd stops soft dropping', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.softDropStart(10);
     b.softDropEnd();
     assert.equal(b.softDropping, false);
   });
 });
 
-describe('HexPlayerBoard - hold edge cases', () => {
+describe('PlayerBoard - hold edge cases', () => {
   it('hold returns false when holdUsed is true', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     b.hold();
     assert.equal(b.hold(), false);
   });
 
   it('hold swaps with held piece on second use', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     var firstType = b.currentPiece.type;
     b.hold(); // firstType goes to hold, next piece spawns
@@ -494,7 +500,7 @@ describe('HexPlayerBoard - hold edge cases', () => {
   });
 
   it('holdUsed resets after spawnPiece', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     b.hold();
     assert.equal(b.holdUsed, true);
@@ -503,9 +509,9 @@ describe('HexPlayerBoard - hold edge cases', () => {
   });
 });
 
-describe('HexPlayerBoard - death and game over', () => {
+describe('PlayerBoard - death and game over', () => {
   it('alive is false when piece cannot spawn', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     // Fill top rows to block spawning
     for (var r = 0; r < 6; r++) {
       for (var c = 0; c < HEX_COLS; c++) b.grid[r][c] = 1;
@@ -515,7 +521,7 @@ describe('HexPlayerBoard - death and game over', () => {
   });
 
   it('spawnPiece returns false when blocked', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     for (var r = 0; r < 6; r++) {
       for (var c = 0; c < HEX_COLS; c++) b.grid[r][c] = 1;
     }
@@ -523,25 +529,25 @@ describe('HexPlayerBoard - death and game over', () => {
   });
 
   it('hardDrop returns null when not alive', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.alive = false;
     assert.equal(b.hardDrop(), null);
   });
 
   it('hardDrop returns null when no currentPiece', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     assert.equal(b.hardDrop(), null);
   });
 });
 
-describe('HexPlayerBoard - queries', () => {
+describe('PlayerBoard - queries', () => {
   it('getStackHeight returns 0 on empty board', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     assert.equal(b.getStackHeight(), 0);
   });
 
   it('getStackHeight returns correct height with blocks', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.grid[HEX_TOTAL_ROWS - 1][0] = 1;
     assert.equal(b.getStackHeight(), 1);
     b.grid[HEX_TOTAL_ROWS - 3][5] = 2;
@@ -549,18 +555,18 @@ describe('HexPlayerBoard - queries', () => {
   });
 
   it('getGhostY returns row >= currentPiece row', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     assert.ok(b.getGhostY() >= b.currentPiece.anchorRow);
   });
 
   it('getGhostY returns 0 when no currentPiece', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     assert.equal(b.getGhostY(), 0);
   });
 
   it('getLevel increases with lines cleared', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     assert.equal(b.getLevel(), 1);
     b.lines = 10;
     assert.equal(b.getLevel(), 2);
@@ -569,16 +575,16 @@ describe('HexPlayerBoard - queries', () => {
   });
 
   it('getLevel respects startLevel', () => {
-    var b = new HexPlayerBoard('p1', 42, 5);
+    var b = new PlayerBoard('p1', 42, 5);
     assert.equal(b.getLevel(), 5);
     b.lines = 10;
     assert.equal(b.getLevel(), 6);
   });
 });
 
-describe('HexPlayerBoard - pending garbage', () => {
+describe('PlayerBoard - pending garbage', () => {
   it('addPendingGarbage queues garbage', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.addPendingGarbage(2, 3);
     assert.equal(b.pendingGarbage.length, 1);
     assert.equal(b.pendingGarbage[0].lines, 2);
@@ -586,7 +592,7 @@ describe('HexPlayerBoard - pending garbage', () => {
   });
 
   it('pending garbage applied after hard drop without line clear', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     b.addPendingGarbage(1, 0);
     b.hardDrop();
@@ -598,7 +604,7 @@ describe('HexPlayerBoard - pending garbage', () => {
   });
 
   it('getState reports pending garbage count', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     b.addPendingGarbage(2, 0);
     b.addPendingGarbage(3, 1);
@@ -607,9 +613,9 @@ describe('HexPlayerBoard - pending garbage', () => {
   });
 });
 
-describe('HexPlayerBoard - zigzag line clears', () => {
+describe('PlayerBoard - zigzag line clears', () => {
   it('detects zigzag-down clear (same row index)', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     // Fill last row completely
     for (var c = 0; c < HEX_COLS; c++) b.grid[HEX_TOTAL_ROWS - 1][c] = 1;
     b.spawnPiece();
@@ -618,7 +624,7 @@ describe('HexPlayerBoard - zigzag line clears', () => {
   });
 
   it('detects zigzag-up clear (even cols at r, odd cols at r-1)', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     var r = HEX_TOTAL_ROWS - 1;
     // Zigzag-up at row r: even cols at r, odd cols at r-1
     for (var c = 0; c < HEX_COLS; c++) {
@@ -631,7 +637,7 @@ describe('HexPlayerBoard - zigzag line clears', () => {
   });
 
   it('clears both zigzag-down and zigzag-up simultaneously', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     var r = HEX_TOTAL_ROWS - 2;
     // Zigzag-down at row r+1
     for (var c = 0; c < HEX_COLS; c++) b.grid[r + 1][c] = 1;
@@ -646,7 +652,7 @@ describe('HexPlayerBoard - zigzag line clears', () => {
   });
 
   it('lower zigzag wins when two share cells', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     var r = HEX_TOTAL_ROWS - 1;
     // Zigzag-down at row r (all cells at row r)
     for (var c = 0; c < HEX_COLS; c++) b.grid[r][c] = 1;
@@ -662,7 +668,7 @@ describe('HexPlayerBoard - zigzag line clears', () => {
   });
 
   it('clearingCells contains correct cell positions', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     for (var c = 0; c < HEX_COLS; c++) b.grid[HEX_TOTAL_ROWS - 1][c] = 1;
     b.spawnPiece();
     var result = b.hardDrop();
@@ -675,7 +681,7 @@ describe('HexPlayerBoard - zigzag line clears', () => {
   });
 
   it('per-column gravity preserves gaps above cleared area', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     // Put a block at row 15, fill row 24 for clear
     b.grid[15][3] = 5;
     for (var c = 0; c < HEX_COLS; c++) b.grid[HEX_TOTAL_ROWS - 1][c] = 1;
@@ -693,7 +699,7 @@ describe('HexPlayerBoard - zigzag line clears', () => {
   });
 
   it('two zigzag clears in same column shift correctly', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     // Fill two non-overlapping zigzag-down rows (24 and 22)
     for (var c = 0; c < HEX_COLS; c++) {
       b.grid[HEX_TOTAL_ROWS - 1][c] = 1;  // row 24
@@ -718,7 +724,7 @@ describe('HexPlayerBoard - zigzag line clears', () => {
 
   it('zigzag-down wins tie-break over zigzag-up at same row', () => {
     // Test the shared findClearableZigzags directly to verify tie-breaking
-    var { findClearableZigzags } = require('../server/HexConstants');
+    var { findClearableZigzags } = require('../server/constants');
     // Build a small test grid: 11 cols, 5 rows
     var grid = Array.from({ length: 5 }, function() { return new Array(HEX_COLS).fill(0); });
     // Fill zigzag-down at row 4 (all cells at row 4)
@@ -739,7 +745,7 @@ describe('HexPlayerBoard - zigzag line clears', () => {
   });
 
   it('no cascade after gravity', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     // Set up a scenario where gravity could create a new line
     for (var c = 0; c < HEX_COLS; c++) b.grid[HEX_TOTAL_ROWS - 1][c] = 1;
     for (var c2 = 0; c2 < HEX_COLS; c2++) {
@@ -760,12 +766,12 @@ describe('HexPlayerBoard - zigzag line clears', () => {
 // ---------------------------------------------------------------------------
 // Clear preview vs actual clear consistency
 // ---------------------------------------------------------------------------
-describe('HexPlayerBoard - clear preview matches actual clear', () => {
+describe('PlayerBoard - clear preview matches actual clear', () => {
   it('findClearableZigzags with ghost matches actual clear after lock', () => {
     // Simulate what the renderer does: check if ghost + grid would clear,
     // then verify actual clear after locking produces the same result.
-    var { findClearableZigzags } = require('../server/HexConstants');
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var { findClearableZigzags } = require('../server/constants');
+    var b = new PlayerBoard('p1', 42, 1);
     // Fill the bottom row except one column (gap at col 5)
     for (var c = 0; c < HEX_COLS; c++) {
       if (c !== 5) b.grid[HEX_TOTAL_ROWS - 1][c] = 1;
@@ -808,12 +814,12 @@ describe('HexPlayerBoard - clear preview matches actual clear', () => {
   // anchor identical — the cache key must include something that distinguishes
   // rotation states. cells[0] uniquely identifies rotation for every hex piece type.
   it('rotating a piece without moving it changes cells[0] so the preview can invalidate', () => {
-    var { HexPiece } = require('../server/HexPiece');
-    var { HEX_PIECE_TYPES } = require('../server/HexConstants');
+    var { Piece } = require('../server/Piece');
+    var { PIECE_TYPES: HEX_PIECE_TYPES } = require('../server/constants');
     for (var ti = 0; ti < HEX_PIECE_TYPES.length; ti++) {
       var type = HEX_PIECE_TYPES[ti];
       if (type === 'O') continue; // O is rotationally symmetric
-      var p = new HexPiece(type);
+      var p = new Piece(type);
       var seen = Object.create(null);
       for (var r = 0; r < 6; r++) {
         var key = p.cells[0].q + ',' + p.cells[0].r;
@@ -830,9 +836,9 @@ describe('HexPlayerBoard - clear preview matches actual clear', () => {
 // ---------------------------------------------------------------------------
 // Garbage + zigzag clear interaction
 // ---------------------------------------------------------------------------
-describe('HexPlayerBoard - garbage and zigzag clear interaction', () => {
+describe('PlayerBoard - garbage and zigzag clear interaction', () => {
   it('garbage row alone never triggers a zigzag clear', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     // Add garbage and apply it directly
     b.addPendingGarbage(3, 2);
@@ -848,7 +854,7 @@ describe('HexPlayerBoard - garbage and zigzag clear interaction', () => {
   });
 
   it('no zigzag clear check after garbage application', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     // Fill a zigzag-down row completely
     for (var c = 0; c < HEX_COLS; c++) b.grid[HEX_TOTAL_ROWS - 2][c] = 1;
@@ -860,7 +866,7 @@ describe('HexPlayerBoard - garbage and zigzag clear interaction', () => {
   });
 
   it('garbage applied after zigzag line clear finishes', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     // Fill the bottom row completely
     for (var c = 0; c < HEX_COLS; c++) b.grid[HEX_TOTAL_ROWS - 1][c] = 1;
     b.spawnPiece();
@@ -876,7 +882,7 @@ describe('HexPlayerBoard - garbage and zigzag clear interaction', () => {
   });
 
   it('filling gap in garbage zigzag-down clears on next piece lock', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     // Apply garbage with gap at column 5
     b.addPendingGarbage(1, 5);
@@ -891,7 +897,7 @@ describe('HexPlayerBoard - garbage and zigzag clear interaction', () => {
   });
 
   it('multiple garbage batches with different gaps do not complete each other', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     // Two garbage batches with different gap columns
     b.addPendingGarbage(1, 3);
@@ -907,8 +913,8 @@ describe('HexPlayerBoard - garbage and zigzag clear interaction', () => {
   });
 
   it('gap column is adjusted to prevent auto-clearable zigzag', () => {
-    var { findClearableZigzags } = require('../server/HexConstants');
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var { findClearableZigzags } = require('../server/constants');
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     // Fill all odd columns in the current bottom row.
     // After splice(0,1) + push, this row moves up and garbage lands below it.
@@ -929,7 +935,7 @@ describe('HexPlayerBoard - garbage and zigzag clear interaction', () => {
   });
 
   it('gap column stays unchanged when it does not cause auto-clear', () => {
-    var b = new HexPlayerBoard('p1', 42, 1);
+    var b = new PlayerBoard('p1', 42, 1);
     b.spawnPiece();
     // Empty board — no zigzag possible regardless of gap column
     b.applyGarbage(1, 5);
