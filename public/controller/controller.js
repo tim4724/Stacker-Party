@@ -63,6 +63,9 @@ function handleMessage(data) {
       case MSG.GAME_RESUMED:
         onGameResumed();
         break;
+      case MSG.DISPLAY_CLOSED:
+        showEndScreen();
+        break;
       case MSG.RETURN_TO_LOBBY:
         waitingForNextGame = false;
         playerCount = data.playerCount || playerCount;
@@ -95,7 +98,7 @@ function handleMessage(data) {
 
 roomCode = location.pathname.split('/').filter(Boolean)[0] || null;
 if (!roomCode) {
-  showRoomGone();
+  showEndScreen();
 } else {
 
 // Check for stored clientId BEFORE generating a new one (used for auto-reconnect)
@@ -283,10 +286,7 @@ window.addEventListener('popstate', function () {
 });
 
 window.addEventListener('pagehide', function () {
-  if (party) {
-    try { party.sendTo('display', { type: MSG.LEAVE }); } catch (_) {}
-    party.close();
-  }
+  if (party) party.close();
 });
 
 // =====================================================================

@@ -77,12 +77,12 @@ document.addEventListener('visibilitychange', function() {
   }
 });
 
-// --- Mobile Hint ---
-var mobileHintBtn = document.getElementById('mobile-hint-btn');
-if (mobileHintBtn) {
-  mobileHintBtn.addEventListener('click', function() {
-    var hint = document.getElementById('mobile-hint');
-    if (hint) hint.remove();
+// --- End Screen (mobile hint) ---
+var endContinueBtn = document.getElementById('end-continue-btn');
+if (endContinueBtn) {
+  endContinueBtn.addEventListener('click', function() {
+    var endScreen = document.getElementById('end-screen');
+    if (endScreen) endScreen.remove();
   });
 }
 
@@ -138,6 +138,15 @@ startBtn.addEventListener('click', function() {
   if (startBtn.disabled) return;
   initMusic();
   startGame();
+});
+
+// Goodbye to controllers on intentional close/navigate-away so they
+// immediately see the end screen instead of a "reconnecting" overlay.
+window.addEventListener('pagehide', function() {
+  if (party) {
+    try { party.broadcast({ type: MSG.DISPLAY_CLOSED }); } catch (_) {}
+    party.close();
+  }
 });
 
 // --- Game mode selector ---

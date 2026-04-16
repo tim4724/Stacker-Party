@@ -17,20 +17,35 @@
   <link rel="icon" href="/favicon-classic.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/shared/theme.css">
   <link rel="stylesheet" href="/shared/results.css">
+  <link rel="stylesheet" href="/shared/end-screen.css">
   <link rel="stylesheet" href="/display/display.css">
 </head>
 <body>
   <!-- Shared falling piece background (visible on welcome + lobby) -->
   <canvas id="bg-canvas"></canvas>
 
-  <!-- Mobile screen hint -->
-  <div id="mobile-hint">
-    <h1 class="gradient-title">STACKER PARTY</h1>
-    <div id="mobile-hint-body">
-      <p id="mobile-hint-heading" data-i18n="open_larger_screen">Open on a Larger Screen</p>
-      <p id="mobile-hint-detail" data-i18n="mobile_hint_detail">This display is designed for TVs and computers. Use your phone as a controller instead.</p>
+  <!-- End screen: shown on mobile devices visiting the display URL -->
+  <div class="end-screen hidden" id="end-screen">
+    <div class="end-frame">
+      <div class="end-brand">
+        <h1 class="gradient-title">STACKER PARTY</h1>
+      </div>
+      <div class="end-body">
+        <ol class="end-steps">
+          <li data-i18n="end_step_1">Open couch-games.com on a larger screen</li>
+          <li data-i18n="end_step_2">Scan the QR code to use your phone as controller</li>
+        </ol>
+        <img src="/artwork/gameplay-16x9.png" alt="" class="end-screenshot">
+        <button id="end-continue-btn" class="btn btn-secondary" data-i18n="continue_anyway">CONTINUE ANYWAY</button>
+      </div>
+      <div class="end-legal">
+        <a href="https://github.com/tim4724/Stacker-Party" target="_blank" rel="noopener" data-i18n="stacked_by">Stacked by Tim</a>
+        <span aria-hidden="true">&middot;</span>
+        <a href="/privacy" data-i18n="privacy">Privacy</a>
+        <span aria-hidden="true">&middot;</span>
+        <a href="/imprint" data-i18n="imprint">Imprint</a>
+      </div>
     </div>
-    <button id="mobile-hint-btn" class="btn btn-secondary" data-i18n="continue_anyway">CONTINUE ANYWAY</button>
   </div>
 
   <!-- Welcome screen: unlocks audio via user gesture -->

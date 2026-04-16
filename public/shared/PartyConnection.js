@@ -56,8 +56,14 @@ class PartyConnection {
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       if (this.ws !== ws) return; // stale — already replaced by reconnectNow
+      if (event && event.code === 4000) {
+        // Relay evicted us because another client joined with the same clientId
+        this._shouldReconnect = false;
+        if (this.onClose) this.onClose(0, 0, { replaced: true });
+        return;
+      }
       this.reconnectAttempt++;
       if (this.onClose) this.onClose(this.reconnectAttempt, this.maxReconnectAttempts);
       if (this._shouldReconnect && this.reconnectAttempt <= this.maxReconnectAttempts) {

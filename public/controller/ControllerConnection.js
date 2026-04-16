@@ -25,7 +25,6 @@ function connect() {
       });
     } else if (type === 'peer_left') {
       if (msg.clientId === 'display') {
-        try { localStorage.removeItem('clientId_' + roomCode); } catch (e) { /* iframe sandbox */ }
         if (currentScreen === 'game') {
           reconnectOverlay.classList.remove('hidden');
           reconnectHeading.textContent = t('reconnecting');
@@ -34,10 +33,12 @@ function connect() {
         }
       }
     } else if (type === 'error') {
-      if (msg.message === 'Not in a room') {
-        connect();
+      if (msg.message === 'Room not found') {
+        showEndScreen('room_not_found');
+      } else if (msg.message === 'Room is full') {
+        showEndScreen('game_full');
       } else {
-        showRoomGone();
+        showEndScreen();
       }
     }
   };
@@ -48,9 +49,13 @@ function connect() {
     }
   };
 
-  party.onClose = function (attempt, maxAttempts) {
+  party.onClose = function (attempt, maxAttempts, meta) {
     stopPing();
     if (gameCancelled) return;
+    if (meta && meta.replaced) {
+      showEndScreen();
+      return;
+    }
     if (currentScreen !== 'game') return;
     clearTimeout(disconnectedTimer);
 
@@ -148,35 +153,23 @@ function performDisconnect() {
   nameInput.disabled = false;
   nameStatusText.textContent = '';
   nameStatusDetail.textContent = '';
-  roomGoneMessage.classList.add('hidden');
   reconnectOverlay.classList.add('hidden');
   showScreen('name');
   nameInput.focus();
 }
 
-function showRoomGone(heading) {
-  gameCancelled = true;
-  if (party) party.close();
-  nameForm.classList.add('hidden');
-  nameJoinBtn.classList.add('hidden');
-  nameStatusText.textContent = '';
-  nameStatusDetail.textContent = '';
-  roomGoneHeading.textContent = heading || t('room_not_found');
-  roomGoneDetail.textContent = t('scan_qr_to_join');
-  roomGoneMessage.classList.remove('hidden');
-  showScreen('name');
-}
-
-function showErrorState(heading, detail) {
+function showEndScreen(toastKey) {
+  try { localStorage.removeItem('clientId_' + roomCode); } catch (e) { /* iframe sandbox */ }
   gameCancelled = true;
   stopPing();
+  if (party) { party.close(); party = null; }
 
-  nameJoinBtn.disabled = false;
-  nameJoinBtn.textContent = t('join');
-  nameInput.disabled = false;
-  roomGoneMessage.classList.add('hidden');
-
-  nameStatusText.textContent = heading;
-  nameStatusDetail.textContent = detail || '';
-  showScreen('name');
+  if (toastKey) {
+    endToast.textContent = t(toastKey);
+    endToast.classList.remove('hidden');
+    setTimeout(function () { endToast.classList.add('hidden'); }, 2000);
+  } else {
+    endToast.classList.add('hidden');
+  }
+  showScreen('end');
 }

@@ -14,7 +14,13 @@ const {
  */
 async function joinMidGame(context, roomCode, name) {
   const page = await context.newPage();
-  await page.addInitScript((rc) => localStorage.removeItem('clientId_' + rc), roomCode);
+  await page.addInitScript((rc) => {
+    var key = '_cleared_' + rc;
+    if (!sessionStorage.getItem(key)) {
+      localStorage.removeItem('clientId_' + rc);
+      sessionStorage.setItem(key, '1');
+    }
+  }, roomCode);
   await page.goto(`/${roomCode}?test=1`);
   await waitForFont(page);
   await page.fill('#name-input', name);

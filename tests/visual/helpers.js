@@ -125,8 +125,9 @@ async function createRoom(page) {
 
 async function joinController(context, roomCode, name) {
   const page = await context.newPage();
-  // Clear any stored clientId so this page joins as a fresh player
-  // (localStorage is shared across pages in the same context)
+  // Clear the shared-localStorage clientId on each navigation so each
+  // controller starts as a fresh player. Reconnect tests that need identity
+  // persistence should use ?rejoin=<id> (see performDisconnect for details).
   await page.addInitScript((rc) => localStorage.removeItem('clientId_' + rc), roomCode);
   await page.goto(`/${roomCode}?test=1`);
   await waitForFont(page);

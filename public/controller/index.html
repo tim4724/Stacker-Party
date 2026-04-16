@@ -17,6 +17,7 @@
   <link rel="icon" href="/favicon-classic.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/shared/theme.css">
   <link rel="stylesheet" href="/shared/results.css">
+  <link rel="stylesheet" href="/shared/end-screen.css">
   <link rel="stylesheet" href="/controller/controller.css">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
@@ -34,10 +35,6 @@
       <div class="controller-shell__body">
         <div id="name-form">
           <input id="name-input" type="text" maxlength="16" autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" placeholder="Enter name..." data-i18n-placeholder="enter_name">
-        </div>
-        <div id="room-gone-message" class="controller-shell__copy hidden">
-          <p id="room-gone-heading"></p>
-          <p id="room-gone-detail"></p>
         </div>
       </div>
       <div class="controller-shell__actions controller-shell__actions--name">
@@ -153,6 +150,30 @@
           <button id="play-again-btn" class="btn btn-primary" data-i18n="play_again_upper">PLAY AGAIN</button>
           <button id="new-game-btn" class="btn btn-secondary" data-i18n="new_game_upper">NEW GAME</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- End screen: shown when session is replaced, display closes, or room errors -->
+  <div class="end-screen hidden" id="end-screen">
+    <div class="end-frame">
+      <div class="end-brand">
+        <h1 class="gradient-title">STACKER PARTY</h1>
+      </div>
+      <div class="end-body">
+        <p id="end-toast" class="end-toast hidden"></p>
+        <ol class="end-steps">
+          <li data-i18n="end_step_1">Open couch-games.com on a larger screen</li>
+          <li data-i18n="end_step_2">Scan the QR code to use your phone as controller</li>
+        </ol>
+        <img src="/artwork/gameplay-16x9.png" alt="" class="end-screenshot">
+      </div>
+      <div class="end-legal">
+        <a href="https://github.com/tim4724/Stacker-Party" target="_blank" rel="noopener" data-i18n="stacked_by">Stacked by Tim</a>
+        <span aria-hidden="true">&middot;</span>
+        <a href="/privacy" data-i18n="privacy">Privacy</a>
+        <span aria-hidden="true">&middot;</span>
+        <a href="/imprint" data-i18n="imprint">Imprint</a>
       </div>
     </div>
   </div>

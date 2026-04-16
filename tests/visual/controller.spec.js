@@ -143,8 +143,10 @@ test.describe('Controller', () => {
     } finally {
       clearInterval(dropInterval);
     }
-    // Reload the KO'd player's controller (auto-reconnects via sessionStorage)
-    await player2.goto(`/${roomCode}`);
+    // Reload the KO'd player's controller via ?rejoin= so the same clientId
+    // is reused (localStorage is wiped by the joinController init script).
+    const p2ClientId = await player2.evaluate(() => clientId);
+    await player2.goto(`/${roomCode}?rejoin=${p2ClientId}`);
     // Should restore KO state after reconnect
     await player2.waitForFunction(() => document.getElementById('game-screen').classList.contains('dead'), null, { timeout: 10000 });
     await player2.evaluate(() => {
@@ -302,14 +304,24 @@ test.describe('Controller', () => {
   });
 
   test('error - room not found', async ({ page }) => {
-    // Navigate to a room code that doesn't exist on Party-Server
-    await page.goto('/ZZZZ');
+    // Navigate to a room code that doesn't exist on Party-Server.
+    // Freeze setTimeout so the end-toast stays visible long enough to screenshot.
+    await page.addInitScript((rc) => {
+      localStorage.removeItem('clientId_' + rc);
+      // Neutralize the auto-hide timer so the toast stays visible
+      var origSet = window.setTimeout;
+      window.setTimeout = function(fn, ms) { return ms >= 1000 ? 0 : origSet(fn, ms); };
+    }, 'ZZZZ');
+    await page.goto('/ZZZZ?test=1');
     await waitForFont(page);
     await page.fill('#name-input', 'Player 1');
     await page.click('#name-join-btn');
     await page.waitForFunction(() => {
-      return document.getElementById('room-gone-heading').textContent === 'Room Not Found'
-        && !document.getElementById('room-gone-message').classList.contains('hidden');
+      var endScreen = document.getElementById('end-screen');
+      var toast = document.getElementById('end-toast');
+      return endScreen && !endScreen.classList.contains('hidden')
+        && toast && !toast.classList.contains('hidden')
+        && toast.textContent && toast.textContent.length > 0;
     });
     await stabilizeControllerUI(page);
     await expect(page).toHaveScreenshot('12-error-room-notfound.png');

@@ -28,18 +28,10 @@ airconsole.onReady = function(code) {
 // is /controller.html which gets parsed as roomCode="controller.html".
 // We can't use history.replaceState because it breaks AirConsole's SDK
 // location matching (isDeviceInSameLocation_ compares URLs).
-// Instead, pre-set roomCode and override showRoomGone to be a no-op.
+// Instead, pre-set roomCode and override showEndScreen to surface errors
+// via the AirConsole status overlay instead of the end screen.
 // controller.js will overwrite roomCode with "controller.html" — that's fine,
 // we just need to ensure the if(roomCode) block executes.
-// AirConsole has no room concept — showRoomGone would show a "Room Not Found"
-// error when controller.js can't find a room code in the URL. Safe to silence
-// unless a specific message is passed (e.g. "Game is full").
-showRoomGone = function(heading) {
-  if (heading && _acStatusOverlay) {
-    _acStatusOverlay.textContent = heading;
-    _acStatusOverlay.classList.remove('hidden');
-  }
-};
 
 // Pre-set clientId (adapter maps real AirConsole device IDs at message time)
 clientId = 'ac_controller';
@@ -88,11 +80,12 @@ showScreen = function(name) {
   }
 };
 
-// Override showErrorState to show errors in our overlay instead of the hidden name screen
-showErrorState = function(heading, detail) {
+// Override showEndScreen to surface errors via the AirConsole status overlay
+// instead of the end screen (AirConsole has its own home/lobby navigation).
+showEndScreen = function(toastKey) {
   if (_acStatusOverlay) {
-    _acStatusOverlay.textContent = detail || heading || 'Error';
-    _acStatusOverlay.classList.remove('hidden');
+    _acStatusOverlay.textContent = toastKey ? t(toastKey) : '';
+    _acStatusOverlay.classList.toggle('hidden', !toastKey);
   }
 };
 

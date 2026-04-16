@@ -1,6 +1,6 @@
 # Stacker Party
 
-![Stacker Party gameplay banner](artwork/readme-header.png)
+![Stacker Party gameplay banner](artwork/gameplay-21x9.png)
 
 Browser-based multiplayer stacker where phones become controllers and a shared screen shows the action.
 

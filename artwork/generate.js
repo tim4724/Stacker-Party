@@ -251,8 +251,13 @@ function buildHexBannerGameState() {
 
 const SOCIAL_WIDTH = 1280;
 const SOCIAL_HEIGHT = 640;
-const HEADER_WIDTH = 1280;
-const HEADER_HEIGHT = 540;
+
+// Gameplay banner variants — same scene, different aspect ratios.
+const GAMEPLAY_VARIANTS = [
+  { name: 'gameplay-2x1.png',  width: 1280, height: 640, phoneBottom: '18px', phoneHeight: '255px' },
+  { name: 'gameplay-21x9.png', width: 1280, height: 640, phoneBottom: '18px', phoneHeight: '255px', clipHeight: 540 },
+  { name: 'gameplay-16x9.png', width: 1280, height: 720, phoneBottom: '18px', phoneHeight: '255px', displayTop: '40px', pillTop: '30px' },
+];
 
 async function waitForFont(page) {
   await page.evaluate(() => document.fonts.ready);
@@ -470,21 +475,9 @@ async function generate() {
     console.log(`  ${outPath} (${width}x${height} @2x)`);
   }
 
-  await renderBanner(SOCIAL_WIDTH, SOCIAL_HEIGHT, 'github-preview.png', {
-    phoneBottom: '18px',
-    phoneHeight: '255px'
-  });
-  await renderBanner(SOCIAL_WIDTH, SOCIAL_HEIGHT, 'readme-header.png', {
-    phoneBottom: '18px',
-    phoneHeight: '255px',
-    clipHeight: HEADER_HEIGHT
-  });
-  await renderBanner(1280, 720, 'airconsole-screenshot.png', {
-    phoneBottom: '18px',
-    phoneHeight: '255px',
-    displayTop: '40px',
-    pillTop: '30px'
-  });
+  for (const v of GAMEPLAY_VARIANTS) {
+    await renderBanner(v.width, v.height, v.name, v);
+  }
 
   // --- Phase 4: Name banner (title + falling pieces, no screenshots needed) ---
   console.log('Generating name banner...');

@@ -172,14 +172,14 @@ function onGameEnd(data) {
 
 function onError(data) {
   if (data.message === 'Room not found') {
-    showRoomGone();
+    showEndScreen('room_not_found');
     return;
   }
   if (data.message === 'Room is full') {
-    showRoomGone(t('game_full'));
+    showEndScreen('game_full');
     return;
   }
-  showErrorState('', data.message || 'Unknown error');
+  showEndScreen();
 }
 
 // =====================================================================

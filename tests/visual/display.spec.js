@@ -16,11 +16,11 @@ const {
 } = require('./helpers');
 
 test.describe('Display', () => {
-  test('mobile hint screen', async ({ page }) => {
+  test('end screen on mobile', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/?test=1');
     await waitForFont(page);
-    await expect(page).toHaveScreenshot('01-mobile-hint.png');
+    await expect(page).toHaveScreenshot('01-end-screen-mobile.png');
   });
 
   test('welcome screen', async ({ page }) => {

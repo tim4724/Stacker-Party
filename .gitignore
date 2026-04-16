@@ -7,7 +7,8 @@ output/
 test-results/
 progress.md
 public/preview-settle.*
-public/artwork
+public/artwork/*
+!public/artwork/gameplay-16x9.png
 build/
 .dev-certs/
 public/display/screen.html

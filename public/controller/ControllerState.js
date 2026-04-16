@@ -97,15 +97,14 @@ var nameInput = document.getElementById('name-input');
 var nameJoinBtn = document.getElementById('name-join-btn');
 var nameStatusText = document.getElementById('name-status-text');
 var nameStatusDetail = document.getElementById('name-status-detail');
-var roomGoneMessage = document.getElementById('room-gone-message');
-var roomGoneHeading = document.getElementById('room-gone-heading');
-var roomGoneDetail = document.getElementById('room-gone-detail');
 var nameScreen = document.getElementById('name-screen');
 var lobbyScreen = document.getElementById('lobby-screen');
 var lobbyBackBtn = document.getElementById('lobby-back-btn');
 var waitingActionText = document.getElementById('waiting-action-text');
 var gameScreen = document.getElementById('game-screen');
 var gameoverScreen = document.getElementById('gameover-screen');
+var endScreen = document.getElementById('end-screen');
+var endToast = document.getElementById('end-toast');
 var playerIdentity = document.getElementById('player-identity');
 var startBtn = document.getElementById('start-btn');
 var statusText = document.getElementById('status-text');
@@ -136,7 +135,7 @@ var levelMinusBtn = document.getElementById('level-minus-btn');
 var levelPlusBtn = document.getElementById('level-plus-btn');
 
 // --- Screen Management ---
-var SCREEN_ORDER = { name: 0, lobby: 1, game: 1, gameover: 1 };
+var SCREEN_ORDER = { name: 0, lobby: 1, game: 1, gameover: 1, end: 0 };
 
 function showScreen(name) {
   var prev = currentScreen;
@@ -145,6 +144,7 @@ function showScreen(name) {
   lobbyScreen.classList.toggle('hidden', name !== 'lobby');
   gameScreen.classList.toggle('hidden', name !== 'game');
   gameoverScreen.classList.toggle('hidden', name !== 'gameover');
+  endScreen.classList.toggle('hidden', name !== 'end');
 
   if (welcomeBg) {
     if (name === 'name' || name === 'lobby') {

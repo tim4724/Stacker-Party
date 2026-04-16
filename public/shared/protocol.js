@@ -32,6 +32,7 @@ var MSG = {
   GAME_END: 'game_end',
   GAME_PAUSED: 'game_paused',
   GAME_RESUMED: 'game_resumed',
+  DISPLAY_CLOSED: 'display_closed',
   ERROR: 'error'
 };
 

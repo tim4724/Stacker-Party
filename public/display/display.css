@@ -606,66 +606,15 @@ html, body {
 }
 
 /* ============================================
-   Mobile Screen Hint
+   End Screen visibility (mobile devices viewing display URL)
+   Styles defined in /shared/end-screen.css
    ============================================ */
-#mobile-hint {
-  display: none;
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  flex-direction: column;
-  align-items: center;
-  background:
-    radial-gradient(ellipse at 50% 30%, var(--glow-blue) 0%, transparent 50%),
-    var(--bg-primary);
-  text-align: center;
-  padding: 64px 2rem 2rem;
-}
-
-#mobile-hint h1 {
-  font-size: clamp(1.4rem, 7vw, 2.2rem);
-  filter: drop-shadow(0 0 8px var(--glow-cyan));
-}
-
-#mobile-hint-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-#mobile-hint-heading {
-  font-family: 'Orbitron', sans-serif;
-  font-size: clamp(1.2rem, 5.8vw, 1.85rem);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: var(--text-cyan);
-}
-
-#mobile-hint-detail {
-  font-size: clamp(1rem, 4.5vw, 1.2rem);
-  color: var(--text-secondary);
-  letter-spacing: 0.04em;
-  line-height: 1.5;
-  max-width: 28ch;
-}
-
-#mobile-hint .btn {
-  font-size: 0.9rem;
-  padding: 14px 24px;
-  letter-spacing: 0.1em;
-  margin-bottom: 2rem;
-}
-
-/* Show only on phone-sized screens */
 @media (max-width: 768px) and (orientation: portrait) {
-  #mobile-hint { display: flex; }
+  #end-screen { display: flex; }
 }
 
 @media (max-width: 568px) and (orientation: landscape) {
-  #mobile-hint { display: flex; }
+  #end-screen { display: flex; }
 }
 
 /* --- AirConsole overrides --- */
@@ -674,7 +623,7 @@ body.airconsole #join-url,
 body.airconsole #welcome-footer { display: none !important; }
 body.airconsole #lobby-footer { display: flex !important; }
 body.airconsole #welcome-screen { display: none !important; }
-body.airconsole #mobile-hint { display: none !important; }
+body.airconsole #end-screen { display: none !important; }
 body.airconsole #fullscreen-btn { display: none !important; }
 body.airconsole .player-slot:has(.player-card.empty) { display: none !important; }
 body.airconsole #player-list {
