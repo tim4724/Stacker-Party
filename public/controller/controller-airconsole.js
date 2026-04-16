@@ -83,7 +83,10 @@ showScreen = function(name) {
 // Override showEndScreen to surface errors via the AirConsole status overlay
 // instead of the end screen (AirConsole has its own home/lobby navigation).
 // Still clear game state so stale incoming messages can't re-trigger game logic.
-showEndScreen = function(toastKey) {
+// keepClientId (second arg) is deliberately ignored — AirConsole manages
+// device identity via its SDK, not via localStorage. party.close() is also
+// skipped because the AirConsole adapter's lifecycle is owned by the SDK.
+showEndScreen = function(toastKey /*, keepClientId */) {
   gameCancelled = true;
   stopPing();
   if (_acStatusOverlay) {

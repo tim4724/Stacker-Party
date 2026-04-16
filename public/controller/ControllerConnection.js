@@ -171,9 +171,14 @@ function showEndScreen(toastKey, keepClientId) {
   if (toastKey) {
     endToast.textContent = t(toastKey);
     endToast.classList.remove('hidden');
-    setTimeout(function () { endToast.classList.add('hidden'); }, 2000);
+    endToast.removeAttribute('aria-hidden');
+    setTimeout(function () {
+      endToast.classList.add('hidden');
+      endToast.setAttribute('aria-hidden', 'true');
+    }, 2000);
   } else {
     endToast.classList.add('hidden');
+    endToast.setAttribute('aria-hidden', 'true');
   }
   showScreen('end');
 }
