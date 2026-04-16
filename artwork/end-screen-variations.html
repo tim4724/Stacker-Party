@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>End Screen Variations</title>
+  <link rel="stylesheet" href="/shared/fonts/orbitron.css">
+  <link rel="stylesheet" href="/shared/theme.css">
+  <link rel="stylesheet" href="/shared/end-screen.css">
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      background: #0a0a0a;
+      color: #e0e0e0;
+      padding: 24px;
+    }
+    h1 {
+      font-family: 'Orbitron', sans-serif;
+      margin: 0 0 8px;
+    }
+    .description {
+      max-width: 900px;
+      margin: 0 0 32px;
+      color: #999;
+      line-height: 1.5;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+      max-width: 1500px;
+    }
+    .variation {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .variation-label {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1rem;
+      color: #4ecdc4;
+      letter-spacing: 0.1em;
+    }
+    .variation-note {
+      font-size: 0.85rem;
+      color: #888;
+      line-height: 1.5;
+      min-height: 3em;
+    }
+
+    /* Phone-shaped frame — positions the real end-screen markup in a 390x800 viewport */
+    .phone-frame {
+      width: 320px;
+      height: 640px;
+      border-radius: 28px;
+      border: 2px solid #222;
+      overflow: hidden;
+      position: relative;
+      box-sizing: content-box;
+    }
+    .phone-frame .end-screen {
+      position: absolute;
+      inset: 0;
+      padding: 20px 12px 16px;
+    }
+    .phone-frame .end-brand h1 {
+      font-size: 1.3rem;
+    }
+    .phone-frame .end-screenshot { border-radius: 8px; }
+    .phone-frame .end-steps li {
+      font-size: 0.82rem;
+    }
+    .phone-frame .end-steps li::before {
+      width: 1.4rem;
+      height: 1.4rem;
+      font-size: 0.78rem;
+    }
+    .phone-frame .end-legal {
+      font-size: 0.7rem;
+    }
+
+    /* Variation-specific tweaks --- */
+
+    /* B: device icons instead of numbers */
+    .vb .end-steps { counter-reset: none; }
+    .vb .end-steps li::before { content: none; }
+    .vb .end-steps li .vb-icon {
+      flex: 0 0 auto;
+      width: 2rem;
+      height: 2rem;
+      border-radius: 8px;
+      background: rgba(78, 205, 196, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+    }
+
+    /* C: single card container with gradient border */
+    .vc-card {
+      border: 1px solid rgba(78, 205, 196, 0.25);
+      background: rgba(78, 205, 196, 0.04);
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin: 8px 0;
+    }
+    .vc-card-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.7rem;
+      color: #4ecdc4;
+      letter-spacing: 0.1em;
+      margin: 0 0 10px;
+      text-align: center;
+    }
+    .vc-card .end-steps { gap: 8px; }
+
+    /* D: card with device icons inside */
+    .vd .vc-card .end-steps li::before { content: none; }
+    .vd .vb-icon {
+      flex: 0 0 auto;
+      width: 1.8rem;
+      height: 1.8rem;
+      border-radius: 6px;
+      background: rgba(78, 205, 196, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+    }
+
+    /* E: horizontal card row — 2 cards side by side */
+    .ve-cards {
+      display: flex;
+      gap: 8px;
+      margin: 8px 0;
+    }
+    .ve-card {
+      flex: 1;
+      border: 1px solid rgba(78, 205, 196, 0.25);
+      background: rgba(78, 205, 196, 0.04);
+      border-radius: 10px;
+      padding: 12px 10px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: center;
+      font-size: 0.7rem;
+      color: #ccc;
+    }
+    .ve-card .ve-icon { font-size: 1.6rem; }
+    .ve-card .ve-label {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.6rem;
+      color: #4ecdc4;
+      letter-spacing: 0.08em;
+    }
+
+    /* F: stepper with connector line */
+    .vf-card {
+      border: 1px solid rgba(78, 205, 196, 0.25);
+      background: rgba(78, 205, 196, 0.04);
+      border-radius: 14px;
+      padding: 14px;
+      margin: 8px 0;
+      position: relative;
+    }
+    .vf-card .end-steps { position: relative; gap: 16px; }
+    .vf-card .end-steps::before {
+      content: '';
+      position: absolute;
+      left: calc(0.7rem + 1px);
+      top: 1rem;
+      bottom: 1rem;
+      width: 2px;
+      background: rgba(78, 205, 196, 0.25);
+    }
+    .vf-card .end-steps li { position: relative; z-index: 1; }
+    .vf-card .end-steps li::before {
+      background: rgba(78, 205, 196, 1);
+    }
+  </style>
+</head>
+<body>
+  <h1>End-screen variations</h1>
+  <p class="description">
+    A is the live implementation, rendered with the real <code>end-screen.css</code>. B–F explore ways to group the two instructions into a single container so the "two-step flow" reads as one unit. Phones are scaled at ≈ 80% of mobile to fit side by side.
+  </p>
+
+  <div class="grid">
+    <!-- A: Current (real markup) -->
+    <div class="variation">
+      <div class="variation-label">A · Current (live)</div>
+      <div class="variation-note">Loose numbered list under the screenshot. The two steps don't visually belong together.</div>
+      <div class="phone-frame">
+        <div class="end-screen">
+          <div class="end-frame">
+            <div class="end-brand"><h1 class="gradient-title">STACKER PARTY</h1></div>
+            <div class="end-body">
+              <img src="gameplay-16x9.png" alt="" class="end-screenshot">
+              <ol class="end-steps">
+                <li><span class="end-step-text">Open <a href="https://couch-games.com" class="end-link">couch-games.com</a> on a larger screen</span></li>
+                <li><span class="end-step-text">Scan the QR code to use your phone as controller</span></li>
+              </ol>
+            </div>
+            <div class="end-legal">
+              <a href="#">Stacked by Tim</a><span>·</span><a href="#">Privacy</a><span>·</span><a href="#">Imprint</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- B: Numbered steps in a single card -->
+    <div class="variation">
+      <div class="variation-label">B · Card container</div>
+      <div class="variation-note">Same numbered steps, wrapped in a subtly-outlined card. Minimum change — groups the two steps as a single "setup" block.</div>
+      <div class="phone-frame">
+        <div class="end-screen">
+          <div class="end-frame">
+            <div class="end-brand"><h1 class="gradient-title">STACKER PARTY</h1></div>
+            <div class="end-body">
+              <img src="gameplay-16x9.png" alt="" class="end-screenshot">
+              <div class="vc-card">
+                <ol class="end-steps">
+                  <li><span class="end-step-text">Open <a href="https://couch-games.com" class="end-link">couch-games.com</a> on a larger screen</span></li>
+                  <li><span class="end-step-text">Scan the QR code to use your phone as controller</span></li>
+                </ol>
+              </div>
+            </div>
+            <div class="end-legal">
+              <a href="#">Stacked by Tim</a><span>·</span><a href="#">Privacy</a><span>·</span><a href="#">Imprint</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- C: Card with title "How to play" -->
+    <div class="variation">
+      <div class="variation-label">C · Titled card</div>
+      <div class="variation-note">Card with a small "HOW TO PLAY" heading. The header tells the user exactly what the card is before they read it.</div>
+      <div class="phone-frame">
+        <div class="end-screen">
+          <div class="end-frame">
+            <div class="end-brand"><h1 class="gradient-title">STACKER PARTY</h1></div>
+            <div class="end-body">
+              <img src="gameplay-16x9.png" alt="" class="end-screenshot">
+              <div class="vc-card">
+                <p class="vc-card-title">HOW TO PLAY</p>
+                <ol class="end-steps">
+                  <li><span class="end-step-text">Open <a href="https://couch-games.com" class="end-link">couch-games.com</a> on a larger screen</span></li>
+                  <li><span class="end-step-text">Scan the QR code to use your phone as controller</span></li>
+                </ol>
+              </div>
+            </div>
+            <div class="end-legal">
+              <a href="#">Stacked by Tim</a><span>·</span><a href="#">Privacy</a><span>·</span><a href="#">Imprint</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- D: Card with device icons replacing numbers -->
+    <div class="variation vd">
+      <div class="variation-label">D · Card + device icons</div>
+      <div class="variation-note">Card container + 📺/📱 replacing the numbers. Device association is immediate; steps clearly belong together.</div>
+      <div class="phone-frame">
+        <div class="end-screen">
+          <div class="end-frame">
+            <div class="end-brand"><h1 class="gradient-title">STACKER PARTY</h1></div>
+            <div class="end-body">
+              <img src="gameplay-16x9.png" alt="" class="end-screenshot">
+              <div class="vc-card">
+                <ol class="end-steps">
+                  <li><span class="vb-icon">📺</span><span class="end-step-text">Open <a href="https://couch-games.com" class="end-link">couch-games.com</a> on a larger screen</span></li>
+                  <li><span class="vb-icon">📱</span><span class="end-step-text">Scan the QR code to use this phone</span></li>
+                </ol>
+              </div>
+            </div>
+            <div class="end-legal">
+              <a href="#">Stacked by Tim</a><span>·</span><a href="#">Privacy</a><span>·</span><a href="#">Imprint</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- E: Two side-by-side mini-cards -->
+    <div class="variation">
+      <div class="variation-label">E · Side-by-side cards</div>
+      <div class="variation-note">Two equal-weight mini-cards. More visual, less text. Works well because both devices get symmetric treatment.</div>
+      <div class="phone-frame">
+        <div class="end-screen">
+          <div class="end-frame">
+            <div class="end-brand"><h1 class="gradient-title">STACKER PARTY</h1></div>
+            <div class="end-body">
+              <img src="gameplay-16x9.png" alt="" class="end-screenshot">
+              <div class="ve-cards">
+                <div class="ve-card">
+                  <div class="ve-icon">📺</div>
+                  <div class="ve-label">SCREEN</div>
+                  <div>Open <a href="https://couch-games.com" class="end-link">couch-games.com</a></div>
+                </div>
+                <div class="ve-card">
+                  <div class="ve-icon">📱</div>
+                  <div class="ve-label">CONTROLLER</div>
+                  <div>Scan the QR code</div>
+                </div>
+              </div>
+            </div>
+            <div class="end-legal">
+              <a href="#">Stacked by Tim</a><span>·</span><a href="#">Privacy</a><span>·</span><a href="#">Imprint</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- F: Card with connector line between steps (stepper) -->
+    <div class="variation">
+      <div class="variation-label">F · Connected stepper</div>
+      <div class="variation-note">Card with a vertical line between step circles. The line visually communicates "do this, then this" — flow rather than list.</div>
+      <div class="phone-frame">
+        <div class="end-screen">
+          <div class="end-frame">
+            <div class="end-brand"><h1 class="gradient-title">STACKER PARTY</h1></div>
+            <div class="end-body">
+              <img src="gameplay-16x9.png" alt="" class="end-screenshot">
+              <div class="vf-card">
+                <ol class="end-steps">
+                  <li><span class="end-step-text">Open <a href="https://couch-games.com" class="end-link">couch-games.com</a> on a larger screen</span></li>
+                  <li><span class="end-step-text">Scan the QR code to use your phone as controller</span></li>
+                </ol>
+              </div>
+            </div>
+            <div class="end-legal">
+              <a href="#">Stacked by Tim</a><span>·</span><a href="#">Privacy</a><span>·</span><a href="#">Imprint</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

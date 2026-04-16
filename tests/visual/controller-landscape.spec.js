@@ -16,6 +16,7 @@ async function showScreen(page, name) {
     document.getElementById('lobby-screen').classList.toggle('hidden', screenName !== 'lobby');
     document.getElementById('game-screen').classList.toggle('hidden', screenName !== 'game');
     document.getElementById('gameover-screen').classList.toggle('hidden', screenName !== 'gameover');
+    document.getElementById('end-screen').classList.toggle('hidden', screenName !== 'end');
     var bg = document.getElementById('bg-canvas');
     if (bg) bg.classList.add('hidden');
   }, name);
@@ -196,6 +197,13 @@ test.describe('Controller Landscape', () => {
     });
     await page.waitForTimeout(100);
     await expect(page).toHaveScreenshot('06b-results-8p.png');
+  });
+
+  test('end screen', async ({ page }) => {
+    await gotoController(page);
+    await showScreen(page, 'end');
+    await page.waitForTimeout(100);
+    await expect(page).toHaveScreenshot('07-end-screen.png');
   });
 
 });

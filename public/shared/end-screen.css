@@ -1,7 +1,16 @@
 /* ============================================
-   End Screen — shared between display (#mobile-hint replacement)
-   and controller (session-ended state).
-   Self-contained: does not rely on controller.css or display.css.
+   End Screen — shared between display (mobile-hint replacement)
+   and controller (session-ended state). Self-contained.
+
+   Structure:
+     .end-screen
+       .end-brand          — title
+       .end-content        — screenshot + steps card
+       .end-action         — button (display) or toast (controller)
+       .end-legal          — footer (anchored to bottom)
+
+   The first three slots distribute vertically via space-evenly.
+   .end-legal is absolute-positioned at a fixed bottom offset.
    ============================================ */
 
 .end-screen {
@@ -11,75 +20,93 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: space-between;
+  justify-content: space-evenly;
   background:
     radial-gradient(ellipse at 50% 30%, var(--glow-blue) 0%, transparent 50%),
     var(--bg-primary);
   text-align: center;
-  padding: calc(32px + env(safe-area-inset-top)) 0.75rem calc(16px + env(safe-area-inset-bottom));
+  padding:
+    calc(16px + env(safe-area-inset-top))
+    0.75rem
+    calc(56px + env(safe-area-inset-bottom)); /* reserve space for absolute .end-legal */
   overflow-y: auto;
 }
 
-.end-screen.hidden {
-  display: none;
-}
+.end-screen.hidden { display: none; }
 
-.end-frame {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: space-around;
-  gap: 16px;
-  width: min(100%, 420px);
-  flex: 1;
-}
+/* --- Slots --- */
 
 .end-brand h1 {
+  margin: 0;
   font-size: clamp(1.4rem, 7vw, 2.2rem);
   filter: drop-shadow(0 0 8px var(--glow-cyan));
-  margin: 0;
 }
 
-.end-body {
+.end-content {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 20px;
-  width: 100%;
+  width: min(100%, 420px);
 }
 
-.end-toast {
-  /* Always reserve one line of height so showing/hiding the toast
-     never changes surrounding layout (opacity-only transition). */
-  box-sizing: content-box;
-  min-height: 1.2em;
-  line-height: 1.2;
-  padding: 8px 16px;
-  border-radius: 999px;
-  background: rgba(244, 114, 114, 0.15);
-  color: #f47272;
-  font-family: 'Orbitron', sans-serif;
-  font-size: 0.95rem;
-  letter-spacing: 0.08em;
-  transition: opacity 0.3s ease;
-  opacity: 1;
-  margin: 16px 0;
-}
-
-/* Hide via opacity (not display) so the toast's vertical slot stays
-   reserved — prevents the steps list and footer from jumping when the
-   toast shows/hides. */
-.end-toast.hidden {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.end-footer {
+.end-action {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 14px;
+  justify-content: center;
+  min-height: 3rem;
+}
+
+/* --- Footer: anchored to screen bottom like .legal-links on name screen --- */
+.end-legal {
+  position: absolute;
+  bottom: calc(env(safe-area-inset-bottom) + 16px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: clamp(0.85rem, 4vw, 1rem);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.end-legal a {
+  color: inherit;
+  text-decoration: none;
+  padding: 8px 4px;
+  transition: color var(--transition-fast, 0.15s);
+}
+.end-legal a:hover,
+.end-legal a:focus-visible { color: var(--accent-cyan); }
+
+/* --- Screenshot --- */
+.end-screenshot {
+  max-width: 100%;
   width: 100%;
+  height: auto;
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* --- Instructions card --- */
+.end-steps-card {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  background: rgba(var(--accent-cyan-rgb), 0.04);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+
+.end-steps-card__title {
+  margin: 0 0 12px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-align: center;
 }
 
 .end-steps {
@@ -89,24 +116,34 @@
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  width: 100%;
+  gap: 14px;
+  position: relative;
+}
+
+/* Connector line between step circles — horizontally centered through
+   their center axis (0.8rem = half of the 1.6rem circle width). */
+.end-steps::before {
+  content: '';
+  position: absolute;
+  left: calc(0.8rem - 1px);
+  top: 0.8rem;
+  bottom: 0.8rem;
+  width: 2px;
+  background: var(--accent-cyan);
+  opacity: 0.25;
 }
 
 .end-steps li {
   counter-increment: step;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
   font-size: clamp(1rem, 4.2vw, 1.15rem);
   color: var(--text-secondary);
   line-height: 1.45;
   letter-spacing: 0.02em;
   text-align: left;
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-}
-
-.end-step-text {
-  flex: 1;
 }
 
 .end-steps li::before {
@@ -125,56 +162,70 @@
   justify-content: center;
 }
 
-.end-screenshot {
-  max-width: 100%;
-  width: 100%;
-  height: auto;
-  border-radius: 12px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
-}
+.end-step-text { flex: 1; }
 
 .end-link {
-  color: var(--accent-cyan, #4ecdc4);
+  color: var(--accent-cyan);
   text-decoration: none;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
 }
-
 .end-link:hover,
-.end-link:focus-visible {
-  text-decoration: underline;
+.end-link:focus-visible { text-decoration: underline; }
+
+/* --- Toast (error message in the .end-action slot) --- */
+.end-toast {
+  box-sizing: content-box;
+  min-height: 1.2em;
+  line-height: 1.2;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(255, 68, 68, 0.15);
+  color: var(--danger);
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  transition: opacity 0.3s ease;
+  opacity: 1;
 }
+/* Hide via opacity (not display) so the .end-action slot's height stays
+   reserved — prevents layout shift when the toast shows/hides. */
+.end-toast.hidden { opacity: 0; pointer-events: none; }
 
 #end-continue-btn {
-  margin: 16px 0;
   font-size: 0.9rem;
   padding: 12px 24px;
   letter-spacing: 0.1em;
 }
 
-.end-legal {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: clamp(0.85rem, 4vw, 1rem);
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-
-.end-legal a {
-  color: inherit;
-  text-decoration: none;
-  padding: 8px 4px;
-  transition: color var(--transition-fast, 0.15s);
-}
-
-.end-legal a:hover,
-.end-legal a:focus-visible {
-  color: var(--accent-cyan);
+/* --- Landscape / wide viewports: screenshot and card side by side.
+       Vertical space is tight, so the .end-action slot does NOT reserve
+       height when empty — the layout shifts when a toast appears. --- */
+@media (orientation: landscape) and (max-height: 640px) {
+  .end-brand h1 { font-size: clamp(1rem, 4vw, 1.4rem); }
+  .end-content {
+    flex-direction: row;
+    gap: 24px;
+    width: min(100%, 720px);
+    align-items: center;
+    justify-content: center;
+  }
+  .end-screenshot,
+  .end-steps-card {
+    flex: 1 1 50%;
+    min-width: 0;
+    width: auto;
+    max-width: 50%;
+  }
+  .end-screenshot {
+    max-height: 70vh;
+    height: auto;
+    object-fit: contain;
+  }
+  .end-action { min-height: 0; }
+  .end-toast.hidden { display: none; }
 }
 
 /* AirConsole: never show the end screen */
-body.airconsole .end-screen {
-  display: none !important;
-}
+body.airconsole .end-screen { display: none !important; }
