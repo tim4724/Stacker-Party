@@ -5,6 +5,11 @@
 // Depends on: DisplayState.js, DisplayUI.js, Animations.js
 // =====================================================================
 
+// Cap frame delta to ~3 frames at 60Hz — prevents huge catch-up jumps after tab unfreeze.
+var MAX_FRAME_DELTA_MS = 50;
+// ~4fps — used when paused/results and no active animations, to save battery.
+var IDLE_FRAME_INTERVAL_MS = 250;
+
 var lastThrottled = null;
 var lastMusicLevel = 0;
 var _NO_SHAKE = Object.freeze({ x: 0, y: 0 });
@@ -41,7 +46,7 @@ function renderLoop(timestamp) {
 
   // Drive game physics from RAF
   if (displayGame && roomState === ROOM_STATE.PLAYING && !paused) {
-    var deltaMs = prevFrameTime ? Math.min(timestamp - prevFrameTime, 50) : 0;
+    var deltaMs = prevFrameTime ? Math.min(timestamp - prevFrameTime, MAX_FRAME_DELTA_MS) : 0;
     try {
       if (deltaMs > 0) {
         displayGame.update(deltaMs);
@@ -91,7 +96,7 @@ function renderLoop(timestamp) {
   var hasGarbageEffects = garbageIndicatorEffects.size > 0 || garbageDefenceEffects.size > 0;
   if ((paused || currentScreen === SCREEN.RESULTS) && !hasAnimations && !hasGarbageEffects) {
     if (!lastThrottled) lastThrottled = timestamp;
-    if (timestamp - lastThrottled < 250) return;
+    if (timestamp - lastThrottled < IDLE_FRAME_INTERVAL_MS) return;
     lastThrottled = timestamp;
   } else {
     lastThrottled = null;

@@ -12,7 +12,6 @@ function makeGame(playerIds, seed) {
   const events = [];
   const gameEndCalls = [];
   const game = new Game(players, {
-    onGameState: () => {},
     onEvent: (e) => events.push(e),
     onGameEnd: (r) => gameEndCalls.push(r)
   }, seed || 42);

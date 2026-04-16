@@ -16,7 +16,6 @@ function makeGame(playerCount, seed) {
   }
   const events = [];
   const game = new Game(players, {
-    onGameState: () => {},
     onEvent: (e) => events.push(e),
     onGameEnd: () => {}
   }, seed || 42);

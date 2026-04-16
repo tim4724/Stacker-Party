@@ -6,6 +6,16 @@
 // Called by: DisplayConnection.js, DisplayGame.js, display.js
 // =====================================================================
 
+// Builds the empty level-controls stub shown in unfilled lobby slots.
+// Used in two places: initial card creation and slot sync for late-joiners.
+function buildLevelPlaceholder() {
+  var ph = document.createElement('div');
+  ph.className = 'level-controls level-placeholder';
+  ph.setAttribute('aria-hidden', 'true');
+  ph.innerHTML = '<span class="level-heading">' + t('level_heading') + '</span><span class="level-btn"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"><line x1="2" y1="7" x2="12" y2="7"/></svg></span><span class="level-label">1</span><span class="level-btn"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"><line x1="2" y1="7" x2="12" y2="7"/><line x1="7" y1="2" x2="7" y2="12"/></svg></span>';
+  return ph;
+}
+
 // --- Layout Calculation ---
 function calculateLayout() {
   if (!ctx || playerOrder.length === 0) return;
@@ -114,11 +124,7 @@ function updatePlayerList() {
     var idx = playerListEl.children.length;
     name.textContent = 'P' + (idx + 1);
     card.appendChild(name);
-    var ph = document.createElement('div');
-    ph.className = 'level-controls level-placeholder';
-    ph.setAttribute('aria-hidden', 'true');
-    ph.innerHTML = '<span class="level-heading">' + t('level_heading') + '</span><span class="level-btn"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"><line x1="2" y1="7" x2="12" y2="7"/></svg></span><span class="level-label">1</span><span class="level-btn"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"><line x1="2" y1="7" x2="12" y2="7"/><line x1="7" y1="2" x2="7" y2="12"/></svg></span>';
-    card.appendChild(ph);
+    card.appendChild(buildLevelPlaceholder());
     slot.appendChild(card);
     playerListEl.appendChild(slot);
   }
@@ -188,11 +194,7 @@ function updatePlayerList() {
       if (levelCtrl) levelCtrl.remove();
       // Add placeholder level row so empty cards match filled card height
       if (!card.querySelector('.level-placeholder')) {
-        var ph = document.createElement('div');
-        ph.className = 'level-controls level-placeholder';
-        ph.setAttribute('aria-hidden', 'true');
-        ph.innerHTML = '<span class="level-heading">' + t('level_heading') + '</span><span class="level-btn"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"><line x1="2" y1="7" x2="12" y2="7"/></svg></span><span class="level-label">1</span><span class="level-btn"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"><line x1="2" y1="7" x2="12" y2="7"/><line x1="7" y1="2" x2="7" y2="12"/></svg></span>';
-        card.appendChild(ph);
+        card.appendChild(buildLevelPlaceholder());
       }
     }
   }

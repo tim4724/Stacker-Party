@@ -4,6 +4,7 @@ const { test, describe, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { GarbageManager } = require('../server/GarbageManager');
 const { Game } = require('../server/Game');
+const { LOGIC_TICK_MS } = require('../server/constants');
 
 // ---------------------------------------------------------------------------
 // Helper: create a Game with N players and capture events
@@ -12,13 +13,11 @@ function createGame(playerIds, seed) {
   const players = new Map();
   for (const id of playerIds) players.set(id, {});
   const events = [];
-  const states = [];
   const game = new Game(players, {
-    onGameState: (s) => states.push(s),
     onEvent: (e) => events.push(e),
     onGameEnd: () => {}
   }, seed || 42);
-  return { game, events, states };
+  return { game, events };
 }
 
 // ---------------------------------------------------------------------------
@@ -189,7 +188,7 @@ describe('Game - board-pending garbage cancellation', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Game.logicTick — garbage not delivered during line clear animation
+// Game.update — garbage not delivered during line clear animation
 // ---------------------------------------------------------------------------
 describe('Game - garbage delivery during line clear animation', () => {
   test('garbage is added to pendingGarbage when board is clearing lines', () => {
@@ -202,12 +201,11 @@ describe('Game - garbage delivery during line clear animation', () => {
     board.clearingTimer = 999999;
 
     // Queue garbage that expires this tick (msLeft <= LOGIC_TICK_MS)
-    const LOGIC_TICK_MS = require('../server/constants').LOGIC_TICK_MS;
     game.garbageManager.queues.get('p1').push(
       { lines: 3, gapColumn: 2, senderId: 'p2', msLeft: LOGIC_TICK_MS }
     );
 
-    game.logicTick();
+    game.update(LOGIC_TICK_MS);
 
     // Garbage should be in board.pendingGarbage, ready to apply when animation ends
     assert.strictEqual(board.pendingGarbage.length, 1, 'garbage queued in board pending');
@@ -225,12 +223,11 @@ describe('Game - garbage delivery during line clear animation', () => {
 
     assert.strictEqual(board.clearingCells, null);
 
-    const LOGIC_TICK_MS = require('../server/constants').LOGIC_TICK_MS;
     game.garbageManager.queues.get('p1').push(
       { lines: 2, gapColumn: 4, senderId: 'p2', msLeft: LOGIC_TICK_MS }
     );
 
-    game.logicTick();
+    game.update(LOGIC_TICK_MS);
 
     assert.strictEqual(board.pendingGarbage.length, 1, 'garbage delivered');
     assert.strictEqual(board.pendingGarbage[0].lines, 2);

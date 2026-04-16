@@ -5,15 +5,13 @@
 
 var PlayerBoard = ((typeof require !== 'undefined') ? require('./PlayerBoard.js') : window.PlayerBoardModule).PlayerBoard;
 var GarbageManager = ((typeof require !== 'undefined') ? require('./GarbageManager.js') : window.GameGarbageManager).GarbageManager;
-var LOGIC_TICK_MS = ((typeof require !== 'undefined') ? require('./constants.js') : window.GameConstants).LOGIC_TICK_MS;
 var mulberry32 = ((typeof require !== 'undefined') ? require('./Randomizer.js') : window.GameRandomizer).mulberry32;
 
 class Game {
   constructor(players, callbacks, seed) {
-    this.callbacks = callbacks; // { onGameState, onEvent, onGameEnd }
+    this.callbacks = callbacks; // { onEvent, onGameEnd }
     this.boards = new Map();
     this.playerIds = [];
-    this.logicInterval = null;
     this.ended = false;
     this.paused = false;
 
@@ -43,49 +41,14 @@ class Game {
     }
   }
 
-  start() {
-    this.init();
-    // Flag so resume() knows to restart the interval (not needed for RAF-driven path via init())
-    this._usesInterval = true;
-    this.logicInterval = setInterval(() => this._safeTick(), LOGIC_TICK_MS);
-  }
-
-  stop() {
-    if (this.logicInterval) {
-      clearInterval(this.logicInterval);
-      this.logicInterval = null;
-    }
-  }
-
   pause() {
-    if (this.paused || this.ended) return;
+    if (this.ended) return;
     this.paused = true;
-    // Stop interval if running (start()-based path)
-    if (this.logicInterval) this.stop();
   }
 
   resume() {
-    if (!this.paused || this.ended) return;
+    if (this.ended) return;
     this.paused = false;
-    // Restart interval only if start() was used (not init()-based path)
-    if (!this.logicInterval && this._usesInterval) {
-      this.logicInterval = setInterval(() => this._safeTick(), LOGIC_TICK_MS);
-    }
-  }
-
-  _safeTick() {
-    try {
-      this.logicTick();
-    } catch (err) {
-      console.error('Game engine error:', err);
-      this.ended = true;
-      this.stop();
-      try {
-        this.callbacks.onGameEnd(this.getResults());
-      } catch (recoveryErr) {
-        console.error('Failed to send game-end after engine error:', recoveryErr);
-      }
-    }
   }
 
   processInput(playerId, action) {
@@ -204,19 +167,6 @@ class Game {
     };
   }
 
-  logicTick() {
-    if (this.ended) return;
-    this.update(LOGIC_TICK_MS);
-    this.broadcastTick();
-  }
-
-  broadcastTick() {
-    if (this.ended) return;
-    if (this.callbacks.onGameState) {
-      this.callbacks.onGameState(this.getSnapshot());
-    }
-  }
-
   handleLineClear(playerId, clearResult) {
     const board = this.boards.get(playerId);
     const lines = clearResult.linesCleared;
@@ -276,14 +226,12 @@ class Game {
     // Multiplayer: last-man-standing
     if (this.playerIds.length >= 2 && this._aliveCount <= 1) {
       this.ended = true;
-      this.stop();
       this.callbacks.onGameEnd(this.getResults());
     }
 
     // Single player: end when they die
     if (this.playerIds.length === 1 && this._aliveCount === 0) {
       this.ended = true;
-      this.stop();
       this.callbacks.onGameEnd(this.getResults());
     }
   }
