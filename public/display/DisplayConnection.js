@@ -122,19 +122,8 @@ function applyRoomCreated(partyRoomCode, newJoinUrl) {
   joinUrlEl.textContent = joinUrl;
 
   // Reset local state
-  if (music) music.stop();
-  players.clear();
-  playerOrder = [];
+  resetRoomData();
   _lastBroadcastedHostId = null;
-  paused = false;
-  gameState = null;
-  boardRenderers = [];
-  uiRenderers = [];
-  disconnectedQRs.clear();
-  garbageIndicatorEffects.clear();
-  garbageDefenceEffects.clear();
-  lastAliveState = {};
-  lastResults = null;
 
   showScreen(SCREEN.LOBBY);
   updateStartButton();
@@ -181,9 +170,8 @@ function onDisplayRejoined(partyRoomCode, clients) {
   party.resetReconnectCount();
   reconnectOverlay.classList.add('hidden');
   if (paused && (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN)) {
-    // Clear any surviving countdown interval to prevent duplicates
-    if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
-    if (goTimeout) { clearTimeout(goTimeout); goTimeout = null; }
+    // Clear any surviving countdown timers to prevent duplicates on resume
+    clearCountdownTimers();
     resumeGame();
   }
 

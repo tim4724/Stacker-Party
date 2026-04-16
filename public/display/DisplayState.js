@@ -41,6 +41,22 @@ function setRoomState(newState) {
   return true;
 }
 
+// Clear all room-local state — used when entering a fresh room or returning to welcome
+function resetRoomData() {
+  if (music) music.stop();
+  players.clear();
+  playerOrder = [];
+  paused = false;
+  gameState = null;
+  boardRenderers = [];
+  uiRenderers = [];
+  disconnectedQRs.clear();
+  garbageIndicatorEffects.clear();
+  garbageDefenceEffects.clear();
+  lastAliveState = {};
+  lastResults = null;
+}
+
 var paused = false;
 var autoPaused = false;
 var boardRenderers = [];
@@ -57,11 +73,7 @@ var displayGame = null;
 var baseUrlOverride = null;    // LAN base URL from server (fetched on init)
 
 // Countdown state (display manages countdown since server no longer does)
-var countdownTimer = null;
-var countdownRemaining = 0;
-var countdownCallback = null;
-var goTimeout = null;
-var goOverlayTimer = null;
+var countdown = { timer: null, remaining: 0, callback: null, goTimeout: null, overlayTimer: null };
 
 // Controller liveness
 var livenessInterval = null;

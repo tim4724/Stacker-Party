@@ -63,28 +63,28 @@ function startNewGame() {
 
 function startCountdown(onComplete, startFrom) {
   var count = startFrom || GameConstants.COUNTDOWN_SECONDS;
-  countdownCallback = onComplete;
-  countdownRemaining = count;
+  countdown.callback = onComplete;
+  countdown.remaining = count;
 
   // Broadcast to controllers
   party.broadcast({ type: MSG.COUNTDOWN, value: count });
   // Handle locally on display
   onCountdownDisplay(count);
 
-  countdownTimer = setInterval(function() {
+  countdown.timer = setInterval(function() {
     count--;
-    countdownRemaining = count;
+    countdown.remaining = count;
     if (count > 0) {
       party.broadcast({ type: MSG.COUNTDOWN, value: count });
       onCountdownDisplay(count);
     } else {
-      clearInterval(countdownTimer);
-      countdownTimer = null;
-      countdownRemaining = 0;
+      clearInterval(countdown.timer);
+      countdown.timer = null;
+      countdown.remaining = 0;
       party.broadcast({ type: MSG.COUNTDOWN, value: 'GO' });
       onCountdownDisplay('GO');
-      goTimeout = setTimeout(function() {
-        goTimeout = null;
+      countdown.goTimeout = setTimeout(function() {
+        countdown.goTimeout = null;
         onComplete();
       }, 500);
     }
@@ -92,9 +92,9 @@ function startCountdown(onComplete, startFrom) {
 }
 
 function clearCountdownTimers() {
-  if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
-  if (goTimeout) { clearTimeout(goTimeout); goTimeout = null; }
-  if (goOverlayTimer) { clearTimeout(goOverlayTimer); goOverlayTimer = null; }
+  if (countdown.timer) { clearInterval(countdown.timer); countdown.timer = null; }
+  if (countdown.goTimeout) { clearTimeout(countdown.goTimeout); countdown.goTimeout = null; }
+  if (countdown.overlayTimer) { clearTimeout(countdown.overlayTimer); countdown.overlayTimer = null; }
 }
 
 function pauseGame() {
@@ -138,18 +138,18 @@ function resumeGame() {
   if (!paused) return;
   if (roomState !== ROOM_STATE.PLAYING && roomState !== ROOM_STATE.COUNTDOWN) return;
   paused = false;
-  if (roomState === ROOM_STATE.COUNTDOWN && countdownCallback) {
+  if (roomState === ROOM_STATE.COUNTDOWN && countdown.callback) {
     party.broadcast({ type: MSG.GAME_RESUMED });
     onGameResumed();
-    if (countdownRemaining === 0) {
+    if (countdown.remaining === 0) {
       party.broadcast({ type: MSG.COUNTDOWN, value: 'GO' });
       onCountdownDisplay('GO');
-      goTimeout = setTimeout(function() {
-        goTimeout = null;
-        countdownCallback();
+      countdown.goTimeout = setTimeout(function() {
+        countdown.goTimeout = null;
+        countdown.callback();
       }, 500);
     } else {
-      startCountdown(countdownCallback, countdownRemaining);
+      startCountdown(countdown.callback, countdown.remaining);
     }
     return;
   }
@@ -160,8 +160,8 @@ function resumeGame() {
 function returnToLobby() {
   if (roomState === ROOM_STATE.LOBBY) return;
   clearCountdownTimers();
-  countdownCallback = null;
-  countdownRemaining = 0;
+  countdown.callback = null;
+  countdown.remaining = 0;
   paused = false;
   autoPaused = false;
   releaseWakeLock();
@@ -315,8 +315,8 @@ function onCountdownDisplay(value) {
       music.start();
       if (muted) music.masterGain.gain.setValueAtTime(0, music.ctx.currentTime);
     }
-    goOverlayTimer = setTimeout(function() {
-      goOverlayTimer = null;
+    countdown.overlayTimer = setTimeout(function() {
+      countdown.overlayTimer = null;
       countdownOverlay.classList.add('hidden');
       countdownOverlay.textContent = '';
     }, 400);
