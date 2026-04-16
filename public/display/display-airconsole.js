@@ -182,3 +182,19 @@ showScreen = function(name) {
   }
   _originalShowScreen(name);
 };
+
+// Don't touch session history in the AC iframe. The standalone web build
+// pushes {screen:'game'} on countdown and pops it with history.back() on
+// returnToLobby so the browser back button moves between lobby/game/results;
+// inside AirConsole the platform watches the screen iframe's history and
+// interprets history.back() as "game ended, reset the master controller",
+// which tears down the master controller's iframe (observed in the
+// simulator: the new-host late-joiner lands on about:blank on NEW GAME).
+// Neutralize pushState so nothing ever lands on the stack, back so
+// returnToLobbyUI's cleanup is a no-op, replaceState for good measure.
+// Compare controller-airconsole.js which no-ops only pushState — the
+// controller never calls history.back() from our code, so the simulator
+// kill doesn't reach it.
+history.pushState = function() {};
+history.replaceState = function() {};
+history.back = function() {};

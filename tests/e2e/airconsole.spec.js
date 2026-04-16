@@ -201,6 +201,34 @@ test.describe.serial('AirConsole Integration', () => {
     expect(await s.screenFrame.evaluate(() => party.constructor.name)).toBe('AirConsoleAdapter');
   });
 
+  // Regression: the AirConsole simulator tears down the master controller's
+  // iframe when the screen iframe calls history.back() (observed as the new-
+  // host late-joiner navigating to about:blank on NEW GAME). The fix is to
+  // neutralize pushState/replaceState/back on the screen in AC mode — lock it
+  // in so future refactors can't reintroduce a history.pushState call.
+  test('screen neutralizes history APIs in AirConsole mode', async ({ page, context }) => {
+    const s = await createSession(context, page);
+    await s.screenFrame.waitForFunction(
+      () => typeof party !== 'undefined' && party && party._ready,
+      null, { timeout: 15000 }
+    );
+
+    const result = await s.screenFrame.evaluate(() => {
+      const beforeLen = history.length;
+      const beforeState = history.state;
+      history.pushState({ screen: 'game' }, '');
+      history.replaceState({ screen: 'x' }, '');
+      history.back();
+      return {
+        lenUnchanged: history.length === beforeLen,
+        stateUnchanged: history.state === beforeState,
+      };
+    });
+
+    expect(result.lenUnchanged).toBe(true);
+    expect(result.stateUnchanged).toBe(true);
+  });
+
   test('controller connects and reaches lobby', async ({ page, context }) => {
     const s = await createSession(context, page);
 
