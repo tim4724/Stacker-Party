@@ -26,7 +26,7 @@ class PartyConnection {
 
     // Callbacks
     this.onOpen = null;        // () => void
-    this.onClose = null;       // (attempt: number, maxAttempts: number) => void
+    this.onClose = null;       // (attempt: number, maxAttempts: number, meta?: {replaced: boolean}) => void
     this.onError = null;       // () => void
     this.onMessage = null;     // (from: string, data: object) => void
     this.onProtocol = null;    // (type: string, msg: object) => void

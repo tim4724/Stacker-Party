@@ -37,8 +37,8 @@ test.describe('Slow relay', () => {
     await page.goto('/', { waitUntil: 'networkidle' });
     await waitForFont(page);
 
-    // Dismiss mobile hint if visible
-    const hint = page.locator('#mobile-hint button');
+    // Dismiss end screen if visible
+    const hint = page.locator('#end-continue-btn');
     if (await hint.isVisible()) await hint.click();
 
     // Verify preCreatedRoom is null (relay hasn't responded yet)

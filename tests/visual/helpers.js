@@ -105,7 +105,7 @@ async function createRoom(page) {
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto('/?test=1', { waitUntil: 'networkidle' });
   await waitForFont(page);
-  const continueAnyway = page.locator('#mobile-hint button');
+  const continueAnyway = page.locator('#end-continue-btn');
   if (await continueAnyway.isVisible()) {
     await continueAnyway.click();
   }
