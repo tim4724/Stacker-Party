@@ -36,6 +36,8 @@ class HexBoardRenderer {
     this._prevGhostRow = -1;
     this._prevGhostType = -1;
     this._prevGhostGV = -1;
+    this._prevGhostRotQ = 0;
+    this._prevGhostRotR = 0;
     this._cachedPreviewCells = [];
 
     // Grid cache: offscreen canvas for locked blocks (redrawn only when gridVersion changes)
@@ -223,18 +225,27 @@ class HexBoardRenderer {
     if (playerState.ghost && playerState.currentPiece && playerState.grid && playerState.alive !== false) {
       var ghostBlocks = playerState.ghost.blocks;
       if (ghostBlocks) {
-        // Cache key from ghost anchor + piece type (avoids per-frame string building)
+        // Cache key from ghost anchor + piece type + rotation (avoids per-frame string building).
+        // Rotation must be in the key: anchor and type can stay identical while rotation
+        // changes the ghost block layout — a stale cache would show the previous rotation's
+        // preview cells. cells[0] uniquely identifies rotation for every hex piece type.
         var gkCol = playerState.ghost.anchorCol;
         var gkRow = playerState.ghost.anchorRow;
         var gkType = playerState.currentPiece.typeId;
         var gkVersion = playerState.gridVersion;
+        var gkCells0 = playerState.currentPiece.cells[0];
+        var gkRotQ = gkCells0.q;
+        var gkRotR = gkCells0.r;
 
         if (gkCol !== this._prevGhostCol || gkRow !== this._prevGhostRow ||
-            gkType !== this._prevGhostType || gkVersion !== this._prevGhostGV) {
+            gkType !== this._prevGhostType || gkVersion !== this._prevGhostGV ||
+            gkRotQ !== this._prevGhostRotQ || gkRotR !== this._prevGhostRotR) {
           this._prevGhostCol = gkCol;
           this._prevGhostRow = gkRow;
           this._prevGhostType = gkType;
           this._prevGhostGV = gkVersion;
+          this._prevGhostRotQ = gkRotQ;
+          this._prevGhostRotR = gkRotR;
           var ghostSet = {};
           for (var gi2 = 0; gi2 < ghostBlocks.length; gi2++) {
             ghostSet[ghostBlocks[gi2][0] * _GHOST_KEY_STRIDE + ghostBlocks[gi2][1]] = true;

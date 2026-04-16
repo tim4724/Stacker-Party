@@ -41,7 +41,14 @@ var HEX_PIECES = {
   J:  [[1,0],[0,0],[-1,0],[-1,-1]],   // new — 3-cell up-left diagonal + top-left vertical extension
 };
 
-var KICKS = [[0,0], [-1,0], [1,0], [0,-1], [0,1], [-1,-1], [1,-1], [-1,1], [1,1]];
+// The I piece spans 2 cells to one side of its anchor, so rotating it against a
+// wall or floor needs shifts of ±2 — a ±1 kick alone can't bring it back in-bounds.
+var KICKS = [
+  [0,0],
+  [-1,0], [1,0], [0,-1], [0,1],
+  [-1,-1], [1,-1], [-1,1], [1,1],
+  [-2,0], [2,0], [0,-2], [0,2]
+];
 
 // ===================== HEX PIECE CLASS =====================
 class HexPiece {

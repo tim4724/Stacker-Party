@@ -210,6 +210,29 @@ describe('HexPlayerBoard - rotation and wall kicks', () => {
     var result = b.rotateCW();
     assert.equal(typeof result, 'boolean');
   });
+
+  // I piece spans 2 cells to one side of its anchor, so rotations against a wall
+  // need a ±2 wall kick. A ±1 kick alone cannot bring it back in-bounds.
+  it('I piece rotates at every valid position on an empty board', () => {
+    var { HexPiece } = require('../server/HexPiece');
+    var { HEX_TOTAL_ROWS } = require('../server/HexConstants');
+    for (var rotStep = 0; rotStep < 6; rotStep++) {
+      for (var ac = -3; ac < HEX_COLS + 3; ac++) {
+        for (var ar = 0; ar < HEX_TOTAL_ROWS; ar++) {
+          var b = new HexPlayerBoard('p', 1, 1);
+          var piece = new HexPiece('I');
+          for (var k = 0; k < rotStep; k++) piece.rotateCW();
+          piece._adjustAnchorRow();
+          piece.anchorCol = ac;
+          piece.anchorRow = ar;
+          if (!b.isValidPosition(piece)) continue;
+          b.currentPiece = piece;
+          assert.equal(b.rotateCW(), true,
+            'I piece should rotate at rotStep=' + rotStep + ' col=' + ac + ' row=' + ar);
+        }
+      }
+    }
+  });
 });
 
 describe('HexPlayerBoard - movement boundaries', () => {
@@ -638,6 +661,28 @@ describe('HexPlayerBoard - clear preview matches actual clear', () => {
     if (previewResult.linesCleared > 0 && dropResult.linesCleared > 0) {
       assert.equal(previewResult.clearCells.length, dropResult.clearCells.length,
         'preview and actual should clear the same number of cells');
+    }
+  });
+
+  // Regression: the renderer used (anchorCol, anchorRow, typeId, gridVersion) as its
+  // preview cache key. Rotation changes the ghost block layout but can keep the
+  // anchor identical — the cache key must include something that distinguishes
+  // rotation states. cells[0] uniquely identifies rotation for every hex piece type.
+  it('rotating a piece without moving it changes cells[0] so the preview can invalidate', () => {
+    var { HexPiece } = require('../server/HexPiece');
+    var { HEX_PIECE_TYPES } = require('../server/HexConstants');
+    for (var ti = 0; ti < HEX_PIECE_TYPES.length; ti++) {
+      var type = HEX_PIECE_TYPES[ti];
+      if (type === 'O') continue; // O is rotationally symmetric
+      var p = new HexPiece(type);
+      var seen = Object.create(null);
+      for (var r = 0; r < 6; r++) {
+        var key = p.cells[0].q + ',' + p.cells[0].r;
+        assert.ok(!seen[key],
+          type + ' cells[0] collides between rotations ' + seen[key] + ' and ' + r);
+        seen[key] = r;
+        p.rotateCW();
+      }
     }
   });
 });
