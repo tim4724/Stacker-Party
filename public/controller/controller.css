@@ -471,7 +471,7 @@ html, body {
   font-size: clamp(0.6rem, 3.2vw, 0.75rem);
   font-weight: 700;
   letter-spacing: 0.1em;
-  color: #b0b0b0; /* fallback for old browsers */
+  color: var(--medal-silver); /* fallback for old browsers (no color-mix) */
   color: color-mix(in srgb, var(--player-color, #888) 65%, white);
   text-transform: uppercase;
 }

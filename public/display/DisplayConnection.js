@@ -152,11 +152,16 @@ function applyRoomCreated(partyRoomCode, newJoinUrl) {
     joinUrlEl.setAttribute('tabindex', '0');
     joinUrlEl.setAttribute('aria-label', 'Copy join URL');
     var showCopiedToast = function() {
-      joinUrlEl.setAttribute('data-copied-label', t('copied') || 'Copied');
+      var copiedLabel = t('copied') || 'Copied';
+      joinUrlEl.setAttribute('data-copied-label', copiedLabel);
       joinUrlEl.setAttribute('data-copied', '1');
+      // Reflect the success state for screen readers — the ::after toast
+      // is purely visual, so aria-label is the only cue they see.
+      joinUrlEl.setAttribute('aria-label', copiedLabel);
       clearTimeout(_copyTimer);
       _copyTimer = setTimeout(function() {
         joinUrlEl.removeAttribute('data-copied');
+        joinUrlEl.setAttribute('aria-label', 'Copy join URL');
       }, 1600);
     };
     var copyToClipboard = function() {
