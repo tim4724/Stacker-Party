@@ -291,7 +291,11 @@ body.airconsole #lobby-version-label { display: block; }
   color: var(--text-secondary);
   letter-spacing: 0.04em;
   text-transform: lowercase;
-  white-space: nowrap;
+  /* Long hostnames (e.g. preview-*.hexstackerparty.com) must be able to
+     break mid-string — URLs lack word boundaries, so `anywhere` is needed
+     to prevent overflow clipping against #qr-container's overflow: hidden. */
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 
 .join-url__code {
