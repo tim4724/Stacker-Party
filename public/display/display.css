@@ -356,11 +356,39 @@ body.airconsole #lobby-version-label { display: block; }
   .join-url__code { font-size: 1.5rem; }
 }
 
-/* --- Narrow tier (<600px): force 2-col layout even with 5+ players (becomes 4×2) --- */
-@media (max-width: 599px) {
+/* --- Narrow tier (<600px OR <600px tall): force 2-col layout even with 5+
+   players (becomes 4×2). At this size the default card-w (min 180px) would
+   push the list past two columns and overflow the viewport — shrink card/QR/
+   title so the whole lobby fits without clipping. Matching max-height too
+   keeps phone-landscape (e.g. 640×360) from falling back to the full-size
+   tier. --- */
+@media (max-width: 599px), (max-height: 599px) {
+  #lobby-screen {
+    gap: 0.7rem;
+    padding: clamp(0.6rem, 1.5vh, 1.2rem) 1rem clamp(1.5rem, 4vh, 3rem);
+  }
+  #lobby-screen h1 { font-size: clamp(1.5rem, 6vw, 2.2rem); }
+  #lobby-body { gap: clamp(0.8rem, 2vw, 1.4rem); }
+  #qr-container {
+    width: clamp(170px, 28vh, 210px);
+    padding: 10px;
+    gap: 6px;
+  }
+  #qr-code { padding: 6px; }
+  #qr-label { font-size: 10px; }
+  #join-url { padding: 5px 10px; }
+  #player-list {
+    --card-w: clamp(120px, 40vw, 160px);
+    --card-gap: 8px;
+  }
+  .player-card {
+    font-size: clamp(0.85rem, 3vw, 1rem);
+    padding: clamp(8px, 1.4vh, 14px) clamp(8px, 2vw, 14px);
+    gap: clamp(4px, 0.8vh, 8px);
+  }
   #player-list.pl--lg { max-width: calc(var(--card-w) * 2 + var(--card-gap)); }
-  .join-url__host { font-size: 0.95rem; }
-  .join-url__code { font-size: 1.2rem; }
+  .join-url__host { font-size: 0.85rem; }
+  .join-url__code { font-size: 1.1rem; }
 }
 
 /* --- AirConsole / no-QR overrides: just hide QR; player list sizing is class-driven --- */
