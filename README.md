@@ -4,7 +4,9 @@
 
 Browser-based multiplayer hex stacker where phones become controllers and a shared screen shows the action.
 
-**Play now at [hexstackerparty.com](https://hexstackerparty.com)** · [UI gallery](https://main.hexstackerparty.com/gallery.html) (every screen, every state — design reference)
+**Play now at [hexstackerparty.com](https://hexstackerparty.com)**
+
+**UI gallery**: [main.hexstackerparty.com/gallery.html](https://main.hexstackerparty.com/gallery.html) — every screen, every state (design reference)
 
 ## Overview
 
