@@ -63,6 +63,7 @@ function startNewGame() {
         showDisconnectQR(entry[0]);
       }
     }
+    checkAllPlayersDisconnected();
   });
 }
 
@@ -122,13 +123,15 @@ function allPlayersDisconnected() {
 }
 
 function checkAllPlayersDisconnected() {
-  if (roomState !== ROOM_STATE.PLAYING && roomState !== ROOM_STATE.COUNTDOWN) return;
+  // Only auto-pause once the game is actually running. During COUNTDOWN we let
+  // the countdown finish so the game starts and the disconnect QRs become
+  // visible — then auto-pause kicks in at the PLAYING transition.
+  if (roomState !== ROOM_STATE.PLAYING) return;
   if (paused) return;
   if (!allPlayersDisconnected()) return;
   // Silent pause — no overlay, no broadcast (all controllers are gone)
   paused = true;
   setAutoPaused(true);
-  if (roomState === ROOM_STATE.COUNTDOWN) clearCountdownTimers();
   if (displayGame) displayGame.pause();
   if (music) music.pause();
 }
