@@ -38,7 +38,7 @@
      the title reads red → honey → teal while buttons/links use their
      own palette slots. */
   --title-from: #FF6B6B;   /* Slot 1 Red */
-  --title-mid:  #FFD166;   /* Slot 3 Honey */
+  --title-mid:  #FFE066;   /* Slot 3 Honey */
   --title-to:   #4ECDC4;   /* Slot 2 Teal */
 
   /* Text — warm cream */
@@ -62,7 +62,7 @@
 
   /* Ping indicators */
   --ping-good: #7BED6F;                   /* mint */
-  --ping-ok: #FFD166;                     /* honey */
+  --ping-ok: #FFE066;                     /* honey */
   --ping-bad: #e74856;
 
   /* Overlay */
