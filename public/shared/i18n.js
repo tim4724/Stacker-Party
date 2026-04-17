@@ -116,9 +116,6 @@ var LOCALES = {
     gesture_rotate: 'rotate',
     gesture_drop: 'drop',
     gesture_hold: 'hold',
-
-    // Ordinals (Intl.PluralRules ordinal categories)
-    _ordinal: { one: '{n}st', two: '{n}nd', few: '{n}rd', other: '{n}th' }
   },
 
   de: {
@@ -183,7 +180,6 @@ var LOCALES = {
     swipe: 'Wischen', tap: 'Tippen', flick: 'Schnippen',
     gesture_move: 'Bewegen', gesture_rotate: 'Drehen',
     gesture_drop: 'Fallen', gesture_hold: 'Halten',
-    _ordinal: '{n}.'
   },
 
   fr: {
@@ -220,7 +216,6 @@ var LOCALES = {
     gesture_move: 'déplacer', gesture_rotate: 'tourner',
     stacked_by: 'Créé par Tim', music_by: 'Musique par FoxSynergy',
     gesture_drop: 'lâcher', gesture_hold: 'maintenir',
-    _ordinal: { one: '{n}er', other: '{n}e' }
   },
 
   pt: {
@@ -257,7 +252,6 @@ var LOCALES = {
     swipe: 'Deslizar', tap: 'Tocar', flick: 'Lançar',
     gesture_move: 'mover', gesture_rotate: 'girar',
     gesture_drop: 'soltar', gesture_hold: 'segurar',
-    _ordinal: '{n}º'
   },
 
   es: {
@@ -294,7 +288,6 @@ var LOCALES = {
     gesture_move: 'mover', gesture_rotate: 'girar',
     stacked_by: 'Creado por Tim', music_by: 'Música de FoxSynergy',
     gesture_drop: 'soltar', gesture_hold: 'guardar',
-    _ordinal: '{n}º'
   },
 
   zh: {
@@ -330,7 +323,6 @@ var LOCALES = {
     gesture_move: '移动', gesture_rotate: '旋转',
     stacked_by: '开发：Tim', music_by: '音乐：FoxSynergy',
     gesture_drop: '落下', gesture_hold: '暂存',
-    _ordinal: '第{n}名'
   },
 
   ja: {
@@ -367,7 +359,6 @@ var LOCALES = {
     gesture_move: '移動', gesture_rotate: '回転',
     stacked_by: '開発：Tim', music_by: '音楽：FoxSynergy',
     gesture_drop: 'ドロップ', gesture_hold: 'ホールド',
-    _ordinal: '{n}位'
   },
 
   ko: {
@@ -403,7 +394,6 @@ var LOCALES = {
     gesture_move: '이동', gesture_rotate: '회전',
     stacked_by: '개발: Tim', music_by: '음악: FoxSynergy',
     gesture_drop: '드롭', gesture_hold: '홀드',
-    _ordinal: '{n}위'
   },
 
   ru: {
@@ -446,7 +436,6 @@ var LOCALES = {
     gesture_move: 'двигать', gesture_rotate: 'вращать',
     stacked_by: 'Разработка: Tim', music_by: 'Музыка: FoxSynergy',
     gesture_drop: 'бросать', gesture_hold: 'держать',
-    _ordinal: '{n}-й'
   },
 
   it: {
@@ -483,7 +472,6 @@ var LOCALES = {
     swipe: 'Scorrere', tap: 'Toccare', flick: 'Lanciare',
     gesture_move: 'muovere', gesture_rotate: 'ruotare',
     gesture_drop: 'rilasciare', gesture_hold: 'tenere',
-    _ordinal: '{n}°'
   },
 
   tr: {
@@ -520,7 +508,6 @@ var LOCALES = {
     swipe: 'Kaydır', tap: 'Dokun', flick: 'Fırlat',
     gesture_move: 'hareket ettir', gesture_rotate: 'döndür',
     gesture_drop: 'bırak', gesture_hold: 'tut',
-    _ordinal: '{n}.'
   }
 };
 
@@ -528,16 +515,13 @@ var LOCALES = {
 var _locale = 'en';
 var _strings = LOCALES.en;
 var _pluralRules = null;
-var _ordinalRules = null;
 
 function _initRules() {
   if (typeof Intl !== 'undefined' && Intl.PluralRules) {
     try {
       _pluralRules = new Intl.PluralRules(_locale);
-      _ordinalRules = new Intl.PluralRules(_locale, { type: 'ordinal' });
     } catch (e) {
       _pluralRules = null;
-      _ordinalRules = null;
     }
   }
 }
@@ -586,29 +570,6 @@ function t(key, params) {
   }
 
   return val;
-}
-
-/**
- * Format a number as an ordinal string (1st, 2nd, 3rd, ... or locale equivalent).
- * @param {number} n
- * @returns {string}
- */
-function tOrdinal(n) {
-  var ord = _strings._ordinal || LOCALES.en._ordinal;
-
-  // Simple template string: '{n}.' → '1.'
-  if (typeof ord === 'string') {
-    return ord.replace('{n}', n);
-  }
-
-  // Object with plural categories: use Intl.PluralRules ordinal selection
-  if (typeof ord === 'object' && _ordinalRules) {
-    var cat = _ordinalRules.select(n);
-    var tmpl = ord[cat] || ord.other || '{n}';
-    return tmpl.replace('{n}', n);
-  }
-
-  return String(n);
 }
 
 /**
@@ -677,5 +638,5 @@ translatePage();
 
 // Export for both Node.js and browser
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { t: t, tOrdinal: tOrdinal, setLocale: setLocale, getLocale: getLocale, translatePage: translatePage, detectLocale: detectLocale, LOCALES: LOCALES };
+  module.exports = { t: t, setLocale: setLocale, getLocale: getLocale, translatePage: translatePage, detectLocale: detectLocale, LOCALES: LOCALES };
 }

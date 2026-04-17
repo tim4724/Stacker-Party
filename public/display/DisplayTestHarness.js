@@ -138,7 +138,18 @@ function _fireLineClear(playerIdx, lines) {
 }
 
 function _fakeLobbyQR() {
-  if (joinUrlEl) joinUrlEl.textContent = 'hexstackerparty.com/TEST';
+  // Populate the two-part host/code spans so the gallery lobby matches the
+  // real applyRoomCreated() rendering (small host + big room code).
+  if (joinUrlEl) {
+    var hostEl = joinUrlEl.querySelector('.join-url__host');
+    var codeEl = joinUrlEl.querySelector('.join-url__code');
+    if (hostEl && codeEl) {
+      hostEl.textContent = 'hexstackerparty.com/';
+      codeEl.textContent = 'TEST';
+    } else {
+      joinUrlEl.textContent = 'hexstackerparty.com/TEST';
+    }
+  }
   // Render a real QR for a fake URL so the lobby layout looks realistic.
   fetch('/api/qr?text=' + encodeURIComponent('https://hexstackerparty.com/TEST12'))
     .then(function(r) { return r.json(); })

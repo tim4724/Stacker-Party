@@ -644,7 +644,7 @@ body.airconsole #qr-container,
 }
 
 .result-rank {
-  font-size: clamp(1rem, 2vh, 1.8rem);
+  font-size: clamp(1.2rem, 2.5vh, 2.2rem);
 }
 
 .result-info {

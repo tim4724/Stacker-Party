@@ -325,7 +325,7 @@ function renderGameResults(results) {
     if (!solo) {
       var rankEl = document.createElement('span');
       rankEl.className = 'result-rank';
-      rankEl.textContent = tOrdinal(r.rank);
+      rankEl.textContent = String(r.rank);
       rankEl.style.color = pColor;
       row.appendChild(rankEl);
     }

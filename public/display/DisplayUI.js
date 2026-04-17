@@ -324,7 +324,7 @@ function renderResults(results) {
     if (!solo) {
       var rank = document.createElement('span');
       rank.className = 'result-rank';
-      rank.textContent = tOrdinal(res.rank);
+      rank.textContent = String(res.rank);
       if (pColor) rank.style.color = pColor;
       row.appendChild(rank);
     }

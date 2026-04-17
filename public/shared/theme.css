@@ -112,13 +112,20 @@
   font-family: 'Orbitron', sans-serif;
   font-weight: 700;
   cursor: pointer;
-  transition: transform var(--transition-fast);
+  transition: transform var(--transition-fast), filter var(--transition-fast);
 }
 
 .btn-primary {
   background: linear-gradient(180deg, var(--accent-primary) 0%, var(--accent-primary-dark) 100%);
   color: var(--btn-primary-text);
   box-shadow: var(--shadow-sm);
+}
+
+/* Brighten on hover — applies to the default red gradient and to all
+   host-tinted .btn-primary variants (via ID rules below) without needing
+   per-color hover rules. Matches the subtle lift of .btn-secondary:hover. */
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.1);
 }
 
 .btn-primary:active {

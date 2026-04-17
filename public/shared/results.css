@@ -44,6 +44,11 @@
   letter-spacing: -0.02em;
   flex-shrink: 0;
   color: var(--text-secondary);
+  /* Fixed digit geometry so "1" and "5" align the trailing name column
+     identically — Orbitron is proportional by default. */
+  font-variant-numeric: tabular-nums;
+  min-width: 1ch;
+  text-align: center;
 }
 
 /* --- Name --- */
