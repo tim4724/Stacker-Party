@@ -64,8 +64,9 @@ function handleControllerMessage(fromId, msg) {
     // Auto-resume after processing the message (e.g. after onHello sends
     // WELCOME with paused state) so the controller gets proper state sync
     // before the GAME_RESUMED broadcast.
-    if (wasDisconnected && autoPaused && playerOrder.indexOf(fromId) >= 0) {
-      checkAutoResume();
+    if (wasDisconnected && playerOrder.indexOf(fromId) >= 0) {
+      clearLateJoinerGraceTimer();
+      if (autoPaused) checkAutoResume();
     }
   } catch (err) {
     console.error('[input] Error handling message from', fromId, ':', err);

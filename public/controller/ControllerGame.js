@@ -160,11 +160,11 @@ function onWelcome(data) {
     gameScreen.classList.remove('countdown');
     gameScreen.style.setProperty('--player-color', playerColor);
     removeKoOverlay();
+    pauseBtn.classList.remove('hidden');
     if (data.paused) {
       onGamePaused();
     } else {
       pauseOverlay.classList.add('hidden');
-      pauseBtn.classList.remove('hidden');
     }
 
     if (data.alive === false) {

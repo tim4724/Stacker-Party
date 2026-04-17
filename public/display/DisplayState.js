@@ -43,6 +43,7 @@ function setRoomState(newState) {
 
 var paused = false;
 var autoPaused = false;
+var lateJoinerGraceTimer = null;
 var boardRenderers = [];
 var uiRenderers = [];
 var animations = null;
@@ -75,7 +76,8 @@ var lastResults = null;
 
 // Clear all room-local state — used when entering a fresh room or returning to welcome.
 // Note: does not touch _lastBroadcastedHostId (module-private to DisplayConnection) or roomCode.
-// Calls clearCountdownTimers() (defined in DisplayGame.js) — only safe after all scripts load.
+// Calls clearCountdownTimers() and clearLateJoinerGraceTimer() (defined in
+// DisplayGame.js) — only safe after all scripts load.
 function resetRoomData() {
   if (music) music.stop();
   clearCountdownTimers();
@@ -85,6 +87,7 @@ function resetRoomData() {
   playerOrder = [];
   paused = false;
   setAutoPaused(false);
+  clearLateJoinerGraceTimer();
   gameState = null;
   boardRenderers = [];
   uiRenderers = [];

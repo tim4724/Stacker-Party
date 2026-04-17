@@ -6,6 +6,10 @@
 // Called by: display.js (message handlers and UI buttons)
 // =====================================================================
 
+// Grace period before ending a game when all active players have disconnected
+// but late joiners are waiting — lets the host reconnect before we bail out.
+var LATE_JOINER_GRACE_MS = 5000;
+
 // Wake Lock — prevent screen sleep during active games
 function acquireWakeLock() {
   if (!navigator.wakeLock) return;
@@ -43,6 +47,7 @@ function startNewGame() {
   stopDisplayGame();
   paused = false;
   setAutoPaused(false);
+  clearLateJoinerGraceTimer();
   lastResults = null;
   lastAliveState = {};
   // Clear stale disconnected-QR flags from the previous game so they don't
@@ -127,11 +132,38 @@ function allPlayersDisconnected() {
   return playerOrder.length > 0;
 }
 
+function hasLateJoiners() {
+  for (const id of players.keys()) {
+    if (playerOrder.indexOf(id) < 0) return true;
+  }
+  return false;
+}
+
+function clearLateJoinerGraceTimer() {
+  if (lateJoinerGraceTimer) {
+    clearTimeout(lateJoinerGraceTimer);
+    lateJoinerGraceTimer = null;
+  }
+}
+
 function checkAllPlayersDisconnected() {
   // Don't auto-pause during COUNTDOWN — let it finish so disconnect QRs become visible.
   if (roomState !== ROOM_STATE.PLAYING) return;
-  if (paused) return;
   if (!allPlayersDisconnected()) return;
+
+  // Start the grace timer regardless of pause state — a manually-paused host
+  // who then disconnects strands late joiners the same way an unpaused one
+  // does. Cancelled in DisplayInput when any active player reconnects.
+  if (hasLateJoiners() && !lateJoinerGraceTimer) {
+    lateJoinerGraceTimer = setTimeout(function() {
+      lateJoinerGraceTimer = null;
+      if (roomState === ROOM_STATE.PLAYING && allPlayersDisconnected() && hasLateJoiners()) {
+        returnToLobby();
+      }
+    }, LATE_JOINER_GRACE_MS);
+  }
+
+  if (paused) return;
   // Silent pause — no overlay, no broadcast (all controllers are gone)
   paused = true;
   setAutoPaused(true);
@@ -174,6 +206,7 @@ function returnToLobby() {
   countdown.remaining = 0;
   paused = false;
   setAutoPaused(false);
+  clearLateJoinerGraceTimer();
   releaseWakeLock();
 
   if (music) music.stop();
