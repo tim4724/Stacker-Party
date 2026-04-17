@@ -204,6 +204,7 @@ var joinUrlEl = document.getElementById('join-url');
 var playerListEl = document.getElementById('player-list');
 var startBtn = document.getElementById('start-btn');
 var countdownOverlay = document.getElementById('countdown-overlay');
+var countdownNumber = document.getElementById('countdown-number');
 var resultsList = document.getElementById('results-list');
 var playAgainBtn = document.getElementById('play-again-btn');
 var newGameResultsBtn = document.getElementById('new-game-results-btn');
@@ -227,7 +228,12 @@ function showScreen(name) {
   gameScreen.classList.toggle('hidden', name !== SCREEN.GAME && name !== SCREEN.RESULTS);
   resultsScreen.classList.toggle('hidden', name !== SCREEN.RESULTS);
   gameToolbar.classList.toggle('hidden', name === SCREEN.WELCOME);
-  muteBtn.classList.toggle('hidden', name === SCREEN.LOBBY);
+  // Hide mute on lobby in AirConsole mode only — it would overlap with the
+  // version label shown in that mode.
+  muteBtn.classList.toggle(
+    'hidden',
+    name === SCREEN.LOBBY && document.body.classList.contains('airconsole')
+  );
   pauseBtn.classList.toggle('hidden', name !== SCREEN.GAME);
   if (name !== SCREEN.GAME) {
     pauseOverlay.classList.add('hidden');

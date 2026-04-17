@@ -209,7 +209,7 @@ function initScenario(opts) {
     showScreen(SCREEN.GAME);
     calculateLayout();
     countdownOverlay.classList.remove('hidden');
-    countdownOverlay.textContent = '3';
+    countdownNumber.textContent = '3';
     startRenderLoop();
     return;
   }

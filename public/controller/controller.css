@@ -152,7 +152,8 @@ html, body {
 }
 
 .legal-links a:hover,
-.legal-links a:focus-visible {
+.legal-links a:focus-visible,
+.legal-links a:active {
   color: var(--accent-secondary);
 }
 

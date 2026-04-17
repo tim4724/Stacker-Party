@@ -2,8 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#1E1A2B">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <title>HexStacker Party</title>
   <meta name="description" content="Multiplayer hex stacker — play on your TV, control with your phone.">
   <meta property="og:title" content="HexStacker Party">
@@ -115,7 +117,7 @@
   <!-- Game screen: canvas boards -->
   <div id="game-screen" class="screen hidden">
     <canvas id="game-canvas"></canvas>
-    <div id="countdown-overlay" class="hidden"></div>
+    <div id="countdown-overlay" class="hidden"><span id="countdown-number"></span></div>
   </div>
 
   <!-- Pause overlay -->

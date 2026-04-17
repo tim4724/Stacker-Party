@@ -29,10 +29,7 @@
      a consistent solid color for OS nav-bar sampling. Falling-piece motion
      is layered on top via the inner .end-screen__bg canvas, which sits
      inside the padding box so the edges themselves stay flat. */
-  background:
-    radial-gradient(ellipse at 50% 25%, rgba(var(--accent-primary-rgb), 0.08) 0%, transparent 55%),
-    radial-gradient(ellipse at 50% 80%, rgba(var(--accent-secondary-rgb), 0.05) 0%, transparent 55%),
-    var(--bg-primary);
+  background: var(--bg-primary);
   text-align: center;
   padding:
     calc(clamp(20px, 4vh, 40px) + env(safe-area-inset-top))
@@ -107,7 +104,8 @@ body:has(#end-screen:not(.hidden)) .screen { display: none !important; }
   transition: color var(--transition-fast, 0.15s);
 }
 .end-legal a:hover,
-.end-legal a:focus-visible { color: var(--accent-secondary); }
+.end-legal a:focus-visible,
+.end-legal a:active { color: var(--accent-secondary); }
 
 /* --- Screenshot --- */
 /* The hero is wrapped in <picture> so the portrait variant can be swapped
@@ -209,7 +207,8 @@ body:has(#end-screen:not(.hidden)) .screen { display: none !important; }
   white-space: nowrap;
 }
 .end-link:hover,
-.end-link:focus-visible { text-decoration: underline; }
+.end-link:focus-visible,
+.end-link:active { text-decoration: underline; }
 
 /* --- Toast (error message in the .end-action slot) ---
    Soft card surface — conveys trouble without a harsh red pill. --- */

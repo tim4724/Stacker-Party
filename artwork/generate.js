@@ -332,13 +332,6 @@ async function generate() {
       });
     }, controllerBase64s);
 
-    // Inject player colors from theme.js (only first 4 for the 4 phones)
-    await page.evaluate((colors) => {
-      colors.forEach((color, i) => {
-        document.getElementById(`phone-${i}`).style.setProperty('--color', color);
-      });
-    }, PLAYER_COLORS.slice(0, NAMES.length));
-
     if (typeof options.phoneBottom === 'string') {
       await page.evaluate((phoneBottom) => {
         document.documentElement.style.setProperty('--phone-bottom', phoneBottom);
@@ -394,12 +387,6 @@ async function generate() {
         document.getElementById(`ctrl-${i}`).src = `data:image/png;base64,${b64}`;
       });
     }, controllerBase64s.slice(0, v.players));
-
-    await page.evaluate((colors) => {
-      colors.forEach((color, i) => {
-        document.getElementById(`phone-${i}`).style.setProperty('--color', color);
-      });
-    }, PLAYER_COLORS.slice(0, v.players));
 
     await page.waitForTimeout(500);
     const outPath = path.resolve(BANNER_DIR, v.name);

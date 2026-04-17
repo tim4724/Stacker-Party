@@ -334,9 +334,13 @@ class UIRenderer {
     // bg.primary so corners (outside the rounded rect) and the label strip
     // blend identically to the main canvas.
     var c = oc.getContext('2d', { alpha: false });
-    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // Fill in device-pixel space first: boxW = miniSize * 4.5 is fractional,
+    // so cssW*dpr rarely lands on a pixel boundary. Filling under the DPR
+    // transform would leave partial coverage at the right/bottom edge, which
+    // reads as a near-black halo against alpha:false — the 1px black line.
     c.fillStyle = THEME.color.bg.primary;
-    c.fillRect(0, 0, cssW, cssH);
+    c.fillRect(0, 0, pw, ph);
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     // Header label at top of cache
     c.fillStyle = 'rgba(255, 255, 255, ' + THEME.opacity.label + ')';

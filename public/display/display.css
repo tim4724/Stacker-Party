@@ -11,6 +11,7 @@ html, body {
   background: var(--bg-primary);
   color: var(--text-primary);
   font-family: system-ui, -apple-system, sans-serif;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .screen {
@@ -42,8 +43,6 @@ html, body {
 #bg-canvas.hidden { display: none; }
 
 #welcome-screen {
-  background:
-    radial-gradient(ellipse at 50% 30%, rgba(var(--accent-primary-rgb), 0.06) 0%, transparent 55%);
   gap: clamp(2rem, 5vh, 4rem);
   padding-bottom: clamp(2.7rem, 6vh, 4rem);
   position: relative;
@@ -122,7 +121,9 @@ body.airconsole #lobby-version-label { display: block; }
 }
 
 #welcome-footer a:hover,
-#lobby-footer a:hover {
+#lobby-footer a:hover,
+#welcome-footer a:active,
+#lobby-footer a:active {
   color: var(--text-primary);
 }
 
@@ -154,8 +155,6 @@ body.airconsole #lobby-version-label { display: block; }
 
 /* --- Base (Medium tier) --- */
 #lobby-screen {
-  background:
-    radial-gradient(ellipse at 50% 20%, rgba(var(--accent-primary-rgb), 0.05) 0%, transparent 55%);
   justify-content: space-around;
   gap: 1.5rem;
   padding: clamp(2rem, 5vh, 3.5rem) 1.5rem clamp(4rem, 8vh, 6.5rem);
@@ -468,6 +467,10 @@ body.airconsole #qr-container,
   background: var(--bg-card);
   color: var(--text-secondary);
   cursor: not-allowed;
+  /* Override .btn-primary:disabled's opacity 0.5 — the grey bg + muted text
+     already convey "disabled", and the opacity snap from 1 → 0.5 at the
+     end of the fadeUp animation reads as a glitch. */
+  opacity: 1;
 }
 
 /* ============================================
@@ -500,9 +503,29 @@ body.airconsole #qr-container,
     radial-gradient(ellipse at 50% 50%, rgba(var(--accent-primary-rgb), 0.08) 0%, transparent 60%),
     rgba(var(--bg-primary-rgb), 0.85);
   color: var(--accent-primary);
-  text-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
   z-index: 10;
+}
+
+/* Only the number pulses; the overlay stays static so the ::before noise
+   tile below doesn't shimmer with the scale transform. */
+#countdown-number {
+  display: inline-block;
   animation: countdownBeat 1s ease-out infinite;
+}
+
+/* SVG-noise overlay to dither the radial gradient below. CSS gradients at
+   very low alpha band visibly on 8-bit displays; adding a tiled grayscale
+   noise pattern on top breaks the bands perceptually. Pointer-transparent
+   and cached by the browser. */
+#countdown-overlay::before,
+#results-screen::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 width=%27180%27 height=%27180%27><filter id=%27n%27><feTurbulence type=%27fractalNoise%27 baseFrequency=%270.9%27 numOctaves=%272%27 stitchTiles=%27stitch%27/></filter><rect width=%27100%25%27 height=%27100%25%27 filter=%27url(%23n)%27/></svg>");
+  opacity: 0.05;
+  mix-blend-mode: overlay;
 }
 
 @keyframes countdownBeat {
