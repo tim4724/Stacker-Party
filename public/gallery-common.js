@@ -52,12 +52,12 @@ var Gallery = (function() {
     return parts.length ? '?' + parts.join('&') : '';
   }
 
-  function displayURL(state, scenario, nonce) {
+  function displayURL(state, scenario, nonce, levelOverride) {
     return '/' + qs({
       test: 1, bg: 1, lang: state.lang,
       scenario: scenario,
       players: state.players,
-      level: state.level,
+      level: levelOverride !== undefined ? levelOverride : state.level,
       _r: nonce || undefined
     });
   }
@@ -90,17 +90,20 @@ var Gallery = (function() {
   var queue = [];
   function _drain() {
     while (active < MAX_CONCURRENT && queue.length) {
-      var task = queue.shift();
+      // Use `let` so each iteration closes over its own task/done/iframe.
+      // With `var` (function-scoped), every concurrent `finish` would share
+      // the same `done` and the first completion would silently no-op the rest.
+      let task = queue.shift();
+      let iframe = task.iframe;
+      let url = task.url;
+      let done = false;
       active++;
-      var iframe = task.iframe;
-      var url = task.url;
-      var done = false;
-      function finish() {
+      let finish = function() {
         if (done) return; done = true;
         active--;
         task.onDone && task.onDone();
         _drain();
-      }
+      };
       iframe.addEventListener('load', finish, { once: true });
       iframe.addEventListener('error', finish, { once: true });
       // Fallback: treat 8s without load event as done.
@@ -197,6 +200,26 @@ var Gallery = (function() {
     for (var j = 0; j < cards.length; j++) io.observe(cards[j]);
   }
 
+  // --- Shared control binders ---
+  // state is mutated in place so all consumers observe the updated value
+  // without an explicit get/set dance.
+  function bindSelect(state, id, key, onChange, parse) {
+    var el = document.getElementById(id);
+    if (el && state[key] !== undefined) el.value = String(state[key]);
+    el.addEventListener('change', function(e) {
+      state[key] = parse ? parse(e.target.value) : e.target.value;
+      saveState(state); onChange();
+    });
+  }
+  function bindNumber(state, id, key, min, max, onChange) {
+    var el = document.getElementById(id);
+    if (el) el.value = String(state[key]);
+    el.addEventListener('input', function(e) {
+      var v = Math.max(min, Math.min(parseInt(e.target.value, 10) || min, max));
+      state[key] = v; saveState(state); onChange();
+    });
+  }
+
   return {
     PLAYER_COLOR_NAMES: PLAYER_COLOR_NAMES,
     DISPLAY_AR_DIMS: DISPLAY_AR_DIMS,
@@ -208,6 +231,8 @@ var Gallery = (function() {
     staticURL: staticURL,
     makeCard: makeCard,
     lazyMount: lazyMount,
-    resetQueue: resetQueue
+    resetQueue: resetQueue,
+    bindSelect: bindSelect,
+    bindNumber: bindNumber
   };
 })();

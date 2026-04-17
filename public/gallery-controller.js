@@ -133,28 +133,11 @@ function render() {
   Gallery.lazyMount(allCards);
 }
 
-function bindSelect(id, key, onChange, parse) {
-  var el = document.getElementById(id);
-  if (el && state[key] !== undefined) el.value = String(state[key]);
-  el.addEventListener('change', function(e) {
-    state[key] = parse ? parse(e.target.value) : e.target.value;
-    Gallery.saveState(state); onChange();
-  });
-}
-function bindNumber(id, key, min, max, onChange) {
-  var el = document.getElementById(id);
-  if (el) el.value = String(state[key]);
-  el.addEventListener('input', function(e) {
-    var v = Math.max(min, Math.min(parseInt(e.target.value, 10) || min, max));
-    state[key] = v; Gallery.saveState(state); onChange();
-  });
-}
-
-bindSelect('controller-ar', 'controllerAR', render);
-bindNumber('player-count', 'players', 1, 8, render);
-bindNumber('level', 'level', 1, 15, render);
-bindSelect('language', 'lang', render);
-bindSelect('cards-per-row', 'cardsPerRow', render, function(v) { return parseInt(v, 10) || 8; });
+Gallery.bindSelect(state, 'controller-ar', 'controllerAR', render);
+Gallery.bindNumber(state, 'player-count', 'players', 1, 8, render);
+Gallery.bindNumber(state, 'level', 'level', 1, 15, render);
+Gallery.bindSelect(state, 'language', 'lang', render);
+Gallery.bindSelect(state, 'cards-per-row', 'cardsPerRow', render, function(v) { return parseInt(v, 10) || 8; });
 document.getElementById('reload-all').addEventListener('click', function() {
   nonce = Date.now(); render();
 });

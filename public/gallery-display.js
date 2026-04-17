@@ -59,11 +59,7 @@ function dims() { return Gallery.DISPLAY_AR_DIMS[state.displayAR] || Gallery.DIS
 
 function scenarioURL(s, levelOverride) {
   if (s.staticPath) return Gallery.staticURL(state, s.staticPath, nonce || undefined);
-  var savedLevel = state.level;
-  if (levelOverride !== undefined) state.level = levelOverride;
-  var url = Gallery.displayURL(state, s.key, nonce || undefined);
-  state.level = savedLevel;
-  return url;
+  return Gallery.displayURL(state, s.key, nonce || undefined, levelOverride);
 }
 
 function buildRow(label, scenarios, levelOverride) {
@@ -119,28 +115,11 @@ function render() {
   Gallery.lazyMount(allCards);
 }
 
-function bindSelect(id, key, onChange, parse) {
-  var el = document.getElementById(id);
-  if (el && state[key] !== undefined) el.value = String(state[key]);
-  el.addEventListener('change', function(e) {
-    state[key] = parse ? parse(e.target.value) : e.target.value;
-    Gallery.saveState(state); onChange();
-  });
-}
-function bindNumber(id, key, min, max, onChange) {
-  var el = document.getElementById(id);
-  if (el) el.value = String(state[key]);
-  el.addEventListener('input', function(e) {
-    var v = Math.max(min, Math.min(parseInt(e.target.value, 10) || min, max));
-    state[key] = v; Gallery.saveState(state); onChange();
-  });
-}
-
-bindSelect('display-ar', 'displayAR', render);
-bindNumber('player-count', 'players', 1, 8, render);
-bindNumber('level', 'level', 1, 15, render);
-bindSelect('language', 'lang', render);
-bindSelect('cards-per-row', 'cardsPerRow', render, function(v) { return parseInt(v, 10) || 5; });
+Gallery.bindSelect(state, 'display-ar', 'displayAR', render);
+Gallery.bindNumber(state, 'player-count', 'players', 1, 8, render);
+Gallery.bindNumber(state, 'level', 'level', 1, 15, render);
+Gallery.bindSelect(state, 'language', 'lang', render);
+Gallery.bindSelect(state, 'cards-per-row', 'cardsPerRow', render, function(v) { return parseInt(v, 10) || 5; });
 document.getElementById('reload-all').addEventListener('click', function() {
   nonce = Date.now(); render();
 });
