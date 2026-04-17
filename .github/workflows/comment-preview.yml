@@ -18,7 +18,8 @@ jobs:
             const previewUrl = `https://preview-${safeBranch}.hexstackerparty.com`;
             const airConsoleUrl = `https://www.airconsole.com/#${previewUrl}`;
             const simulatorUrl = `https://www.airconsole.com/simulator/#${previewUrl}`;
-            const commentBody = `${previewUrl}\nAirConsole: ${airConsoleUrl}\nSimulator: ${simulatorUrl}`;
+            const galleryUrl = `${previewUrl}/gallery.html`;
+            const commentBody = `${previewUrl}\n\nAirConsole: ${airConsoleUrl}\n\nSimulator: ${simulatorUrl}\n\nGallery: ${galleryUrl}`;
 
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
