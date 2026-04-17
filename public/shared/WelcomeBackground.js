@@ -201,7 +201,9 @@ class WelcomeBackground {
     this.rafId = requestAnimationFrame(this._loop);
 
     if (this.lastTime === null) { this.lastTime = timestamp; return; }
-    const dt = (timestamp - this.lastTime) / 1000;
+    // Clamp dt so pieces don't teleport off-screen after tab unfreeze or a
+    // long frame stall. 50ms matches the game loop's MAX_FRAME_DELTA_MS.
+    const dt = Math.min((timestamp - this.lastTime) / 1000, 0.05);
     this.lastTime = timestamp;
 
     const ctx = this.ctx;
@@ -229,16 +231,19 @@ class WelcomeBackground {
   _drawPiece(ctx, p) {
     const size = p.blockSize;
     const sCell = size * 0.94;
+    const cells = p.cells;
     const hasStamps = typeof getHexStamp === 'function';
     if (hasStamps) {
       const stamp = getHexStamp(STYLE_TIERS.NORMAL, p.color, _SQRT3 * sCell);
-      for (const [q, r] of p.cells) {
+      for (let i = 0; i < cells.length; i++) {
+        const q = cells[i][0], r = cells[i][1];
         const cx = p.x + size * 1.5 * q;
         const cy = p.y + size * _SQRT3 * (r + q / 2);
         ctx.drawImage(stamp, cx - stamp.cssW / 2, cy - stamp.cssH / 2, stamp.cssW, stamp.cssH);
       }
     } else {
-      for (const [q, r] of p.cells) {
+      for (let i = 0; i < cells.length; i++) {
+        const q = cells[i][0], r = cells[i][1];
         const cx = p.x + size * 1.5 * q;
         const cy = p.y + size * _SQRT3 * (r + q / 2);
         // Base fill

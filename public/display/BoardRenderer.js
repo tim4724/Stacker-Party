@@ -73,15 +73,30 @@ class BoardRenderer {
     var dpr = window.devicePixelRatio || 1;
     var w = Math.ceil(this.boardWidth);
     var h = Math.ceil(this.boardHeight);
-    var pw = Math.ceil(w * dpr);
-    var ph = Math.ceil(h * dpr);
+    // Pad the cache so the baked wall stroke's anti-alias halo doesn't get
+    // clipped at the top/left/right/bottom edges of the bitmap. Half the
+    // stroke width + 1px covers sub-pixel bleed.
+    var pad = Math.max(2, Math.ceil(this.cellSize * THEME.stroke.border * 0.5) + 1);
+    var cssW = w + pad * 2;
+    var cssH = h + pad * 2;
+    var pw = Math.ceil(cssW * dpr);
+    var ph = Math.ceil(cssH * dpr);
     var oc;
     if (typeof OffscreenCanvas !== 'undefined') oc = new OffscreenCanvas(pw, ph);
     else { oc = document.createElement('canvas'); oc.width = pw; oc.height = ph; }
-    oc.cssW = w;
-    oc.cssH = h;
-    var gc = oc.getContext('2d');
+    oc.cssW = cssW;
+    oc.cssH = cssH;
+    oc.pad = pad;
+    // alpha:false — main canvas is opaque with bg.primary everywhere, so the
+    // cache can be opaque too. Pre-fill with bg.primary so the padded border
+    // and the region outside the zigzag match the main canvas.
+    var gc = oc.getContext('2d', { alpha: false });
     gc.setTransform(dpr, 0, 0, dpr, 0, 0);
+    gc.fillStyle = THEME.color.bg.primary;
+    gc.fillRect(0, 0, cssW, cssH);
+    // Translate so (pad, pad) is the board origin — all existing drawing
+    // below stays in board-local coordinates.
+    gc.translate(pad, pad);
 
     // 1. Clip to hex outline and fill board background — tactile recipe:
     //    vertical gradient (cardSoft → card), player-tint wash, top bevel
@@ -113,10 +128,15 @@ class BoardRenderer {
     // 2. Grid lines — draw opaque on a temp canvas, then composite at target alpha.
     //    Each hex cell draws all 6 edges, so shared interior edges overlap.
     //    Without this technique the overlaps double the effective alpha.
+    //    tc stays at unpadded (w × h) so the 5-arg drawImage below scales the
+    //    full tc into (0, 0, w, h) of gc at 1:1 — a padded tc would squash
+    //    the grid into the unpadded destination rect.
     var hs = this.hexSize;
+    var tcPw = Math.ceil(w * dpr);
+    var tcPh = Math.ceil(h * dpr);
     var tc;
-    if (typeof OffscreenCanvas !== 'undefined') tc = new OffscreenCanvas(pw, ph);
-    else { tc = document.createElement('canvas'); tc.width = pw; tc.height = ph; }
+    if (typeof OffscreenCanvas !== 'undefined') tc = new OffscreenCanvas(tcPw, tcPh);
+    else { tc = document.createElement('canvas'); tc.width = tcPw; tc.height = tcPh; }
     var tctx = tc.getContext('2d');
     tctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     tctx.beginPath();
@@ -136,6 +156,20 @@ class BoardRenderer {
     gc.globalAlpha = this._gridAlpha;
     gc.drawImage(tc, 0, 0, w, h);
     gc.globalAlpha = 1;
+
+    // 3. Outer wall stroke — baked in so render() doesn't re-stroke per frame.
+    // Vertices are in main-canvas coords; translate to cache-local by the same
+    // (ox, oy) offset used for the bg clip.
+    gc.strokeStyle = this._wallStroke;
+    gc.lineWidth = this.cellSize * THEME.stroke.border;
+    var v = this._outlineVerts;
+    gc.beginPath();
+    gc.moveTo(v[0][0] - ox, v[0][1] - oy);
+    for (var k = 1; k < v.length; k++) {
+      gc.lineTo(v[k][0] - ox, v[k][1] - oy);
+    }
+    gc.closePath();
+    gc.stroke();
 
     return oc;
   }
@@ -193,20 +227,16 @@ class BoardRenderer {
     this._styleTier = newTier;
     var sCell = this._sCell;
 
-    // 1. Flat board background fill behind the hex outline.
-    ctx.fillStyle = THEME.color.bg.card;
-    ctx.beginPath();
-    var bgVerts = this._bgOutlineVerts;
-    ctx.moveTo(bgVerts[0][0], bgVerts[0][1]);
-    for (var vi = 1; vi < bgVerts.length; vi++) ctx.lineTo(bgVerts[vi][0], bgVerts[vi][1]);
-    ctx.closePath();
-    ctx.fill();
-
-    // 2. Board background + grid lines (cached, single blit).
+    // 1. Board background + grid lines + walls (cached, single blit). The
+    // cache is opaque and pre-filled with bg.primary so its padded border
+    // blends seamlessly with the main canvas.
     // Rebuild if missing or if DPR/board dimensions changed (monitor move).
     var _dpr = window.devicePixelRatio || 1;
-    var _bgPw = Math.ceil(Math.ceil(this.boardWidth) * _dpr);
-    var _bgPh = Math.ceil(Math.ceil(this.boardHeight) * _dpr);
+    var _bgPad = Math.max(2, Math.ceil(this.cellSize * THEME.stroke.border * 0.5) + 1);
+    var _bgCssW = Math.ceil(this.boardWidth) + _bgPad * 2;
+    var _bgCssH = Math.ceil(this.boardHeight) + _bgPad * 2;
+    var _bgPw = Math.ceil(_bgCssW * _dpr);
+    var _bgPh = Math.ceil(_bgCssH * _dpr);
     if (!this._boardBgCache ||
         this._boardBgCache.width !== _bgPw ||
         this._boardBgCache.height !== _bgPh) {
@@ -214,7 +244,7 @@ class BoardRenderer {
     }
     var bgc = this._boardBgCache;
     ctx.drawImage(bgc, 0, 0, bgc.width, bgc.height,
-      this.x, this.y, Math.ceil(this.boardWidth), Math.ceil(this.boardHeight));
+      this.x - bgc.pad, this.y - bgc.pad, bgc.cssW, bgc.cssH);
 
     // 2. Filled blocks — cached to offscreen canvas, redrawn only when gridVersion changes
     if (playerState.grid) {
@@ -230,17 +260,32 @@ class BoardRenderer {
       }
     }
 
-    // Ghost piece
+    // Ghost piece — batch all cells into a single compound path so fill+stroke
+    // run once instead of per-hex.
     if (playerState.ghost && playerState.currentPiece && playerState.alive !== false) {
       var ghost = playerState.ghost;
       var gc = GHOST_COLORS[playerState.currentPiece.typeId] || { outline: 'rgba(255,255,255,0.12)', fill: 'rgba(255,255,255,0.06)' };
       if (ghost.blocks) {
+        ctx.beginPath();
+        var ghostDrawn = false;
         for (var gi = 0; gi < ghost.blocks.length; gi++) {
           var gb = ghost.blocks[gi];
           if (gb[1] >= 0 && gb[1] < HEX_VIS_ROWS) {
             var gp = this._hexCenter(gb[0], gb[1]);
-            this._drawHex(gp.x, gp.y, sCell, gc.fill, gc.outline);
+            ctx.moveTo(gp.x + sCell * HEX_UNIT_VERTICES[0], gp.y + sCell * HEX_UNIT_VERTICES[1]);
+            for (var gvi = 2; gvi < 12; gvi += 2) {
+              ctx.lineTo(gp.x + sCell * HEX_UNIT_VERTICES[gvi], gp.y + sCell * HEX_UNIT_VERTICES[gvi + 1]);
+            }
+            ctx.closePath();
+            ghostDrawn = true;
           }
+        }
+        if (ghostDrawn) {
+          ctx.fillStyle = gc.fill;
+          ctx.fill();
+          ctx.strokeStyle = gc.outline;
+          ctx.lineWidth = this._gridLineWidth;
+          ctx.stroke();
         }
       }
     }
@@ -285,12 +330,29 @@ class BoardRenderer {
           this._cachedPreviewCells = result.clearCells;
         }
 
-        // Draw cached preview highlights
-        for (var pi = 0; pi < this._cachedPreviewCells.length; pi++) {
-          var pc = this._cachedPreviewCells[pi];
-          if (pc[1] >= 0 && pc[1] < HEX_VIS_ROWS) {
-            var hp = this._hexCenter(pc[0], pc[1]);
-            this._drawHex(hp.x, hp.y, hs, 'rgba(255, 255, 255, 0.2)', 'rgba(255, 255, 255, 0.4)');
+        // Draw cached preview highlights — batched compound path so all
+        // preview cells share one fill + one stroke call.
+        if (this._cachedPreviewCells.length > 0) {
+          ctx.beginPath();
+          var previewDrawn = false;
+          for (var pi = 0; pi < this._cachedPreviewCells.length; pi++) {
+            var pc = this._cachedPreviewCells[pi];
+            if (pc[1] >= 0 && pc[1] < HEX_VIS_ROWS) {
+              var hp = this._hexCenter(pc[0], pc[1]);
+              ctx.moveTo(hp.x + hs * HEX_UNIT_VERTICES[0], hp.y + hs * HEX_UNIT_VERTICES[1]);
+              for (var pvi = 2; pvi < 12; pvi += 2) {
+                ctx.lineTo(hp.x + hs * HEX_UNIT_VERTICES[pvi], hp.y + hs * HEX_UNIT_VERTICES[pvi + 1]);
+              }
+              ctx.closePath();
+              previewDrawn = true;
+            }
+          }
+          if (previewDrawn) {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.lineWidth = this._gridLineWidth;
+            ctx.stroke();
           }
         }
       }
@@ -329,7 +391,8 @@ class BoardRenderer {
       }
     }
 
-    this._drawWalls();
+    // Walls are baked into _boardBgCache (see _buildBoardBgCache step 3) —
+    // no per-frame stroke needed.
   }
 
   _renderGridToCache(grid, colors, sCell) {
@@ -366,17 +429,4 @@ class BoardRenderer {
     }
   }
 
-  _drawWalls() {
-    var ctx = this.ctx;
-    ctx.strokeStyle = this._wallStroke;
-    ctx.lineWidth = this.cellSize * THEME.stroke.border;
-    var v = this._outlineVerts;
-    ctx.beginPath();
-    ctx.moveTo(v[0][0], v[0][1]);
-    for (var i = 1; i < v.length; i++) {
-      ctx.lineTo(v[i][0], v[i][1]);
-    }
-    ctx.closePath();
-    ctx.stroke();
-  }
 }

@@ -85,6 +85,12 @@ class UIRenderer {
     this._panelTintFill = rgb ? 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + THEME.opacity.tint + ')' : null;
     this._panelStroke = rgb ? 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + THEME.opacity.soft + ')' : 'rgba(255, 255, 255, ' + THEME.opacity.tint + ')';
 
+    // Offscreen caches for hold/next chrome (header label + panel rect).
+    // Built lazily on first render; invalidated when fonts change.
+    this._holdChromeCache = null;
+    this._nextChromeCache = null;
+    this._nextChromeCacheBoxH = 0;
+
     // Cached font strings
     this._updateCachedFonts();
 
@@ -112,6 +118,10 @@ class UIRenderer {
     this._fontKO = '900 ' + Math.max(20, this.cellSize * 2) + 'px ' + font;
     this._fontDisconnect = '600 ' + Math.max(10, this.cellSize * THEME.font.cellScale.name) + 'px ' + font;
     this._cachedFontFamily = font;
+    // Panel chrome caches embed the label font — rebuild so the next frame
+    // picks up Orbitron after it finishes loading.
+    this._holdChromeCache = null;
+    this._nextChromeCache = null;
   }
 
   render(playerState, timestamp) {
@@ -148,23 +158,17 @@ class UIRenderer {
   }
 
   drawHoldPanel(playerState) {
-    var ctx = this.ctx;
     var panelY = this.boardY;
     var boxSize = this.miniSize * THEME.size.panelWidth;
     var panelX = this.boardX - this.panelGap - boxSize;
 
-    ctx.fillStyle = 'rgba(255, 255, 255, ' + THEME.opacity.label + ')';
-    ctx.font = this._fontLabel;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.letterSpacing = '0.15em';
-    ctx.fillText(t('hold'), panelX + boxSize / 2, panelY, boxSize);
-    ctx.letterSpacing = '0px';
-
-    var boxY = panelY + this._labelSize + this.cellSize * 0.2;
-    this._drawPanel(panelX, boxY, boxSize, boxSize);
+    if (!this._holdChromeCache) {
+      this._holdChromeCache = this._buildPanelChromeCache(boxSize, boxSize, t('hold'));
+    }
+    this._blitChromeCache(this._holdChromeCache, panelX, panelY);
 
     if (playerState.holdPiece) {
+      var boxY = panelY + this._labelSize + this.cellSize * 0.2;
       this.drawMiniPiece(panelX + boxSize / 2, boxY + boxSize / 2, playerState.holdPiece, this.miniSize);
     }
   }
@@ -187,15 +191,12 @@ class UIRenderer {
     var panelY = this.boardY;
     var boxWidth = this.miniSize * THEME.size.panelWidth;
 
-    ctx.fillStyle = 'rgba(255, 255, 255, ' + THEME.opacity.label + ')';
-    ctx.font = this._fontLabel;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.letterSpacing = '0.15em';
-    ctx.fillText(t('next'), panelX + boxWidth / 2, panelY, boxWidth);
-    ctx.letterSpacing = '0px';
-
-    this._drawPanel(panelX, layout.startY, boxWidth, layout.boxHeight);
+    // Rebuild chrome if boxHeight changed (nextCount transitioning 0→3 on game start).
+    if (!this._nextChromeCache || this._nextChromeCacheBoxH !== layout.boxHeight) {
+      this._nextChromeCache = this._buildPanelChromeCache(boxWidth, layout.boxHeight, t('next'));
+      this._nextChromeCacheBoxH = layout.boxHeight;
+    }
+    this._blitChromeCache(this._nextChromeCache, panelX, panelY);
 
     if (playerState.nextPieces) {
       for (var i = 0; i < Math.min(playerState.nextPieces.length, 3); i++) {
@@ -216,30 +217,26 @@ class UIRenderer {
     var lines = playerState.lines || 0;
     var level = playerState.level || 1;
     var lvlSize = this._labelSize;
+    var linesY = belowNextY + this._rowHeight;
+    var valueYOffset = lvlSize + this.cellSize * 0.1;
 
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
 
-    // Level row
+    // Labels share letterSpacing + font + fillStyle — emit both before the
+    // values so we only toggle letterSpacing/font once per frame.
     ctx.fillStyle = 'rgba(255, 255, 255, ' + THEME.opacity.label + ')';
-    ctx.letterSpacing = '0.15em';
     ctx.font = this._fontLabel;
+    ctx.letterSpacing = '0.15em';
     ctx.fillText(t('level'), panelX, belowNextY);
-    ctx.letterSpacing = '0px';
-    ctx.fillStyle = THEME.color.text.white;
-    ctx.font = this._fontValue;
-    ctx.fillText('' + level, panelX, belowNextY + lvlSize + this.cellSize * 0.1);
-
-    // Lines row
-    var linesY = belowNextY + this._rowHeight;
-    ctx.fillStyle = 'rgba(255, 255, 255, ' + THEME.opacity.label + ')';
-    ctx.letterSpacing = '0.15em';
-    ctx.font = this._fontLabel;
     ctx.fillText(t('lines'), panelX, linesY);
     ctx.letterSpacing = '0px';
+
+    // Values — plain font, no letterSpacing.
     ctx.fillStyle = THEME.color.text.white;
     ctx.font = this._fontValue;
-    ctx.fillText('' + lines, panelX, linesY + lvlSize + this.cellSize * 0.1);
+    ctx.fillText('' + level, panelX, belowNextY + valueYOffset);
+    ctx.fillText('' + lines, panelX, linesY + valueYOffset);
   }
 
   drawKOOverlay() {
@@ -308,48 +305,102 @@ class UIRenderer {
 
   // Flat panel recipe — mirrors the HTML card primitive:
   //   top-to-bottom gradient + inset top bevel + thin player-tinted stroke.
-  _drawPanel(x, y, w, h) {
-    var ctx = this.ctx;
+  // Build an offscreen canvas containing the header label plus the rounded
+  // panel chrome (gradient, tint wash, top bevel, rim stroke). Blitted each
+  // frame via drawImage; rebuilt only on font/layout change. `pad` leaves room
+  // for the rim stroke, which bleeds half a lineWidth outside the rounded rect.
+  _buildPanelChromeCache(boxW, boxH, labelText) {
+    var dpr = window.devicePixelRatio || 1;
+    var labelSize = this._labelSize;
+    var labelGap = this.cellSize * 0.2;
+    // Rim stroke width is cellSize * THEME.stroke.border * 0.6; pad covers
+    // half that (outer edge) + 1px for anti-alias bleed. Matches the pad
+    // formula used for the board bg cache so larger cellSizes stay safe.
+    var pad = Math.max(2, Math.ceil(this.cellSize * THEME.stroke.border * 0.3) + 1);
+    var cssW = boxW + pad * 2;
+    var cssH = labelSize + labelGap + boxH + pad * 2;
+    var pw = Math.ceil(cssW * dpr);
+    var ph = Math.ceil(cssH * dpr);
+
+    var oc;
+    if (typeof OffscreenCanvas !== 'undefined') oc = new OffscreenCanvas(pw, ph);
+    else { oc = document.createElement('canvas'); oc.width = pw; oc.height = ph; }
+    oc.cssW = cssW;
+    oc.cssH = cssH;
+    oc.pad = pad;
+
+    // alpha:false — the main canvas is opaque with bg.primary everywhere the
+    // panel blits land, so the cache can be opaque too. Pre-fill with
+    // bg.primary so corners (outside the rounded rect) and the label strip
+    // blend identically to the main canvas.
+    var c = oc.getContext('2d', { alpha: false });
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.fillStyle = THEME.color.bg.primary;
+    c.fillRect(0, 0, cssW, cssH);
+
+    // Header label at top of cache
+    c.fillStyle = 'rgba(255, 255, 255, ' + THEME.opacity.label + ')';
+    c.font = this._fontLabel;
+    c.textAlign = 'center';
+    c.textBaseline = 'top';
+    c.letterSpacing = '0.15em';
+    c.fillText(labelText, pad + boxW / 2, pad, boxW);
+    c.letterSpacing = '0px';
+
+    // Panel rect below label
+    this._paintPanelChrome(c, pad, pad + labelSize + labelGap, boxW, boxH);
+    return oc;
+  }
+
+  // Blit a chrome cache so its label-origin aligns with (panelX, panelY) on
+  // the main canvas. The cache is `pad` wider/taller on each side to hold the
+  // rim stroke, so the blit offsets back by pad.
+  _blitChromeCache(cache, panelX, panelY) {
+    this.ctx.drawImage(cache, 0, 0, cache.width, cache.height,
+      panelX - cache.pad, panelY - cache.pad, cache.cssW, cache.cssH);
+  }
+
+  // Paint the panel chrome (gradient + tint + bevel + rim stroke) to any 2d
+  // context at (x, y, w, h). Pure function of cellSize + cached styles, so the
+  // same routine renders to an OffscreenCanvas for caching.
+  _paintPanelChrome(c, x, y, w, h) {
     var r = THEME.radius.panel(this.cellSize);
     var cellSize = this.cellSize;
 
-    // 1. Gradient fill + optional player-color wash — same path, re-fill
-    //    with the tint fillStyle after the gradient. fill() doesn't consume
-    //    the current path, so the second fill reuses it.
-    var gradient = ctx.createLinearGradient(x, y, x, y + h);
+    // Gradient fill + optional player-color wash — reuse the path (fill()
+    // doesn't consume it) so the tint overlays the gradient precisely.
+    var gradient = c.createLinearGradient(x, y, x, y + h);
     gradient.addColorStop(0, THEME.color.bg.cardSoft);
     gradient.addColorStop(1, THEME.color.bg.card);
-    ctx.beginPath();
-    _addRoundRectSubPath(ctx, x, y, w, h, r);
-    ctx.fillStyle = gradient;
-    ctx.fill();
+    c.beginPath();
+    _addRoundRectSubPath(c, x, y, w, h, r);
+    c.fillStyle = gradient;
+    c.fill();
     if (this._panelTintFill) {
-      ctx.fillStyle = this._panelTintFill;
-      ctx.fill();
+      c.fillStyle = this._panelTintFill;
+      c.fill();
     }
 
-    // 3. Inset top bevel — thin bright horizontal line just inside the top rim.
-    ctx.save();
-    ctx.beginPath();
-    _addRoundRectSubPath(ctx, x, y, w, h, r);
-    ctx.clip();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
-    ctx.lineWidth = Math.max(1, cellSize * 0.03);
-    ctx.beginPath();
+    // Inset top bevel — thin bright horizontal line just inside the top rim.
+    c.save();
+    c.beginPath();
+    _addRoundRectSubPath(c, x, y, w, h, r);
+    c.clip();
+    c.strokeStyle = 'rgba(255, 255, 255, 0.14)';
+    c.lineWidth = Math.max(1, cellSize * 0.03);
+    c.beginPath();
     var bevelInset = Math.max(1, cellSize * 0.015);
-    ctx.moveTo(x + r * 0.5, y + bevelInset);
-    ctx.lineTo(x + w - r * 0.5, y + bevelInset);
-    ctx.stroke();
-    ctx.restore();
+    c.moveTo(x + r * 0.5, y + bevelInset);
+    c.lineTo(x + w - r * 0.5, y + bevelInset);
+    c.stroke();
+    c.restore();
 
-    // 4. Thin player-tinted rim stroke for identity.
-    ctx.save();
-    ctx.strokeStyle = this._panelStroke;
-    ctx.lineWidth = Math.max(1, cellSize * THEME.stroke.border * 0.6);
-    ctx.beginPath();
-    _addRoundRectSubPath(ctx, x, y, w, h, r);
-    ctx.stroke();
-    ctx.restore();
+    // Thin player-tinted rim stroke for identity.
+    c.strokeStyle = this._panelStroke;
+    c.lineWidth = Math.max(1, cellSize * THEME.stroke.border * 0.6);
+    c.beginPath();
+    _addRoundRectSubPath(c, x, y, w, h, r);
+    c.stroke();
   }
 
   drawGarbageMeter(pendingGarbage) {

@@ -316,9 +316,10 @@ class Animations {
    * @param {number} timestamp - DOMHighResTimeStamp from requestAnimationFrame
    */
   render(timestamp) {
-    const ctx = this.ctx;
-
-    for (const anim of this.active) {
+    var ctx = this.ctx;
+    var arr = this.active;
+    for (var i = 0; i < arr.length; i++) {
+      var anim = arr[i];
       if (anim.render) {
         anim.render(ctx, anim._progress ?? 0);
       }

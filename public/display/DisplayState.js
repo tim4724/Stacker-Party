@@ -242,15 +242,26 @@ function showScreen(name) {
     updatePlayerList();
   }
   if (welcomeBg) {
-    if (name === SCREEN.WELCOME || name === SCREEN.LOBBY) welcomeBg.start();
-    else welcomeBg.stop();
+    var bgCanvasEl = document.getElementById('bg-canvas');
+    if (name === SCREEN.WELCOME || name === SCREEN.LOBBY) {
+      if (bgCanvasEl) bgCanvasEl.classList.remove('hidden');
+      welcomeBg.start();
+    } else {
+      welcomeBg.stop();
+      // Drop the compositor layer during gameplay/results — RAF was already
+      // stopped, this removes the full-viewport layer from the GPU too.
+      if (bgCanvasEl) bgCanvasEl.classList.add('hidden');
+    }
   }
 }
 
 // --- Canvas Setup ---
 function initCanvas() {
   canvas = document.getElementById('game-canvas');
-  ctx = canvas.getContext('2d');
+  // alpha:false lets the browser skip the alpha blend on composite to screen.
+  // Safe because renderFrame starts every frame with an opaque bg.primary
+  // fillRect, so the canvas has no reason to be translucent.
+  ctx = canvas.getContext('2d', { alpha: false });
   resizeCanvas();
 }
 

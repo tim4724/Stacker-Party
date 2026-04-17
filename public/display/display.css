@@ -37,6 +37,10 @@ html, body {
   pointer-events: none;
 }
 
+/* Remove the full-viewport canvas from the compositor tree during gameplay —
+   RAF is already stopped, this drops the GPU layer too. */
+#bg-canvas.hidden { display: none; }
+
 #welcome-screen {
   background:
     radial-gradient(ellipse at 50% 30%, rgba(var(--accent-primary-rgb), 0.06) 0%, transparent 55%);
