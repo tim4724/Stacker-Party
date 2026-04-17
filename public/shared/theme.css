@@ -45,23 +45,14 @@
   --text-primary: #F7F1E8;
   --text-secondary: rgba(247, 241, 232, 0.65);
   --text-faint: rgba(247, 241, 232, 0.4);
-  --color-white: #ffffff;
-  --text-accent: rgba(var(--accent-secondary-rgb), 0.9);
 
   /* Semantic */
   --danger: #ff4444;
-  --garbage: #3A2F4A;                     /* plum-gray, in-palette */
   --border: rgba(255, 248, 236, 0.08);
   --border-strong: rgba(255, 248, 236, 0.16);
-  --border-glass: rgba(255, 255, 255, 0.15);
 
-  /* Medals — universal podium metaphor */
-  --medal-gold-rgb: 255, 209, 102;        /* aligned with honey slot */
-  --medal-gold: rgb(var(--medal-gold-rgb));
-  --medal-silver-rgb: 192, 192, 192;
-  --medal-silver: rgb(var(--medal-silver-rgb));
-  --medal-bronze-rgb: 205, 127, 50;
-  --medal-bronze: rgb(var(--medal-bronze-rgb));
+  /* Medal — results-row fallback when color-mix() is unsupported */
+  --medal-silver: rgb(192, 192, 192);
 
   /* Button text — Cocoa plum-dark. Every PARTY_PALETTE slot is bright
      enough that dark text out-contrasts white (and passes WCAG AA on
@@ -79,15 +70,6 @@
 
   /* Shadows */
   --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.32);
-
-  /* Opacities */
-  --opacity-faint: 0.04;
-  --opacity-tint: 0.06;
-  --opacity-subtle: 0.08;
-  --opacity-muted: 0.10;
-  --opacity-soft: 0.15;
-  --opacity-label: 0.6;
-  --opacity-overlay: 0.75;
 
   /* Transitions */
   --transition-fast: 0.15s ease;
@@ -319,6 +301,13 @@
   letter-spacing: 0.05em;
   color: var(--player-color, var(--text-primary));
 }
+
+/* Stop the body-level --player-color (set by applyHostTint for CTA tints)
+   from cascading into empty slots — otherwise their fallback branch would
+   pick up the host's color via inheritance. .empty overrides border/color
+   explicitly today so there's no visible bug, but this keeps the reset
+   defensive against future rules that read --player-color on empty cards. */
+.player-card.empty { --player-color: initial; }
 
 .gradient-title {
   font-family: 'Orbitron', sans-serif;

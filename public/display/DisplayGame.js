@@ -413,9 +413,7 @@ function onPieceLock(msg) {
   var idx = playerOrder.indexOf(msg.playerId);
   if (idx < 0 || !boardRenderers[idx]) return;
   var br = boardRenderers[idx];
-  var isNeon = br.styleTier === STYLE_TIERS.NEON_FLAT;
-  var colors = isNeon ? NEON_PIECE_COLORS : PIECE_COLORS;
-  var pieceColor = colors[msg.typeId] || '#ffffff';
+  var pieceColor = PIECE_COLORS[msg.typeId] || '#ffffff';
   animations.addHexLockFlash(br, msg.blocks, pieceColor);
 }
 
@@ -424,7 +422,7 @@ function onPlayerKO(msg) {
   var idx = playerOrder.indexOf(msg.playerId);
   if (idx < 0 || !boardRenderers[idx]) return;
   var br = boardRenderers[idx];
-  animations.addKO(br.x, br.y, br.boardWidth, br.boardHeight, br.cellSize);
+  animations.addKO(br.x, br.y, br.boardWidth, br.boardHeight, br.cellSize, br._bgOutlineVerts);
 }
 
 function onGameEnd(msg) {

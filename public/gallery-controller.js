@@ -159,7 +159,6 @@ Gallery.bindSelect(state, 'controller-device', 'controllerDevice', updateDims);
 Gallery.bindSelect(state, 'controller-orientation', 'controllerOrientation', updateDims);
 Gallery.bindCheckbox(state, 'controller-chrome', 'controllerBrowserChrome', updateDims);
 Gallery.bindNumber(state, 'player-count', 'players', 1, 8, render);
-Gallery.bindNumber(state, 'level', 'level', 1, 15, render);
 Gallery.bindSelect(state, 'language', 'lang', render);
 Gallery.bindSelect(state, 'cards-per-row', 'controllerCardsPerRow', updateLayout, function(v) { return parseInt(v, 10) || 8; });
 document.getElementById('reload-all').addEventListener('click', function() {

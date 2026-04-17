@@ -48,18 +48,6 @@ const PLAYER_COLORS = PARTY_PALETTE.slice();
 
 const PLAYER_NAMES = ['Player 1', 'Player 2', 'Player 3', 'Player 4', 'Player 5', 'Player 6', 'Player 7', 'Player 8'];
 
-// Neon piece colors — the unified palette is uniformly bright enough
-// (all slots have luminance ≥ 140) for the Lv 11+ neon-border render,
-// so no per-piece overrides are needed. Kept as a separate export for
-// call-site clarity and future tier-specific tuning.
-const NEON_PIECE_COLORS = Object.assign({}, PIECE_COLORS);
-
-// Neon ghost colors — computed from NEON_PIECE_COLORS
-var NEON_GHOST_COLORS = {};
-if (typeof ghostColor === 'function') {
-  for (var _n = 1; _n <= 9; _n++) NEON_GHOST_COLORS[_n] = ghostColor(NEON_PIECE_COLORS[_n]);
-}
-
 // Level-based style tiers
 const STYLE_TIERS = Object.freeze({
   NORMAL: 'normal',         // Lv 1–5
@@ -202,12 +190,11 @@ if (typeof module !== 'undefined' && module.exports) {
   };
   for (var _k = 1; _k <= 9; _k++) {
     if (!GHOST_COLORS[_k]) GHOST_COLORS[_k] = _gc(PIECE_COLORS[_k]);
-    if (!NEON_GHOST_COLORS[_k]) NEON_GHOST_COLORS[_k] = _gc(NEON_PIECE_COLORS[_k]);
   }
   module.exports = {
     THEME,
     PARTY_PALETTE,
-    PIECE_COLORS, GHOST_COLORS, NEON_PIECE_COLORS, NEON_GHOST_COLORS,
+    PIECE_COLORS, GHOST_COLORS,
     STYLE_TIERS, getStyleTier, PLAYER_COLORS, PLAYER_NAMES,
     rgbaFromHex
   };

@@ -9,11 +9,6 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes resultsBtnIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
 /* Anti-misclick gate for the results action row. pointer-events is a discrete
    property, so it flips at the end of the animation delay — clicks are blocked
    until the buttons have visibly appeared. */

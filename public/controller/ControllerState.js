@@ -74,6 +74,10 @@ function syncViewportLayout() {
     if (welcomeBg) {
       welcomeBg.resize(metrics.width, metrics.height);
     }
+    if (endScreenBg && currentScreen === 'end') {
+      var endRect = endScreenBgCanvas.getBoundingClientRect();
+      endScreenBg.resize(endRect.width, endRect.height);
+    }
     // iOS Safari doesn't support interactive-widget=resizes-content,
     // so the CSS media query won't fire. Use visualViewport as fallback.
     var isLandscape = metrics.width > metrics.height;
@@ -85,6 +89,8 @@ function syncViewportLayout() {
 // --- Background ---
 var bgCanvas = document.getElementById('bg-canvas');
 var welcomeBg = null;
+var endScreenBgCanvas = document.getElementById('end-screen-bg');
+var endScreenBg = null;
 if (bgCanvas && (function() {
   var p = new URLSearchParams(window.location.search);
   return p.get('test') !== '1' || p.get('bg') === '1';
@@ -93,6 +99,9 @@ if (bgCanvas && (function() {
   var metrics = getViewportMetrics();
   welcomeBg.resize(metrics.width, metrics.height);
   welcomeBg.start();
+  if (endScreenBgCanvas) {
+    endScreenBg = new WelcomeBackground(endScreenBgCanvas, 6);
+  }
 }
 window.addEventListener('resize', syncViewportLayout);
 if (window.visualViewport) {
@@ -162,6 +171,15 @@ function showScreen(name) {
     } else {
       welcomeBg.stop();
       bgCanvas.classList.add('hidden');
+    }
+  }
+  if (endScreenBg) {
+    if (name === 'end') {
+      var rect = endScreenBgCanvas.getBoundingClientRect();
+      endScreenBg.resize(rect.width, rect.height);
+      endScreenBg.start();
+    } else {
+      endScreenBg.stop();
     }
   }
 

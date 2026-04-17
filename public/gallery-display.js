@@ -225,7 +225,6 @@ function updateLayout() {
 
 Gallery.bindSelect(state, 'display-ar', 'displayAR', updateDims);
 Gallery.bindNumber(state, 'player-count', 'players', 1, 8, render);
-Gallery.bindNumber(state, 'level', 'level', 1, 15, render);
 Gallery.bindSelect(state, 'language', 'lang', render);
 Gallery.bindSelect(state, 'cards-per-row', 'displayCardsPerRow', updateLayout, function(v) { return parseInt(v, 10) || 5; });
 document.getElementById('reload-all').addEventListener('click', function() {

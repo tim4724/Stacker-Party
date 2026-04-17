@@ -237,6 +237,31 @@ if (bgCanvas && (urlParams.get('test') !== '1' || urlParams.get('bg') === '1')) 
   welcomeBg = new WelcomeBackground(bgCanvas);
   welcomeBg.resize(window.innerWidth, window.innerHeight);
   welcomeBg.start();
+
+  // End-screen falling pieces — only animate on mobile devices where the
+  // end-screen is actually visible (see display.css media query). Desktop
+  // users never see the end-screen, so there's no reason to burn RAF on it.
+  var endScreenBgCanvas = document.getElementById('end-screen-bg');
+  if (endScreenBgCanvas) {
+    var endScreenBg = new WelcomeBackground(endScreenBgCanvas, 6);
+    var endScreenMql = window.matchMedia(
+      '(max-width: 950px) and (pointer: coarse) and (hover: none),' +
+      '(max-height: 500px) and (pointer: coarse) and (hover: none)'
+    );
+    var syncEndScreenBg = function() {
+      if (!endScreenBgCanvas.isConnected) return;
+      if (endScreenMql.matches) {
+        var rect = endScreenBgCanvas.getBoundingClientRect();
+        endScreenBg.resize(rect.width, rect.height);
+        endScreenBg.start();
+      } else {
+        endScreenBg.stop();
+      }
+    };
+    syncEndScreenBg();
+    endScreenMql.addEventListener('change', syncEndScreenBg);
+    window.addEventListener('resize', syncEndScreenBg);
+  }
 }
 
 // --- Debug or normal init ---

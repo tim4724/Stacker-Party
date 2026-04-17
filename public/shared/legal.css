@@ -32,7 +32,7 @@ body {
   text-decoration: none;
   padding: 8px 12px;
   border-radius: 4px;
-  opacity: var(--opacity-label);
+  opacity: 0.6;
   transition: color var(--transition-fast), opacity var(--transition-fast);
 }
 
@@ -134,6 +134,6 @@ a:focus-visible {
   padding-top: 1rem;
   border-top: 1px solid var(--border);
   font-size: 14px;
-  opacity: var(--opacity-label);
+  opacity: 0.6;
   animation: fadeUp 0.5s 0.3s ease-out both;
 }

@@ -164,11 +164,10 @@ function renderFrame(timestamp) {
       // Test-only: draw extra ghost pieces if set
       if (window.__TEST__ && window.__TEST__._extraGhosts && window.__TEST__._extraGhosts[j]) {
         var br = boardRenderers[j];
-        var ghostColorSet = br.styleTier === STYLE_TIERS.NEON_FLAT ? NEON_GHOST_COLORS : GHOST_COLORS;
         var extras = window.__TEST__._extraGhosts[j];
         for (var eg = 0; eg < extras.length; eg++) {
           var ghost = extras[eg];
-          var gc = ghostColorSet[ghost.typeId] || { outline: 'rgba(255,255,255,0.12)', fill: 'rgba(255,255,255,0.06)' };
+          var gc = GHOST_COLORS[ghost.typeId] || { outline: 'rgba(255,255,255,0.12)', fill: 'rgba(255,255,255,0.06)' };
           if (ghost.blocks) {
             for (var bl = 0; bl < ghost.blocks.length; bl++) {
               var gbx = ghost.blocks[bl][0];

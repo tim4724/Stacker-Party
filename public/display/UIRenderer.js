@@ -313,21 +313,18 @@ class UIRenderer {
     var r = THEME.radius.panel(this.cellSize);
     var cellSize = this.cellSize;
 
-    // 1. Gradient fill.
+    // 1. Gradient fill + optional player-color wash — same path, re-fill
+    //    with the tint fillStyle after the gradient. fill() doesn't consume
+    //    the current path, so the second fill reuses it.
     var gradient = ctx.createLinearGradient(x, y, x, y + h);
     gradient.addColorStop(0, THEME.color.bg.cardSoft);
     gradient.addColorStop(1, THEME.color.bg.card);
-    ctx.fillStyle = gradient;
-
     ctx.beginPath();
     _addRoundRectSubPath(ctx, x, y, w, h, r);
+    ctx.fillStyle = gradient;
     ctx.fill();
-
-    // 2. Player-color wash for identity (very subtle, no shadow).
     if (this._panelTintFill) {
       ctx.fillStyle = this._panelTintFill;
-      ctx.beginPath();
-      _addRoundRectSubPath(ctx, x, y, w, h, r);
       ctx.fill();
     }
 
@@ -473,8 +470,7 @@ class UIRenderer {
     var bounds = HEX_MINI_BOUNDS[pieceType];
     if (!bounds) return;
     var typeId = HEX_TYPE_TO_ID[pieceType];
-    var isNeon = this._styleTier === STYLE_TIERS.NEON_FLAT;
-    var color = (isNeon ? NEON_PIECE_COLORS[typeId] : PIECE_COLORS[typeId]) || '#ffffff';
+    var color = PIECE_COLORS[typeId] || '#ffffff';
 
     var hexS = size * 0.58;
     var drawS = hexS * (1 - THEME.size.blockGap * 2);

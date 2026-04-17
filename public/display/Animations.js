@@ -237,10 +237,11 @@ class Animations {
     });
   }
 
-  addKO(boardX, boardY, boardWidth, boardHeight, cellSize) {
+  addKO(boardX, boardY, boardWidth, boardHeight, cellSize, outlineVerts) {
     const duration = THEME.timing.ko;
 
-    // Red flash
+    // Red flash — clipped to the zigzag hex outline so the fill matches the
+    // board shape rather than the rectangular bounding box.
     this.active.push({
       type: 'ko',
       startTime: performance.now(),
@@ -249,20 +250,32 @@ class Animations {
       boardY,
       boardWidth,
       boardHeight,
+      outlineVerts,
       render(ctx, progress) {
+        var fill, alpha;
         if (progress < 0.15) {
-          // Initial white flash
-          ctx.globalAlpha = (1 - progress / 0.15) * 0.7;
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(this.boardX, this.boardY, this.boardWidth, this.boardHeight);
-          ctx.globalAlpha = 1;
+          fill = '#ffffff';
+          alpha = (1 - progress / 0.15) * 0.7;
         } else if (progress < 0.4) {
-          // Red vignette
-          ctx.globalAlpha = ((0.4 - progress) / 0.25) * 0.4;
-          ctx.fillStyle = '#ff0000';
-          ctx.fillRect(this.boardX, this.boardY, this.boardWidth, this.boardHeight);
-          ctx.globalAlpha = 1;
+          fill = '#ff0000';
+          alpha = ((0.4 - progress) / 0.25) * 0.4;
+        } else {
+          return;
         }
+        ctx.save();
+        if (this.outlineVerts && this.outlineVerts.length) {
+          ctx.beginPath();
+          ctx.moveTo(this.outlineVerts[0][0], this.outlineVerts[0][1]);
+          for (var i = 1; i < this.outlineVerts.length; i++) {
+            ctx.lineTo(this.outlineVerts[i][0], this.outlineVerts[i][1]);
+          }
+          ctx.closePath();
+          ctx.clip();
+        }
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = fill;
+        ctx.fillRect(this.boardX, this.boardY, this.boardWidth, this.boardHeight);
+        ctx.restore();
       }
     });
 

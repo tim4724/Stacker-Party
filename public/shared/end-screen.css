@@ -25,24 +25,36 @@
   justify-content: center; /* fallback for iOS < 16 */
   justify-content: safe center;
   gap: clamp(18px, 3.5vh, 32px);
-  /* Fully opaque so the end-screen matches the other controller screens
-     and the OS system nav-bar color sampling stays consistent.
-     (Earlier iteration was translucent to let #bg-canvas falling pieces
-     show through — reverted because it caused a nav-bar color mismatch.) */
+  /* Fully opaque so the safe-area strips (status bar, home indicator) stay
+     a consistent solid color for OS nav-bar sampling. Falling-piece motion
+     is layered on top via the inner .end-screen__bg canvas, which sits
+     inside the padding box so the edges themselves stay flat. */
   background:
     radial-gradient(ellipse at 50% 25%, rgba(var(--accent-primary-rgb), 0.08) 0%, transparent 55%),
     radial-gradient(ellipse at 50% 80%, rgba(var(--accent-secondary-rgb), 0.05) 0%, transparent 55%),
     var(--bg-primary);
   text-align: center;
   padding:
-    clamp(20px, 4vh, 40px)
+    calc(clamp(20px, 4vh, 40px) + env(safe-area-inset-top))
     0.75rem
     calc(48px + env(safe-area-inset-bottom)); /* reserve space for absolute .end-legal */
-  padding-top: calc(clamp(20px, 4vh, 40px) + env(safe-area-inset-top));
   overflow-y: auto;
 }
 
 .end-screen.hidden { display: none; }
+
+/* Falling-piece animation — layered above the solid background but below
+   the content. position: absolute keeps it inside the padding box so the
+   safe-area edges (status bar / home indicator) stay flat-colored for OS
+   nav-bar sampling. Width/height are set in JS via WelcomeBackground. */
+.end-screen__bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  pointer-events: none;
+}
 
 /* While end-screen is overlaid, hide the underlying DOM screens so the
    translucent background doesn't leak welcome/lobby/game UI through.

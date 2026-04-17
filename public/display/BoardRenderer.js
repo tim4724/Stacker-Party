@@ -140,7 +140,6 @@ class BoardRenderer {
     return oc;
   }
 
-  get styleTier() { return this._styleTier; }
   get hexW() { return 2 * this.hexSize; }
 
   // Pixel center of hex at (col, row) in visible coordinates.
@@ -192,10 +191,6 @@ class BoardRenderer {
     var hs = this.hexSize;
     var newTier = getStyleTier(playerState.level || 1);
     this._styleTier = newTier;
-    var isNeon = newTier === STYLE_TIERS.NEON_FLAT;
-    var colors = isNeon ? NEON_PIECE_COLORS : PIECE_COLORS;
-    var ghostColors = isNeon ? NEON_GHOST_COLORS : GHOST_COLORS;
-
     var sCell = this._sCell;
 
     // 1. Flat board background fill behind the hex outline.
@@ -225,7 +220,7 @@ class BoardRenderer {
     if (playerState.grid) {
       var gv = playerState.gridVersion ?? -1;
       if (gv !== this._cachedGridVersion || newTier !== this._cachedGridTier) {
-        this._renderGridToCache(playerState.grid, colors, sCell);
+        this._renderGridToCache(playerState.grid, PIECE_COLORS, sCell);
         this._cachedGridVersion = gv;
         this._cachedGridTier = newTier;
       }
@@ -238,7 +233,7 @@ class BoardRenderer {
     // Ghost piece
     if (playerState.ghost && playerState.currentPiece && playerState.alive !== false) {
       var ghost = playerState.ghost;
-      var gc = ghostColors[playerState.currentPiece.typeId] || { outline: 'rgba(255,255,255,0.12)', fill: 'rgba(255,255,255,0.06)' };
+      var gc = GHOST_COLORS[playerState.currentPiece.typeId] || { outline: 'rgba(255,255,255,0.12)', fill: 'rgba(255,255,255,0.06)' };
       if (ghost.blocks) {
         for (var gi = 0; gi < ghost.blocks.length; gi++) {
           var gb = ghost.blocks[gi];
@@ -309,7 +304,7 @@ class BoardRenderer {
     // Current piece
     if (playerState.currentPiece && playerState.alive !== false) {
       var piece = playerState.currentPiece;
-      var pieceColor = colors[piece.typeId] || '#ffffff';
+      var pieceColor = PIECE_COLORS[piece.typeId] || '#ffffff';
       if (piece.blocks) {
         for (var pbi = 0; pbi < piece.blocks.length; pbi++) {
           var pb = piece.blocks[pbi];
