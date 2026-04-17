@@ -133,6 +133,10 @@
 #play-again-btn,
 #reconnect-btn,
 #reconnect-rejoin-btn {
+  /* Two-declaration fallback: pre-color-mix browsers use the solid host
+     color; modern engines use the gradient. Same pattern as #touch-pad
+     in controller.css. */
+  background: var(--player-color, var(--accent-primary));
   background: linear-gradient(
     180deg,
     var(--player-color, var(--accent-primary)) 0%,
