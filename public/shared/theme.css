@@ -93,6 +93,7 @@
   border-radius: var(--radius-md);
   font-family: 'Orbitron', sans-serif;
   font-weight: 700;
+  text-transform: uppercase;
   cursor: pointer;
   transition: transform var(--transition-fast), filter var(--transition-fast);
 }
