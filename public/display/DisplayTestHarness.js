@@ -220,14 +220,16 @@ function initScenario(opts) {
     state.players[0].gridVersion = 0;
     _delayTrigger(function() {
       _fireLineClear(0, 2);
-      // After the animation's peak, zero the cells + bump gridVersion so the
-      // BoardRenderer cache invalidates and the rows visibly vanish.
+      // Zero cells + bump gridVersion after the engine's own clear delay,
+      // so BoardRenderer cache invalidates and rows visibly vanish just like
+      // in a real game. Tied to engine timing via GameConstants so it tracks
+      // any future tweak.
       setTimeout(function() {
         for (var r2 = HV_lc - 2; r2 < HV_lc; r2++) {
           for (var c2 = 0; c2 < HC_lc; c2++) state.players[0].grid[r2][c2] = 0;
         }
         state.players[0].gridVersion++;
-      }, 400);
+      }, GameConstants.LINE_CLEAR_DELAY_MS);
     });
     return;
   }

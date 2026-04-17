@@ -38,11 +38,6 @@ input[type="number"] { width: 56px; }
 select:hover, button.ctrl:hover, button.card-btn:hover { background: #1e1e42; border-color: rgba(255,255,255,0.26); }
 
 section.rail { padding: 20px 20px 8px; }
-section.rail > h2 {
-  font-size: 12px; text-transform: uppercase; letter-spacing: 0.12em; color: #aaa;
-  margin-bottom: 14px; padding-bottom: 8px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-}
 
 /* Controller scenarios: one row per scenario, 8 player colors horizontally */
 .scenario-row { margin-bottom: 22px; }
