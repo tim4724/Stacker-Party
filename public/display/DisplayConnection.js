@@ -112,6 +112,8 @@ function onRoomCreated(partyRoomCode) {
   applyRoomCreated(partyRoomCode, newJoinUrl);
 }
 
+var _copyTimer = null;
+
 function applyRoomCreated(partyRoomCode, newJoinUrl) {
   roomCode = partyRoomCode;
   lastRoomCode = partyRoomCode;
@@ -146,8 +148,8 @@ function applyRoomCreated(partyRoomCode, newJoinUrl) {
     var showCopiedToast = function() {
       joinUrlEl.setAttribute('data-copied-label', t('copied') || 'Copied');
       joinUrlEl.setAttribute('data-copied', '1');
-      clearTimeout(joinUrlEl._copyTimer);
-      joinUrlEl._copyTimer = setTimeout(function() {
+      clearTimeout(_copyTimer);
+      _copyTimer = setTimeout(function() {
         joinUrlEl.removeAttribute('data-copied');
       }, 1600);
     };

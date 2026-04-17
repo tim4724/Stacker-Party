@@ -25,17 +25,11 @@ var HOST_VARIANT_OVERLAYS = [
 ];
 var HOST_VARIANT_COUNT = 4;
 
-// Gameplay scenarios — shown once per style tier so normal/pillow/neon
-// differences are visible side-by-side.
-var TIER_SCENARIOS = [
-  { key: 'playing',        title: 'Playing' },
-  { key: 'line-clear',     title: 'Line clear', animated: true },
-  { key: 'garbage-add',    title: 'Garbage incoming', animated: true },
-  { key: 'garbage-defend', title: 'Garbage defended', animated: true },
-  { key: 'ko',             title: 'All players KO', animated: true }
-];
-
-// Style tiers (see theme.js getStyleTier): level→tier mapping.
+// The gameplay "Game" preview fires line clear / garbage-in / garbage-defend
+// / KO across boards 1–4 of a single tile so all four animations land
+// together. Rendered once per style tier (see theme.js getStyleTier) side
+// by side in one row. Needs ≥4 players.
+var GAME_SCENARIO = { key: 'effects-combo', title: 'Game', animated: true, minPlayers: 4 };
 var TIERS = [
   { label: 'Normal (Lv 1)',  level: 1 },
   { label: 'Pillow (Lv 8)',  level: 8 },
@@ -72,13 +66,24 @@ function hostVariantURL(s, hostIdx) {
 }
 
 function buildRow(label, scenarios, levelOverride) {
+  // Filter out scenarios that need more players than are currently selected
+  // (e.g. the 4-board effects combo). Returns null if nothing is left so the
+  // caller can skip the row entirely rather than render an empty header.
+  var filtered = [];
+  for (var fi = 0; fi < scenarios.length; fi++) {
+    var fs = scenarios[fi];
+    if (fs.minPlayers && state.players < fs.minPlayers) continue;
+    filtered.push(fs);
+  }
+  if (!filtered.length) return null;
+
   var row = document.createElement('div');
   row.className = 'scenario-row';
 
   var h = document.createElement('h3');
   var title = document.createElement('span'); title.textContent = label;
   var meta = document.createElement('span'); meta.className = 'row-meta';
-  meta.textContent = scenarios.length + ' screen' + (scenarios.length === 1 ? '' : 's');
+  meta.textContent = filtered.length + ' screen' + (filtered.length === 1 ? '' : 's');
   h.appendChild(title); h.appendChild(meta);
   row.appendChild(h);
 
@@ -87,14 +92,51 @@ function buildRow(label, scenarios, levelOverride) {
   strip.style.setProperty('--row-cols', state.displayCardsPerRow);
 
   var cards = [];
-  for (var i = 0; i < scenarios.length; i++) {
-    var s = scenarios[i];
+  for (var i = 0; i < filtered.length; i++) {
+    var s = filtered[i];
     var card = Gallery.makeCard({
       title: s.title,
       tag: s.animated ? 'anim' : (s.staticPath ? 'static' : ''),
       frameClass: frameClass(),
       logical: dims(),
       url: scenarioURL(s, levelOverride)
+    });
+    strip.appendChild(card);
+    cards.push(card);
+  }
+  row.appendChild(strip);
+  return { row: row, cards: cards };
+}
+
+// Row that renders one scenario across every style tier — one card per
+// tier, titled by the tier label. Returns null when the scenario's
+// minPlayers gate fails so the whole row (header + strip) is dropped.
+function buildTierRow(label, scenario) {
+  if (scenario.minPlayers && state.players < scenario.minPlayers) return null;
+
+  var row = document.createElement('div');
+  row.className = 'scenario-row';
+
+  var h = document.createElement('h3');
+  var title = document.createElement('span'); title.textContent = label;
+  var meta = document.createElement('span'); meta.className = 'row-meta';
+  meta.textContent = TIERS.length + ' style tier' + (TIERS.length === 1 ? '' : 's');
+  h.appendChild(title); h.appendChild(meta);
+  row.appendChild(h);
+
+  var strip = document.createElement('div');
+  strip.className = 'scenario-strip wrap';
+  strip.style.setProperty('--row-cols', state.displayCardsPerRow);
+
+  var cards = [];
+  for (var i = 0; i < TIERS.length; i++) {
+    var t = TIERS[i];
+    var card = Gallery.makeCard({
+      title: t.label,
+      tag: scenario.animated ? 'anim' : '',
+      frameClass: frameClass(),
+      logical: dims(),
+      url: scenarioURL(scenario, t.level)
     });
     strip.appendChild(card);
     cards.push(card);
@@ -149,6 +191,7 @@ function render() {
 
   allCards = [];
   function add(built) {
+    if (!built) return; // buildRow returns null when every scenario was filtered out
     host.appendChild(built.row);
     allCards = allCards.concat(built.cards);
   }
@@ -157,9 +200,7 @@ function render() {
     add(buildHostVariantRow(HOST_VARIANT_SCENARIOS[h]));
   }
   add(buildRow('Screens', SCREENS));
-  for (var i = 0; i < TIERS.length; i++) {
-    add(buildRow('Style · ' + TIERS[i].label, TIER_SCENARIOS, TIERS[i].level));
-  }
+  add(buildTierRow('Game', GAME_SCENARIO));
   for (var o = 0; o < HOST_VARIANT_OVERLAYS.length; o++) {
     add(buildHostVariantRow(HOST_VARIANT_OVERLAYS[o]));
   }

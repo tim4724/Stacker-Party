@@ -104,6 +104,22 @@ function hexPath(ctx, cx, cy, size) {
   ctx.closePath();
 }
 
+// Rounded-corner flat-top hex path. `radius` is the corner arc radius.
+// Starts at the midpoint of the V5→V0 edge so the first arcTo has a valid tangent.
+function hexPathRounded(ctx, cx, cy, size, radius) {
+  if (radius <= 0) { hexPath(ctx, cx, cy, size); return; }
+  var V = HEX_UNIT_VERTICES;
+  ctx.beginPath();
+  ctx.moveTo(cx + size * (V[10] + V[0]) / 2, cy + size * (V[11] + V[1]) / 2);
+  for (var i = 0; i < 6; i++) {
+    var a = (i * 2) % 12;
+    var b = ((i + 1) * 2) % 12;
+    ctx.arcTo(cx + size * V[a], cy + size * V[a + 1],
+              cx + size * V[b], cy + size * V[b + 1], radius);
+  }
+  ctx.closePath();
+}
+
 // Compute ghost-piece colors from any hex piece color.
 // Lightens dark channels for visibility on dark backgrounds, with alpha
 // scaled by luminance (darker pieces get higher alpha).
@@ -129,81 +145,18 @@ function ghostColor(hex) {
 }
 
 // ============================================================
-// Offscreen block stamp cache — pre-renders each (tier, color,
-// cellSize) block to a small canvas so the main render loop
-// can blit with a single drawImage() call.
-// Stamps are rendered at devicePixelRatio resolution for crisp
-// display on high-DPI screens.
+// Hex stamp cache — pre-renders each (tier, color, size) hex
+// to an offscreen canvas for single drawImage() blits.
+// Rendered at devicePixelRatio resolution for crisp display.
+// size = drawn cell height.
 // ============================================================
 var _stampCache = new Map();
 var _stampDpr = (typeof window !== 'undefined' ? window.devicePixelRatio : 1) || 1;
-
-function _createStampCanvas(size) {
-  var px = Math.ceil(size * _stampDpr);
-  var oc;
-  if (typeof OffscreenCanvas !== 'undefined') oc = new OffscreenCanvas(px, px);
-  else { oc = document.createElement('canvas'); oc.width = px; oc.height = px; }
-  oc.cssW = size;
-  oc.cssH = size;
-  return oc;
-}
-
-function getBlockStamp(tier, color, cellSize) {
-  var size = Math.round(cellSize);
-  var key = tier + '_' + color + '_' + size + '_' + _stampDpr;
-  var stamp = _stampCache.get(key);
-  if (stamp) return stamp;
-  var inset = size * THEME.size.blockGap;
-  var s = size - inset * 2;
-  var r = THEME.radius.block(size);
-  var oc = _createStampCanvas(size);
-  var c = oc.getContext('2d');
-  c.setTransform(_stampDpr, 0, 0, _stampDpr, 0, 0);
-
-  if (tier === STYLE_TIERS.PILLOW) {
-    _stampPillow(c, size, inset, s, r, color);
-  } else if (tier === STYLE_TIERS.NEON_FLAT) {
-    _stampNeonFlat(c, size, inset, s, r, color);
-  } else {
-    _stampNormal(c, size, inset, s, r, color);
-  }
-
-  _stampCache.set(key, oc);
-  return oc;
-}
-
-function getGarbageStamp(cellSize) {
-  var size = Math.round(cellSize);
-  var key = 'g_' + size + '_' + _stampDpr;
-  var stamp = _stampCache.get(key);
-  if (stamp) return stamp;
-  var inset = size * THEME.size.blockGap;
-  var s = size - inset * 2;
-  var r = THEME.radius.block(size);
-  var oc = _createStampCanvas(size);
-  var c = oc.getContext('2d');
-  c.setTransform(_stampDpr, 0, 0, _stampDpr, 0, 0);
-
-  c.fillStyle = THEME.color.garbage;
-  roundRect(c, inset, inset, s, s, r);
-  c.fill();
-  c.fillStyle = 'rgba(255, 255, 255, ' + THEME.opacity.faint + ')';
-  c.fillRect(inset * 2, inset * 2, s - inset * 2, inset);
-
-  _stampCache.set(key, oc);
-  return oc;
-}
 
 function clearStampCache() {
   _stampDpr = (typeof window !== 'undefined' ? window.devicePixelRatio : 1) || 1;
   _stampCache.clear();
 }
-
-// ============================================================
-// Hex stamp cache — pre-renders each (tier, color, height)
-// hexagon to an offscreen canvas for single drawImage() blits.
-// size = drawn height (matches square cellSize for proportions).
-// ============================================================
 
 function getHexStamp(tier, color, size) {
   var sizeKey = Math.round(size * 10);
@@ -211,8 +164,11 @@ function getHexStamp(tier, color, size) {
   var stamp = _stampCache.get(key);
   if (stamp) return stamp;
   var cr = size / _SQRT3;  // circumradius for hex path
-  var w = Math.ceil(2 * cr) + 2;   // +2 for stroke bleed
-  var h = Math.ceil(size) + 2;
+  // Pad enough for the widest stroke any tier draws (NEON_FLAT bw = size*0.08,
+  // half-stroke bleeds outside the path). +1 extra for sub-pixel safety.
+  var pad = Math.max(2, Math.ceil(size * 0.04) + 1);
+  var w = Math.ceil(2 * cr) + pad * 2;
+  var h = Math.ceil(size) + pad * 2;
   var pw = Math.ceil(w * _stampDpr);
   var ph = Math.ceil(h * _stampDpr);
   var oc;
@@ -222,7 +178,7 @@ function getHexStamp(tier, color, size) {
   oc.cssH = h;
   var c = oc.getContext('2d');
   c.setTransform(_stampDpr, 0, 0, _stampDpr, 0, 0);
-  var cx = cr + 1, cy = h / 2;  // +1 for stroke padding
+  var cx = cr + pad, cy = h / 2;
 
   if (tier === STYLE_TIERS.PILLOW) {
     _stampHexPillow(c, cx, cy, cr, size, color);
@@ -248,51 +204,46 @@ function _stampHexNormal(c, cx, cy, cr, size, color) {
   c.fill();
   c.fillStyle = 'rgba(255,255,255,' + THEME.opacity.highlight + ')';
   c.fillRect(cx - cr * 0.5, cy - cr * 0.88, cr, size * 0.08);
-  c.fillStyle = 'rgba(255,255,255,' + THEME.opacity.muted + ')';
-  c.fillRect(cx - cr * 0.9, cy - cr * 0.5, size * 0.07, cr);
   c.fillStyle = 'rgba(0,0,0,' + THEME.opacity.shadow + ')';
   c.fillRect(cx - cr * 0.5, cy + cr * 0.76, cr, size * 0.08);
   c.fillStyle = 'rgba(255,255,255,' + THEME.opacity.subtle + ')';
-  var sh = size * 0.25;
-  c.fillRect(cx - cr * 0.25, cy - cr * 0.4, sh, sh * 0.5);
+  var sh = size * 0.35;
+  c.fillRect(cx - cr * 0.35, cy - cr * 0.5, sh, sh * 0.36);
   c.restore();
 }
 
 function _stampHexPillow(c, cx, cy, cr, size, color) {
-  hexPath(c, cx, cy, cr);
+  var cornerR = cr * 0.15;
+  var lineInset = cornerR / _SQRT3;  // pull highlight/shadow lines inside the rounded corner
+  hexPathRounded(c, cx, cy, cr, cornerR);
   c.fillStyle = color;
   c.fill();
-  var rgb = hexToRgb(color);
-  var lum = rgb ? (rgb.r * 0.299 + rgb.g * 0.587 + rgb.b * 0.114) / 255 : 0.5;
-  var hiAlpha = 0.14 + lum * 0.46;
-  hexPath(c, cx, cy, cr);
+  hexPathRounded(c, cx, cy, cr, cornerR);
   c.save();
   c.clip();
-  var g = c.createRadialGradient(cx - cr * 0.05, cy - cr * 0.1, 0, cx, cy, cr * 0.9);
-  g.addColorStop(0, 'rgba(255,255,255,' + hiAlpha.toFixed(2) + ')');
-  g.addColorStop(0.6, 'rgba(255,255,255,0.03)');
-  g.addColorStop(1, 'rgba(0,0,0,0.2)');
+  var g = c.createRadialGradient(cx - cr * 0.05, cy - cr * 0.1, 0, cx, cy, cr * 1.1);
+  g.addColorStop(0, 'rgba(255,255,255,0.3)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
   c.fillStyle = g;
   c.fill();
   c.restore();
-  var edgeAlpha = 0.12 + lum * 0.38;
-  c.strokeStyle = 'rgba(255,255,255,' + edgeAlpha.toFixed(2) + ')';
+  c.strokeStyle = 'rgba(255,255,255,0.3)';
   c.lineWidth = Math.max(0.5, size * 0.04);
   c.beginPath();
-  c.moveTo(cx + cr * HEX_UNIT_VERTICES[8], cy + cr * HEX_UNIT_VERTICES[9]);
-  c.lineTo(cx + cr * HEX_UNIT_VERTICES[10], cy + cr * HEX_UNIT_VERTICES[11]);
+  c.moveTo(cx + cr * HEX_UNIT_VERTICES[8] + lineInset, cy + cr * HEX_UNIT_VERTICES[9]);
+  c.lineTo(cx + cr * HEX_UNIT_VERTICES[10] - lineInset, cy + cr * HEX_UNIT_VERTICES[11]);
   c.stroke();
   c.strokeStyle = 'rgba(0,0,0,0.25)';
   c.beginPath();
-  c.moveTo(cx + cr * HEX_UNIT_VERTICES[2], cy + cr * HEX_UNIT_VERTICES[3]);
-  c.lineTo(cx + cr * HEX_UNIT_VERTICES[4], cy + cr * HEX_UNIT_VERTICES[5]);
+  c.moveTo(cx + cr * HEX_UNIT_VERTICES[2] - lineInset, cy + cr * HEX_UNIT_VERTICES[3]);
+  c.lineTo(cx + cr * HEX_UNIT_VERTICES[4] + lineInset, cy + cr * HEX_UNIT_VERTICES[5]);
   c.stroke();
 }
 
 function _stampHexNeonFlat(c, cx, cy, cr, size, color) {
   var rgb = hexToRgb(color);
   if (!rgb) return;
-  var darkFill = 'rgba(' + (rgb.r * 0.2 | 0) + ',' + (rgb.g * 0.2 | 0) + ',' + (rgb.b * 0.2 | 0) + ',0.92)';
+  var darkFill = 'rgb(' + (rgb.r * 0.3 | 0) + ',' + (rgb.g * 0.3 | 0) + ',' + (rgb.b * 0.3 | 0) + ')';
   hexPath(c, cx, cy, cr);
   c.fillStyle = darkFill;
   c.fill();
@@ -302,85 +253,14 @@ function _stampHexNeonFlat(c, cx, cy, cr, size, color) {
   hexPath(c, cx, cy, cr);
   c.stroke();
   var insetScale = 1 - bw / cr;
-  c.globalAlpha = 0.25;
+  c.globalAlpha = 0.45;
   c.beginPath();
   c.moveTo(cx + cr * insetScale * HEX_UNIT_VERTICES[8], cy + cr * insetScale * HEX_UNIT_VERTICES[9]);
   c.lineTo(cx + cr * insetScale * HEX_UNIT_VERTICES[10], cy + cr * insetScale * HEX_UNIT_VERTICES[11]);
-  c.strokeStyle = '#fff';
-  c.lineWidth = Math.max(0.5, size * 0.025);
+  c.strokeStyle = lightenColor(color, 20);
+  c.lineWidth = Math.max(0.5, size * 0.032);
   c.stroke();
   c.globalAlpha = 1;
-}
-
-// --- Square stamp drawing helpers (draw at 0,0 on offscreen context) ---
-
-function _stampNormal(c, size, inset, s, r, color) {
-  var g = c.createLinearGradient(0, 0, 0, size);
-  g.addColorStop(0, lightenColor(color, 15));
-  g.addColorStop(1, darkenColor(color, 10));
-  c.fillStyle = g;
-  roundRect(c, inset, inset, s, s, r);
-  c.fill();
-  c.fillStyle = 'rgba(255, 255, 255, ' + THEME.opacity.highlight + ')';
-  c.fillRect(inset + r, inset, s - r * 2, size * 0.08);
-  c.fillStyle = 'rgba(255, 255, 255, ' + THEME.opacity.muted + ')';
-  c.fillRect(inset, inset + r, size * 0.07, s - r * 2);
-  c.fillStyle = 'rgba(0, 0, 0, ' + THEME.opacity.shadow + ')';
-  c.fillRect(inset + r, size - inset - size * 0.08, s - r * 2, size * 0.08);
-  c.fillStyle = 'rgba(255, 255, 255, ' + THEME.opacity.subtle + ')';
-  var sh = size * 0.25;
-  c.fillRect(size * 0.25, size * 0.2, sh, sh * 0.5);
-}
-
-function _stampPillow(c, size, inset, s, r, color) {
-  c.fillStyle = color;
-  roundRect(c, inset, inset, s, s, r);
-  c.fill();
-  // Scale highlight/shadow intensity by luminance — dark colors (blue) get softer
-  // highlights to avoid looking blown out compared to bright colors (yellow, cyan).
-  var rgb = hexToRgb(color);
-  var lum = rgb ? (rgb.r * 0.299 + rgb.g * 0.587 + rgb.b * 0.114) / 255 : 0.5;
-  var hiAlpha = 0.14 + lum * 0.46;   // dark ~0.14, bright ~0.60
-  var edgeAlpha = 0.12 + lum * 0.38; // dark ~0.12, bright ~0.50
-  var half = size / 2;
-  var g = c.createRadialGradient(half * 0.9, half * 0.8, 0, half, half, size * 0.65);
-  g.addColorStop(0, 'rgba(255, 255, 255, ' + hiAlpha.toFixed(2) + ')');
-  g.addColorStop(0.6, 'rgba(255, 255, 255, 0.03)');
-  g.addColorStop(1, 'rgba(0, 0, 0, 0.2)');
-  c.fillStyle = g;
-  roundRect(c, inset, inset, s, s, r);
-  c.fill();
-  c.strokeStyle = 'rgba(255, 255, 255, ' + edgeAlpha.toFixed(2) + ')';
-  c.lineWidth = Math.max(0.5, size * 0.04);
-  c.beginPath();
-  c.moveTo(inset + r, inset + size * 0.015);
-  c.lineTo(inset + s - r, inset + size * 0.015);
-  c.stroke();
-  c.strokeStyle = 'rgba(0, 0, 0, 0.25)';
-  c.beginPath();
-  c.moveTo(inset + r, inset + s - size * 0.015);
-  c.lineTo(inset + s - r, inset + s - size * 0.015);
-  c.stroke();
-}
-
-function _stampNeonFlat(c, size, inset, s, r, color) {
-  var rgb = hexToRgb(color);
-  if (!rgb) return;
-  var bw = Math.max(1, size * 0.08);
-  var half = bw / 2;
-  c.fillStyle = 'rgba(' + (rgb.r * 0.2 | 0) + ',' + (rgb.g * 0.2 | 0) + ',' + (rgb.b * 0.2 | 0) + ',0.92)';
-  roundRect(c, inset, inset, s, s, r);
-  c.fill();
-  c.strokeStyle = color;
-  c.lineWidth = bw;
-  roundRect(c, inset + half, inset + half, s - bw, s - bw, r);
-  c.stroke();
-  c.strokeStyle = 'rgba(255, 255, 255, 0.25)';
-  c.lineWidth = Math.max(0.5, size * 0.025);
-  c.beginPath();
-  c.moveTo(inset + r + bw, inset + bw);
-  c.lineTo(size - inset - r - bw, inset + bw);
-  c.stroke();
 }
 
 // Shared font detection — returns the preferred display font family string.

@@ -290,6 +290,61 @@ function initScenario(opts) {
     });
     return;
   }
+  if (scenario === 'effects-combo') {
+    // Gallery combo: boards 0–3 each demonstrate one effect at once so a
+    // single preview tile covers line-clear / garbage-in / defend / KO.
+    // Gated to players>=4 by the gallery, but guard anyway.
+    if (state.players.length < 4) return;
+
+    var HC_c = GameConstants.COLS;
+    var HV_c = GameConstants.VISIBLE_ROWS;
+    var types_c = GameConstants.PIECE_TYPES;
+
+    // Board 0 — line clear: wipe the stack and fill two bottom rows so the
+    // clear is the only thing that moves.
+    for (var rClean = 0; rClean < HV_c; rClean++) {
+      for (var cClean = 0; cClean < HC_c; cClean++) {
+        state.players[0].grid[rClean][cClean] = 0;
+      }
+    }
+    for (var lr = HV_c - 2; lr < HV_c; lr++) {
+      for (var lc = 0; lc < HC_c; lc++) {
+        state.players[0].grid[lr][lc] = ((lc + lr) % types_c.length) + 1;
+      }
+    }
+    state.players[0].gridVersion = 0;
+
+    // Board 1 — incoming garbage: reset pending so the indicator animates
+    // from zero and the post-animation meter reads cleanly.
+    state.players[1].pendingGarbage = 0;
+    // Board 2 — garbage defended: seed pending so onGarbageCancelled has
+    // something to cancel.
+    state.players[2].pendingGarbage = 3;
+
+    _delayTrigger(function() {
+      _fireLineClear(0, 2);
+      setTimeout(function() {
+        for (var r2 = HV_c - 2; r2 < HV_c; r2++) {
+          for (var c2 = 0; c2 < HC_c; c2++) state.players[0].grid[r2][c2] = 0;
+        }
+        state.players[0].gridVersion++;
+      }, GameConstants.LINE_CLEAR_DELAY_MS);
+
+      onGarbageSent({
+        toId: debugPlayers[1].id,
+        senderId: debugPlayers[2].id,
+        lines: 3
+      });
+      state.players[1].pendingGarbage = 3;
+
+      onGarbageCancelled({ playerId: debugPlayers[2].id, lines: 2 });
+      state.players[2].pendingGarbage = 1;
+
+      window.__TEST__.injectKO(debugPlayers[3].id);
+      state.players[3].alive = false;
+    });
+    return;
+  }
   if (scenario === 'reconnecting') {
     reconnectOverlay.classList.remove('hidden');
     reconnectHeading.textContent = t('reconnecting');
