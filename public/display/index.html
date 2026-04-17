@@ -3,16 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1E1A2B">
   <title>HexStacker Party</title>
   <meta name="description" content="Multiplayer hex stacker — play on your TV, control with your phone.">
   <meta property="og:title" content="HexStacker Party">
   <meta property="og:description" content="Multiplayer hex stacker — play on your TV, control with your phone.">
-  <meta property="og:image" content="https://hexstackerparty.com/social-preview.png">
+  <meta property="og:image" content="https://hexstackerparty.com/artwork/social-preview.png">
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="HexStacker Party">
   <meta name="twitter:description" content="Multiplayer hex stacker — play on your TV, control with your phone.">
-  <meta name="twitter:image" content="https://hexstackerparty.com/social-preview.png">
+  <meta name="twitter:image" content="https://hexstackerparty.com/artwork/social-preview.png">
   <link rel="stylesheet" href="/shared/fonts/orbitron.css">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="/favicon.ico" sizes="32x32">
@@ -76,14 +77,17 @@
 
   <!-- Lobby screen: QR code + player list + start button -->
   <div id="lobby-screen" class="screen hidden">
+    <span id="lobby-version-label"></span>
     <h1 class="gradient-title">HEX STACKER<span class="gradient-title__sub">party</span></h1>
     <div id="lobby-body">
       <div id="qr-container">
         <canvas id="qr-code"></canvas>
-        <p id="qr-label" data-i18n="scan_to_join">Scan to join</p>
-        <p id="join-url">
-          <span class="join-url__host"></span><span class="join-url__code"></span>
-        </p>
+        <div id="qr-info">
+          <span id="qr-label" data-i18n="scan_to_join">Scan or visit</span>
+          <p id="join-url">
+            <span class="join-url__host"></span><span class="join-url__code"></span>
+          </p>
+        </div>
       </div>
       <div id="player-list"></div>
     </div>
@@ -94,7 +98,6 @@
         <span class="footer-dot">&middot;</span>
         <a href="https://opengameart.org/content/lunar-joyride-8-bit" target="_blank" rel="noopener" data-i18n="music_by">Music by FoxSynergy</a>
       </div>
-      <span id="lobby-version-label"></span>
     </div>
   </div>
 

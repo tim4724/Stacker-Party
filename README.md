@@ -69,7 +69,7 @@ public/
   controller/# Phone touch controller
   shared/    # Protocol, relay connection, colors, theme, shared UI
 scripts/     # Build and code-generation scripts (AirConsole HTML generator)
-tests/       # Unit tests (node:test) and Playwright visual snapshots
+tests/       # Unit tests (node:test) and Playwright E2E
 artwork/     # Banner, favicon, and cover art generators (Playwright)
 ```
 
@@ -95,15 +95,9 @@ npm run test:e2e
 
 # AirConsole E2E tests
 npm run test:e2e:airconsole
-
-# Visual snapshot tests
-npm run test:visual
-
-# Update visual snapshots after intentional UI changes
-npm run test:visual:update
 ```
 
-Unit tests use Node.js's built-in `node:test` runner with `node:assert/strict` — no test framework dependency. E2E and visual tests use Playwright against a live server on port 4100.
+Unit tests use Node.js's built-in `node:test` runner with `node:assert/strict` — no test framework dependency. E2E tests use Playwright against a live server on port 4100. UI regressions are caught via the live gallery at `/gallery.html`.
 
 ## Tech Stack
 

@@ -25,7 +25,7 @@ async function stopDisplayBackground(page) {
 
 // --- Display test injection helpers ---
 // These use window.__TEST__ API to inject state directly into the display,
-// avoiding any dependency on Party-Server for visual snapshot tests.
+// avoiding any dependency on Party-Server for e2e tests.
 
 async function injectPause(page) {
   await page.evaluate(() => {

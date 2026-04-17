@@ -18,7 +18,7 @@ body {
   position: relative;
   width: 100%;
   max-width: 960px;
-  padding: clamp(2rem, 6vh, 4rem) 1.5rem clamp(2rem, 4vh, 3rem);
+  padding: clamp(4.5rem, 8vh, 5.5rem) 1.5rem clamp(2rem, 4vh, 3rem);
   background:
     radial-gradient(ellipse at 50% 0%, rgba(var(--accent-primary-rgb), 0.04) 0%, transparent 55%);
 }

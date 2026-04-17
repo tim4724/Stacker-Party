@@ -9,6 +9,7 @@ progress.md
 public/preview-settle.*
 public/artwork/*
 !public/artwork/gameplay-16x9.png
+!public/artwork/social-preview.png
 build/
 .dev-certs/
 public/display/screen.html

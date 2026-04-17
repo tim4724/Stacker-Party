@@ -7,8 +7,6 @@
     "start": "node scripts/generate-airconsole-html.js && node server/index.js",
     "dev": "node scripts/generate-airconsole-html.js && node --watch server/index.js",
     "test": "node --test tests/*.test.js",
-    "test:visual": "npx playwright test --project=display --project=hex-display --project=controller --project=controller-landscape",
-    "test:visual:update": "npx playwright test --project=display --project=hex-display --project=controller --project=controller-landscape --update-snapshots",
     "test:e2e": "npx playwright test --project=e2e",
     "test:e2e:airconsole": "AC_MOCK=1 npx playwright test --project=e2e-airconsole",
     "ad:pieces": "node ad/scripts/generate-piece-assets.js",

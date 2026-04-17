@@ -9,13 +9,11 @@ npm test                       # Unit tests (node:test)
 node --test tests/hex-board.test.js  # Single unit test
 npm run test:e2e               # Playwright E2E lifecycle tests
 npm run test:e2e:airconsole    # Playwright E2E AirConsole tests
-npm run test:visual            # Playwright visual snapshot tests
-npm run test:visual:update     # Update snapshots after UI changes
 ```
 
 ## Key Rules
 
-- After UI changes, run `npm run test:visual:update` and commit updated snapshots
+- UI regressions are caught via the gallery (`public/gallery.html`), not visual snapshots
 - Engine modules (`server/*.js`) use UMD — must work in both Node.js and browser
 - CSP headers in `server/index.js` — update when adding external resources
 - Relay URL configured in `public/shared/protocol.js`

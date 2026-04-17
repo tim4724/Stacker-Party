@@ -2,21 +2,17 @@
 'use strict';
 
 // Standalone cover-art generator — captures cover-builder.html in headless
-// mode at 1024×1024 and writes both:
-//   - artwork/cover-art.png            (source-of-truth copy in /artwork)
-//   - public/artwork/cover-art.png     (HTTP-served copy used by HTML)
-// No server required.
+// mode at 1024×1024 and writes artwork/cover-art.png. Not served over HTTP
+// (no consumer in public/), so no copy is made.
 // Usage: node artwork/generate-cover.js
 
 const { chromium } = require('playwright');
 const path = require('path');
-const fs = require('fs');
 
 const COVER_WIDTH = 1024;
 const COVER_HEIGHT = 1024;
 const ARTWORK_DIR = __dirname;
 const ARTWORK_OUT = path.resolve(ARTWORK_DIR, 'cover-art.png');
-const PUBLIC_OUT = path.resolve(ARTWORK_DIR, '..', 'public', 'artwork', 'cover-art.png');
 
 (async () => {
   const browser = await chromium.launch();
@@ -31,11 +27,7 @@ const PUBLIC_OUT = path.resolve(ARTWORK_DIR, '..', 'public', 'artwork', 'cover-a
   await page.screenshot({ path: ARTWORK_OUT });
   await browser.close();
 
-  fs.mkdirSync(path.dirname(PUBLIC_OUT), { recursive: true });
-  fs.copyFileSync(ARTWORK_OUT, PUBLIC_OUT);
-
   console.log(`Wrote ${ARTWORK_OUT}`);
-  console.log(`Copied to ${PUBLIC_OUT}`);
 })().catch((err) => {
   console.error(err);
   process.exit(1);

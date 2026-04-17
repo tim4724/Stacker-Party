@@ -1,6 +1,6 @@
 // @ts-check
 const { test, expect } = require('@playwright/test');
-const { waitForFont } = require('../visual/helpers');
+const { waitForFont } = require('./helpers');
 
 /**
  * Verifies that clicking "New Game" shows the lobby even when the relay

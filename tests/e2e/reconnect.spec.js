@@ -6,7 +6,7 @@ const {
   waitForDisplayPlayers,
   waitForDisplayGame,
   waitForFont,
-} = require('../visual/helpers');
+} = require('./helpers');
 
 /**
  * Join a controller mid-game. Unlike joinController(), waits for either the

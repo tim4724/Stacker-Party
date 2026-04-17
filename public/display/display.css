@@ -67,7 +67,6 @@ html, body {
 }
 
 #new-game-btn {
-  min-width: clamp(9rem, 16vw, 14rem);
   padding: clamp(0.6rem, 1.2vh, 1.2rem) clamp(1rem, 2vw, 2rem);
   font-size: clamp(1rem, 2.2vh, 1.8rem);
   letter-spacing: 0.08em;
@@ -122,8 +121,7 @@ html, body {
   opacity: 0.4;
 }
 
-#version-label,
-#lobby-version-label {
+#version-label {
   color: var(--text-secondary);
   font-family: system-ui, -apple-system, sans-serif;
   font-size: clamp(13px, 1.5vw, 16px);
@@ -131,6 +129,23 @@ html, body {
   letter-spacing: 0.06em;
   opacity: 0.6;
 }
+
+#lobby-version-label {
+  position: absolute;
+  top: clamp(1rem, 2.5vh, 1.5rem);
+  right: clamp(1rem, 2vw, 2rem);
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(11px, 1.3vw, 14px);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--text-secondary);
+  opacity: 0.55;
+  text-transform: uppercase;
+  display: none;
+  animation: fadeIn 0.6s 0.3s ease-out both;
+}
+
+body.airconsole #lobby-version-label { display: block; }
 
 #lobby-footer {
   position: absolute;
@@ -143,95 +158,94 @@ html, body {
 
 
 /* ============================================
-   Lobby Screen
+   Lobby Screen — three concrete layout tiers.
+   Base (Medium, 600–1099px): vertical stack, QR on top, players below.
+   Wide (≥1100px) overrides: QR left, players right.
+   Narrow (<600px)  overrides: compact single column.
    ============================================ */
+
+/* --- Base (Medium tier) --- */
 #lobby-screen {
   background:
     radial-gradient(ellipse at 50% 20%, rgba(var(--accent-primary-rgb), 0.05) 0%, transparent 55%);
-  justify-content: space-evenly;
-  padding: 4vh 2rem 4vh;
+  justify-content: space-around;
+  gap: 1.5rem;
+  padding: clamp(1rem, 3vh, 2rem) 1.5rem clamp(3rem, 6vh, 5rem);
+  position: relative;
 }
 
-
 #lobby-screen h1 {
-  font-size: clamp(2rem, 5vh, 5rem);
+  font-size: clamp(2rem, 6vh, 4.5rem);
   filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.4));
   animation: fadeDown 0.6s ease-out both;
   text-align: center;
 }
 
-/* Lobby body: QR card left, player list right. Collapses to single
-   column in AirConsole mode (QR is hidden there) and on narrow screens.
-   QR column is fixed width; players get the rest. */
+/* At medium/wide tiers (≥600px) there's room for the title to grow to
+   match the welcome screen size. Below that the narrow lobby stays
+   compact so "HEX STACKER" doesn't wrap and push cards off-screen. */
+@media (min-width: 600px) {
+  #lobby-screen h1 {
+    font-size: clamp(2.5rem, 7vh, 6rem);
+  }
+}
+
 #lobby-body {
-  display: grid;
-  grid-template-columns: clamp(260px, 26vw, 360px) minmax(0, 1fr);
-  gap: clamp(1.2rem, 3vw, 2.5rem);
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  width: min(100%, 1200px);
+  gap: 1.5rem;
+  width: 100%;
+  max-width: 720px;
   animation: fadeUp 0.6s 0.15s ease-out both;
-}
-
-body.airconsole #lobby-body,
-#lobby-screen.no-qr #lobby-body {
-  grid-template-columns: minmax(0, 1fr);
-  justify-items: center;
-}
-
-@media (max-width: 860px) {
-  #lobby-body { grid-template-columns: minmax(0, 1fr); justify-items: center; }
 }
 
 #qr-container {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: clamp(12px, 2vh, 20px);
+  gap: clamp(8px, 1.2vh, 14px);
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
-  /* No outer padding — QR fills the full container width. Label and URL
-     get their own horizontal padding below. */
-  padding: 0 0 clamp(20px, 3.5vh, 36px);
+  padding: clamp(12px, 1.8vh, 20px);
   box-shadow: var(--shadow-lg), var(--bevel-top);
-  /* Cap the card size so it never dominates narrow viewports. */
-  max-width: min(100%, 360px);
-  margin: 0 auto;
+  width: clamp(180px, 34vh, 340px);
+  max-width: 90vw;
   overflow: hidden;
-}
-
-/* Label: centered, single line, tight margin so localized "SCAN TO JOIN"
-   phrases fit. URL pill: tighter padding and modest side margin. */
-#qr-container > #qr-label {
-  margin: 0 8px;
-  font-size: clamp(10px, 1.6vh, 14px);
-  color: var(--text-faint);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  font-family: 'Orbitron', sans-serif;
-  font-weight: 700;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-#qr-container > #join-url {
-  margin-left: 10px;
-  margin-right: 10px;
 }
 
 #qr-code {
-  /* Fills the container width; square via aspect-ratio. */
   width: 100%;
   aspect-ratio: 1 / 1;
   height: auto;
-  /* Top corners match container; bottom corners slightly softened. */
-  border-radius: var(--radius-xl) var(--radius-xl) clamp(6px, 1vh, 12px) clamp(6px, 1vh, 12px);
+  border-radius: var(--radius-lg);
   background: var(--color-white);
-  padding: clamp(10px, 1.4vh, 18px);
-  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+  padding: 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
   display: block;
+}
+
+#qr-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+#qr-label {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-faint);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 /* Join URL — single line "host/CODE" with the code emphasized. Click to
@@ -291,7 +305,7 @@ body.airconsole #lobby-body,
 }
 
 .join-url__host {
-  font-size: clamp(0.95rem, 2.1vh, 1.25rem);
+  font-size: 1.1rem;
   font-weight: 600;
   color: var(--text-secondary);
   letter-spacing: 0.04em;
@@ -300,7 +314,7 @@ body.airconsole #lobby-body,
 }
 
 .join-url__code {
-  font-size: clamp(1.1rem, 2.6vh, 1.6rem);
+  font-size: 1.4rem;
   font-weight: 900;
   color: var(--accent-tertiary);
   letter-spacing: 0.18em;
@@ -309,37 +323,57 @@ body.airconsole #lobby-body,
 
 #player-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: clamp(0.5rem, 1vw, 1rem);
-  justify-content: center;
-  justify-items: stretch;
-  min-height: clamp(50px, 8vh, 90px);
-  animation: fadeIn 0.4s 0.3s ease-out both;
-  width: 100%;
-}
-
-/* When QR is hidden (AirConsole or narrow), use a fixed 4-column grid
-   so 8 players always lay out as 2 rows of 4 — no reflow-to-single-column
-   on TV-width viewports. */
-body.airconsole #player-list,
-#lobby-screen.no-qr #player-list {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  max-width: min(100%, 1000px);
-}
-
-@media (max-width: 860px) {
-  #player-list { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 600px; }
+  gap: clamp(10px, 1.5vw, 18px);
+  width: 100%;
+  max-width: 880px;
+  animation: fadeIn 0.4s 0.3s ease-out both;
 }
 
 .player-card {
+  display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(10px, 1.4vh, 16px);
   justify-content: center;
-  padding: clamp(1rem, 2vh, 1.6rem) clamp(1.2rem, 2vw, 2.2rem);
-  font-size: clamp(1rem, 2.4vh, 1.6rem);
+  gap: clamp(6px, 1vh, 12px);
+  padding: clamp(12px, 2vh, 22px) clamp(14px, 1.6vw, 26px);
+  font-size: clamp(1rem, 1.8vh, 1.4rem);
   width: 100%;
   min-width: 0;
+}
+
+/* --- Wide tier (≥1100px): side-by-side, roomier --- */
+@media (min-width: 1100px) {
+  #lobby-body {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    max-width: 1400px;
+    gap: clamp(2rem, 3vw, 3.5rem);
+  }
+  #player-list { flex: 1; max-width: 1000px; }
+  .join-url__host { font-size: 1.2rem; }
+  .join-url__code { font-size: 1.5rem; }
+}
+
+/* --- Narrow tier (<600px): compact single column for QR, 2-col players --- */
+@media (max-width: 599px) {
+  #player-list { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 360px; }
+  .join-url__host { font-size: 0.95rem; }
+  .join-url__code { font-size: 1.2rem; }
+}
+
+/* --- AirConsole / no-QR overrides: hide QR, widen players --- */
+body.airconsole #qr-container,
+#lobby-screen.no-qr #qr-container {
+  display: none;
+}
+
+body.airconsole #player-list,
+#lobby-screen.no-qr #player-list {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  max-width: 1000px;
+  gap: 16px;
 }
 
 .player-card.empty {
@@ -369,7 +403,7 @@ body.airconsole #player-list,
 .player-slot {
   display: flex;
   flex-direction: column;
-  align-items: stretch;
+  align-items: center;
   width: 100%;
 }
 
@@ -397,8 +431,8 @@ body.airconsole #player-list,
   font-size: clamp(0.9rem, 2vh, 1.4rem);
   font-weight: 700;
   color: var(--text-primary);
-  min-width: 2em;
   text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .level-btn {
@@ -559,7 +593,7 @@ body.airconsole #player-list,
 #pause-continue-btn,
 #pause-newgame-btn,
 #reconnect-btn {
-  min-width: clamp(9rem, 16vw, 14rem);
+  min-width: clamp(180px, 22vh, 280px);
   padding: clamp(0.6rem, 1.2vh, 1.2rem) clamp(1rem, 2vw, 2rem);
   font-size: clamp(0.85rem, 1.6vh, 1.2rem);
   letter-spacing: 0.06em;
@@ -616,10 +650,30 @@ body.airconsole #player-list,
 .result-rank {
   font-size: clamp(1rem, 2vh, 1.8rem);
   font-weight: 900;
-  width: clamp(2.4rem, 4vh, 3.2rem);
-  height: clamp(2.4rem, 4vh, 3.2rem);
   flex-shrink: 0;
   margin-right: clamp(0.8rem, 1.2vw, 1.2rem);
+  letter-spacing: -0.02em;
+  width: auto;
+  height: auto;
+  min-width: 2.4em;
+  justify-content: flex-start;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--row-rank-color, var(--text-secondary));
+}
+
+.rank-1 .result-rank,
+.rank-2 .result-rank,
+.rank-3 .result-rank {
+  background: transparent;
+}
+
+.result-row.rank-1,
+.result-row.rank-2,
+.result-row.rank-3 {
+  border-color: var(--border);
+  box-shadow: var(--shadow-sm), var(--bevel-top);
 }
 
 .result-info {
@@ -650,9 +704,8 @@ body.airconsole #player-list,
 
 .result-stats span {
   white-space: nowrap;
-  display: inline-block;
-  min-width: 5em;
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 #results-buttons {
@@ -663,7 +716,7 @@ body.airconsole #player-list,
 
 #play-again-btn,
 #new-game-results-btn {
-  min-width: clamp(9rem, 16vw, 14rem);
+  min-width: clamp(180px, 22vh, 280px);
   padding: clamp(0.6rem, 1.2vh, 1.2rem) clamp(1rem, 2vw, 2rem);
   font-size: clamp(0.85rem, 1.6vh, 1.2rem);
   letter-spacing: 0.06em;
@@ -684,12 +737,14 @@ body.airconsole #player-list,
    ID selector (1,0,0) intentionally beats .end-screen.hidden (0,2,0)
    so the element shows on mobile even with the `hidden` class present.
    "Continue anyway" removes the element from the DOM, not via .hidden.
-   ============================================ */
-@media (max-width: 768px) and (orientation: portrait) {
-  #end-screen { display: flex; }
-}
 
-@media (max-width: 568px) and (orientation: landscape) {
+   Triggers on touch-first devices (pointer: coarse + hover: none) that
+   are either narrow (≤950px — phone in any orientation + tablet portrait)
+   or short (≤500px — phone landscape). Desktop browsers resized narrow
+   are excluded because they retain pointer: fine + hover: hover.
+   ============================================ */
+@media (max-width: 950px) and (pointer: coarse) and (hover: none),
+       (max-height: 500px) and (pointer: coarse) and (hover: none) {
   #end-screen { display: flex; }
 }
 
@@ -705,7 +760,6 @@ body.airconsole .player-slot:has(.player-card.empty) { display: none !important;
 body.airconsole #player-list {
   /* Fixed 4-col grid so 8 players lay out as 2 rows of 4 — Cocoa lobby
      treats the grid-template-columns rule above; we only override the
-     min-height + alignment here. */
-  min-height: 20vh;
+     alignment here. */
   align-content: center;
 }

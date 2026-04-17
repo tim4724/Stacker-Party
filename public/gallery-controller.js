@@ -3,7 +3,7 @@
 // "Shared" row: screens that have no per-player variant — shown once at top.
 var SHARED_SCENARIOS = [
   { key: 'name',            title: 'Name input' },
-  { key: 'name-connecting', title: 'Connecting…' },
+  { key: 'name-connecting', title: 'Connecting…', extra: { name: 'Tim' } },
   { key: 'end',             title: 'End — game ended' },
   { key: 'end-full',        title: 'End — room full' },
   { key: 'privacy',         title: 'Privacy',  staticPath: '/privacy' },
@@ -22,8 +22,8 @@ var PER_COLOR_SCENARIOS = [
   { key: 'ko',               title: 'KO' },
   { key: 'reconnecting',     title: 'Reconnecting' },
   { key: 'disconnected',     title: 'Disconnected' },
-  { key: 'results-winner',   title: 'Results (winner)' },
-  { key: 'results-loser',    title: 'Results (loser)' }
+  { key: 'results-winner',   title: 'Results (host)' },
+  { key: 'results-loser',    title: 'Results (non-host)' }
 ];
 
 var state = Gallery.loadState();
@@ -43,7 +43,7 @@ function dims() { return Gallery.CONTROLLER_AR_DIMS[state.controllerAR] || Galle
 function sharedURL(s) {
   return s.staticPath
     ? Gallery.staticURL(state, s.staticPath, nonce || undefined)
-    : Gallery.controllerURL(state, s.key, 0, null, nonce || undefined);
+    : Gallery.controllerURL(state, s.key, 0, s.extra || null, nonce || undefined);
 }
 
 function buildSharedRow() {

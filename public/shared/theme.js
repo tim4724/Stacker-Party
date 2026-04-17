@@ -186,6 +186,20 @@ function rgbaFromHex(hex, alpha) {
   return 'rgba(' + parseInt(m[1], 16) + ', ' + parseInt(m[2], 16) + ', ' + parseInt(m[3], 16) + ', ' + alpha + ')';
 }
 
+// Pick a legible text color for a hex background using WCAG relative
+// luminance. Returns the Cocoa plum-dark bg for bright slots (Honey,
+// Mint, Teal) and white for everything else — preserves the existing
+// white-on-pink .btn-primary look while fixing white-on-honey/mint.
+function onColor(hex) {
+  var m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || '');
+  if (!m) return '#ffffff';
+  function lin(v) { v = v / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+  var L = 0.2126 * lin(parseInt(m[1], 16))
+        + 0.7152 * lin(parseInt(m[2], 16))
+        + 0.0722 * lin(parseInt(m[3], 16));
+  return L > 0.45 ? '#1E1A2B' : '#ffffff';
+}
+
 // Export for both Node.js and browser
 if (typeof module !== 'undefined' && module.exports) {
   // IMPORTANT: _gc must mirror ghostColor() in CanvasUtils.js — keep in sync!
@@ -212,6 +226,7 @@ if (typeof module !== 'undefined' && module.exports) {
     THEME,
     PARTY_PALETTE, UI_ACCENT,
     PIECE_COLORS, GHOST_COLORS, NEON_PIECE_COLORS, NEON_GHOST_COLORS,
-    STYLE_TIERS, getStyleTier, PLAYER_COLORS, PLAYER_NAMES
+    STYLE_TIERS, getStyleTier, PLAYER_COLORS, PLAYER_NAMES,
+    rgbaFromHex, onColor
   };
 }

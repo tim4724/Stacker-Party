@@ -4,6 +4,10 @@
   <meta charset="UTF-8">
   <title>HexStacker Party — Cover Builder</title>
   <link rel="stylesheet" href="../public/shared/fonts/orbitron.css">
+  <!-- Production theme tokens: --bg-primary, --accent-primary/secondary/tertiary,
+       --text-secondary, .gradient-title, .gradient-title__sub. Kept in sync with
+       the live UI so cover/social previews never drift. -->
+  <link rel="stylesheet" href="../public/shared/theme.css">
   <style>
     :root {
       --bg: #06060f;
@@ -77,7 +81,7 @@
     .frame {
       position: relative;
       flex-shrink: 0;
-      background: #06060f;
+      background: var(--bg-primary);
       /* Sharp accent outline + soft drop-shadow so the frame edge is obvious. */
       outline: 2px solid color-mix(in srgb, var(--accent) 50%, transparent);
       outline-offset: 0;
@@ -98,12 +102,16 @@
     body.headless header,
     body.headless aside { display: none; }
     body.headless .layout { height: 100vh; }
-    body.headless main { padding: 0; background: #06060f; }
+    body.headless main { padding: 0; background: var(--bg-primary); }
     body.headless .frame {
       outline: none;
       box-shadow: none;
     }
 
+    /* Title uses the shared .gradient-title / .gradient-title__sub classes from
+       theme.css — font, gradient, and subtitle spacing inherit automatically.
+       This block only adds cover-specific layout + the drop-shadow the welcome
+       screen applies via display.css. */
     .title-overlay {
       position: absolute;
       inset: 0;
@@ -111,34 +119,15 @@
       align-items: center;
       justify-content: center;
       pointer-events: none;
-      background: radial-gradient(ellipse at 50% 50%, rgba(0, 80, 200, 0.18) 0%, transparent 55%);
+      background: radial-gradient(ellipse at 50% 50%, rgba(var(--accent-primary-rgb), 0.07) 0%, transparent 55%);
     }
     .title-overlay.hidden { display: none; }
 
     .title-overlay h1 {
-      font-family: 'Orbitron', sans-serif;
-      font-weight: 900;
-      letter-spacing: 0.06em;
-      background: linear-gradient(135deg, #4444ff, #00c8ff, #00ff88);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      filter: drop-shadow(0 0 32px rgba(0, 200, 255, 0.4));
+      filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.45));
       text-align: center;
       line-height: 1.0;
       white-space: nowrap;
-      color: transparent;
-    }
-    .title-overlay h1 .sub {
-      display: block;
-      font-size: 0.38em;
-      font-weight: 600;
-      letter-spacing: 0.55em;
-      margin-top: 0.30em;
-      text-transform: uppercase;
-      -webkit-text-fill-color: #e0e0ff;
-      color: #e0e0ff;
-      opacity: 0.82;
     }
 
     aside {
@@ -257,7 +246,7 @@
       <div class="frame" id="frame">
         <canvas id="canvas"></canvas>
         <div class="title-overlay" id="title-overlay">
-          <h1>HEX STACKER<span class="sub">party</span></h1>
+          <h1 class="gradient-title">HEX STACKER<span class="gradient-title__sub">party</span></h1>
         </div>
       </div>
     </main>
@@ -281,14 +270,20 @@
     </aside>
   </div>
 
+  <!-- Production palette — exposes PIECE_COLORS (typeId→hex) + PARTY_PALETTE. -->
+  <script src="../public/shared/theme.js"></script>
   <script>
+    // Derive a letter-keyed piece-color map from theme.js's typeId-keyed one,
+    // so the builder tracks any palette change automatically. PIECES below
+    // holds shape offsets (not colors), so it stays here.
+    const PIECE_TYPE_ID = { I: 1, O: 2, S: 3, Z: 4, q: 5, p: 6, L: 7, J: 8 };
+    const PIECE_FILL = Object.fromEntries(
+      Object.entries(PIECE_TYPE_ID).map(([letter, id]) => [letter, PIECE_COLORS[id]])
+    );
+
     // ============================================================
     // Canonical piece data (mirrors server/HexPiece.js).
     // ============================================================
-    const PIECE_COLORS = {
-      I: '#FF6B6B', O: '#7BED6F', S: '#A78BFA', Z: '#FF8C42',
-      q: '#FFD166', p: '#4ECDC4', L: '#FF6F9A', J: '#5B7FFF',
-    };
     const PIECES = {
       I: [[-1,0],[0,0],[1,0],[2,0]],
       O: [[-1,0],[0,0],[0,-1],[1,-1]],
@@ -415,7 +410,7 @@
 
     function drawPiece(ctx, ax, ay, type, hexSize, opts = {}) {
       const cells = PIECES[type];
-      const color = PIECE_COLORS[type];
+      const color = PIECE_FILL[type];
       for (const [q, r] of cells) {
         const off = axialToOffset(q, r);
         const [hx, hy] = hexCenter(ax, ay, off.col, off.row, hexSize);
@@ -501,7 +496,7 @@
       // margin-top is em-based on .sub so it scales automatically with font-size.
       const h1 = document.getElementById('title-overlay').querySelector('h1');
       h1.style.fontSize = (mainPx * scale) + 'px';
-      h1.querySelector('.sub').style.marginTop = subMarginEm + 'em';
+      h1.querySelector('.gradient-title__sub').style.marginTop = subMarginEm + 'em';
     }
 
     // Compute the largest scale that fits the frame inside the available main
@@ -523,12 +518,14 @@
 
     function render() {
       const { W, H } = MODES[mode];
-      ctx.fillStyle = '#06060f';
+      // Track the live --bg-primary token so the canvas matches the HTML frame.
+      ctx.fillStyle = getComputedStyle(document.documentElement)
+        .getPropertyValue('--bg-primary').trim() || '#1E1A2B';
       ctx.fillRect(0, 0, W, H);
 
       if (showStreaks) {
         for (const d of drops) {
-          drawCellStreaks(ctx, d.x, d.y, d.type, d.size, d.trailLen, PIECE_COLORS[d.type]);
+          drawCellStreaks(ctx, d.x, d.y, d.type, d.size, d.trailLen, PIECE_FILL[d.type]);
         }
       }
       for (let i = 0; i < drops.length; i++) {
@@ -637,7 +634,7 @@
         const li = document.createElement('li');
         li.className = 'piece-row' + (i === selectedIdx ? ' selected' : '');
         li.innerHTML = `
-          <div class="piece-swatch" style="background:${PIECE_COLORS[d.type]}"></div>
+          <div class="piece-swatch" style="background:${PIECE_FILL[d.type]}"></div>
           <div class="piece-fields">
             <div><label>${d.type}.x</label><input type="number" data-i="${i}" data-k="x" value="${d.x}"></div>
             <div><label>y</label><input type="number" data-i="${i}" data-k="y" value="${d.y}"></div>

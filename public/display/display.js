@@ -227,7 +227,7 @@ fetch('/api/version').then(function(r) { return r.json(); }).then(function(data)
     label += ' (#' + data.commit + ')';
   }
   var welcomeVersion = document.getElementById('welcome-version-label');
-  if (welcomeVersion) welcomeVersion.textContent = 'v' + label;
+  if (welcomeVersion) welcomeVersion.textContent = label;
   var lobbyVersion = document.getElementById('lobby-version-label');
   if (lobbyVersion) lobbyVersion.textContent = label;
 }).catch(function() {});

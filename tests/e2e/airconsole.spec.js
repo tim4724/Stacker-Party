@@ -1,7 +1,7 @@
 // @ts-check
 const { test, expect, chromium, firefox, devices } = require('@playwright/test');
 const path = require('path');
-const { waitForFont } = require('../visual/helpers');
+const { waitForFont } = require('./helpers');
 
 /**
  * AirConsole E2E tests — runs against the real AirConsole platform by default,

@@ -1,5 +1,5 @@
 // @ts-check
-const { defineConfig, devices } = require('@playwright/test');
+const { defineConfig } = require('@playwright/test');
 
 module.exports = defineConfig({
   fullyParallel: true,
@@ -9,9 +9,6 @@ module.exports = defineConfig({
   use: {
     baseURL: `http://localhost:${process.env.PW_PORT || '4100'}`,
     actionTimeout: 5000,
-  },
-  expect: {
-    toHaveScreenshot: { maxDiffPixelRatio: 0.001 },
   },
   webServer: {
     command: 'node scripts/generate-airconsole-html.js && node server/index.js',
@@ -23,46 +20,6 @@ module.exports = defineConfig({
     reuseExistingServer: false,
   },
   projects: [
-    {
-      name: 'display',
-      testDir: './tests/visual',
-      testMatch: 'display.spec.js',
-      use: { viewport: { width: 1920, height: 1080 } },
-    },
-    {
-      name: 'hex-display',
-      testDir: './tests/visual',
-      testMatch: 'hex-display.spec.js',
-      use: { viewport: { width: 1920, height: 1080 } },
-    },
-    {
-      name: 'controller',
-      testDir: './tests/visual',
-      testMatch: 'controller.spec.js',
-      use: {
-        viewport: devices['iPhone 14'].screen,
-        deviceScaleFactor: devices['iPhone 14'].deviceScaleFactor,
-        isMobile: true,
-        hasTouch: true,
-      },
-      expect: {
-        toHaveScreenshot: { maxDiffPixelRatio: 0.001, scale: 'device' },
-      },
-    },
-    {
-      name: 'controller-landscape',
-      testDir: './tests/visual',
-      testMatch: 'controller-landscape.spec.js',
-      use: {
-        viewport: { width: 844, height: 390 },
-        deviceScaleFactor: devices['iPhone 14'].deviceScaleFactor,
-        isMobile: true,
-        hasTouch: true,
-      },
-      expect: {
-        toHaveScreenshot: { maxDiffPixelRatio: 0.001, scale: 'device' },
-      },
-    },
     {
       name: 'e2e',
       testDir: './tests/e2e',

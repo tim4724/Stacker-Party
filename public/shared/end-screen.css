@@ -88,18 +88,19 @@
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
 }
 
-/* --- Instructions card --- */
+/* --- Instructions card — Cocoa Arcade tactile surface (matches .card) --- */
 .end-steps-card {
   width: 100%;
   box-sizing: border-box;
+  background: var(--bg-card);
   border: 1px solid var(--border);
-  background: rgba(var(--accent-secondary-rgb), 0.04);
-  border-radius: 14px;
-  padding: 14px 16px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md), var(--bevel-top);
+  padding: 18px;
 }
 
 .end-steps-card__title {
-  margin: 0 0 12px;
+  margin: 0 0 14px;
   font-family: 'Orbitron', sans-serif;
   font-size: 0.8rem;
   font-weight: 700;
@@ -117,28 +118,14 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  position: relative;
-}
-
-/* Connector line between step circles — horizontally centered through
-   their center axis (0.8rem = half of the 1.6rem circle width). */
-.end-steps::before {
-  content: '';
-  position: absolute;
-  left: calc(0.8rem - 1px);
-  top: 0.8rem;
-  bottom: 0.8rem;
-  width: 2px;
-  background: var(--accent-secondary);
-  opacity: 0.25;
 }
 
 .end-steps li {
   counter-increment: step;
   position: relative;
   display: flex;
-  align-items: center;
-  gap: 0.6rem;
+  align-items: flex-start;
+  gap: 0.75rem;
   font-size: clamp(1rem, 4.2vw, 1.15rem);
   color: var(--text-secondary);
   line-height: 1.45;
@@ -146,20 +133,40 @@
   text-align: left;
 }
 
+/* Connector segment — from this chip's center through the flex gap
+   into the next chip's center. Drawn per-item so the line is tied to
+   actual chip positions, not the list's outer bounds (prevents overhang
+   when a step's text wraps to multiple lines). */
+.end-steps li:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: calc(0.8rem - 1px);
+  top: 0.8rem;
+  bottom: calc(-0.8rem - 14px);
+  width: 2px;
+  background: var(--border-strong);
+}
+
+/* Step chip — cushioned plum surface with a bevel, keeping the accent
+   hue only on the numeral for identity. Matches the tactile treatment
+   used by buttons and player cards. */
 .end-steps li::before {
   content: counter(step);
   flex: 0 0 auto;
   width: 1.6rem;
   height: 1.6rem;
   border-radius: 50%;
-  background: var(--accent-secondary);
-  color: var(--bg-primary);
+  background: var(--bg-card-soft);
+  color: var(--accent-secondary);
   font-family: 'Orbitron', sans-serif;
   font-weight: 700;
   font-size: 0.95rem;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: var(--bevel-top), var(--shadow-sm);
+  position: relative;
+  z-index: 1;
 }
 
 .end-step-text { flex: 1; }

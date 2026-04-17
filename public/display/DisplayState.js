@@ -215,6 +215,7 @@ function showScreen(name) {
   gameScreen.classList.toggle('hidden', name !== SCREEN.GAME && name !== SCREEN.RESULTS);
   resultsScreen.classList.toggle('hidden', name !== SCREEN.RESULTS);
   gameToolbar.classList.toggle('hidden', name === SCREEN.WELCOME);
+  muteBtn.classList.toggle('hidden', name === SCREEN.LOBBY);
   pauseBtn.classList.toggle('hidden', name !== SCREEN.GAME);
   if (name !== SCREEN.GAME) {
     pauseOverlay.classList.add('hidden');

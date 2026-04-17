@@ -290,10 +290,14 @@ function renderResults(results) {
     row.className = solo ? 'result-row' : 'result-row rank-' + res.rank;
     row.style.setProperty('--row-delay', (0.2 + i * 0.08) + 's');
 
+    var pInfo = players.get(res.playerId);
+    var pColor = pInfo ? (pInfo.playerColor || PLAYER_COLORS[pInfo.playerIndex]) : null;
+
     if (!solo) {
       var rank = document.createElement('span');
       rank.className = 'result-rank';
       rank.textContent = tOrdinal(res.rank);
+      if (pColor) rank.style.color = pColor;
       row.appendChild(rank);
     }
 
@@ -302,11 +306,8 @@ function renderResults(results) {
 
     var nameEl = document.createElement('span');
     nameEl.className = 'result-name';
-    var pInfo = players.get(res.playerId);
     nameEl.textContent = res.playerName || pInfo?.playerName || t('player');
-    if (pInfo) {
-      nameEl.style.color = pInfo.playerColor || PLAYER_COLORS[pInfo.playerIndex];
-    }
+    if (pColor) nameEl.style.color = pColor;
 
     var stats = document.createElement('div');
     stats.className = 'result-stats';

@@ -6,7 +6,7 @@ const {
   waitForDisplayPlayers,
   waitForDisplayGame,
   waitForControllerGame,
-} = require('../visual/helpers');
+} = require('./helpers');
 
 // Longer timeout — we're waiting for a real game to finish
 const GAME_TIMEOUT = 60000;
