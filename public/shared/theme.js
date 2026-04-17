@@ -10,10 +10,10 @@
 const PARTY_PALETTE = Object.freeze([
   '#FF6B6B', // 1 Red        ← UI accent (primary)
   '#4ECDC4', // 2 Teal
-  '#FFD166', // 3 Honey      ← UI accent (tertiary)
+  '#FFE066', // 3 Honey      ← UI accent (tertiary)
   '#A78BFA', // 4 Violet
   '#7BED6F', // 5 Mint
-  '#FF6F9A', // 6 Pink
+  '#F178D8', // 6 Magenta
   '#5B7FFF', // 7 Indigo
   '#FF8C42'  // 8 Tangerine  ← UI accent (secondary)
 ]);
@@ -28,7 +28,7 @@ const PIECE_COLORS = {
   4: PARTY_PALETTE[7],      // Z - tangerine
   5: PARTY_PALETTE[2],      // q - honey
   6: PARTY_PALETTE[1],      // p - teal
-  7: PARTY_PALETTE[5],      // L - pink
+  7: PARTY_PALETTE[5],      // L - magenta
   8: PARTY_PALETTE[6],      // J - indigo
   9: '#808080'              // garbage - neutral gray (intentionally off-palette)
 };
@@ -43,8 +43,18 @@ if (typeof ghostColor === 'function') {
   for (var _i = 1; _i <= 9; _i++) GHOST_COLORS[_i] = ghostColor(PIECE_COLORS[_i]);
 }
 
-// Player accent colors — direct 1:1 mapping with palette slots.
-const PLAYER_COLORS = Object.freeze(PARTY_PALETTE.slice());
+// Player accent colors — reordered from PARTY_PALETTE to follow the visible
+// spectrum across player slots: red, tangerine, honey, mint, teal, indigo, violet, magenta.
+const PLAYER_COLORS = Object.freeze([
+  PARTY_PALETTE[0], // Red
+  PARTY_PALETTE[7], // Tangerine
+  PARTY_PALETTE[2], // Honey
+  PARTY_PALETTE[4], // Mint
+  PARTY_PALETTE[1], // Teal
+  PARTY_PALETTE[6], // Indigo
+  PARTY_PALETTE[3], // Violet
+  PARTY_PALETTE[5], // Magenta
+]);
 
 const PLAYER_NAMES = ['Player 1', 'Player 2', 'Player 3', 'Player 4', 'Player 5', 'Player 6', 'Player 7', 'Player 8'];
 
@@ -83,7 +93,7 @@ const THEME = Object.freeze({
       primaryDark:  '#E55A5A',
       secondary:    '#FF8C42', // palette slot 8 Tangerine — UI secondary
       secondaryDark:'#E67A33',
-      tertiary:     '#FFD166', // palette slot 3 Honey — toast/low-priority accent
+      tertiary:     '#FFE066', // palette slot 3 Honey — toast/low-priority accent
     }),
     danger:  '#ff4444',
     ko: Object.freeze({
@@ -95,7 +105,7 @@ const THEME = Object.freeze({
     }),
     // Animation-specific named colors (palette-aligned)
     quad:    '#FF6B6B',        // palette slot 1 Red
-    triple:  '#FFD166',        // palette slot 3 Honey
+    triple:  '#FFE066',        // palette slot 3 Honey
   }),
 
   // ---- Opacities ----
