@@ -262,7 +262,7 @@ var LOCALES = {
     play_again: 'Jugar de nuevo',
     new_game: 'Nueva partida',
     continue_btn: 'Continuar',
-    continue_anyway: 'CONTINUAR IGUAL',
+    continue_anyway: 'CONTINUAR DE TODAS FORMAS',
     reconnect: 'RECONECTAR', rejoin: 'VOLVER', join: 'UNIRSE',
     reconnecting: 'RECONECTANDO', disconnected: 'DESCONECTADO',
     connecting: 'CONECTANDO...', connection_lost: 'Conexión perdida...',
