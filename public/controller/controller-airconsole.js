@@ -10,6 +10,7 @@
 AirConsoleAdapter.neutralizeLocalStorage();
 
 var airconsole = new AirConsole({
+  orientation: AirConsole.ORIENTATION_PORTRAIT,
   silence_inactive_players: false
 });
 
