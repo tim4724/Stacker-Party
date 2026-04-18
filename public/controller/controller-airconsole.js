@@ -79,6 +79,16 @@ connect = function() {
   }
 };
 
+// Populate settings version label. Build script replaces __AC_VERSION__
+// with the actual version. In AC mode the /api/version fetch in controller.js
+// fails (cross-origin), so this is the only source of truth.
+(function() {
+  var el = document.getElementById('settings-version');
+  if (!el) return;
+  var v = '__AC_VERSION__';
+  if (v.indexOf('__') !== 0) el.textContent = v;
+})();
+
 // AirConsole status overlay: show "Loading..." until lobby, show errors.
 var _acStatusOverlay = document.getElementById('ac-status-overlay');
 var _origShowScreen = showScreen;
