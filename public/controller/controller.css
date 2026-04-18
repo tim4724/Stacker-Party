@@ -570,8 +570,8 @@ html, body {
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    rgba(0, 0, 0, 0.35) 0%,
-    rgba(0, 0, 0, 0.18) 45%,
+    rgba(0, 0, 0, 0.45) 0%,
+    rgba(0, 0, 0, 0.24) 45%,
     transparent 75%
   );
   pointer-events: none;
