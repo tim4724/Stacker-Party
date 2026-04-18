@@ -130,6 +130,12 @@ function onWelcome(data) {
   playerCount = data.playerCount || 1;
   gameCancelled = false;
   waitingForNextGame = false;
+  // Sync the display's mute state so a reconnecting / newly-promoted host
+  // sees the correct Game Music toggle without waiting for the next
+  // DISPLAY_MUTED broadcast.
+  if (typeof data.displayMuted === 'boolean' && typeof onDisplayMuted === 'function') {
+    onDisplayMuted({ muted: data.displayMuted });
+  }
   // Set host state first so renderGameResults / showLobbyUI below see it.
   // updateHostVisibility is a no-op on the current screen ('name' or mid-
   // transition) thanks to its screen guards.

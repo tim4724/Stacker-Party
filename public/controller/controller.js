@@ -64,6 +64,9 @@ function handleMessage(data) {
       case MSG.GAME_RESUMED:
         onGameResumed();
         break;
+      case MSG.DISPLAY_MUTED:
+        onDisplayMuted(data);
+        break;
       case MSG.DISPLAY_CLOSED:
         // Don't surface "Game ended" if the user hasn't actually joined a
         // game yet (still on name screen, e.g. race during lobby→game).
@@ -203,8 +206,22 @@ document.addEventListener('pointerdown', function onFirstPointer() {
 // updateSettingsHostUI() is called from applyHostInfo when host changes.
 
 ControllerSettings.init();
-// Track last host-requested display mute so toggle reflects local intent.
+// Mirrors the display's mute state. Populated from WELCOME on join/rejoin
+// and updated live via MSG.DISPLAY_MUTED whenever the display's mute
+// changes (settings toggle OR display-side mute button). The Game Music
+// toggle in settings reads this; host-initiated toggling sends
+// SET_DISPLAY_MUTE and optimistically updates this value before the
+// display's echo broadcast lands.
 var displayMuteIntent = false;
+
+window.onDisplayMuted = function (data) {
+  displayMuteIntent = !!(data && data.muted);
+  // If settings is open, re-render the toggle so the user sees the
+  // change made from the display-side mute button.
+  if (settingsOverlay && !settingsOverlay.classList.contains('hidden')) {
+    syncMuteDisplayToggle();
+  }
+};
 
 function syncMuteControllerToggle() {
   // Switch ON = sound playing (not muted), so display the inverse of the mute flag.

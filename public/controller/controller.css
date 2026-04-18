@@ -724,10 +724,14 @@ html, body {
 /* Narrow the overlay's safe-area padding so the panel hugs the viewport
    edges. Other .game-overlay instances (pause, reconnect) keep the wider
    padding — this override is scoped to #settings-overlay only. The goal
-   is to bring the preview canvas closer to the real touchpad's width. */
+   is to bring the preview canvas closer to the real touchpad's width.
+   Bottom override also drops the shared rule's extra +16px (that belonged
+   to pause/reconnect's single-CTA layout); the settings panel has its own
+   internal padding already. */
 #settings-overlay {
   padding-left: max(env(safe-area-inset-left), 8px);
   padding-right: max(env(safe-area-inset-right), 8px);
+  padding-bottom: max(env(safe-area-inset-bottom), 8px);
 }
 
 .settings-panel {

@@ -190,6 +190,12 @@ function setDisplayMuted(next) {
       music.masterGain.gain.linearRampToValueAtTime(muted ? 0 : Music.MASTER_VOLUME, music.ctx.currentTime + 0.05);
     }
   }
+  // Broadcast so the host controller's Game Music toggle reflects changes
+  // made via the display's own mute button (and so a new host seeing the
+  // settings popup sees the correct state without a page reload).
+  if (party && typeof party.broadcast === 'function') {
+    try { party.broadcast({ type: MSG.DISPLAY_MUTED, muted: muted }); } catch (e) { /* ignore */ }
+  }
 }
 
 muteBtn.addEventListener('click', function() {

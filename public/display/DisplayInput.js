@@ -112,7 +112,8 @@ function onHello(fromId, msg) {
       startLevel: existing.startLevel || 1,
       isHost: fromId === hostId,
       hostName: hostPlayer ? hostPlayer.playerName : null,
-      hostColor: hostPlayer ? hostPlayer.playerColor : null
+      hostColor: hostPlayer ? hostPlayer.playerColor : null,
+      displayMuted: !!muted
     };
     if (!isLateJoiner) {
       welcomeMsg.alive = lastAliveState[fromId] != null ? lastAliveState[fromId] : true;

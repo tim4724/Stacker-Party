@@ -28,6 +28,7 @@ var MSG = {
 
   // Display -> All Controllers (broadcast)
   COUNTDOWN: 'countdown',
+  DISPLAY_MUTED: 'display_muted',
   GAME_START: 'game_start',
   GAME_END: 'game_end',
   GAME_PAUSED: 'game_paused',
