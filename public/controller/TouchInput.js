@@ -251,7 +251,7 @@ class TouchInput {
       for (let i = 0, n = Math.abs(steps); i < n; i++) {
         this.onInput(action);
       }
-      this._haptic(23);
+      this._haptic(15);
       this.anchorX += steps * this.RATCHET_THRESHOLD;
       this.hasMovedHorizontally = true;
     }
@@ -317,7 +317,7 @@ class TouchInput {
     // 1. Tap: minimal movement + short duration → rotate
     if (totalDist < this.TAP_MAX_DISTANCE && duration < this.TAP_MAX_DURATION) {
       this.onInput(INPUT.ROTATE_CW);
-      this._haptic(23);
+      this._haptic(15);
       this._resetState();
       return;
     }

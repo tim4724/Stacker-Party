@@ -177,8 +177,11 @@ function showEndScreen(toastKey, keepClientId) {
   gameCancelled = true;
   stopPing();
   // Clean up the settings popup state so a close-button after
-  // reconnect doesn't RESUME_GAME a long-gone display.
-  closeSettingsOverlay();
+  // reconnect doesn't RESUME_GAME a long-gone display. Guarded: this
+  // function is only defined on the !roomCode branch in controller.js,
+  // and showEndScreen() also runs on the falsy-roomCode early-return
+  // before that branch's assignment runs.
+  if (typeof closeSettingsOverlay === 'function') closeSettingsOverlay();
   if (party) { party.close(); party = null; }
 
   if (toastKey) {

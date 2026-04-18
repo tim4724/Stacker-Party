@@ -5,8 +5,9 @@
 // Applied to ControllerAudio (mute), TouchInput (ratchet threshold), and
 // the global vibrate() helper (haptic strength). Load order: after
 // TouchInput + Audio, before ControllerState so `vibrate()` can consult it.
-// In AirConsole mode the adapter neutralizes localStorage — settings won't
-// persist across sessions there, but runtime behavior is unchanged.
+// AirConsole mode: the adapter neutralizes window.localStorage, so the
+// same values persist via airconsole.storePersistentData / requestPersistentData
+// keyed on the user's AC UID (see initAirConsolePersistence below).
 // =====================================================================
 
 var ControllerSettings = (function () {
@@ -182,10 +183,8 @@ var ControllerSettings = (function () {
 
   function setMuted(val) {
     var next = !!val;
-    // Only mark dirty on an actual change — syncSensitivityControls calls
-    // the setters on every settings-open to round-trip the clamped value,
-    // and a no-op shouldn't block the pending AC persistent-data load.
-    if (next !== state.muted) _dirty = true;
+    if (next === state.muted) return; // no-op: match setSensitivity/setHaptic guard shape
+    _dirty = true;
     state.muted = next;
     write(KEY_MUTED, state.muted ? '1' : '0');
     if (typeof ControllerAudio !== 'undefined' && ControllerAudio.setMuted) {
