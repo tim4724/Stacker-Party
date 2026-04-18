@@ -82,10 +82,12 @@ function startCountdown(onComplete, startFrom) {
   countdown.callback = onComplete;
   countdown.remaining = count;
 
-  // Broadcast to controllers
-  party.broadcast({ type: MSG.COUNTDOWN, value: count });
-  // Handle locally on display
-  onCountdownDisplay(count);
+  // On resume (startFrom truthy), the current number is already on screen —
+  // skip the redundant broadcast/beep.
+  if (!startFrom) {
+    party.broadcast({ type: MSG.COUNTDOWN, value: count });
+    onCountdownDisplay(count);
+  }
 
   countdown.timer = setInterval(function() {
     count--;
@@ -185,8 +187,6 @@ function resumeGame() {
     party.broadcast({ type: MSG.GAME_RESUMED });
     onGameResumed();
     if (countdown.remaining === 0) {
-      party.broadcast({ type: MSG.COUNTDOWN, value: 'GO' });
-      onCountdownDisplay('GO');
       countdown.goTimeout = setTimeout(function() {
         countdown.goTimeout = null;
         countdown.callback();
