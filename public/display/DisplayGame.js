@@ -187,6 +187,11 @@ function resumeGame() {
     party.broadcast({ type: MSG.GAME_RESUMED });
     onGameResumed();
     if (countdown.remaining === 0) {
+      countdown.overlayTimer = setTimeout(function() {
+        countdown.overlayTimer = null;
+        countdownOverlay.classList.add('hidden');
+        countdownNumber.textContent = '';
+      }, 400);
       countdown.goTimeout = setTimeout(function() {
         countdown.goTimeout = null;
         countdown.callback();
@@ -271,6 +276,8 @@ function stopDisplayGame() {
 
 function runGameLocally() {
   stopDisplayGame();
+  countdownOverlay.classList.add('hidden');
+  countdownNumber.textContent = '';
   lastMusicLevel = 0;
 
   var Game = window.GameEngine.Game;
@@ -496,9 +503,8 @@ function onGameResumed() {
   }
   if (countdownNumber.textContent) {
     countdownOverlay.classList.remove('hidden');
-  } else if (music) {
-    music.resume();
   }
+  if (music) music.resume();
 }
 
 // Music & Audio — see DisplayAudio.js
