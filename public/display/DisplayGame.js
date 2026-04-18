@@ -115,7 +115,7 @@ function clearCountdownTimers() {
   if (countdown.overlayTimer) { clearTimeout(countdown.overlayTimer); countdown.overlayTimer = null; }
 }
 
-function pauseGame(selfInitiated) {
+function pauseGame() {
   if (paused) return;
   if (roomState !== ROOM_STATE.PLAYING && roomState !== ROOM_STATE.COUNTDOWN) return;
   paused = true;
@@ -123,7 +123,7 @@ function pauseGame(selfInitiated) {
     clearCountdownTimers();
   }
   party.broadcast({ type: MSG.GAME_PAUSED });
-  onGamePaused(selfInitiated);
+  onGamePaused();
 }
 
 // Check if all game participants are disconnected — auto-pause if so
@@ -479,9 +479,8 @@ function onGameEnd(msg) {
   showScreen(SCREEN.RESULTS);
 }
 
-function onGamePaused(selfInitiated) {
+function onGamePaused() {
   if (displayGame) displayGame.pause();
-  pauseOverlay.classList.toggle('pause-overlay--self', !!selfInitiated);
   pauseOverlay.classList.remove('hidden');
   gameToolbar.classList.add('hidden');
   countdownOverlay.classList.add('paused');
@@ -490,7 +489,6 @@ function onGamePaused(selfInitiated) {
 
 function onGameResumed() {
   if (displayGame) displayGame.resume();
-  pauseOverlay.classList.remove('pause-overlay--self');
   pauseOverlay.classList.add('hidden');
   countdownOverlay.classList.remove('paused');
   if (currentScreen === SCREEN.GAME) {

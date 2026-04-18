@@ -200,7 +200,7 @@ fullscreenBtn.addEventListener('click', function() {
 
 // --- Pause (display-side buttons) ---
 pauseBtn.addEventListener('click', function() {
-  pauseGame(true);
+  pauseGame();
 });
 
 pauseContinueBtn.addEventListener('click', function() {

@@ -630,19 +630,10 @@ body.airconsole #qr-container,
   margin-bottom: clamp(1.5rem, 3vh, 3rem);
 }
 
+/* No misclick gate on the display — it's a TV/monitor, not a phone. */
 #pause-buttons {
   display: flex;
   gap: clamp(0.8rem, 1.5vw, 1.5rem);
-  pointer-events: none; /* defensive: ensures gate holds even in engines where
-                           pointer-events isn't treated as a discrete keyframe prop */
-  animation: resultsButtonsEnter 0.4s ease 1.5s both;
-}
-
-/* Self-initiated pause: whoever clicked pause sees buttons immediately — no
-   misclick risk. Remote-triggered pause keeps the full 1.5s gate. */
-#pause-overlay.pause-overlay--self #pause-buttons {
-  animation: none;
-  pointer-events: auto;
 }
 
 /* Overlay action buttons — pause/reconnect/results share one sizing scale. */
