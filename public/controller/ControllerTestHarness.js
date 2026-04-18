@@ -142,16 +142,6 @@
       // openSettings() itself calls updateSettingsHostUI, which hides/shows
       // the Music (display-mute) row based on isHost.
       window.openSettings();
-      // Desktop Chromium exposes navigator.vibrate as a no-op so the real
-      // `hasVibrationSupport()` check returns true even in the gallery.
-      // `novib=1` forces the "unsupported" visual state so both variants
-      // are covered in the controller gallery.
-      if (params.get('novib')) {
-        var rowH = document.getElementById('row-haptics');
-        var hint = document.getElementById('haptic-unsupported-hint');
-        if (rowH) rowH.setAttribute('data-disabled', 'true');
-        if (hint) hint.hidden = false;
-      }
       break;
 
     case 'paused':

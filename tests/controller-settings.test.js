@@ -45,3 +45,60 @@ describe('ControllerSettings — sensitivity scale', () => {
     assert.equal(parseInt(match[1], 10), ControllerSettings.SENSITIVITY_DEFAULT);
   });
 });
+
+describe('ControllerSettings — haptic scaleVibration', () => {
+  // Tier mutations go through setHapticStrength so each sub-test restores
+  // the default afterwards to keep module state predictable across the suite.
+  function withTier(tier, fn) {
+    const prev = ControllerSettings.getHapticStrength();
+    ControllerSettings.setHapticStrength(tier);
+    try { fn(); } finally { ControllerSettings.setHapticStrength(prev); }
+  }
+
+  test("'off' returns null so callers skip navigator.vibrate entirely", () => {
+    withTier('off', () => {
+      assert.equal(ControllerSettings.scaleVibration(15), null);
+      assert.equal(ControllerSettings.scaleVibration([5, 5, 5]), null);
+    });
+  });
+
+  test('numeric patterns scale by the tier multiplier', () => {
+    withTier('medium', () => {
+      // Medium is 1.0 by convention — raw values pass through (round-tripped).
+      assert.equal(ControllerSettings.scaleVibration(15), 15);
+    });
+    withTier('strong', () => {
+      // Strong = 1.8 → 15 × 1.8 = 27
+      assert.equal(ControllerSettings.scaleVibration(15), 27);
+    });
+    withTier('light', () => {
+      // Light = 0.6 → 15 × 0.6 = 9
+      assert.equal(ControllerSettings.scaleVibration(15), 9);
+    });
+  });
+
+  test('enforces a 3 ms floor on each pulse so light doesn’t dip below hardware threshold', () => {
+    withTier('light', () => {
+      // 1 ms × 0.6 = 0.6 → clamped to 3ms floor (some devices drop sub-3ms pulses)
+      assert.equal(ControllerSettings.scaleVibration(1), 3);
+    });
+  });
+
+  test('array patterns are scaled element-wise', () => {
+    withTier('medium', () => {
+      assert.deepEqual(ControllerSettings.scaleVibration([8, 8, 8]), [8, 8, 8]);
+    });
+    withTier('strong', () => {
+      // [8 × 1.8, 8 × 1.8, 8 × 1.8] = [14.4, 14.4, 14.4] → round → [14, 14, 14]
+      assert.deepEqual(ControllerSettings.scaleVibration([8, 8, 8]), [14, 14, 14]);
+    });
+  });
+
+  test('setHapticStrength rejects invalid tier names silently', () => {
+    const prev = ControllerSettings.getHapticStrength();
+    ControllerSettings.setHapticStrength('extreme');
+    assert.equal(ControllerSettings.getHapticStrength(), prev);
+    ControllerSettings.setHapticStrength(null);
+    assert.equal(ControllerSettings.getHapticStrength(), prev);
+  });
+});

@@ -176,6 +176,9 @@ function showEndScreen(toastKey, keepClientId) {
   }
   gameCancelled = true;
   stopPing();
+  // Clean up the settings popup state so a close-button after
+  // reconnect doesn't RESUME_GAME a long-gone display.
+  closeSettingsOverlay();
   if (party) { party.close(); party = null; }
 
   if (toastKey) {

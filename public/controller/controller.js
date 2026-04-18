@@ -343,6 +343,11 @@ function resizePreviewCanvas() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
+// Cached accent color for drawSensitivityPreview — resolving --player-color
+// via getComputedStyle on every frame forces a style recalc. Refresh on
+// openSettings (player color doesn't change within a session).
+var _cachedPreviewAccent = '';
+
 function openSettings() {
   vibrate(15);
   // Pause the display while the user is in settings — but only when actively
@@ -354,6 +359,9 @@ function openSettings() {
     pausedBySettings = true;
     sendToDisplay(MSG.PAUSE_GAME);
   }
+  _cachedPreviewAccent = getComputedStyle(document.body).getPropertyValue('--player-color').trim()
+    || getComputedStyle(document.documentElement).getPropertyValue('--accent-secondary').trim()
+    || '#FF8C42';
   syncMuteControllerToggle();
   syncMuteDisplayToggle();
   syncHapticButtons();
@@ -370,6 +378,15 @@ if (lobbySettingsBtn) lobbySettingsBtn.addEventListener('click', openSettings);
 // Exposed for ControllerTestHarness — function declarations inside this
 // `else` block are block-scoped under strict mode and not otherwise reachable.
 window.openSettings = openSettings;
+
+// Silently hide the popup and clear the pause-by-settings flag WITHOUT
+// sending RESUME_GAME. Called from onGameEnd / showEndScreen to prevent
+// a stale flag or a post-transition resume from reaching the display.
+window.closeSettingsOverlay = function () {
+  if (!settingsOverlay) return;
+  settingsOverlay.classList.add('hidden');
+  pausedBySettings = false;
+};
 
 settingsCloseBtn.addEventListener('click', function () {
   vibrate(15);
@@ -416,13 +433,11 @@ function drawSensitivityPreview() {
   var h = rect.height || sensitivityPreview.height;
   var threshold = ControllerSettings.getSensitivity();
   var cy = h / 2;
-  // Prefer --player-color (set on <body> once the player has joined) so
-  // the preview's finger dot / tick marks / chevron match the real
-  // touchpad's player tint. Fallback to accent-secondary on pre-join
-  // screens where the body var is still empty.
-  var accent = getComputedStyle(document.body).getPropertyValue('--player-color').trim()
-    || getComputedStyle(document.documentElement).getPropertyValue('--accent-secondary').trim()
-    || '#FF8C42';
+  // Accent color is cached on openSettings() — getComputedStyle forces a
+  // style recalc and drawSensitivityPreview fires on every slider input
+  // AND every pointermove during preview drag (~60 Hz). Resolving once
+  // per session instead of per frame.
+  var accent = _cachedPreviewAccent || '#FF8C42';
 
   // Clear — CSS background (dot grid + gradient) shows through.
   ctx.clearRect(0, 0, w, h);

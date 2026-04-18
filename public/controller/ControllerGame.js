@@ -236,6 +236,11 @@ function onPlayerState(data) {
 
 function onGameEnd(data) {
   lastGameResults = data.results;
+  // Settings popup can stay open across GAME_END; close it so the stale
+  // pausedBySettings flag doesn't suppress a legitimate pause overlay in
+  // the next game, and so the DONE button doesn't RESUME_GAME into a
+  // display that has already transitioned to results.
+  closeSettingsOverlay();
   renderGameResults(data.results);
   showScreen('gameover');
 }

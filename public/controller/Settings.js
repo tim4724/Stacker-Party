@@ -19,13 +19,17 @@ var ControllerSettings = (function () {
   // longer pulses. Medium is 1.0 by convention — raw pattern values at each
   // call site are therefore the Medium-tier ms. Light and Strong are plain
   // multipliers around it.
-  var HAPTIC_SCALE = { off: 0, light: 0.6, medium: 1, strong: 2 };
+  var HAPTIC_SCALE = { off: 0, light: 0.6, medium: 1, strong: 1.8 };
 
   // Absolute clamp for persisted values. The UI slider narrows this further
   // to [touchpadWidth * 0.1, touchpadWidth * 0.5] each time Settings opens
   // so the range always matches the available drag distance on this device.
+  // Upper bound deliberately tight: at 200px, TAP_MAX_DISTANCE in TouchInput
+  // would hit 60px (vs 15 at default) which already makes rotation demanding
+  // — any higher and taps become nearly impossible. Wide landscape tablets
+  // max out at ~180px via the slider formula anyway.
   var SENSITIVITY_MIN = 10;
-  var SENSITIVITY_MAX = 500;
+  var SENSITIVITY_MAX = 200;
   var SENSITIVITY_DEFAULT = 48; // matches TouchInput.RATCHET_THRESHOLD
 
   // Display format for the sensitivity value. The slider remains a log-scaled
@@ -55,6 +59,10 @@ var ControllerSettings = (function () {
   // which is neutralized in AC mode). Populated async on init.
   var AC_KEY = 'stacker_settings';
   var _acWriteTimer = null;
+  // True once the user has interacted with any setter. Blocks the async
+  // AirConsole persistent-data load from clobbering a change that was
+  // made between init() and the data arriving.
+  var _dirty = false;
 
   function read(key) {
     try { return localStorage.getItem(key); } catch (e) { return null; }
@@ -117,6 +125,13 @@ var ControllerSettings = (function () {
     var prevOnLoaded = airconsole.onPersistentDataLoaded;
     airconsole.onPersistentDataLoaded = function (data) {
       try {
+        // User has already touched a setting locally — don't clobber it.
+        // The next setSensitivity/setMuted/setHapticStrength call will
+        // persist the user's value to AC instead.
+        if (_dirty) {
+          if (prevOnLoaded) prevOnLoaded.call(airconsole, data);
+          return;
+        }
         var entry = data && data[uid];
         var saved = entry && entry[AC_KEY];
         if (typeof saved === 'string') {
@@ -159,12 +174,6 @@ var ControllerSettings = (function () {
     _acWriteTimer = setTimeout(writeAirConsolePersistent, 300);
   }
 
-  function hasVibrationSupport() {
-    return typeof navigator !== 'undefined'
-      && 'vibrate' in navigator
-      && typeof navigator.vibrate === 'function';
-  }
-
   function init() {
     load();
     applyToSubsystems();
@@ -172,7 +181,12 @@ var ControllerSettings = (function () {
   }
 
   function setMuted(val) {
-    state.muted = !!val;
+    var next = !!val;
+    // Only mark dirty on an actual change — syncSensitivityControls calls
+    // the setters on every settings-open to round-trip the clamped value,
+    // and a no-op shouldn't block the pending AC persistent-data load.
+    if (next !== state.muted) _dirty = true;
+    state.muted = next;
     write(KEY_MUTED, state.muted ? '1' : '0');
     if (typeof ControllerAudio !== 'undefined' && ControllerAudio.setMuted) {
       ControllerAudio.setMuted(state.muted);
@@ -183,6 +197,7 @@ var ControllerSettings = (function () {
 
   function setHapticStrength(tier) {
     if (HAPTIC_TIERS.indexOf(tier) < 0) return;
+    if (tier !== state.haptic) _dirty = true;
     state.haptic = tier;
     write(KEY_HAPTIC, tier);
     schedulePersist();
@@ -193,6 +208,7 @@ var ControllerSettings = (function () {
     var n = parseInt(px, 10);
     if (isNaN(n)) return;
     n = Math.max(SENSITIVITY_MIN, Math.min(SENSITIVITY_MAX, n));
+    if (n !== state.sensitivity) _dirty = true;
     state.sensitivity = n;
     write(KEY_SENSITIVITY, String(n));
     // Live-apply to the active TouchInput instance if present. Calls the
@@ -233,7 +249,6 @@ var ControllerSettings = (function () {
     getSensitivity: function () { return state.sensitivity; },
     setSensitivity: setSensitivity,
     scaleVibration: scaleVibration,
-    hasVibrationSupport: hasVibrationSupport,
     onChange: onChange,
     SENSITIVITY_MIN: SENSITIVITY_MIN,
     SENSITIVITY_MAX: SENSITIVITY_MAX,

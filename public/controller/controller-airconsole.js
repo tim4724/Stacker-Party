@@ -131,10 +131,10 @@ function _acVibrate(pattern) {
     for (var i = 0; i < pattern.length; i += 2) total += pattern[i];
     pattern = total;
   }
+  // After the array-collapse above, `pattern` is always a number (or we
+  // returned early on null). Nothing else reaches this point.
   if (typeof pattern === 'number' && pattern > 0) {
     airconsole.vibrate(pattern);
-  } else if (navigator.vibrate) {
-    navigator.vibrate(pattern);
   }
 }
 // Overrides ControllerState.js#vibrate (global) and the TouchInput prototype.
