@@ -503,9 +503,8 @@ function onGameResumed() {
   }
   if (countdownNumber.textContent) {
     countdownOverlay.classList.remove('hidden');
-  } else if (music) {
-    music.resume();
   }
+  if (music) music.resume();
 }
 
 // Music & Audio — see DisplayAudio.js
