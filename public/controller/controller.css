@@ -509,11 +509,18 @@ html, body {
      older browsers that drop the color-mix version below. */
   border: 2px solid rgba(255, 255, 255, 0.5);
   border: 2px solid color-mix(in srgb, var(--player-color, white) 70%, transparent);
-  background-color: var(--bg-card);
-  background-color: color-mix(in srgb, var(--player-color, transparent) 20%, var(--bg-board));
-  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.10) 1.2px, transparent 1.8px);
-  background-image: radial-gradient(circle, color-mix(in srgb, var(--player-color, white) 32%, transparent) 1.2px, transparent 1.8px);
-  background-size: 22px 22px;
+  /* Board parity: vertical bg-secondary → bg-board gradient + 12% player tint,
+     matching BoardRenderer's clipped fill. Dots stay on top as a tactile layer.
+     Two-declaration fallback for browsers without color-mix. */
+  background-color: var(--bg-board);
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, 0.10) 1.2px, transparent 1.8px),
+    linear-gradient(var(--bg-secondary), var(--bg-board));
+  background-image:
+    radial-gradient(circle, color-mix(in srgb, var(--player-color, white) 32%, transparent) 1.2px, transparent 1.8px),
+    linear-gradient(color-mix(in srgb, var(--player-color, transparent) 12%, transparent), color-mix(in srgb, var(--player-color, transparent) 12%, transparent)),
+    linear-gradient(var(--bg-secondary), var(--bg-board));
+  background-size: 22px 22px, auto, auto;
   cursor: crosshair;
 }
 
@@ -552,21 +559,21 @@ html, body {
   background: var(--bg-board);
 }
 
-/* Gesture feedback — cushion-press dimple that follows the finger.
-   Dark radial inward to read as a depression, not a glow. A thin
-   player-colored rim at ~40% radius signals identity. */
+/* Gesture feedback — soft dark shadow under the finger. Just a radial
+   gradient; no blur filter, no blend mode (both are expensive per frame
+   on mobile GPUs). Only transform + opacity change, which stay on the
+   GPU compositor. */
 .feedback-glow {
   position: absolute;
-  width: 120px;
-  height: 120px;
+  width: 80px;
+  height: 80px;
   border-radius: 50%;
   background: radial-gradient(
     circle,
     rgba(0, 0, 0, 0.45) 0%,
-    rgba(0, 0, 0, 0.25) 35%,
-    transparent 70%
+    rgba(0, 0, 0, 0.24) 45%,
+    transparent 75%
   );
-  filter: blur(8px);
   pointer-events: none;
   opacity: 0;
   will-change: transform, opacity;
@@ -732,7 +739,14 @@ html, body {
 }
 
 #game-screen.countdown #touch-pad {
-  background-color: var(--bg-board);
+  /* Drop the player-tint layer during countdown; keep dots + gradient. */
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, 0.10) 1.2px, transparent 1.8px),
+    linear-gradient(var(--bg-secondary), var(--bg-board));
+  background-image:
+    radial-gradient(circle, color-mix(in srgb, var(--player-color, white) 32%, transparent) 1.2px, transparent 1.8px),
+    linear-gradient(var(--bg-secondary), var(--bg-board));
+  background-size: 22px 22px, auto;
 }
 
 /* Paused state — disable touch input.

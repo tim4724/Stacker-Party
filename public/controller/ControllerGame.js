@@ -370,13 +370,12 @@ function removeKoOverlay() {
 // Gesture Feedback — glow that follows finger
 // =====================================================================
 
-var GLOW_SIZE = 100;
-var GLOW_OPACITY = 0.36;
-var GLOW_GROW = 0.15;
+var GLOW_SIZE = 80;
+var GLOW_OPACITY = 1;
 var _feedbackRect = null;
 window.addEventListener('resize', function() { _feedbackRect = null; });
 
-function showGlow(x, y, progress) {
+function showGlow(x, y) {
   if (!glowEl) {
     glowEl = document.createElement('div');
     glowEl.className = 'feedback-glow';
@@ -385,9 +384,7 @@ function showGlow(x, y, progress) {
   if (!_feedbackRect) _feedbackRect = feedbackLayer.getBoundingClientRect();
   var lx = x - _feedbackRect.left;
   var ly = y - _feedbackRect.top;
-  var p = progress || 0;
-  var scale = 1 + p * GLOW_GROW;
-  glowEl.style.transform = 'translate(' + (lx - GLOW_SIZE / 2) + 'px,' + (ly - GLOW_SIZE / 2) + 'px) scale(' + scale + ')';
+  glowEl.style.transform = 'translate(' + (lx - GLOW_SIZE / 2) + 'px,' + (ly - GLOW_SIZE / 2) + 'px)';
   glowEl.style.opacity = GLOW_OPACITY;
 }
 
@@ -423,23 +420,14 @@ function initTouchInput() {
     touchArea.removeEventListener('pointerup', coordTracker);
   }
 
-  var anchorX = 0, anchorY = 0;
-
   coordTracker = function (e) {
     lastTouchX = e.clientX;
     lastTouchY = e.clientY;
     if (e.type === 'pointerdown') {
       _feedbackRect = feedbackLayer.getBoundingClientRect();
-      anchorX = e.clientX;
-      anchorY = e.clientY;
-      showGlow(e.clientX, e.clientY, 0);
+      showGlow(e.clientX, e.clientY);
     } else if (e.type === 'pointermove') {
-      var dx = e.clientX - anchorX;
-      var dy = e.clientY - anchorY;
-      var dir = Math.abs(dx) >= Math.abs(dy) ? 'h' : 'v';
-      var axisDist = dir === 'h' ? Math.abs(dx) : Math.abs(dy);
-      var progress = Math.min(axisDist / 48, 1);
-      showGlow(e.clientX, e.clientY, progress);
+      showGlow(e.clientX, e.clientY);
     } else if (e.type === 'pointerup') {
       hideGlow();
     }
@@ -474,15 +462,4 @@ function initTouchInput() {
       sendToDisplay(MSG.INPUT, { action: action });
     }
   }, onDragProgress);
-
-  // Reset anchor on each ratchet trigger — listen for input actions to reset
-  var origOnInput = touchInput.onInput;
-  var wrappedOnInput = function (action, data) {
-    if (action === 'left' || action === 'right' || action === 'hard_drop' || action === 'hold') {
-      anchorX = lastTouchX;
-      anchorY = lastTouchY;
-    }
-    origOnInput(action, data);
-  };
-  touchInput.onInput = wrappedOnInput;
 }
