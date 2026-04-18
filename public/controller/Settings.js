@@ -178,6 +178,10 @@ var ControllerSettings = (function () {
   function init() {
     load();
     applyToSubsystems();
+    // Fast path: if airconsole.onReady already fired by init time (cached
+    // device state on reconnect/replay), getUID works and this loads
+    // immediately. Otherwise it no-ops and controller-airconsole.js will
+    // call us again from its onReady wrapper.
     initAirConsolePersistence();
   }
 
@@ -196,7 +200,8 @@ var ControllerSettings = (function () {
 
   function setHapticStrength(tier) {
     if (HAPTIC_TIERS.indexOf(tier) < 0) return;
-    if (tier !== state.haptic) _dirty = true;
+    if (tier === state.haptic) return; // no-op: match setMuted/setSensitivity guard shape
+    _dirty = true;
     state.haptic = tier;
     write(KEY_HAPTIC, tier);
     schedulePersist();
@@ -248,6 +253,10 @@ var ControllerSettings = (function () {
     getSensitivity: function () { return state.sensitivity; },
     setSensitivity: setSensitivity,
     scaleVibration: scaleVibration,
+    // Public so controller-airconsole.js can re-invoke after airconsole.onReady
+    // fires — init() runs synchronously at page load, onReady arrives async,
+    // and getUID() returns null until then.
+    initAirConsolePersistence: initAirConsolePersistence,
     onChange: onChange,
     SENSITIVITY_MIN: SENSITIVITY_MIN,
     SENSITIVITY_MAX: SENSITIVITY_MAX,

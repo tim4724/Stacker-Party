@@ -60,6 +60,13 @@ connect = function() {
     // Per the AirConsole checklist: "the game and the controller may have
     // different languages" — each device uses its own.
     AirConsoleAdapter.applyLocale(airconsole);
+    // Now that getUID() is valid, load the user's persisted settings.
+    // ControllerSettings.init already tried at page load but UID was null;
+    // initAirConsolePersistence is idempotent (re-installs onPersistentDataLoaded
+    // and re-issues requestPersistentData).
+    if (typeof ControllerSettings !== 'undefined' && ControllerSettings.initAirConsolePersistence) {
+      ControllerSettings.initAirConsolePersistence();
+    }
     if (_adapterOnReady) _adapterOnReady.call(airconsole, code);
   };
   // Replay the captured-early onReady into the freshly-wired adapter.
@@ -110,10 +117,11 @@ history.pushState = function() {};
 performDisconnect = function() {};
 
 // Route haptics through the AirConsole SDK so the iframe's permissions policy
-// can't silently block vibration. Array patterns aren't supported by the SDK,
-// so we fall back to navigator.vibrate — which the iframe permissions policy
-// may still block silently. Accepted tradeoff: the SDK path covers the common
-// single-duration cases; the array fallback is best-effort.
+// can't silently block vibration. The SDK only accepts a single duration, so
+// array patterns are summed (even indices = on-durations) and routed through
+// `airconsole.vibrate` as the total ms. This loses the rhythm but preserves
+// the total vibration energy — better than falling back to navigator.vibrate
+// which the iframe permissions policy usually blocks outright.
 function _acVibrate(pattern) {
   // Respect the user's haptic-strength setting (off/light/medium/strong).
   if (typeof ControllerSettings !== 'undefined' && ControllerSettings.scaleVibration) {
@@ -121,11 +129,9 @@ function _acVibrate(pattern) {
     if (pattern === null) return;
   }
   // AirConsole SDK takes only a single duration. Collapse array patterns
-  // (hard drop's [5, 5, 5]) by summing the on-durations — even indices are
+  // (hard drop's [8, 8, 8]) by summing the on-durations — even indices are
   // vibrate, odd are pauses — so the total energy survives even though the
-  // rhythm is lost. Without this, navigator.vibrate fires inside the AC
-  // iframe and is usually blocked by permissions policy, leaving hard
-  // drop completely silent haptically.
+  // rhythm is lost.
   if (Array.isArray(pattern)) {
     var total = 0;
     for (var i = 0; i < pattern.length; i += 2) total += pattern[i];

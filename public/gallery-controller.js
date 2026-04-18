@@ -17,13 +17,8 @@ var PER_COLOR_SCENARIOS = [
   { key: 'lobby-latejoiner', title: 'Lobby (late joiner)' },
   { key: 'countdown',        title: 'Countdown' },
   { key: 'playing',          title: 'Playing' },
-  // Every second card forces the vibration-unsupported state (`novib=1`) so
-  // the "Not supported on this device" hint is covered — desktop Chromium
-  // exposes navigator.vibrate as a no-op, so the real check returns true.
-  { key: 'playing-settings', title: 'Playing + Settings (non-host)', extra: { host: '' },
-    extraPerColor: function(c) { return c % 2 === 1 ? { novib: '1' } : null; } },
-  { key: 'playing-settings', title: 'Playing + Settings (host)',     extra: { host: '1' },
-    extraPerColor: function(c) { return c % 2 === 1 ? { novib: '1' } : null; } },
+  { key: 'playing-settings', title: 'Playing + Settings (non-host)', extra: { host: '' } },
+  { key: 'playing-settings', title: 'Playing + Settings (host)',     extra: { host: '1' } },
   { key: 'paused',           title: 'Paused (non-host)',  extra: { host: '' } },
   { key: 'paused',           title: 'Paused (host)',      extra: { host: '1' } },
   { key: 'ko',               title: 'KO' },
