@@ -80,12 +80,19 @@ connect = function() {
 
 // Populate settings version label. Build script replaces __AC_VERSION__
 // with the actual version. In AC mode the /api/version fetch in controller.js
-// fails (cross-origin), so this is the only source of truth.
+// fails (cross-origin), so this is the only source of truth — but in local
+// dev the placeholder is unsubstituted, so fall back to /api/version.
 (function() {
   var el = document.getElementById('settings-version');
   if (!el) return;
   var v = '__AC_VERSION__';
-  if (v.indexOf('__') !== 0) el.textContent = v;
+  if (v.indexOf('__') !== 0) {
+    el.textContent = v;
+  } else {
+    fetch('/api/version').then(function(r) { return r.json(); }).then(function(d) {
+      el.textContent = d.version || '';
+    }).catch(function() {});
+  }
 })();
 
 // Drive the sensitivity slider via pointer events. Chromium's native

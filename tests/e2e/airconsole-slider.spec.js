@@ -81,8 +81,14 @@ test('sensitivity slider drag updates value in iframe', async () => {
     });
   }
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  await page.waitForTimeout(100);
 
+  // Poll for the value to change instead of a fixed delay — more robust in CI.
+  await frame.waitForFunction(
+    (start) => parseFloat(document.getElementById('sensitivity-slider').value)
+      !== parseFloat(start),
+    startValue,
+    { timeout: 2000 }
+  );
   const endValue = await frame.evaluate(
     () => document.getElementById('sensitivity-slider').value
   );
