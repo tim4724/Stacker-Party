@@ -197,7 +197,7 @@ const server = http.createServer((req, res) => {
           urlPath === '/privacy.html' ||
           urlPath === '/imprint.html';
         const frameAncestors = iframeable ? "'self'" : "'none'";
-        headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' wss://ws.hexstacker.com; img-src 'self' data:; object-src 'none'; frame-src 'self'; frame-ancestors " + frameAncestors;
+        headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' wss://ws.hexstacker.com https://ws.hexstacker.com; img-src 'self' data:; object-src 'none'; frame-src 'self'; frame-ancestors " + frameAncestors;
       }
     }
 

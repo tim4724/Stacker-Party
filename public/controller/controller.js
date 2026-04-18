@@ -115,6 +115,25 @@ if (rejoinId) {
   clientId = hadStoredId || generateClientId();
 }
 
+// Probe the relay for an existence check so an invalid room code surfaces
+// immediately instead of only after the user types a name and hits JOIN.
+// Gate on the relay's 4-letter code shape so AirConsole (/controller.html)
+// and gallery paths are skipped automatically.
+if (/^[A-Z]{4}$/.test(roomCode) && !new URLSearchParams(location.search).get('scenario')) {
+  var isNewClient = !hadStoredId && !rejoinId;
+  fetch(RELAY_URL.replace(/^ws/, 'http') + '/room/' + encodeURIComponent(roomCode))
+    .then(function (res) {
+      if (res.status === 404) return showEndScreen('room_not_found');
+      // Only treat full as fatal for fresh joiners — reconnects with a
+      // stored clientId swap into their existing slot on the relay.
+      if (!isNewClient) return;
+      return res.json().then(function (info) {
+        if (info && info.clients >= info.maxClients) showEndScreen('game_full');
+      });
+    })
+    .catch(function () { /* network error — connect() will surface it */ });
+}
+
 // =====================================================================
 // Name Input
 // =====================================================================
