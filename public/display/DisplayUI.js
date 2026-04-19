@@ -183,7 +183,7 @@ function updatePlayerList() {
       if (!levelCtrl) {
         levelCtrl = document.createElement('div');
         levelCtrl.className = 'level-controls';
-        levelCtrl.innerHTML = '<span class="level-heading">' + t('level_heading') + '</span><button class="level-btn level-minus" aria-label="−"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"><line x1="2" y1="7" x2="12" y2="7"/></svg></button><span class="level-label"></span><button class="level-btn level-plus" aria-label="+"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"><line x1="2" y1="7" x2="12" y2="7"/><line x1="7" y1="2" x2="7" y2="12"/></svg></button>';
+        levelCtrl.innerHTML = '<span class="level-heading">' + t('level_heading') + '</span><button class="level-btn level-minus" aria-label="' + t('level_minus') + '"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"><line x1="2" y1="7" x2="12" y2="7"/></svg></button><span class="level-label"></span><button class="level-btn level-plus" aria-label="' + t('level_plus') + '"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"><line x1="2" y1="7" x2="12" y2="7"/><line x1="7" y1="2" x2="7" y2="12"/></svg></button>';
         card.appendChild(levelCtrl);
       }
       var lvl = info.startLevel || 1;

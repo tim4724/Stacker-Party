@@ -133,6 +133,8 @@ var LOCALES = {
     // Action buttons without visible text
     pause: 'Pause',
     copy_url: 'Copy URL',
+    level_minus: 'Decrease level',
+    level_plus: 'Increase level',
 
     // Web Share API
     share_text: 'Play HexStacker Party with your friends',
@@ -207,6 +209,7 @@ var LOCALES = {
     settings_haptic_medium: 'Mittel', settings_haptic_strong: 'Stark',
     settings_sensitivity: 'Empfindlichkeit',
     fullscreen: 'Vollbild', pause: 'Pause', copy_url: 'URL kopieren',
+    level_minus: 'Level runter', level_plus: 'Level rauf',
     share_text: 'Spiel HexStacker Party mit deinen Freunden',
   },
 
@@ -251,6 +254,7 @@ var LOCALES = {
     settings_haptic_medium: 'Moyen', settings_haptic_strong: 'Fort',
     settings_sensitivity: 'Sensibilité',
     fullscreen: 'Plein écran', pause: 'Pause', copy_url: 'Copier l\'URL',
+    level_minus: 'Baisser le niveau', level_plus: 'Monter le niveau',
     share_text: 'Joue à HexStacker Party avec tes amis',
   },
 
@@ -295,6 +299,7 @@ var LOCALES = {
     settings_haptic_medium: 'Média', settings_haptic_strong: 'Forte',
     settings_sensitivity: 'Sensibilidade',
     fullscreen: 'Tela cheia', pause: 'Pausar', copy_url: 'Copiar URL',
+    level_minus: 'Diminuir nível', level_plus: 'Aumentar nível',
     share_text: 'Joga HexStacker Party com seus amigos',
   },
 
@@ -339,6 +344,7 @@ var LOCALES = {
     settings_haptic_medium: 'Media', settings_haptic_strong: 'Fuerte',
     settings_sensitivity: 'Sensibilidad',
     fullscreen: 'Pantalla completa', pause: 'Pausa', copy_url: 'Copiar URL',
+    level_minus: 'Bajar nivel', level_plus: 'Subir nivel',
     share_text: 'Juega a HexStacker Party con tus amigos',
   },
 
@@ -382,6 +388,7 @@ var LOCALES = {
     settings_haptic_medium: '中', settings_haptic_strong: '强',
     settings_sensitivity: '灵敏度',
     fullscreen: '全屏', pause: '暂停', copy_url: '复制 URL',
+    level_minus: '降低等级', level_plus: '提升等级',
     share_text: '和朋友一起玩 HexStacker Party',
   },
 
@@ -426,6 +433,7 @@ var LOCALES = {
     settings_haptic_medium: '中', settings_haptic_strong: '強',
     settings_sensitivity: '感度',
     fullscreen: '全画面', pause: '一時停止', copy_url: 'URLをコピー',
+    level_minus: 'レベルを下げる', level_plus: 'レベルを上げる',
     share_text: '友達と HexStacker Party で遊ぼう',
   },
 
@@ -469,6 +477,7 @@ var LOCALES = {
     settings_haptic_medium: '중', settings_haptic_strong: '강',
     settings_sensitivity: '감도',
     fullscreen: '전체화면', pause: '일시정지', copy_url: 'URL 복사',
+    level_minus: '레벨 내리기', level_plus: '레벨 올리기',
     share_text: '친구들과 HexStacker Party 해봐',
   },
 
@@ -519,6 +528,7 @@ var LOCALES = {
     settings_haptic_medium: 'Средне', settings_haptic_strong: 'Сильно',
     settings_sensitivity: 'Чувствительность',
     fullscreen: 'Полный экран', pause: 'Пауза', copy_url: 'Скопировать URL',
+    level_minus: 'Уменьшить уровень', level_plus: 'Повысить уровень',
     share_text: 'Играй в HexStacker Party с друзьями',
   },
 
@@ -563,6 +573,7 @@ var LOCALES = {
     settings_haptic_medium: 'Media', settings_haptic_strong: 'Forte',
     settings_sensitivity: 'Sensibilità',
     fullscreen: 'Schermo intero', pause: 'Pausa', copy_url: 'Copia URL',
+    level_minus: 'Diminuisci livello', level_plus: 'Aumenta livello',
     share_text: 'Gioca a HexStacker Party con i tuoi amici',
   },
 
@@ -607,6 +618,7 @@ var LOCALES = {
     settings_haptic_medium: 'Orta', settings_haptic_strong: 'Güçlü',
     settings_sensitivity: 'Hassasiyet',
     fullscreen: 'Tam ekran', pause: 'Duraklat', copy_url: 'URL\'yi kopyala',
+    level_minus: 'Seviyeyi azalt', level_plus: 'Seviyeyi artır',
     share_text: 'Arkadaşlarınla HexStacker Party oyna',
   }
 };
