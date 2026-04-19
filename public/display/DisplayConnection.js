@@ -146,7 +146,7 @@ function applyRoomCreated(partyRoomCode, newJoinUrl) {
     joinUrlEl.dataset.copyBound = '1';
     joinUrlEl.setAttribute('role', 'button');
     joinUrlEl.setAttribute('tabindex', '0');
-    joinUrlEl.setAttribute('aria-label', 'Copy join URL');
+    joinUrlEl.setAttribute('aria-label', t('copy_url'));
     var showCopiedToast = function() {
       var copiedLabel = t('copied') || 'Copied';
       joinUrlEl.setAttribute('data-copied-label', copiedLabel);
@@ -157,7 +157,7 @@ function applyRoomCreated(partyRoomCode, newJoinUrl) {
       clearTimeout(_copyTimer);
       _copyTimer = setTimeout(function() {
         joinUrlEl.removeAttribute('data-copied');
-        joinUrlEl.setAttribute('aria-label', 'Copy join URL');
+        joinUrlEl.setAttribute('aria-label', t('copy_url'));
       }, 1600);
     };
     var copyToClipboard = function() {

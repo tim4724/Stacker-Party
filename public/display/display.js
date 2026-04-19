@@ -212,6 +212,9 @@ fullscreenBtn.addEventListener('click', function() {
     document.exitFullscreen().catch(function() {});
   }
 });
+document.addEventListener('fullscreenchange', function() {
+  fullscreenBtn.setAttribute('aria-checked', document.fullscreenElement ? 'true' : 'false');
+});
 
 // --- Pause (display-side buttons) ---
 pauseBtn.addEventListener('click', function() {
