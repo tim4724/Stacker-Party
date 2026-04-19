@@ -35,6 +35,7 @@ var stored = parseInt(state.displayCardsPerRow, 10);
 state.displayCardsPerRow = Math.max(1, Math.min(stored || DISPLAY_DEFAULT_COLS, DISPLAY_MAX_COLS));
 state.displayPlayers = parseInt(state.displayPlayers, 10) || DISPLAY_DEFAULT_PLAYERS;
 state.players = state.displayPlayers;
+state.level = parseInt(state.level, 10) || 1;
 
 // viewAs picks any of the 8 player slots — DisplayTestHarness resolves the
 // host by stubbed clientId, so host tint works for slots beyond the active
@@ -137,12 +138,6 @@ Gallery.bindSelect(state, 'view-as-player', 'viewAs', updateViewAs, function(v) 
 });
 Gallery.bindSelect(state, 'language', 'lang', render);
 Gallery.bindSelect(state, 'cards-per-row', 'displayCardsPerRow', updateLayout, function(v) { return parseInt(v, 10) || DISPLAY_DEFAULT_COLS; });
-
-var _viewAsEl = document.getElementById('view-as-player');
-if (_viewAsEl) _viewAsEl.value = String(state.viewAs);
-
-state.level = parseInt(state.level, 10) || 1;
-state.displayCardsPerRow = parseInt(state.displayCardsPerRow, 10) || DISPLAY_DEFAULT_COLS;
 
 Gallery.autoPauseOnHeaderFocus();
 Gallery.initMobileOptionsToggle();

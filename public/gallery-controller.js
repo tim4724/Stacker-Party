@@ -44,6 +44,7 @@ var stored = parseInt(state.controllerCardsPerRow, 10);
 state.controllerCardsPerRow = Math.max(1, Math.min(stored || CTRL_MAX_COLS, CTRL_MAX_COLS));
 state.controllerPlayers = parseInt(state.controllerPlayers, 10) || CTRL_DEFAULT_PLAYERS;
 state.players = state.controllerPlayers;
+state.level = parseInt(state.level, 10) || 1;
 
 function clampViewAs(v) {
   return Math.max(0, Math.min(v || 0, state.controllerPlayers - 1));
@@ -158,12 +159,6 @@ Gallery.bindSelect(state, 'view-as-player', 'viewAs', updateViewAs, function(v) 
 });
 Gallery.bindSelect(state, 'language', 'lang', render);
 Gallery.bindSelect(state, 'cards-per-row', 'controllerCardsPerRow', updateLayout, function(v) { return parseInt(v, 10) || 8; });
-
-var _viewAsEl = document.getElementById('view-as-player');
-if (_viewAsEl) _viewAsEl.value = String(state.viewAs);
-
-state.level = parseInt(state.level, 10) || 1;
-state.controllerCardsPerRow = parseInt(state.controllerCardsPerRow, 10) || 8;
 
 Gallery.autoPauseOnHeaderFocus();
 Gallery.initMobileOptionsToggle();
