@@ -175,6 +175,7 @@ newGameResultsBtn.addEventListener('click', function() {
 
 // --- Mute ---
 if (muted) muteBtn.querySelector('.sound-waves').style.display = 'none';
+muteBtn.setAttribute('aria-checked', muted ? 'false' : 'true');
 
 function setDisplayMuted(next) {
   next = !!next;
@@ -182,6 +183,7 @@ function setDisplayMuted(next) {
   muted = next;
   try { localStorage.setItem('stacker_muted', muted ? '1' : '0'); } catch (e) { /* iframe sandbox */ }
   muteBtn.querySelector('.sound-waves').style.display = muted ? 'none' : '';
+  muteBtn.setAttribute('aria-checked', muted ? 'false' : 'true');
   if (music) {
     music.muted = muted;
     if (music.masterGain) {

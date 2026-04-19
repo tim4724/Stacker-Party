@@ -128,7 +128,6 @@ var LOCALES = {
     settings_sensitivity: 'Sensitivity',
 
     // Display toolbar tooltips
-    display_mute_tooltip: 'Toggle mute',
     display_fullscreen_tooltip: 'Toggle fullscreen',
 
     // Web Share API
@@ -203,7 +202,7 @@ var LOCALES = {
     settings_haptic_off: 'Aus', settings_haptic_light: 'Leicht',
     settings_haptic_medium: 'Mittel', settings_haptic_strong: 'Stark',
     settings_sensitivity: 'Empfindlichkeit',
-    display_mute_tooltip: 'Stumm schalten', display_fullscreen_tooltip: 'Vollbild',
+    display_fullscreen_tooltip: 'Vollbild',
     share_text: 'Spiel HexStacker Party mit deinen Freunden',
   },
 
@@ -247,7 +246,7 @@ var LOCALES = {
     settings_haptic_off: 'Off', settings_haptic_light: 'Léger',
     settings_haptic_medium: 'Moyen', settings_haptic_strong: 'Fort',
     settings_sensitivity: 'Sensibilité',
-    display_mute_tooltip: 'Couper le son', display_fullscreen_tooltip: 'Plein écran',
+    display_fullscreen_tooltip: 'Plein écran',
     share_text: 'Joue à HexStacker Party avec tes amis',
   },
 
@@ -291,7 +290,7 @@ var LOCALES = {
     settings_haptic_off: 'Off', settings_haptic_light: 'Fraca',
     settings_haptic_medium: 'Média', settings_haptic_strong: 'Forte',
     settings_sensitivity: 'Sensibilidade',
-    display_mute_tooltip: 'Silenciar', display_fullscreen_tooltip: 'Tela cheia',
+    display_fullscreen_tooltip: 'Tela cheia',
     share_text: 'Joga HexStacker Party com seus amigos',
   },
 
@@ -335,7 +334,7 @@ var LOCALES = {
     settings_haptic_off: 'Off', settings_haptic_light: 'Suave',
     settings_haptic_medium: 'Media', settings_haptic_strong: 'Fuerte',
     settings_sensitivity: 'Sensibilidad',
-    display_mute_tooltip: 'Silenciar', display_fullscreen_tooltip: 'Pantalla completa',
+    display_fullscreen_tooltip: 'Pantalla completa',
     share_text: 'Juega a HexStacker Party con tus amigos',
   },
 
@@ -378,7 +377,7 @@ var LOCALES = {
     settings_haptic_off: '关', settings_haptic_light: '弱',
     settings_haptic_medium: '中', settings_haptic_strong: '强',
     settings_sensitivity: '灵敏度',
-    display_mute_tooltip: '静音切换', display_fullscreen_tooltip: '全屏切换',
+    display_fullscreen_tooltip: '全屏切换',
     share_text: '和朋友一起玩 HexStacker Party',
   },
 
@@ -422,7 +421,7 @@ var LOCALES = {
     settings_haptic_off: 'オフ', settings_haptic_light: '弱',
     settings_haptic_medium: '中', settings_haptic_strong: '強',
     settings_sensitivity: '感度',
-    display_mute_tooltip: 'ミュート切替', display_fullscreen_tooltip: '全画面切替',
+    display_fullscreen_tooltip: '全画面切替',
     share_text: '友達と HexStacker Party で遊ぼう',
   },
 
@@ -465,7 +464,7 @@ var LOCALES = {
     settings_haptic_off: '끔', settings_haptic_light: '약',
     settings_haptic_medium: '중', settings_haptic_strong: '강',
     settings_sensitivity: '감도',
-    display_mute_tooltip: '음소거 전환', display_fullscreen_tooltip: '전체화면 전환',
+    display_fullscreen_tooltip: '전체화면 전환',
     share_text: '친구들과 HexStacker Party 해봐',
   },
 
@@ -515,7 +514,7 @@ var LOCALES = {
     settings_haptic_off: 'Выкл', settings_haptic_light: 'Слабо',
     settings_haptic_medium: 'Средне', settings_haptic_strong: 'Сильно',
     settings_sensitivity: 'Чувствительность',
-    display_mute_tooltip: 'Без звука', display_fullscreen_tooltip: 'Полный экран',
+    display_fullscreen_tooltip: 'Полный экран',
     share_text: 'Играй в HexStacker Party с друзьями',
   },
 
@@ -559,7 +558,7 @@ var LOCALES = {
     settings_haptic_off: 'Off', settings_haptic_light: 'Lieve',
     settings_haptic_medium: 'Media', settings_haptic_strong: 'Forte',
     settings_sensitivity: 'Sensibilità',
-    display_mute_tooltip: 'Muto', display_fullscreen_tooltip: 'Schermo intero',
+    display_fullscreen_tooltip: 'Schermo intero',
     share_text: 'Gioca a HexStacker Party con i tuoi amici',
   },
 
@@ -603,7 +602,7 @@ var LOCALES = {
     settings_haptic_off: 'Kapalı', settings_haptic_light: 'Hafif',
     settings_haptic_medium: 'Orta', settings_haptic_strong: 'Güçlü',
     settings_sensitivity: 'Hassasiyet',
-    display_mute_tooltip: 'Sesi kapat', display_fullscreen_tooltip: 'Tam ekran',
+    display_fullscreen_tooltip: 'Tam ekran',
     share_text: 'Arkadaşlarınla HexStacker Party oyna',
   }
 };
