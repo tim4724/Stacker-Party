@@ -350,7 +350,8 @@ function initScenario(opts) {
     // replay will transition out of: board 0 has a filled stack to clear,
     // board 1 has zero pending (incoming garbage will raise it), board 2
     // has 3 pending (defend will cancel most of it), board 3 is alive
-    // (KO will take it down).
+    // (KO will take it down). gridVersion starts at 0 so the runEffects
+    // tick's `++` produces a clean 0→1 change for BoardRenderer to pick up.
     function seedBoards() {
       for (var rClean = 0; rClean < HV_c; rClean++) {
         for (var cClean = 0; cClean < HC_c; cClean++) {
@@ -362,7 +363,7 @@ function initScenario(opts) {
           state.players[0].grid[lr][lc] = ((lc + lr) % types_c.length) + 1;
         }
       }
-      state.players[0].gridVersion++;
+      state.players[0].gridVersion = 0;
       state.players[1].pendingGarbage = 0;
       state.players[2].pendingGarbage = 3;
       state.players[3].alive = true;

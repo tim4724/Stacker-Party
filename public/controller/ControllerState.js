@@ -12,9 +12,11 @@
 
 // Gallery previews load the controller in iframes and trigger screen
 // transitions + fake gameplay as they render. Silence haptics in ?test=1
-// mode so every card load doesn't buzz the phone.
+// mode so every card load doesn't buzz the phone. navigator.vibrate may be
+// non-writable in some strict-mode contexts — swallow the assignment error
+// so the harness still boots even if we can't silence it.
 if (new URLSearchParams(location.search).get('test') === '1' && navigator.vibrate) {
-  navigator.vibrate = function() { return false; };
+  try { navigator.vibrate = function() { return false; }; } catch (_) { /* best effort */ }
 }
 
 // --- State ---
