@@ -157,11 +157,14 @@ startBtn.addEventListener('click', function() {
 // Best-effort: pagehide also fires on bfcache freeze (iOS Safari) where
 // the WebSocket send may not complete before the page is frozen.
 // Controllers fall back to the existing reconnect overlay in that case.
+// In test/gallery mode `party` may be a minimal stub without broadcast/close,
+// so each call is guarded.
 window.addEventListener('pagehide', function() {
-  if (party) {
+  if (!party) return;
+  if (typeof party.broadcast === 'function') {
     try { party.broadcast({ type: MSG.DISPLAY_CLOSED }); } catch (_) {}
-    party.close();
   }
+  if (typeof party.close === 'function') party.close();
 });
 
 playAgainBtn.addEventListener('click', function() {

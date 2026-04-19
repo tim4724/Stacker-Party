@@ -10,6 +10,13 @@
 // See controller/index.html <script> tags for the canonical order.
 // =====================================================================
 
+// Gallery previews load the controller in iframes and trigger screen
+// transitions + fake gameplay as they render. Silence haptics in ?test=1
+// mode so every card load doesn't buzz the phone.
+if (new URLSearchParams(location.search).get('test') === '1' && navigator.vibrate) {
+  navigator.vibrate = function() { return false; };
+}
+
 // --- State ---
 var party = null;
 var clientId = null;

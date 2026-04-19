@@ -83,6 +83,19 @@
     updatePingDisplay(42);
   }
 
+  // Restart a CSS animation on an element without reloading the iframe.
+  // The removal + reflow dance is the canonical trick — simply re-setting
+  // the class name doesn't retrigger an already-running animation.
+  function restartAnimation(el) {
+    if (!el) return;
+    el.style.animation = 'none';
+    void el.offsetWidth;
+    el.style.animation = '';
+  }
+  // Gallery exposes a ▶ button that calls window.__TEST__.replay(); each
+  // animated scenario overrides this below to re-run its own visual.
+  window.__TEST__ = window.__TEST__ || {};
+
   // --- Dispatch by scenario ---
   switch (scenario) {
     case 'name':
@@ -149,6 +162,7 @@
       showPlaying();
       onGamePaused();
       updateHostVisibility();
+      window.__TEST__.replay = function() { restartAnimation(pauseButtons); };
       break;
 
     case 'ko':
@@ -182,6 +196,7 @@
       lastGameResults = resultsW;
       renderGameResults(resultsW);
       showScreen('gameover');
+      window.__TEST__.replay = function() { restartAnimation(gameoverButtons); };
       break;
     }
 

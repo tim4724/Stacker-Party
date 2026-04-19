@@ -56,6 +56,7 @@ var Gallery = (function() {
     controllerOrientation: 'portrait',
     controllerBrowserChrome: false,
     players: 4,
+    viewAs: 0,
     level: 1,
     lang: 'en',
     cardWidth: 440,
@@ -203,17 +204,32 @@ var Gallery = (function() {
     var head = document.createElement('div');
     head.className = 'card-title';
     var title = document.createElement('span');
-    title.textContent = opts.title;
-    if (opts.tag) {
-      var sp = document.createElement('span'); sp.className = 'tag'; sp.textContent = ' ' + opts.tag;
-      title.appendChild(sp);
-    }
+    var titleText = document.createTextNode(opts.title);
+    title.appendChild(titleText);
+    var tagEl = document.createElement('span');
+    tagEl.className = 'tag';
+    tagEl.textContent = opts.tag ? ' ' + opts.tag : '';
+    title.appendChild(tagEl);
     head.appendChild(title);
 
     var actions = document.createElement('div'); actions.className = 'actions';
-    var reload = document.createElement('button');
-    reload.className = 'card-btn'; reload.textContent = '↻'; reload.title = 'Reload this card';
-    actions.appendChild(reload);
+    // Replay button calls window.__TEST__.replay() inside the iframe so
+    // animated scenarios (countdown, effects, entrance animations) can be
+    // re-run without reloading the iframe. Scenarios that don't expose
+    // __TEST__.replay silently no-op if the button is somehow clicked.
+    if (opts.replayable) {
+      var replayBtn = document.createElement('button');
+      replayBtn.className = 'card-btn'; replayBtn.textContent = '▶';
+      replayBtn.title = 'Replay animation';
+      replayBtn.addEventListener('click', function() {
+        try {
+          var win = iframe.contentWindow;
+          var fn = win && win.__TEST__ && win.__TEST__.replay;
+          if (typeof fn === 'function') fn();
+        } catch (_) { /* cross-origin or iframe not ready */ }
+      });
+      actions.appendChild(replayBtn);
+    }
     var link = document.createElement('a');
     link.className = 'open-link'; link.target = '_blank'; link.rel = 'noopener';
     link.textContent = 'open ↗'; link.href = opts.url;
@@ -264,19 +280,32 @@ var Gallery = (function() {
 
     function loadUrl(url) {
       link.href = url;
-      enqueueLoad(iframe, url, function() { wrap.classList.remove('pending'); });
+      enqueueLoad(iframe, url, function() {
+        wrap.classList.remove('pending');
+        card._loaded = true;
+      });
     }
-
-    reload.addEventListener('click', function() {
-      var u = new URL(iframe.src || opts.url, location.origin);
-      u.searchParams.set('_r', Date.now());
-      wrap.classList.add('pending');
-      loadUrl(u.pathname + u.search);
-    });
 
     card._loadUrl = loadUrl;
     card._initialUrl = opts.url;
     card._applyDims = applyDims;
+    card._setLabel = function(newTitle, newTag) {
+      titleText.nodeValue = newTitle;
+      tagEl.textContent = newTag ? ' ' + newTag : '';
+      iframe.setAttribute('title', newTitle);
+    };
+    // Retarget the card to a new URL. For already-mounted cards this swaps
+    // the iframe src in place (no DOM rebuild); for cards still awaiting
+    // lazy-mount it just updates what lazyMount will load when they scroll in.
+    card._setUrl = function(url) {
+      card._initialUrl = url;
+      if (card._loaded) {
+        wrap.classList.add('pending');
+        loadUrl(url);
+      } else {
+        link.href = url;
+      }
+    };
     return card;
   }
 
@@ -300,6 +329,21 @@ var Gallery = (function() {
       }
     }, { rootMargin: '400px 0px' });
     for (var j = 0; j < cards.length; j++) io.observe(cards[j]);
+  }
+
+  // --- Mobile options toggle ---
+  // Collapses the option groups behind a toggle on narrow screens. The button
+  // is hidden at wider widths via CSS, so this handler is a no-op there.
+  function initMobileOptionsToggle() {
+    var toggle = document.getElementById('options-toggle');
+    var hdr = document.querySelector('header');
+    if (!toggle || !hdr) return;
+    toggle.addEventListener('click', function() {
+      var open = hdr.classList.toggle('options-open');
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      toggle.textContent = open ? '✕' : '⚙';
+      toggle.setAttribute('aria-label', open ? 'Close options' : 'Options');
+    });
   }
 
   // --- Shared control binders ---
@@ -348,6 +392,7 @@ var Gallery = (function() {
     resetQueue: resetQueue,
     setLoadingPaused: setLoadingPaused,
     autoPauseOnHeaderFocus: autoPauseOnHeaderFocus,
+    initMobileOptionsToggle: initMobileOptionsToggle,
     bindSelect: bindSelect,
     bindNumber: bindNumber,
     bindCheckbox: bindCheckbox

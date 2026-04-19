@@ -162,7 +162,9 @@ function performDisconnect() {
   nameStatusDetail.textContent = '';
   reconnectOverlay.classList.add('hidden');
   showScreen('name');
-  nameInput.focus();
+  // Skip autofocus in gallery previews (?test=1): the iframe stealing focus
+  // pops the on-screen keyboard on mobile, which is disruptive while browsing.
+  if (new URLSearchParams(location.search).get('test') !== '1') nameInput.focus();
 }
 
 function showEndScreen(toastKey, keepClientId) {

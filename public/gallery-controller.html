@@ -13,7 +13,6 @@
   <h1>HEX STACKER · CONTROLLER</h1>
 
   <div class="group">
-    <span class="group-label">Device</span>
     <select id="controller-device">
       <option value="iphone15pm">iPhone 15 Pro Max · 430×932</option>
       <option value="iphone14" selected>iPhone 14 · 390×844</option>
@@ -25,7 +24,6 @@
   </div>
 
   <div class="group">
-    <span class="group-label">Orient</span>
     <select id="controller-orientation">
       <option value="portrait" selected>Portrait</option>
       <option value="landscape">Landscape</option>
@@ -33,19 +31,39 @@
   </div>
 
   <div class="group">
-    <label class="group-label" for="controller-chrome" style="cursor:pointer;">
+    <label class="checkbox-label" for="controller-chrome">
       <input type="checkbox" id="controller-chrome">
       Browser chrome
     </label>
   </div>
 
   <div class="group">
-    <span class="group-label">Players</span>
-    <input type="number" id="player-count" min="1" max="8" value="8">
+    <select id="player-count">
+      <option value="1">1 Player</option>
+      <option value="2">2 Players</option>
+      <option value="3">3 Players</option>
+      <option value="4">4 Players</option>
+      <option value="5">5 Players</option>
+      <option value="6">6 Players</option>
+      <option value="7">7 Players</option>
+      <option value="8" selected>8 Players</option>
+    </select>
   </div>
 
   <div class="group">
-    <span class="group-label">Language</span>
+    <select id="view-as-player">
+      <option value="0" selected>View as P1</option>
+      <option value="1">View as P2</option>
+      <option value="2">View as P3</option>
+      <option value="3">View as P4</option>
+      <option value="4">View as P5</option>
+      <option value="5">View as P6</option>
+      <option value="6">View as P7</option>
+      <option value="7">View as P8</option>
+    </select>
+  </div>
+
+  <div class="group">
     <select id="language">
       <option value="en">English</option>
       <option value="de">Deutsch</option>
@@ -62,22 +80,19 @@
   </div>
 
   <div class="group">
-    <span class="group-label">Cards/row</span>
     <select id="cards-per-row">
-      <option value="1">1</option>
-      <option value="2">2</option>
-      <option value="3">3</option>
-      <option value="4">4</option>
-      <option value="5">5</option>
-      <option value="6">6</option>
-      <option value="7">7</option>
-      <option value="8" selected>8</option>
+      <option value="1">1 column</option>
+      <option value="2">2 columns</option>
+      <option value="3">3 columns</option>
+      <option value="4">4 columns</option>
+      <option value="5">5 columns</option>
+      <option value="6">6 columns</option>
+      <option value="7">7 columns</option>
+      <option value="8" selected>8 columns</option>
     </select>
   </div>
 
-  <div class="group">
-    <button class="ctrl" id="reload-all">↻ Reload all</button>
-  </div>
+  <button class="ctrl options-toggle" id="options-toggle" aria-expanded="false" aria-controls="header" aria-label="Options">⚙</button>
 
   <nav>
     <a href="/gallery.html">Display</a>

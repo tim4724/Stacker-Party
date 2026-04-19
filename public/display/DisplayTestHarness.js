@@ -208,9 +208,54 @@ function initScenario(opts) {
     setRoomState(ROOM_STATE.COUNTDOWN);
     showScreen(SCREEN.GAME);
     calculateLayout();
-    countdownOverlay.classList.remove('hidden');
-    countdownNumber.textContent = '3';
     startRenderLoop();
+    // Play 3 → 2 → 1 → GO once on a 1s tick (audio is a no-op without music
+    // init, which only happens on user interaction). The gallery's ▶ replay
+    // button re-runs this on demand; initial load freezes at "3" so the
+    // preview has something visible without auto-playing.
+    var sequence = ['3', '2', '1', 'GO'];
+    var pendingTimers = [];
+    function clearPending() {
+      for (var pi = 0; pi < pendingTimers.length; pi++) clearTimeout(pendingTimers[pi]);
+      pendingTimers = [];
+    }
+    function resetToInitial() {
+      countdownOverlay.classList.remove('hidden');
+      countdownNumber.textContent = '3';
+    }
+    function startCountdown() {
+      clearPending();
+      // Also cancel onCountdownDisplay's own GO-hide timer in case a prior
+      // run just fired GO — otherwise it would hide our new "3" mid-tick.
+      if (countdown.overlayTimer) {
+        clearTimeout(countdown.overlayTimer);
+        countdown.overlayTimer = null;
+      }
+      countdownOverlay.classList.add('hidden');
+      countdownNumber.textContent = '';
+      // Boot the audio context so playCountdownBeep actually beeps. Only
+      // invoked from the gallery's ▶ button, so we have a user gesture
+      // even though the harness itself runs on load.
+      initMusic();
+      var idx = 0;
+      (function tick() {
+        onCountdownDisplay(sequence[idx]);
+        idx++;
+        if (idx < sequence.length) {
+          pendingTimers.push(setTimeout(tick, 1000));
+        } else {
+          // Post-GO: onCountdownDisplay('GO') hides the overlay and starts
+          // game music. Silence the music once the overlay is gone, then
+          // reset the card to its initial paused "3" state at 2s.
+          pendingTimers.push(setTimeout(function() {
+            if (music && music.playing) music.stop();
+          }, 500));
+          pendingTimers.push(setTimeout(resetToInitial, 2000));
+        }
+      })();
+    }
+    resetToInitial();
+    window.__TEST__.replay = startCountdown;
     return;
   }
 
@@ -300,49 +345,55 @@ function initScenario(opts) {
     var HV_c = GameConstants.VISIBLE_ROWS;
     var types_c = GameConstants.PIECE_TYPES;
 
-    // Board 0 — line clear: wipe the stack and fill two bottom rows so the
-    // clear is the only thing that moves.
-    for (var rClean = 0; rClean < HV_c; rClean++) {
-      for (var cClean = 0; cClean < HC_c; cClean++) {
-        state.players[0].grid[rClean][cClean] = 0;
-      }
-    }
-    for (var lr = HV_c - 2; lr < HV_c; lr++) {
-      for (var lc = 0; lc < HC_c; lc++) {
-        state.players[0].grid[lr][lc] = ((lc + lr) % types_c.length) + 1;
-      }
-    }
-    state.players[0].gridVersion = 0;
-
-    // Board 1 — incoming garbage: reset pending so the indicator animates
-    // from zero and the post-animation meter reads cleanly.
-    state.players[1].pendingGarbage = 0;
-    // Board 2 — garbage defended: seed pending so onGarbageCancelled has
-    // something to cancel.
-    state.players[2].pendingGarbage = 3;
-
-    _delayTrigger(function() {
-      _fireLineClear(0, 2);
-      setTimeout(function() {
-        for (var r2 = HV_c - 2; r2 < HV_c; r2++) {
-          for (var c2 = 0; c2 < HC_c; c2++) state.players[0].grid[r2][c2] = 0;
+    // "Before" state — boards are in the pre-animation configuration the
+    // replay will transition out of: board 0 has a filled stack to clear,
+    // board 1 has zero pending (incoming garbage will raise it), board 2
+    // has 3 pending (defend will cancel most of it), board 3 is alive
+    // (KO will take it down).
+    function seedBoards() {
+      for (var rClean = 0; rClean < HV_c; rClean++) {
+        for (var cClean = 0; cClean < HC_c; cClean++) {
+          state.players[0].grid[rClean][cClean] = 0;
         }
-        state.players[0].gridVersion++;
-      }, GameConstants.LINE_CLEAR_DELAY_MS);
+      }
+      for (var lr = HV_c - 2; lr < HV_c; lr++) {
+        for (var lc = 0; lc < HC_c; lc++) {
+          state.players[0].grid[lr][lc] = ((lc + lr) % types_c.length) + 1;
+        }
+      }
+      state.players[0].gridVersion++;
+      state.players[1].pendingGarbage = 0;
+      state.players[2].pendingGarbage = 3;
+      state.players[3].alive = true;
+    }
 
-      onGarbageSent({
-        toId: debugPlayers[1].id,
-        senderId: debugPlayers[2].id,
-        lines: 3
+    function runEffects() {
+      seedBoards();
+      _delayTrigger(function() {
+        _fireLineClear(0, 2);
+        setTimeout(function() {
+          for (var r2 = HV_c - 2; r2 < HV_c; r2++) {
+            for (var c2 = 0; c2 < HC_c; c2++) state.players[0].grid[r2][c2] = 0;
+          }
+          state.players[0].gridVersion++;
+        }, GameConstants.LINE_CLEAR_DELAY_MS);
+
+        onGarbageSent({
+          toId: debugPlayers[1].id,
+          senderId: debugPlayers[2].id,
+          lines: 3
+        });
+        state.players[1].pendingGarbage = 3;
+
+        onGarbageCancelled({ playerId: debugPlayers[2].id, lines: 2 });
+        state.players[2].pendingGarbage = 1;
+
+        window.__TEST__.injectKO(debugPlayers[3].id);
+        state.players[3].alive = false;
       });
-      state.players[1].pendingGarbage = 3;
-
-      onGarbageCancelled({ playerId: debugPlayers[2].id, lines: 2 });
-      state.players[2].pendingGarbage = 1;
-
-      window.__TEST__.injectKO(debugPlayers[3].id);
-      state.players[3].alive = false;
-    });
+    }
+    seedBoards();
+    window.__TEST__.replay = runEffects;
     return;
   }
   if (scenario === 'reconnecting') {
