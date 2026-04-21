@@ -8,7 +8,7 @@
 //
 // Exposed under a `HexStacker` namespace (rather than a bare global) so
 // the short name can't collide with third-party scripts loaded on the
-// page. Additional shared helpers can attach here in future.
+// page.
 var HexStacker = window.HexStacker || {};
 HexStacker.share = function (shareText) {
   // The URL is hardcoded to the canonical production host deliberately

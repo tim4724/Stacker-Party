@@ -189,7 +189,7 @@ newGameResultsBtn.addEventListener('click', function() {
 });
 
 // --- Mute ---
-// Initial DOM state is synced in DisplayState.js so it reflects the
+// Initial DOM state synced at module load time so it reflects the
 // stored mute setting before the toolbar is revealed.
 
 function setDisplayMuted(next) {
