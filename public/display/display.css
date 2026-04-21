@@ -369,21 +369,19 @@ body.airconsole #lobby-version-label { display: block; }
     flex: 1 1 auto;
     min-height: 0;
   }
-  #qr-container { flex: 0 0 auto; }
-  #player-list {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-  }
   #qr-container {
+    flex: 0 0 auto;
     width: clamp(170px, 28vh, 210px);
     padding: 10px;
     gap: 6px;
   }
   #qr-code { padding: 6px; }
   #qr-label { font-size: 10px; }
-  #join-url { padding: 5px 5px; }
+  #join-url { padding: 5px; }
   #player-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
     --card-w: clamp(120px, 40vw, 160px);
     --card-gap: 8px;
   }
