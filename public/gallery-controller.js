@@ -21,13 +21,13 @@ var CONTROLLER_CARDS = [
   { key: 'playing-settings', title: 'Settings (host)',     perColor: true, extra: { host: '1' } },
   { key: 'playing-settings', title: 'Settings (non-host)', perColor: true, extra: { host: '' } },
   { key: 'paused',           title: 'Paused (host)',       perColor: true, extra: { host: '1' }, replayable: true },
-  { key: 'paused',           title: 'Paused (non-host)',   perColor: true, extra: { host: '' } },
+  { key: 'paused',           title: 'Paused (non-host)',   perColor: true, extra: { host: '' }, replayable: true },
   { key: 'reconnecting',     title: 'Reconnecting',        perColor: true },
   { key: 'disconnected',     title: 'Disconnected',        perColor: true },
   { key: 'results-winner',   title: 'Results (host)',      perColor: true, replayable: true },
   { key: 'results-loser',    title: 'Results (non-host)',  perColor: true },
-  { key: 'end',              title: 'Game ended' },
-  { key: 'end-full',         title: 'Room full' },
+  { key: 'end',              title: 'Game ended', replayable: true },
+  { key: 'end-full',         title: 'Room full',  replayable: true },
   { key: 'privacy',          title: 'Privacy', staticPath: '/privacy' },
   { key: 'imprint',          title: 'Imprint', staticPath: '/imprint' }
 ];
@@ -46,8 +46,11 @@ state.controllerPlayers = parseInt(state.controllerPlayers, 10) || CTRL_DEFAULT_
 state.players = state.controllerPlayers;
 state.level = parseInt(state.level, 10) || 1;
 
+// viewAs is independent of player count: the scenario harness fakes player 7
+// in the 4-player roster when needed so "View as Player 7 · Players: 4" is
+// a valid combo (shows 3 random players + player 7).
 function clampViewAs(v) {
-  return Math.max(0, Math.min(v || 0, state.controllerPlayers - 1));
+  return Math.max(0, Math.min(v || 0, 7));
 }
 
 state.viewAs = clampViewAs(parseInt(state.viewAs, 10) || 0);
@@ -143,15 +146,6 @@ Gallery.bindSelect(state, 'controller-orientation', 'controllerOrientation', upd
 Gallery.bindCheckbox(state, 'controller-chrome', 'controllerBrowserChrome', updateDims);
 Gallery.bindSelect(state, 'player-count', 'controllerPlayers', function() {
   state.players = state.controllerPlayers;
-  var clamped = clampViewAs(state.viewAs);
-  if (clamped !== state.viewAs) {
-    state.viewAs = clamped;
-    var viewAsEl = document.getElementById('view-as-player');
-    if (viewAsEl) viewAsEl.value = String(clamped);
-    // bindSelect already wrote the (pre-clamp) state; re-save so the clamped
-    // viewAs persists across reloads.
-    Gallery.saveState(state);
-  }
   render();
 }, function(v) { return Math.max(1, Math.min(parseInt(v, 10) || CTRL_DEFAULT_PLAYERS, 8)); });
 Gallery.bindSelect(state, 'view-as-player', 'viewAs', updateViewAs, function(v) {

@@ -92,6 +92,22 @@
     void el.offsetWidth;
     el.style.animation = '';
   }
+
+  // Re-trigger the device-choice toast without going through showDeviceChoice
+  // (which early-returns on gameCancelled). Matches the 5s auto-hide timing.
+  // Also clears the original showDeviceChoice timer so its pending hide
+  // doesn't yank the toast back out mid-replay.
+  var _galleryToastTimer = null;
+  function reshowDeviceChoiceToast(key) {
+    if (!deviceChoiceToast) return;
+    clearTimeout(_galleryToastTimer);
+    if (typeof deviceChoiceToastTimer !== 'undefined') clearTimeout(deviceChoiceToastTimer);
+    deviceChoiceToast.textContent = t(key);
+    deviceChoiceToast.classList.remove('hidden');
+    _galleryToastTimer = setTimeout(function() {
+      deviceChoiceToast.classList.add('hidden');
+    }, 5000);
+  }
   // Gallery exposes a ▶ button that calls window.__TEST__.replay(); each
   // animated scenario overrides this below to re-run its own visual.
   window.__TEST__ = window.__TEST__ || {};
@@ -215,10 +231,15 @@
 
     case 'end':
       showDeviceChoice('game_ended', true);
+      // Replay re-plays the toast: showDeviceChoice sets gameCancelled=true
+      // after the first call, so later calls early-return. Reshow the toast
+      // in place instead, restarting its 5s auto-hide timer.
+      window.__TEST__.replay = function() { reshowDeviceChoiceToast('game_ended'); };
       break;
 
     case 'end-full':
       showDeviceChoice('game_full', true);
+      window.__TEST__.replay = function() { reshowDeviceChoiceToast('game_full'); };
       break;
 
     default:

@@ -11,7 +11,10 @@ if (urlParams.get('test') === '1' || debugCount > 0) {
     addPlayers: function(playerList) {
       for (var i = 0; i < playerList.length; i++) {
         var p = playerList[i];
-        var index = nextAvailableSlot();
+        // Explicit slot lets gallery scenarios fake a non-contiguous roster
+        // (e.g. 3 players + player 7 when "View as P7" is picked with
+        // Players=4). Falls back to sequential fill for the usual case.
+        var index = (typeof p.slot === 'number') ? p.slot : nextAvailableSlot();
         var color = PLAYER_COLORS[index % PLAYER_COLORS.length];
         players.set(p.id, {
           playerName: sanitizePlayerName(p.name, index),
@@ -108,11 +111,28 @@ function _buildHexDebugState(debugPlayers, level) {
   return state;
 }
 
-function _buildDebugPlayers(count, level) {
+function _buildDebugPlayers(count, level, hostSlot) {
   var names = ['Emma', 'Jake', 'Sofia', 'Liam', 'Mia', 'Noah', 'Ava', 'Leo'];
+  var max = Math.min(count, 8);
+  // Build the slot list. Usually slots fill sequentially 0..count-1; but when
+  // the scenario host (viewAs) lives outside that range, we swap the last
+  // sequential slot for hostSlot so the gallery preview actually contains
+  // the player you're "viewing as" (e.g. Players=4 + viewAs=P7 → slots
+  // [0, 1, 2, 6], not [0, 1, 2, 3] with P7 as a ghost host).
+  var slots = [];
+  var needsHost = typeof hostSlot === 'number' && hostSlot >= 0 && hostSlot < 8 && hostSlot >= max;
+  var fill = needsHost ? max - 1 : max;
+  for (var s = 0; s < fill; s++) slots.push(s);
+  if (needsHost) slots.push(hostSlot);
   var list = [];
-  for (var i = 0; i < Math.min(count, 8); i++) {
-    list.push({ id: 'debug' + i, name: names[i] || ('P' + (i + 1)), level: level });
+  for (var i = 0; i < slots.length; i++) {
+    var slot = slots[i];
+    list.push({
+      id: 'debug' + slot,
+      name: names[slot] || ('P' + (slot + 1)),
+      level: level,
+      slot: slot
+    });
   }
   return list;
 }
@@ -171,9 +191,10 @@ function initScenario(opts) {
   // party.getMasterClientId() first, so stubbing it lets us render the
   // same scenario with different players designated as host (Start button
   // tint follows the host's player color).
+  var hostSlot = null;
   if (opts.host !== null && opts.host !== undefined && !isNaN(opts.host)) {
-    var hostIdx = Math.max(0, Math.min(opts.host, 7));
-    party = { getMasterClientId: function() { return 'debug' + hostIdx; } };
+    hostSlot = Math.max(0, Math.min(opts.host, 7));
+    party = { getMasterClientId: function() { return 'debug' + hostSlot; } };
   }
 
   // Welcome: no players, stay on welcome screen.
@@ -184,7 +205,7 @@ function initScenario(opts) {
 
   // Lobby: populate players and show lobby screen.
   if (scenario === 'lobby') {
-    window.__TEST__.addPlayers(_buildDebugPlayers(playerCount, level));
+    window.__TEST__.addPlayers(_buildDebugPlayers(playerCount, level, hostSlot));
     _fakeLobbyQR();
     showScreen(SCREEN.LOBBY);
     return;
@@ -195,13 +216,13 @@ function initScenario(opts) {
   // compact AirConsole layout.
   if (scenario === 'airconsole-lobby') {
     document.body.classList.add('airconsole');
-    window.__TEST__.addPlayers(_buildDebugPlayers(playerCount, level));
+    window.__TEST__.addPlayers(_buildDebugPlayers(playerCount, level, hostSlot));
     showScreen(SCREEN.LOBBY);
     return;
   }
 
   // All other scenarios need players + some game state.
-  var debugPlayers = _buildDebugPlayers(playerCount, level);
+  var debugPlayers = _buildDebugPlayers(playerCount, level, hostSlot);
   window.__TEST__.addPlayers(debugPlayers);
 
   if (scenario === 'countdown') {
