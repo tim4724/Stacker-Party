@@ -101,7 +101,7 @@
   function reshowDeviceChoiceToast(key) {
     if (!deviceChoiceToast) return;
     clearTimeout(_galleryToastTimer);
-    if (typeof deviceChoiceToastTimer !== 'undefined') clearTimeout(deviceChoiceToastTimer);
+    clearTimeout(deviceChoiceToastTimer);
     deviceChoiceToast.textContent = t(key);
     deviceChoiceToast.classList.remove('hidden');
     _galleryToastTimer = setTimeout(function() {
