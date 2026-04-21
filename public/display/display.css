@@ -364,7 +364,17 @@ body.airconsole #lobby-version-label { display: block; }
     padding: clamp(0.6rem, 1.5vh, 1.2rem) 1rem clamp(1.5rem, 4vh, 3rem);
   }
   #lobby-screen h1 { font-size: clamp(1.5rem, 6vw, 2.2rem); }
-  #lobby-body { gap: clamp(0.8rem, 2vw, 1.4rem); }
+  #lobby-body {
+    gap: clamp(0.8rem, 2vw, 1.4rem);
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  #qr-container { flex: 0 0 auto; }
+  #player-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
   #qr-container {
     width: clamp(170px, 28vh, 210px);
     padding: 10px;
@@ -372,7 +382,7 @@ body.airconsole #lobby-version-label { display: block; }
   }
   #qr-code { padding: 6px; }
   #qr-label { font-size: 10px; }
-  #join-url { padding: 5px 10px; }
+  #join-url { padding: 5px 5px; }
   #player-list {
     --card-w: clamp(120px, 40vw, 160px);
     --card-gap: 8px;
