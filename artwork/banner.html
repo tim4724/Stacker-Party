@@ -27,20 +27,9 @@
       width: 100%;
     }
 
-    .overlay-gradient {
-      position: absolute;
-      inset: 0;
-      background:
-        linear-gradient(to top,
-          rgba(var(--bg-primary-rgb), 0.85) 0%,
-          rgba(var(--bg-primary-rgb), 0.15) 35%,
-          transparent 55%);
-      pointer-events: none;
-    }
-
     .phone {
       position: absolute;
-      bottom: var(--phone-bottom, -18px);
+      bottom: var(--phone-bottom, 2%);
       left: var(--phone-left);
       width: 120px;
       height: var(--phone-height, 195px);
@@ -48,6 +37,7 @@
       background: #1a1420;
       border: 1px solid rgba(255,255,255,0.08);
       padding: 3px;
+      box-shadow: 0 0 24px rgba(0, 0, 0, 0.65);
       z-index: 10;
     }
 
@@ -90,19 +80,18 @@
 <body>
   <div class="banner">
     <img class="display-img" id="display-hex-img" alt="">
-    <div class="overlay-gradient"></div>
 
     <!-- Phone-left values align each phone near the bottom-right of its
          board. 3 boards at frame width split the display into thirds
-         (slot centers at 16.7%, 50%, 83.3%); phones sit ~4% right of
-         each, mirroring the offset used in the 4-player layout. -->
-    <div class="phone" id="phone-0" style="--phone-left: 21%">
+         (slot centers at 16.7%, 50%, 83.3%); phones sit ~6% right of
+         each, so the left edge lands just past the board's right side. -->
+    <div class="phone" id="phone-0" style="--phone-left: 23%">
       <div class="phone-screen"><img class="controller-img" id="ctrl-0" alt=""></div>
     </div>
-    <div class="phone" id="phone-1" style="--phone-left: 54%">
+    <div class="phone" id="phone-1" style="--phone-left: 56%">
       <div class="phone-screen"><img class="controller-img" id="ctrl-1" alt=""></div>
     </div>
-    <div class="phone" id="phone-2" style="--phone-left: 87%">
+    <div class="phone" id="phone-2" style="--phone-left: 89%">
       <div class="phone-screen"><img class="controller-img" id="ctrl-2" alt=""></div>
     </div>
   </div>

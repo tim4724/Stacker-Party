@@ -148,20 +148,24 @@ const GAMEPLAY_VARIANTS = [
     name: 'gameplay-2x1.png',
     width: 1280, height: 640,
     displayViewport: { width: 1224, height: 608 }, // ~2:1, matches frame
-    phoneBottom: '18px', phoneHeight: '245px',
+    phoneHeight: '245px',
   },
   {
     name: 'gameplay-21x9.png',
     width: 1280, height: 640,
     displayViewport: { width: 1440, height: 608 }, // ~2.37:1, matches 21:9 clip
-    phoneBottom: '18px', phoneHeight: '245px',
+    phoneHeight: '245px',
+    // Frame is clipped to 540px of a 640 viewport, so a plain `bottom: 2%`
+    // would put the phones below the visible area. 17% lifts them so
+    // their bottom sits ~2% above the clipped frame's bottom.
+    phoneBottom: '17%',
     clipHeight: 540,
   },
   {
     name: 'gameplay-16x9.png',
     width: 1280, height: 720,
     displayViewport: { width: 1080, height: 608 }, // ~1.78:1, matches 16:9
-    phoneBottom: '18px', phoneHeight: '245px',
+    phoneHeight: '245px',
     pillTop: '30px',
   },
 ];
@@ -338,15 +342,15 @@ async function generate() {
       });
     }, controllerBase64s);
 
-    if (typeof options.phoneBottom === 'string') {
-      await page.evaluate((phoneBottom) => {
-        document.documentElement.style.setProperty('--phone-bottom', phoneBottom);
-      }, options.phoneBottom);
-    }
     if (typeof options.phoneHeight === 'string') {
       await page.evaluate((phoneHeight) => {
         document.documentElement.style.setProperty('--phone-height', phoneHeight);
       }, options.phoneHeight);
+    }
+    if (typeof options.phoneBottom === 'string') {
+      await page.evaluate((phoneBottom) => {
+        document.documentElement.style.setProperty('--phone-bottom', phoneBottom);
+      }, options.phoneBottom);
     }
     if (typeof options.pillTop === 'string') {
       await page.evaluate((pillTop) => {
