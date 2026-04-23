@@ -189,6 +189,13 @@ function showDeviceChoice(toastKey, keepClientId) {
   if (typeof closeSettingsOverlay === 'function') closeSettingsOverlay();
   if (party) { party.close(); party = null; }
 
+  // Strip the /<roomCode> path (and any query) from the address bar so a
+  // user copying the URL from this screen shares the app root rather than
+  // a dead room link. replaceState keeps the history stack unchanged.
+  if (location.pathname !== '/' || location.search) {
+    try { history.replaceState(null, '', '/'); } catch (_) { /* sandboxed iframe */ }
+  }
+
   // The toast element has role="status" + aria-live="polite", so changing
   // textContent is enough to announce it via screen readers — no manual
   // aria-hidden juggling needed.
