@@ -189,10 +189,14 @@ function showDeviceChoice(toastKey, keepClientId) {
   if (typeof closeSettingsOverlay === 'function') closeSettingsOverlay();
   if (party) { party.close(); party = null; }
 
-  // Strip the /<roomCode> path (and any query) from the address bar so a
-  // user copying the URL from this screen shares the app root rather than
-  // a dead room link. replaceState keeps the history stack unchanged.
-  if (location.pathname !== '/' || location.search) {
+  // Collapse the URL to "/" so a user copying the address from this screen
+  // shares the app root rather than a dead room link. replaceState keeps
+  // the history stack unchanged. Skipped for gallery/test iframes: their
+  // URL bar isn't user-visible, and their ?test=/?scenario= params are
+  // read by connect() and other harness code.
+  var _search = new URLSearchParams(location.search);
+  var _isTest = _search.get('test') === '1' || _search.get('scenario');
+  if (!_isTest && (location.pathname !== '/' || location.search)) {
     try { history.replaceState(null, '', '/'); } catch (_) { /* sandboxed iframe */ }
   }
 
