@@ -348,11 +348,6 @@ async function generate() {
         document.documentElement.style.setProperty('--phone-height', phoneHeight);
       }, options.phoneHeight);
     }
-    if (typeof options.displayTop === 'string') {
-      await page.evaluate((displayTop) => {
-        document.documentElement.style.setProperty('--display-top', displayTop);
-      }, options.displayTop);
-    }
     if (typeof options.pillTop === 'string') {
       await page.evaluate((pillTop) => {
         document.documentElement.style.setProperty('--pill-top', pillTop);
