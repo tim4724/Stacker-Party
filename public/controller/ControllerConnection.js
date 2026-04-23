@@ -194,9 +194,9 @@ function showDeviceChoice(toastKey, keepClientId) {
   // the history stack unchanged. Skipped for gallery/test iframes: their
   // URL bar isn't user-visible, and their ?test=/?scenario= params are
   // read by connect() and other harness code.
-  var _search = new URLSearchParams(location.search);
-  var _isTest = _search.get('test') === '1' || _search.get('scenario');
-  if (!_isTest && (location.pathname !== '/' || location.search)) {
+  var searchParams = new URLSearchParams(location.search);
+  var isTestFrame = searchParams.get('test') === '1' || searchParams.get('scenario');
+  if (!isTestFrame && (location.pathname !== '/' || location.search)) {
     try { history.replaceState(null, '', '/'); } catch (_) { /* sandboxed iframe */ }
   }
 
