@@ -22,7 +22,8 @@ if (new URLSearchParams(location.search).get('test') === '1' && navigator.vibrat
 // --- State ---
 var party = null;
 var clientId = null;
-var playerColor = null;
+var playerColor = null;       // hex, resolved locally from colorIndex
+var playerColorIndex = null;  // 0..7 index into PLAYER_COLORS
 var playerName = null;
 var roomCode = null;
 var touchInput = null;
@@ -33,6 +34,7 @@ var waitingForNextGame = false;
 var lastLines = 0;
 var lastGameResults = null;
 var startLevel = 1;
+var takenColorIndices = [];   // indices currently claimed by other players (incl. self)
 
 // Host (AirConsole master controller) — lowest-slot connected player.
 // Only the host can trigger menu actions (start, play again, return to lobby).
@@ -160,6 +162,7 @@ var settingsVersionEl = document.getElementById('settings-version');
 var levelDisplay = document.getElementById('level-display');
 var levelMinusBtn = document.getElementById('level-minus-btn');
 var levelPlusBtn = document.getElementById('level-plus-btn');
+var colorPickerEl = document.getElementById('color-picker');
 
 // --- Screen Management ---
 var SCREEN_ORDER = { name: 0, lobby: 1, game: 1, gameover: 1 };

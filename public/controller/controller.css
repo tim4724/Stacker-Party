@@ -349,6 +349,58 @@ html, body {
   cursor: default;
 }
 
+/* --- Color picker — 8 swatches below the identity card. The player taps a
+   swatch to claim a palette slot; the picker sends SET_COLOR and the display
+   echoes the result back via LOBBY_UPDATE. Swatches that belong to other
+   players get .taken (disabled); the player's own current color gets a ring.
+   Hidden on game/gameover screens — visible on the lobby even while a late
+   joiner is waiting for the next round. --- */
+#color-picker {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  max-width: 280px;
+  margin-top: 12px;
+  animation: fadeUp 0.5s 0.35s ease-out both;
+}
+
+.color-swatch {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  aspect-ratio: 1;
+  min-height: 32px;
+  border: none;
+  border-radius: 50%;
+  padding: 0;
+  cursor: pointer;
+  background: var(--swatch-color, #888);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), opacity var(--transition-fast);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08) inset;
+}
+
+.color-swatch:active:not(.taken):not(.selected) {
+  transform: scale(0.9);
+}
+
+.color-swatch.selected {
+  box-shadow:
+    0 0 0 3px var(--bg-primary),
+    0 0 0 5px var(--swatch-color, #fff);
+  transform: scale(1.05);
+}
+
+.color-swatch.taken {
+  opacity: 0.25;
+  pointer-events: none;
+  cursor: default;
+}
+
+@media (max-width: 340px) {
+  #color-picker { gap: 6px; }
+}
+
 .status-banner {
   min-height: 52px;
   display: flex;

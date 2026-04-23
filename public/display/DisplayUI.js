@@ -146,6 +146,18 @@ function updatePlayerList() {
   playerListEl.classList.toggle('pl--sm', bucketCount <= 4);
   playerListEl.classList.toggle('pl--lg', bucketCount > 4);
 
+  // Pre-mutation snapshot: remember which playerId sat in each slot and clone
+  // any filled card so we can spawn a fade-out ghost when a player vacates
+  // the slot (color-change moves cards between slots — the fade gives the
+  // viewer's eye a handoff rather than a sudden pop to the empty placeholder).
+  var preIds = new Array(totalSlots);
+  var preCards = new Array(totalSlots);
+  for (var p = 0; p < totalSlots; p++) {
+    var preSlot = playerListEl.children[p];
+    preIds[p] = preSlot.dataset.playerId || null;
+    preCards[p] = preIds[p] ? preSlot.querySelector('.player-card').cloneNode(true) : null;
+  }
+
   for (var j = 0; j < totalSlots; j++) {
     var slot = playerListEl.children[j];
     var card = slot.querySelector('.player-card');
@@ -165,15 +177,16 @@ function updatePlayerList() {
       }
     }
     var wasEmpty = card.classList.contains('empty');
+    var playerChanged = preIds[j] && playerId && preIds[j] !== playerId;
 
     if (info) {
-      var color = info.playerColor || PLAYER_COLORS[info.playerIndex] || '#fff';
+      var color = PLAYER_COLORS[info.playerIndex] || '#fff';
       card.style.setProperty('--player-color', color);
       nameEl.textContent = info.playerName || PLAYER_NAMES[info.playerIndex] || t('player');
       card.classList.remove('empty');
       card.dataset.playerId = playerId;
       slot.dataset.playerId = playerId;
-      if (wasEmpty) {
+      if (wasEmpty || playerChanged) {
         card.classList.remove('join-pop');
         void card.offsetWidth;
         card.classList.add('join-pop');
@@ -214,6 +227,36 @@ function updatePlayerList() {
       }
     }
   }
+
+  // Leave-fade for any slot that was filled pre-update and is now empty.
+  // The clone was captured before the slot's in-place DOM mutation, so it
+  // still shows the departing player's name + color while fading out. The
+  // live card sits underneath in its empty state; the ghost overlays it via
+  // absolute positioning so the flex layout is undisturbed.
+  for (var q = 0; q < totalSlots; q++) {
+    var nowId = playerListEl.children[q].dataset.playerId || null;
+    if (preIds[q] && !nowId && preCards[q]) {
+      spawnLeaveFadeGhost(playerListEl.children[q], preCards[q]);
+    }
+  }
+}
+
+function spawnLeaveFadeGhost(slotEl, ghostCard) {
+  slotEl.style.position = 'relative';
+  ghostCard.classList.remove('join-pop');
+  ghostCard.classList.add('leave-fade');
+  ghostCard.style.position = 'absolute';
+  ghostCard.style.inset = '0';
+  ghostCard.style.pointerEvents = 'none';
+  slotEl.appendChild(ghostCard);
+  var cleanup = function() {
+    if (ghostCard.parentNode) ghostCard.parentNode.removeChild(ghostCard);
+  };
+  ghostCard.addEventListener('animationend', cleanup, { once: true });
+  // Belt-and-braces — if animationend never fires (e.g. element removed by
+  // a concurrent updatePlayerList mid-animation), clean up after the keyframe
+  // duration + a small cushion.
+  setTimeout(cleanup, 350);
 }
 
 function updateStartButton() {
@@ -235,9 +278,7 @@ function updateStartButton() {
 function applyHostTint() {
   var hostId = getHostClientId();
   var hostPlayer = hostId ? players.get(hostId) : null;
-  var hostColor = hostPlayer
-    ? (hostPlayer.playerColor || PLAYER_COLORS[hostPlayer.playerIndex])
-    : null;
+  var hostColor = hostPlayer ? PLAYER_COLORS[hostPlayer.playerIndex] : null;
   if (hostColor) {
     document.body.style.setProperty('--player-color', hostColor);
   } else {
@@ -315,7 +356,7 @@ function renderResults(results) {
   var winner = sorted[0];
   if (winner) {
     var wInfo = players.get(winner.playerId);
-    var winnerColor = wInfo?.playerColor || PLAYER_COLORS[wInfo?.playerIndex] || '#ffd700';
+    var winnerColor = (wInfo && PLAYER_COLORS[wInfo.playerIndex]) || '#ffd700';
     resultsScreen.style.setProperty('--winner-glow', rgbaFromHex(winnerColor, 0.08));
   }
 
@@ -328,7 +369,7 @@ function renderResults(results) {
     row.style.setProperty('--row-delay', (0.2 + i * 0.08) + 's');
 
     var pInfo = players.get(res.playerId);
-    var pColor = pInfo ? (pInfo.playerColor || PLAYER_COLORS[pInfo.playerIndex]) : null;
+    var pColor = pInfo ? PLAYER_COLORS[pInfo.playerIndex] : null;
 
     if (!solo) {
       var rank = document.createElement('span');

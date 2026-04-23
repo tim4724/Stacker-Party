@@ -18,7 +18,8 @@ var roomCode = null;
 var joinUrl = null;
 var lastRoomCode = null;
 var gameState = null;
-var players = new Map();       // clientId -> { playerName, playerColor, playerIndex }
+var players = new Map();       // clientId -> { playerName, playerIndex, startLevel, lastPingTime }
+                               // color is derived via PLAYER_COLORS[playerIndex] — never stored
 var playerOrder = [];          // compact list of active clientIds for game layout (join order)
                                // lobby UI uses playerIndex on each player for slot positioning
 var roomState = ROOM_STATE.LOBBY;

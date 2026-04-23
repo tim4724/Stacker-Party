@@ -53,6 +53,9 @@ function handleControllerMessage(fromId, msg) {
       case MSG.SET_LEVEL:
         onSetLevel(fromId, msg);
         break;
+      case MSG.SET_COLOR:
+        onSetColor(fromId, msg);
+        break;
       case MSG.LEAVE:
         onPeerLeft(fromId);
         break;
@@ -106,13 +109,14 @@ function onHello(fromId, msg) {
     var welcomeMsg = {
       type: MSG.WELCOME,
       playerName: existing.playerName,
-      playerColor: existing.playerColor,
+      colorIndex: existing.playerIndex,
       playerCount: players.size,
       roomState: roomState,
       startLevel: existing.startLevel || 1,
       isHost: fromId === hostId,
       hostName: hostPlayer ? hostPlayer.playerName : null,
-      hostColor: hostPlayer ? hostPlayer.playerColor : null,
+      hostColorIndex: hostPlayer ? hostPlayer.playerIndex : null,
+      takenColorIndices: collectTakenColorIndices(),
       displayMuted: !!muted
     };
     if (!isLateJoiner) {
@@ -139,12 +143,10 @@ function onHello(fromId, msg) {
     party.sendTo(fromId, { type: MSG.ERROR, message: 'Room is full' });
     return;
   }
-  var color = PLAYER_COLORS[index % PLAYER_COLORS.length];
   var playerName = sanitizePlayerName(name, index);
 
   players.set(fromId, {
     playerName: playerName,
-    playerColor: color,
     playerIndex: index,
     startLevel: 1,
     lastPingTime: Date.now()
@@ -158,13 +160,14 @@ function onHello(fromId, msg) {
   var welcomeMsg = {
     type: MSG.WELCOME,
     playerName: playerName,
-    playerColor: color,
+    colorIndex: index,
     playerCount: players.size,
     roomState: roomState,
     startLevel: 1,
     isHost: fromId === hostId,
     hostName: hostPlayer ? hostPlayer.playerName : null,
-    hostColor: hostPlayer ? hostPlayer.playerColor : null
+    hostColorIndex: hostPlayer ? hostPlayer.playerIndex : null,
+    takenColorIndices: collectTakenColorIndices()
   };
   if (roomState === ROOM_STATE.RESULTS && lastResults) {
     welcomeMsg.results = lastResults.results;
@@ -236,6 +239,31 @@ function onSetLevel(fromId, msg) {
     updatePlayerList();
     broadcastLobbyUpdate();
   }
+}
+
+// Re-claim a palette slot. Active game participants (in playerOrder during
+// COUNTDOWN/PLAYING/RESULTS) are locked — color is baked into the running
+// game. Late joiners sitting in waitingForNextGame can still pre-pick.
+// Silently rejects collisions so concurrent picks don't spam the sender with
+// errors; the next LOBBY_UPDATE carries the truth.
+function onSetColor(fromId, msg) {
+  if (!players.has(fromId)) return;
+  var idx = parseInt(msg.colorIndex, 10);
+  if (isNaN(idx) || idx < 0 || idx >= PLAYER_COLORS.length) return;
+
+  var isActiveParticipant = playerOrder.indexOf(fromId) >= 0 && roomState !== ROOM_STATE.LOBBY;
+  if (isActiveParticipant) return;
+
+  var player = players.get(fromId);
+  if (player.playerIndex === idx) return;
+
+  for (const entry of players) {
+    if (entry[0] !== fromId && entry[1].playerIndex === idx) return;
+  }
+
+  player.playerIndex = idx;
+  updatePlayerList();
+  broadcastLobbyUpdate();
 }
 
 function cleanupPlayerInput(clientId) {

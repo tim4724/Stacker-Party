@@ -33,6 +33,7 @@
   // Apply identity + host info that scenarios depend on.
   function applyIdentity(opts) {
     opts = opts || {};
+    playerColorIndex = colorIdx;
     playerColor = PLAYER_COLORS[colorIdx];
     document.body.style.setProperty('--player-color', playerColor);
     playerName = fakeName;
@@ -40,6 +41,8 @@
     isHost = !!opts.isHost;
     hostName = opts.hostName || (isHost ? playerName : FAKE_NAMES[defaultHostIdx]);
     hostColor = opts.hostColor || (isHost ? playerColor : PLAYER_COLORS[defaultHostIdx]);
+    // Seed taken-set so the picker greys out neighbours for gallery screenshots.
+    takenColorIndices = [colorIdx, defaultHostIdx];
     if (!isNaN(levelParam)) startLevel = levelParam;
     playerNameEl.textContent = playerName;
     touchArea.setAttribute('data-player-name', playerName);
@@ -59,7 +62,7 @@
       ranks.push({
         playerId: isMe ? clientId : 'debug' + i,
         playerName: isMe ? playerName : names[slot % names.length],
-        playerColor: isMe ? playerColor : PLAYER_COLORS[slot % PLAYER_COLORS.length],
+        colorIndex: isMe ? colorIdx : (slot % PLAYER_COLORS.length),
         rank: i + 1,
         lines: 30 - i * 3,
         level: 5 - i

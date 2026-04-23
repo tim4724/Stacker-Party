@@ -706,6 +706,23 @@ levelPlusBtn.addEventListener('click', function () {
   sendToDisplay(MSG.SET_LEVEL, { level: startLevel });
 });
 
+// Color picker — one delegated click handler for all 8 swatches. The display
+// validates (collision, valid range, active-participant lockout) and echoes
+// the accepted color back via LOBBY_UPDATE, so we only need to send the
+// request. No optimistic UI update: if the request is rejected the picker
+// stays on the old selection and the ignored tap is silent.
+if (colorPickerEl) {
+  buildColorPicker();
+  colorPickerEl.addEventListener('click', function (e) {
+    var btn = e.target.closest('.color-swatch');
+    if (!btn || btn.classList.contains('taken') || btn.classList.contains('selected')) return;
+    var idx = parseInt(btn.dataset.idx, 10);
+    if (isNaN(idx)) return;
+    vibrate(15);
+    sendToDisplay(MSG.SET_COLOR, { colorIndex: idx });
+  });
+}
+
 playAgainBtn.addEventListener('click', function () {
   vibrate(15);
   sendToDisplay(MSG.PLAY_AGAIN);

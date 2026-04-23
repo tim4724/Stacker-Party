@@ -160,6 +160,8 @@ function performDisconnect() {
   rejoinId = null;
   try { localStorage.removeItem('clientId_' + roomCode); } catch (e) { /* iframe sandbox */ }
   playerColor = null;
+  playerColorIndex = null;
+  takenColorIndices = [];
   gameCancelled = false;
   // Prefill from the persisted user-typed name (localStorage is the single
   // source of truth) — not `playerName`, which may have been replaced by

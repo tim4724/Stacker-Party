@@ -16,6 +16,7 @@ var MSG = {
   RESUME_GAME: 'resume_game',
   LEAVE: 'leave',
   SET_LEVEL: 'set_level',
+  SET_COLOR: 'set_color',
   SET_DISPLAY_MUTE: 'set_display_mute',
   PING: 'ping',
 

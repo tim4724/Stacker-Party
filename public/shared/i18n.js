@@ -64,6 +64,8 @@ var LOCALES = {
     // Misc
     player: 'Player',
     level_heading: 'Level',
+    color_heading: 'Color',
+    color_choose: 'Choose color {n}',
     enter_name: 'Enter name...',
     copied: 'Copied',
     touchpad: 'Touchpad',

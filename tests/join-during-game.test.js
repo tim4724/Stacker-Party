@@ -29,8 +29,6 @@ describe('Display: onHello during non-LOBBY states', () => {
     return -1;
   }
 
-  const PLAYER_COLORS = ['#00f0f0', '#f0a000', '#0000f0', '#f00000'];
-
   function sanitizePlayerName(name, index) {
     return name || 'P' + (index + 1);
   }
@@ -40,10 +38,8 @@ describe('Display: onHello during non-LOBBY states', () => {
     if (players.has(clientId)) return;
     var index = nextAvailableSlot();
     if (index < 0) return;
-    var color = PLAYER_COLORS[index % PLAYER_COLORS.length];
     players.set(clientId, {
       playerName: 'P' + (index + 1),
-      playerColor: color,
       playerIndex: index,
       startLevel: 1,
       lastPingTime: Date.now()
@@ -68,7 +64,7 @@ describe('Display: onHello during non-LOBBY states', () => {
       var welcomeMsg = {
         type: MSG.WELCOME,
         playerName: existing.playerName,
-        playerColor: existing.playerColor,
+        colorIndex: existing.playerIndex,
         playerCount: players.size,
         roomState: roomState,
         startLevel: existing.startLevel || 1
@@ -88,12 +84,10 @@ describe('Display: onHello during non-LOBBY states', () => {
       party.sendTo(fromId, { type: MSG.ERROR, message: 'Room is full' });
       return;
     }
-    var color = PLAYER_COLORS[index % PLAYER_COLORS.length];
     var playerName = sanitizePlayerName(name, index);
 
     players.set(fromId, {
       playerName: playerName,
-      playerColor: color,
       playerIndex: index,
       startLevel: 1,
       lastPingTime: Date.now()
@@ -105,7 +99,7 @@ describe('Display: onHello during non-LOBBY states', () => {
     var newWelcome = {
       type: MSG.WELCOME,
       playerName: playerName,
-      playerColor: color,
+      colorIndex: index,
       playerCount: players.size,
       roomState: roomState,
       startLevel: 1
@@ -257,8 +251,6 @@ describe('Display: playerOrder sorted by slot index', () => {
   let sentMessages;
   let party;
 
-  const PLAYER_COLORS = ['#00f0f0', '#f0a000', '#0000f0', '#f00000'];
-
   function nextAvailableSlot() {
     var used = new Set();
     for (const entry of players) used.add(entry[1].playerIndex);
@@ -274,10 +266,8 @@ describe('Display: playerOrder sorted by slot index', () => {
     if (players.has(clientId)) return;
     var index = nextAvailableSlot();
     if (index < 0) return;
-    var color = PLAYER_COLORS[index % PLAYER_COLORS.length];
     players.set(clientId, {
       playerName: 'P' + (index + 1),
-      playerColor: color,
       playerIndex: index,
       startLevel: 1,
       lastPingTime: Date.now()
@@ -379,7 +369,7 @@ describe('Display: playerOrder sorted by slot index', () => {
 // --- Controller-side tests (handleMessage guard) ---
 
 describe('Controller: handleMessage ignores broadcasts when gameCancelled or waitingForNextGame', () => {
-  let gameCancelled, waitingForNextGame, currentScreen, playerColor, playerCount;
+  let gameCancelled, waitingForNextGame, currentScreen, playerColorIndex, playerCount;
   let screenShown, touchInitialized;
 
   // Minimal handleMessage extracted from controller.js
@@ -401,7 +391,7 @@ describe('Controller: handleMessage ignores broadcasts when gameCancelled or wai
           touchInitialized = true;
           break;
         case MSG.WELCOME:
-          playerColor = data.playerColor;
+          playerColorIndex = data.colorIndex;
           gameCancelled = false;
           waitingForNextGame = false;
           if (data.alive === undefined && (data.roomState === 'playing' || data.roomState === 'countdown')) {
@@ -433,7 +423,7 @@ describe('Controller: handleMessage ignores broadcasts when gameCancelled or wai
     gameCancelled = false;
     waitingForNextGame = false;
     currentScreen = 'name';
-    playerColor = null;
+    playerColorIndex = null;
     playerCount = 0;
     screenShown = null;
     touchInitialized = false;
@@ -465,10 +455,10 @@ describe('Controller: handleMessage ignores broadcasts when gameCancelled or wai
 
   test('WELCOME still processed when gameCancelled is true (re-admission)', () => {
     gameCancelled = true;
-    handleMessage({ type: MSG.WELCOME, playerColor: '#00f0f0', roomState: 'lobby' });
+    handleMessage({ type: MSG.WELCOME, colorIndex: 0, roomState: 'lobby' });
     assert.strictEqual(gameCancelled, false);
     assert.strictEqual(screenShown, 'lobby');
-    assert.strictEqual(playerColor, '#00f0f0');
+    assert.strictEqual(playerColorIndex, 0);
   });
 
   test('full sequence: COUNTDOWN → ERROR → GAME_START stays on name screen', () => {
@@ -503,7 +493,7 @@ describe('Controller: handleMessage ignores broadcasts when gameCancelled or wai
   // --- waitingForNextGame tests (late joiner broadcast filtering) ---
 
   test('late joiner WELCOME sets waitingForNextGame', () => {
-    handleMessage({ type: MSG.WELCOME, playerColor: '#ff0000', roomState: 'playing' });
+    handleMessage({ type: MSG.WELCOME, colorIndex: 0, roomState: 'playing' });
     // alive is undefined → late joiner
     assert.strictEqual(waitingForNextGame, true);
     assert.strictEqual(screenShown, 'lobby');
@@ -555,7 +545,7 @@ describe('Controller: handleMessage ignores broadcasts when gameCancelled or wai
   });
 
   test('normal WELCOME with alive field does NOT set waitingForNextGame', () => {
-    handleMessage({ type: MSG.WELCOME, playerColor: '#ff0000', roomState: 'playing', alive: true });
+    handleMessage({ type: MSG.WELCOME, colorIndex: 0, roomState: 'playing', alive: true });
     assert.strictEqual(waitingForNextGame, false);
   });
 });

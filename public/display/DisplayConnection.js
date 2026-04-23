@@ -247,7 +247,8 @@ function onDisplayRejoined(partyRoomCode, clients) {
   var hostId = getHostClientId();
   var hostPlayer = hostId ? players.get(hostId) : null;
   var hostName = hostPlayer ? hostPlayer.playerName : null;
-  var hostColor = hostPlayer ? hostPlayer.playerColor : null;
+  var hostColorIndex = hostPlayer ? hostPlayer.playerIndex : null;
+  var takenColorIndices = collectTakenColorIndices();
   for (const entry of players) {
     const id = entry[0];
     const info = entry[1];
@@ -256,13 +257,14 @@ function onDisplayRejoined(partyRoomCode, clients) {
     var welcomeMsg = {
       type: MSG.WELCOME,
       playerName: info.playerName,
-      playerColor: info.playerColor,
+      colorIndex: info.playerIndex,
       playerCount: players.size,
       roomState: roomState,
       startLevel: info.startLevel || 1,
       isHost: id === hostId,
       hostName: hostName,
-      hostColor: hostColor
+      hostColorIndex: hostColorIndex,
+      takenColorIndices: takenColorIndices
     };
     if (!isLateJoiner) {
       welcomeMsg.alive = lastAliveState[id] != null ? lastAliveState[id] : true;
@@ -290,11 +292,9 @@ function onPeerJoined(clientId) {
 
   var index = nextAvailableSlot();
   if (index < 0) return;
-  var color = PLAYER_COLORS[index % PLAYER_COLORS.length];
 
   players.set(clientId, {
     playerName: 'P' + (index + 1),
-    playerColor: color,
     playerIndex: index,
     startLevel: 1,
     lastPingTime: Date.now()
@@ -389,7 +389,8 @@ function broadcastLobbyUpdate() {
   var hostId = getHostClientId();
   var hostPlayer = hostId ? players.get(hostId) : null;
   var hostName = hostPlayer ? hostPlayer.playerName : null;
-  var hostColor = hostPlayer ? hostPlayer.playerColor : null;
+  var hostColorIndex = hostPlayer ? hostPlayer.playerIndex : null;
+  var takenColorIndices = collectTakenColorIndices();
   _lastBroadcastedHostId = hostId;
   applyHostTint();
   for (const entry of players) {
@@ -400,9 +401,20 @@ function broadcastLobbyUpdate() {
       startLevel: entry[1].startLevel || 1,
       isHost: id === hostId,
       hostName: hostName,
-      hostColor: hostColor
+      hostColorIndex: hostColorIndex,
+      colorIndex: entry[1].playerIndex,
+      takenColorIndices: takenColorIndices
     });
   }
+}
+
+// Sorted list of playerIndex values currently claimed by any player in the
+// room. Controllers use it to gray out swatches in the color picker.
+function collectTakenColorIndices() {
+  var out = [];
+  for (const entry of players) out.push(entry[1].playerIndex);
+  out.sort(function(a, b) { return a - b; });
+  return out;
 }
 
 // =====================================================================

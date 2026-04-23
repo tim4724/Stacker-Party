@@ -329,7 +329,7 @@ function runGameLocally() {
           var pInfo = players.get(r.playerId);
           if (pInfo) {
             r.playerName = pInfo.playerName;
-            r.playerColor = pInfo.playerColor;
+            r.colorIndex = pInfo.playerIndex;
           }
         }
       }
@@ -437,7 +437,8 @@ function onGarbageSent(msg) {
   var idx = playerOrder.indexOf(msg.toId);
   if (idx < 0 || !boardRenderers[idx]) return;
   var br = boardRenderers[idx];
-  var attackerColor = players.get(msg.senderId)?.playerColor || '#ffffff';
+  var attackerInfo = players.get(msg.senderId);
+  var attackerColor = attackerInfo ? PLAYER_COLORS[attackerInfo.playerIndex] : '#ffffff';
   animations.addGarbageShake(br.x, br.y);
   var shifted = (garbageIndicatorEffects.get(msg.toId) || [])
     .map(function(effect) { return { ...effect, rowStart: effect.rowStart - msg.lines }; })

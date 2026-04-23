@@ -21,7 +21,9 @@ function updateLevelDisplay() {
 function applyHostInfo(data) {
   if (data.isHost !== undefined) isHost = !!data.isHost;
   if (data.hostName !== undefined) hostName = data.hostName;
-  if (data.hostColor !== undefined) hostColor = data.hostColor;
+  if (data.hostColorIndex !== undefined) {
+    hostColor = data.hostColorIndex != null ? PLAYER_COLORS[data.hostColorIndex] : null;
+  }
   updateHostVisibility();
   if (typeof updateSettingsHostUI === 'function') updateSettingsHostUI();
 }
@@ -68,6 +70,7 @@ function showLobbyUI() {
   playerIdentity.style.setProperty('--player-color', playerColor);
   playerIdentityName.textContent = playerName || t('player');
   updateLevelDisplay();
+  renderColorPicker();
 
   updateStartButton();
   statusText.textContent = '';
@@ -76,6 +79,41 @@ function showLobbyUI() {
   showScreen('lobby');
   // Must run after showScreen so currentScreen === 'lobby' when we gate UI.
   updateHostVisibility();
+}
+
+// Repaint the 8-swatch color picker. Palette is static (built once in
+// buildColorPicker at init); this only refreshes `.selected` / `.taken`
+// based on the local playerColorIndex and the taken-set broadcast from
+// the display. Idempotent — safe to call on every WELCOME / LOBBY_UPDATE.
+function renderColorPicker() {
+  if (!colorPickerEl) return;
+  var taken = new Set(takenColorIndices || []);
+  var btns = colorPickerEl.children;
+  for (var i = 0; i < btns.length; i++) {
+    var btn = btns[i];
+    var idx = parseInt(btn.dataset.idx, 10);
+    var isMine = idx === playerColorIndex;
+    btn.classList.toggle('selected', isMine);
+    btn.classList.toggle('taken', !isMine && taken.has(idx));
+    btn.setAttribute('aria-checked', isMine ? 'true' : 'false');
+  }
+}
+
+// One-time palette paint — creates 8 swatches and sets each background color.
+// Called from controller.js init. Click wiring also happens there.
+function buildColorPicker() {
+  if (!colorPickerEl || colorPickerEl.children.length) return;
+  for (var i = 0; i < PLAYER_COLORS.length; i++) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'color-swatch';
+    btn.dataset.idx = String(i);
+    btn.style.setProperty('--swatch-color', PLAYER_COLORS[i]);
+    btn.setAttribute('role', 'radio');
+    btn.setAttribute('aria-checked', 'false');
+    btn.setAttribute('aria-label', t('color_choose', { n: i + 1 }));
+    colorPickerEl.appendChild(btn);
+  }
 }
 
 function updateStartButton() {
@@ -125,7 +163,13 @@ function renderHostBanner(element, key, name, color) {
 // =====================================================================
 
 function onWelcome(data) {
-  playerColor = data.playerColor || PLAYER_COLORS[0];
+  if (data.colorIndex != null) {
+    playerColorIndex = data.colorIndex;
+    playerColor = PLAYER_COLORS[data.colorIndex] || PLAYER_COLORS[0];
+  } else {
+    playerColor = playerColor || PLAYER_COLORS[0];
+  }
+  if (Array.isArray(data.takenColorIndices)) takenColorIndices = data.takenColorIndices;
   document.body.style.setProperty('--player-color', playerColor);
   playerCount = data.playerCount || 1;
   gameCancelled = false;
@@ -201,9 +245,20 @@ function onWelcome(data) {
 function onLobbyUpdate(data) {
   playerCount = data.playerCount;
   if (data.startLevel != null) startLevel = data.startLevel;
+  if (data.colorIndex != null && data.colorIndex !== playerColorIndex) {
+    playerColorIndex = data.colorIndex;
+    playerColor = PLAYER_COLORS[data.colorIndex] || playerColor;
+    document.body.style.setProperty('--player-color', playerColor);
+    playerIdentity.style.setProperty('--player-color', playerColor);
+    gameScreen.style.setProperty('--player-color', playerColor);
+  }
+  if (Array.isArray(data.takenColorIndices)) takenColorIndices = data.takenColorIndices;
   applyHostInfo(data);
   updateStartButton();
-  if (currentScreen === 'lobby') updateLevelDisplay();
+  if (currentScreen === 'lobby') {
+    updateLevelDisplay();
+    renderColorPicker();
+  }
 }
 
 function onGameStart() {
@@ -303,7 +358,7 @@ function renderGameResults(results) {
   if (results && results.length) {
     var winner = results.find(function(r) { return r.rank === 1; });
     if (winner) {
-      var wc = winner.playerColor || PLAYER_COLORS[0];
+      var wc = PLAYER_COLORS[winner.colorIndex] || PLAYER_COLORS[0];
       winnerColor = rgbaFromHex(wc, 0.08);
     }
   }
@@ -319,7 +374,7 @@ function renderGameResults(results) {
   var solo = sorted.length === 1;
   for (var i = 0; i < sorted.length; i++) {
     var r = sorted[i];
-    var pColor = r.playerColor || PLAYER_COLORS[i % PLAYER_COLORS.length];
+    var pColor = PLAYER_COLORS[r.colorIndex] || PLAYER_COLORS[i % PLAYER_COLORS.length];
 
     var row = document.createElement('div');
     row.className = solo ? 'result-row' : 'result-row rank-' + r.rank;
