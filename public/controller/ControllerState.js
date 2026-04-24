@@ -121,10 +121,6 @@ var lobbyBackBtn = document.getElementById('lobby-back-btn');
 var waitingActionText = document.getElementById('waiting-action-text');
 var gameScreen = document.getElementById('game-screen');
 var gameoverScreen = document.getElementById('gameover-screen');
-var deviceChoice = document.getElementById('device-choice');
-var deviceChoiceToast = document.getElementById('device-choice-toast');
-var deviceChoiceShareBtn = document.getElementById('device-choice-share');
-var deviceChoiceContinueBtn = document.getElementById('device-choice-continue');
 var playerIdentity = document.getElementById('player-identity');
 var startBtn = document.getElementById('start-btn');
 var statusText = document.getElementById('status-text');
@@ -166,7 +162,7 @@ var levelMinusBtn = document.getElementById('level-minus-btn');
 var levelPlusBtn = document.getElementById('level-plus-btn');
 
 // --- Screen Management ---
-var SCREEN_ORDER = { name: 0, lobby: 1, game: 1, gameover: 1, 'device-choice': 0 };
+var SCREEN_ORDER = { name: 0, lobby: 1, game: 1, gameover: 1 };
 
 function showScreen(name) {
   var prev = currentScreen;
@@ -175,7 +171,6 @@ function showScreen(name) {
   lobbyScreen.classList.toggle('hidden', name !== 'lobby');
   gameScreen.classList.toggle('hidden', name !== 'game');
   gameoverScreen.classList.toggle('hidden', name !== 'gameover');
-  deviceChoice.classList.toggle('hidden', name !== 'device-choice');
 
   if (welcomeBg) {
     if (name === 'name' || name === 'lobby') {

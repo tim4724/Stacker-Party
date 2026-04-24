@@ -6,10 +6,20 @@
 // Called by: controller.js (init, event handlers)
 // =====================================================================
 
-// Handle for the 5s toast auto-hide timer, stored at module scope so
-// successive showDeviceChoice() calls can cancel a previous timer
-// before arming a new one.
-var deviceChoiceToastTimer = null;
+// Any unrecoverable controller-side end state (dead/full room, game over,
+// tab replacement, unknown relay error) → send the user to the display
+// root. Desktop viewports land on the welcome screen directly; mobile
+// viewports see the display's device-choice overlay via its CSS media
+// query, which is the right onboarding surface for someone who just
+// fell out of a session on a phone. Optional toastKey is forwarded as
+// `?bail=<key>` so the display can surface context ("Room Not Found",
+// "Game ended") on the overlay; desktop lands silently since the overlay
+// isn't shown there. localStorage is left alone: tab-replacement relies
+// on the newer tab still owning clientId_<room>, and stale entries from
+// dead rooms are harmless (the relay rejects unknown clientIds on join).
+function bailToWelcome(toastKey) {
+  location.replace(toastKey ? '/?bail=' + encodeURIComponent(toastKey) : '/');
+}
 
 function connect() {
   // Gallery iframes load with ?scenario=; never open a real relay socket
@@ -43,13 +53,9 @@ function connect() {
         }
       }
     } else if (type === 'error') {
-      if (msg.message === 'Room not found') {
-        showDeviceChoice('room_not_found');
-      } else if (msg.message === 'Room is full') {
-        showDeviceChoice('game_full');
-      } else {
-        showDeviceChoice();
-      }
+      if (msg.message === 'Room not found') bailToWelcome('room_not_found');
+      else if (msg.message === 'Room is full') bailToWelcome('game_full');
+      else bailToWelcome();
     }
   };
 
@@ -63,9 +69,9 @@ function connect() {
     stopPing();
     if (gameCancelled) return;
     if (meta && meta.replaced) {
-      // keepClientId=true: the newer tab that evicted us now owns the
-      // localStorage clientId — clearing it would orphan that session.
-      showDeviceChoice(undefined, true);
+      // The newer tab that evicted us now owns the localStorage clientId;
+      // bailToWelcome leaves it alone so that tab's auto-reconnect works.
+      bailToWelcome();
       return;
     }
     if (currentScreen !== 'game') return;
@@ -170,60 +176,3 @@ function performDisconnect() {
   nameInput.focus();
 }
 
-function showDeviceChoice(toastKey, keepClientId) {
-  // Guard against double-invocation (e.g. relay close + DISPLAY_CLOSED in
-  // flight): don't reset the toast timer or re-null party.
-  if (gameCancelled) return;
-  // Tab-replacement path (keepClientId=true) must preserve localStorage —
-  // the evicting tab now owns that identity.
-  if (!keepClientId) {
-    try { localStorage.removeItem('clientId_' + roomCode); } catch (e) { /* iframe sandbox */ }
-  }
-  gameCancelled = true;
-  stopPing();
-  // Clean up the settings popup state so a close-button after
-  // reconnect doesn't RESUME_GAME a long-gone display. Guarded: this
-  // function is only defined on the !roomCode branch in controller.js,
-  // and showDeviceChoice() also runs on the falsy-roomCode early-return
-  // before that branch's assignment runs.
-  if (typeof closeSettingsOverlay === 'function') closeSettingsOverlay();
-  if (party) { party.close(); party = null; }
-
-  // Collapse the URL to "/" so a user copying the address from this screen
-  // shares the app root rather than a dead room link. replaceState keeps
-  // the history stack unchanged. Skipped for gallery/test iframes: their
-  // URL bar isn't user-visible, and their ?test=/?scenario= params are
-  // read by connect() and other harness code.
-  var searchParams = new URLSearchParams(location.search);
-  var isTestFrame = searchParams.get('test') === '1' || searchParams.get('scenario');
-  if (!isTestFrame && (location.pathname !== '/' || location.search)) {
-    try { history.replaceState(null, '', '/'); } catch (_) { /* sandboxed iframe */ }
-  }
-
-  // The toast element has role="status" + aria-live="polite", so changing
-  // textContent is enough to announce it via screen readers — no manual
-  // aria-hidden juggling needed.
-  clearTimeout(deviceChoiceToastTimer);
-  if (toastKey) {
-    deviceChoiceToast.textContent = t(toastKey);
-    deviceChoiceToast.classList.remove('hidden');
-    deviceChoiceToastTimer = setTimeout(function () {
-      deviceChoiceToast.classList.add('hidden');
-    }, 5000);
-  } else {
-    // Clear the text too so a stale message from a prior invocation
-    // can't be announced by AT on the way to `hidden`, and doesn't
-    // linger in the DOM.
-    deviceChoiceToast.textContent = '';
-    deviceChoiceToast.classList.add('hidden');
-  }
-  showScreen('device-choice');
-  // role="dialog" — move focus into the overlay so keyboard and
-  // screen-reader users land on the primary action, not outside it.
-  // Using a rect-width probe rather than `offsetParent` because Firefox
-  // returns null for offsetParent under position:fixed ancestors.
-  if (deviceChoiceShareBtn &&
-      deviceChoiceShareBtn.getBoundingClientRect().width > 0) {
-    try { deviceChoiceShareBtn.focus(); } catch (_) { /* old browsers */ }
-  }
-}

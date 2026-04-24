@@ -23,30 +23,23 @@
   <link rel="stylesheet" href="/shared/results.css">
   <link rel="stylesheet" href="/shared/device-choice.css">
   <link rel="stylesheet" href="/display/display.css">
-  <!-- Must load before <body> is parsed so the #device-choice overlay
-       doesn't flash when redirected from a controller's "Continue" button. -->
-  <script src="/shared/device-choice-bypass.js"></script>
 </head>
 <body>
   <!-- Shared falling piece background (visible on welcome + lobby) -->
   <canvas id="bg-canvas"></canvas>
 
   <!-- Device choice: shown on mobile devices visiting the display URL.
-       NOTE: this block is mirrored in /controller/index.html. Keep both
-       in sync — chip copy, data-i18n keys, aria, and structure must
-       match. The toast element below is unused on the display (nothing
-       calls it from display.js) but included so the two files stay
-       structurally identical. -->
-  <!-- role="dialog" (without aria-modal) — conveys dialog semantics to
+       The toast element below is populated from `?bail=<i18n_key>` in
+       display.js when a controller bailed here with a reason to surface
+       (room_not_found / game_full / game_ended).
+
+       role="dialog" (without aria-modal) — conveys dialog semantics to
        screen readers without promising the focus-containment behaviour
        that aria-modal="true" requires. Adding a proper focus trap is
        more than this overlay needs: tabbing out lands on benign inert
        background (welcome/lobby screens suppressed by :has()). -->
   <div class="device-choice hidden" id="device-choice" role="dialog" aria-labelledby="device-choice-title">
-    <!-- `aria-live="off"` because the display never calls this toast; it
-         exists only to keep the two index.html files structurally
-         identical. (The controller copy uses `aria-live="polite"`.) -->
-    <p id="device-choice-toast" class="device-choice__toast hidden" aria-live="off"></p>
+    <p id="device-choice-toast" class="device-choice__toast hidden" role="status" aria-live="polite"></p>
     <div class="device-choice__intro">
       <div class="device-choice__brand">
         <h1 id="device-choice-title" class="gradient-title">HEX STACKER<span class="gradient-title__sub">party</span></h1>

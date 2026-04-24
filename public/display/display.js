@@ -100,6 +100,26 @@ if (deviceChoiceShareBtn) {
   });
 }
 
+// Controller-side errors navigate here with `?bail=<i18n_key>` so the
+// device-choice overlay (mobile-visible via CSS media query) surfaces
+// context like "Room Not Found" or "Game ended". Desktop viewports hide
+// the overlay, so populating the toast is a no-op there — the user just
+// lands on the welcome screen silently, which is the intended behavior.
+// The param is stripped via replaceState so a reload doesn't re-toast.
+(function applyBailToast() {
+  var params = new URLSearchParams(location.search);
+  var bailKey = params.get('bail');
+  if (!bailKey) return;
+  var toast = document.getElementById('device-choice-toast');
+  if (toast) {
+    toast.textContent = t(bailKey);
+    toast.classList.remove('hidden');
+  }
+  params.delete('bail');
+  var qs = params.toString();
+  try { history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '')); } catch (_) { /* sandboxed */ }
+})();
+
 // --- Button Event Listeners ---
 newGameBtn.addEventListener('click', function() {
   initMusic();

@@ -251,18 +251,6 @@ function onGameEnd(data) {
   showScreen('gameover');
 }
 
-function onError(data) {
-  if (data.message === 'Room not found') {
-    showDeviceChoice('room_not_found');
-    return;
-  }
-  if (data.message === 'Room is full') {
-    showDeviceChoice('game_full');
-    return;
-  }
-  showDeviceChoice();
-}
-
 // =====================================================================
 // Pause
 // =====================================================================

@@ -26,8 +26,6 @@ var CONTROLLER_CARDS = [
   { key: 'disconnected',     title: 'Disconnected',        perColor: true },
   { key: 'results-winner',   title: 'Results (host)',      perColor: true, replayable: true },
   { key: 'results-loser',    title: 'Results (non-host)',  perColor: true },
-  { key: 'end',              title: 'Game ended', replayable: true },
-  { key: 'end-full',         title: 'Room full',  replayable: true },
   { key: 'privacy',          title: 'Privacy', staticPath: '/privacy' },
   { key: 'imprint',          title: 'Imprint', staticPath: '/imprint' }
 ];
