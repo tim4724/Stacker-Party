@@ -90,7 +90,11 @@ function handleMessage(data) {
         reconnectOverlay.classList.add('hidden');
         break;
       case MSG.ERROR:
-        bailToWelcome();
+        // Display-originated errors (see DisplayInput.js sendTo({type: ERROR}))
+        // may carry a specific reason — surface it as a toast on the bail.
+        if (data.message === 'Room not found') bailToWelcome('room_not_found');
+        else if (data.message === 'Room is full') bailToWelcome('game_full');
+        else bailToWelcome();
         break;
     }
   } catch (err) {
