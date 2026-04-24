@@ -393,9 +393,10 @@ html, body {
   margin-left: 0;
 }
 
-/* Odd children (2nd, 4th, …) ride high; even children (1st, 3rd, …) ride low.
-   The container's 1.5 × hex-h height accommodates both lanes so the zigzag
-   lives entirely within one row without pushing siblings. */
+/* Odd children (1st, 3rd, …) ride high; even children (2nd, 4th, …) ride low.
+   CSS nth-child is 1-indexed. The container's 1.5 × hex-h height accommodates
+   both lanes so the zigzag lives entirely within one row without pushing
+   siblings. */
 .color-swatch:nth-child(even) {
   align-self: flex-end;
 }

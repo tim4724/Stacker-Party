@@ -380,6 +380,21 @@ describe('getHostClientId (sticky host)', () => {
     assert.equal(getHostClientId(players, party, undefined, undefined, undefined, 'a'), 'a');
   });
 
+  it('RESULTS: late joiner cannot steal Play Again from sticky host', () => {
+    // During RESULTS the restriction prevents a late joiner (not in
+    // playerOrder) from getting host duty — bob stays host even though
+    // 'late' joined afterwards with a lower palette slot.
+    const players = new Map([
+      ['bob',  { playerIndex: 1, joinedAt: 1 }],
+      ['late', { playerIndex: 0, joinedAt: 2 }]
+    ]);
+    const playerOrder = ['bob'];
+    assert.equal(
+      getHostClientId(players, null, ROOM_STATE.RESULTS, playerOrder, null, 'bob'),
+      'bob'
+    );
+  });
+
   it('PLAYING: sticky host that is a late joiner is ineligible; oldest active takes over', () => {
     // Sticky host = 'late' (late joiner). During active game, only players
     // in playerOrder can act as host — so the fallback elects the oldest
