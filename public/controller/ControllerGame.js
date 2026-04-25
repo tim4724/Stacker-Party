@@ -179,17 +179,22 @@ function paintColorSwatch(btn, tier, color, isTaken) {
   btn.style.setProperty('--swatch-color', color);
 }
 
-// Snapshot of the persisted color from the previous session, captured
-// once at script load. persistColorIndex() will overwrite localStorage
-// on the very first WELCOME, so we have to read it BEFORE that — the
-// snapshot is what reclaimPreferredColor compares against.
-var _previousSessionColorIndex = (function () {
+// Snapshot of the persisted color from the previous session. Captured at
+// script load in standalone mode; in AirConsole mode the storage shim
+// hydrates asynchronously after onReady, so the bootstrap re-runs the
+// capture from its onLoad callback (before HELLO leaves the wire and
+// before WELCOME's persistColorIndex() can overwrite the stored value).
+var _previousSessionColorIndex = null;
+function captureSessionColorIndex() {
   var raw = null;
   try { raw = localStorage.getItem('stacker_color_index'); } catch (e) { /* iframe sandbox */ }
-  if (raw == null) return null;
+  if (raw == null) return;
   var idx = parseInt(raw, 10);
-  return (isNaN(idx) || idx < 0 || idx >= PLAYER_COLORS.length) ? null : idx;
-})();
+  if (!isNaN(idx) && idx >= 0 && idx < PLAYER_COLORS.length) {
+    _previousSessionColorIndex = idx;
+  }
+}
+captureSessionColorIndex();
 
 // Save the player's current color so a future reload can reclaim it.
 // Called whenever the display confirms our colorIndex.
