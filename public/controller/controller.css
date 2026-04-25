@@ -1242,6 +1242,21 @@ body.airconsole #ac-status-overlay.hidden { display: none; }
     max-width: none;
   }
 
+  /* Lay out the identity card and color picker side-by-side. Landscape
+     viewports are short on vertical space, and the picker's two-row
+     honeycomb is square-ish, so a row arrangement reads more compactly
+     than the portrait stack. The picker drops its top/bottom margin
+     since the row gap handles spacing now. */
+  .controller-shell__frame--lobby #player-identity {
+    flex-direction: row;
+    align-items: center;
+    gap: 18px;
+  }
+
+  .controller-shell__frame--lobby #color-picker {
+    margin: 0;
+  }
+
   /* Results: list on the left half, title + buttons on the right half.
      Each half gets 1fr so each column fills its side of the frame; the items
      inside (rows/buttons) are centered within their half by their own

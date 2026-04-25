@@ -3,6 +3,7 @@
 const { test, describe, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { MSG, ROOM_STATE } = require('../public/shared/protocol');
+const { PLAYER_COLORS } = require('../public/shared/theme');
 
 // =====================================================================
 // Tests for the lobby color-picker protocol (MSG.SET_COLOR).
@@ -18,7 +19,7 @@ const { MSG, ROOM_STATE } = require('../public/shared/protocol');
 // takenColorIndices payload should reflect the post-swap state.
 // =====================================================================
 
-const PALETTE_SIZE = 8;
+const PALETTE_SIZE = PLAYER_COLORS.length;
 
 function collectTakenColorIndices(players) {
   var out = [];
@@ -163,6 +164,19 @@ describe('Display: onSetColor', () => {
     seedPlayer(players, 'a', 0);
     playerOrder.push('a');
     roomState = ROOM_STATE.COUNTDOWN;
+
+    onSetColor(players, playerOrder, roomState, party, 'a', { colorIndex: 5 });
+    assert.strictEqual(players.get('a').playerIndex, 0);
+    assert.strictEqual(sent.length, 0);
+  });
+
+  test('rejects an active participant during RESULTS', () => {
+    // Same reasoning as COUNTDOWN — the results screen renders each
+    // player's color in their rank row, so a mid-RESULTS color change
+    // would desync the visible ranking from the player's identity.
+    seedPlayer(players, 'a', 0);
+    playerOrder.push('a');
+    roomState = ROOM_STATE.RESULTS;
 
     onSetColor(players, playerOrder, roomState, party, 'a', { colorIndex: 5 });
     assert.strictEqual(players.get('a').playerIndex, 0);

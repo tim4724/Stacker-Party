@@ -207,7 +207,8 @@ function updatePlayerList() {
       card.classList.remove('join-pop');
       delete card.dataset.playerId;
       delete slot.dataset.playerId;
-      var levelCtrl = card.querySelector('.level-controls');
+      // Re-assignment: levelCtrl is var-hoisted from the if-branch above.
+      levelCtrl = card.querySelector('.level-controls');
       if (levelCtrl) levelCtrl.remove();
       // Add placeholder level row so empty cards match filled card height
       if (!card.querySelector('.level-placeholder')) {
