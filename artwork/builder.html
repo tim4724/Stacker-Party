@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>HexStacker Party — Cover Builder</title>
+  <title>HexStacker Party — Builder</title>
   <link rel="stylesheet" href="../public/shared/fonts/orbitron.css">
   <link rel="stylesheet" href="../public/shared/theme.css">
   <style>
@@ -1570,7 +1570,7 @@
   function centerTitleVertically() {
     const H = canvas.height;
     const size = STATE.titleSize ?? 110;
-    const subSize = 44;
+    const subSize = STATE.subtitleSize ?? 44;
     const blockH = measureTitleBlock(STATE.title || '', STATE.subtitle || '', size, subSize, STATE);
     STATE.titleY = Math.round((H - blockH) / 2 + size);
     buildStageParams();

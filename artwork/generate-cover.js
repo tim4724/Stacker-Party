@@ -11,6 +11,8 @@
 const { chromium } = require('playwright');
 const path = require('path');
 
+// Must match STAGES.cover.canvasW/H in builder.html — the viewport just
+// hosts the page; the canvas inside the page owns the real export dims.
 const COVER_WIDTH = 1024;
 const COVER_HEIGHT = 1024;
 const ARTWORK_DIR = __dirname;
@@ -19,23 +21,22 @@ const ARTWORK_OUT = path.resolve(ARTWORK_DIR, 'cover-art.png');
 
 (async () => {
   const browser = await chromium.launch();
-  const context = await browser.newContext({
-    viewport: { width: COVER_WIDTH, height: COVER_HEIGHT },
-    deviceScaleFactor: 2,
-  });
-  const page = await context.newPage();
-  await page.goto(`file://${BUILDER}?headless=cover`);
-  await page.evaluate(() => document.fonts.ready);
-  await page.waitForTimeout(300);
-  const err = await page.evaluate(() => window.__BUILDER_ERROR__);
-  if (err) {
+  try {
+    const context = await browser.newContext({
+      viewport: { width: COVER_WIDTH, height: COVER_HEIGHT },
+      deviceScaleFactor: 2,
+    });
+    const page = await context.newPage();
+    await page.goto(`file://${BUILDER}?headless=cover`);
+    await page.evaluate(() => document.fonts.ready);
+    await page.waitForTimeout(300);
+    const err = await page.evaluate(() => window.__BUILDER_ERROR__);
+    if (err) throw new Error(`builder.html reported: ${err}`);
+    await page.screenshot({ path: ARTWORK_OUT });
+    console.log(`Wrote ${ARTWORK_OUT}`);
+  } finally {
     await browser.close();
-    throw new Error(`builder.html reported: ${err}`);
   }
-  await page.screenshot({ path: ARTWORK_OUT });
-  await browser.close();
-
-  console.log(`Wrote ${ARTWORK_OUT}`);
 })().catch((err) => {
   console.error(err);
   process.exit(1);
