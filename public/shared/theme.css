@@ -31,9 +31,6 @@
   --accent-secondary-rgb: 255, 140, 66;   /* Slot 8 Tangerine */
   --accent-secondary: rgb(var(--accent-secondary-rgb));
   --accent-secondary-dark: #E67A33;
-  /* HEX STACKER wordmark gradient — 5-stop rainbow sweep across the
-     party palette. Hardcoded inside .gradient-title (theme.css) and
-     mirrored by titleGradient() in artwork/builder.html for canvas. */
 
   /* Text — warm cream */
   --text-primary: #F7F1E8;
@@ -285,6 +282,9 @@
    defensive against future rules that read --player-color on empty cards. */
 .player-card.empty { --player-color: initial; }
 
+/* HEX STACKER wordmark — 5-stop rainbow sweep across the party palette.
+   Mirrored by titleGradient() in artwork/builder.html for canvas-rendered
+   PNGs (cover-art, social-preview). */
 .gradient-title {
   font-family: 'Orbitron', sans-serif;
   font-weight: 900;
