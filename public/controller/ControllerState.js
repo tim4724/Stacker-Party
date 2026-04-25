@@ -35,6 +35,12 @@ var lastLines = 0;
 var lastGameResults = null;
 var startLevel = 1;
 var takenColorIndices = [];   // indices currently claimed by other players (incl. self)
+// Becomes true the first time the user taps a swatch in the picker. Gates
+// persistColorIndex in onLobbyUpdate so we only persist *user-initiated*
+// color changes — display-assigned slots (initial / reconnect default)
+// must NOT clobber the previous-session preference, which reclaim still
+// needs to read from the AC server snapshot.
+var userPickedColor = false;
 
 // Host (AirConsole master controller) — lowest-slot connected player.
 // Only the host can trigger menu actions (start, play again, return to lobby).

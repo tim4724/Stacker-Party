@@ -405,7 +405,13 @@ function onLobbyUpdate(data) {
     document.body.style.setProperty('--player-color', playerColor);
     playerIdentity.style.setProperty('--player-color', playerColor);
     gameScreen.style.setProperty('--player-color', playerColor);
-    persistColorIndex(data.colorIndex);
+    // Persist only user-initiated changes (see userPickedColor decl in
+    // ControllerState.js). Display-driven assignments — initial slot,
+    // reconnect-default, reclaim's own SET_COLOR confirmation — must
+    // not write here: in AC mode an early LOBBY_UPDATE landing before
+    // the persistent-data fetch resolves would clobber the previous-
+    // session preference in cache.
+    if (userPickedColor) persistColorIndex(data.colorIndex);
   }
   if (Array.isArray(data.takenColorIndices)) takenColorIndices = data.takenColorIndices;
   applyHostInfo(data);

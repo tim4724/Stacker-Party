@@ -721,11 +721,14 @@ if (colorPickerEl) {
     var idx = parseInt(btn.dataset.idx, 10);
     if (isNaN(idx)) return;
     vibrate(15);
+    // Mark this session as user-initiated picking. onLobbyUpdate will
+    // persist any subsequent confirmed color change. Without this flag,
+    // LOBBY_UPDATE-driven assignments (initial slot, reconnect default)
+    // would clobber the previous-session preference before reclaim can
+    // act on it. Don't persist here optimistically — a concurrent
+    // collision may reject this SET_COLOR and we'd save the wrong index.
+    userPickedColor = true;
     sendToDisplay(MSG.SET_COLOR, { colorIndex: idx });
-    // Note: the preferred-color localStorage write happens in
-    // ControllerGame.onLobbyUpdate when the display CONFIRMS the
-    // change — we don't optimistically persist a tap that may lose to
-    // a concurrent picker collision.
   });
 }
 
