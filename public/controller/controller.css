@@ -1010,6 +1010,12 @@ html, body {
   -webkit-appearance: none;
   appearance: none;
   height: 6px;
+  /* Default touch-action: auto lets the browser interpret a finger drag
+     as a scroll/pan attempt and hand control away from the slider after
+     touch-down — observed in the AC iframe on Android Chrome as "tap
+     moves the thumb, drag does nothing." `none` opts out of that
+     heuristic so finger drags route to the native range input. */
+  touch-action: none;
   /* Center-marker painted into the track itself so the thumb (native
      pseudo-element) always renders on top of it — no stacking tricks
      needed. Position comes from --center-pct (set in JS) so the tick

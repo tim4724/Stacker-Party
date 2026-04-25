@@ -86,62 +86,6 @@ connect = function() {
 
 AirConsoleAdapter.injectVersionLabel('settings-version');
 
-// Drive the sensitivity slider via pointer events. Inside the AC iframe,
-// real touch hardware doesn't fire 'input' on a native <input type=range>
-// drag (a long-standing Chromium iframe-touch quirk). A CDP-injected
-// touch in our e2e probe DID fire it — so the synthetic test was a poor
-// proxy for actual phone behavior. This handler maps pointer X to the
-// slider's value range manually and dispatches 'input' so controller.js's
-// existing handler picks up real-touch drags.
-//
-// Manual verification (no automated coverage — CDP touch is misleading):
-// load /controller.html in the AirConsole simulator on a phone profile,
-// open Settings, drag the sensitivity slider with your finger, and
-// confirm the value display updates and the touchpad ratchet feels
-// looser/tighter. The probe at https://github.com/tim4724/HexStacker-Party/pull/115
-// shows what NOT to use.
-(function() {
-  var slider = document.getElementById('sensitivity-slider');
-  if (!slider) return;
-  var dragging = false;
-  function setFromPointer(e) {
-    var rect = slider.getBoundingClientRect();
-    var ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    var min = parseFloat(slider.min) || 0;
-    var max = parseFloat(slider.max) || 1;
-    var step = parseFloat(slider.step) || 0;
-    var v = min + ratio * (max - min);
-    if (step > 0) v = Math.round((v - min) / step) * step + min;
-    v = Math.max(min, Math.min(max, v));
-    // Assign first and compare browser-normalized strings — our raw float
-    // (e.g. 1.1500000000000001) gets normalized to "1.15" by the slider,
-    // so a String(v) === slider.value test would always differ and fire a
-    // redundant 'input' (and accompanying vibrate) on every pointermove.
-    var prev = slider.value;
-    slider.value = String(v);
-    if (slider.value !== prev) {
-      slider.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-  }
-  slider.addEventListener('pointerdown', function(e) {
-    dragging = true;
-    slider.setPointerCapture(e.pointerId);
-    setFromPointer(e);
-    e.preventDefault();
-  });
-  slider.addEventListener('pointermove', function(e) {
-    if (!dragging) return;
-    setFromPointer(e);
-  });
-  function end(e) {
-    if (!dragging) return;
-    dragging = false;
-    try { slider.releasePointerCapture(e.pointerId); } catch (_) {}
-  }
-  slider.addEventListener('pointerup', end);
-  slider.addEventListener('pointercancel', end);
-})();
-
 // AirConsole status overlay: show "Loading..." until lobby, show errors.
 var _acStatusOverlay = document.getElementById('ac-status-overlay');
 var _origShowScreen = showScreen;
