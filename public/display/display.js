@@ -72,6 +72,7 @@ document.addEventListener('visibilitychange', function() {
 // + the size-based media query in display.css. The element keeps its
 // .hidden class permanently — dismiss/restore only toggle the root class.
 var deviceChoice = document.getElementById('device-choice');
+var deviceChoiceToast = document.getElementById('device-choice-toast');
 var deviceChoiceShareBtn = document.getElementById('device-choice-share');
 var deviceChoiceContinueBtn = document.getElementById('device-choice-continue');
 
@@ -106,13 +107,12 @@ if (deviceChoiceShareBtn) {
 // timer (used by the gallery replay button).
 var _bailToastTimer = null;
 function showBailToast(key) {
-  var toast = document.getElementById('device-choice-toast');
-  if (!toast) return;
-  toast.textContent = t(key);
-  toast.classList.remove('hidden');
+  if (!deviceChoiceToast) return;
+  deviceChoiceToast.textContent = t(key);
+  deviceChoiceToast.classList.remove('hidden');
   clearTimeout(_bailToastTimer);
   _bailToastTimer = setTimeout(function() {
-    toast.classList.add('hidden');
+    deviceChoiceToast.classList.add('hidden');
   }, 5000);
 }
 

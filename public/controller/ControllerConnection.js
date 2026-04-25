@@ -29,6 +29,13 @@
 function bailToWelcome(toastKey, keepClientId) {
   if (gameCancelled) return;
   gameCancelled = true;
+  // location.replace tears down the page (and with it the WebSocket and
+  // ping timer), so the explicit cleanup here is defense in depth — it
+  // prevents a stray ping firing in the navigation window from logging
+  // a confusing "no party" warning, and lets test harnesses that stub
+  // location.replace observe the cleanup.
+  stopPing();
+  if (party) { party.close(); party = null; }
   if (!keepClientId) {
     try { localStorage.removeItem('clientId_' + roomCode); } catch (e) { /* iframe sandbox */ }
   }
