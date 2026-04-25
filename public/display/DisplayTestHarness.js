@@ -15,12 +15,14 @@ if (urlParams.get('test') === '1' || debugCount > 0) {
         // (e.g. 3 players + player 7 when "View as P7" is picked with
         // Players=4). Falls back to sequential fill for the usual case.
         var index = (typeof p.slot === 'number') ? p.slot : nextAvailableSlot();
-        var color = PLAYER_COLORS[index % PLAYER_COLORS.length];
+        // joinedAt = array position → stable, incrementing within the seed so
+        // calculateLayout()/electNextHost() get meaningful ordering. Using a
+        // derived counter instead of Date.now() keeps scenarios deterministic.
         players.set(p.id, {
           playerName: sanitizePlayerName(p.name, index),
-          playerColor: color,
           playerIndex: index,
-          startLevel: p.level || 1
+          startLevel: p.level || 1,
+          joinedAt: i
         });
         playerOrder.push(p.id);
       }
@@ -459,7 +461,7 @@ function initScenario(opts) {
       results.results.push({
         playerId: debugPlayers[i].id,
         playerName: debugPlayers[i].name,
-        playerColor: pInfo && pInfo.playerColor,
+        colorIndex: pInfo && pInfo.playerIndex,
         rank: i + 1,
         lines: 30 - i * 3,
         level: level + (playerCount - 1 - i)

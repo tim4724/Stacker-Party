@@ -281,9 +281,10 @@ function runGameLocally() {
   lastMusicLevel = 0;
 
   var Game = window.GameEngine.Game;
-  // Sort by slot index so game engine order matches board positions
+  // Sort by join time so game engine order matches the lobby's board
+  // positions (first joiner leftmost). See calculateLayout() — same rule.
   playerOrder.sort(function(a, b) {
-    return (players.get(a)?.playerIndex ?? 0) - (players.get(b)?.playerIndex ?? 0);
+    return (players.get(a)?.joinedAt ?? Infinity) - (players.get(b)?.joinedAt ?? Infinity);
   });
   // Snapshot playerOrder at game start — prevents mid-game layout drift
   playerOrder = playerOrder.slice();
@@ -329,7 +330,7 @@ function runGameLocally() {
           var pInfo = players.get(r.playerId);
           if (pInfo) {
             r.playerName = pInfo.playerName;
-            r.playerColor = pInfo.playerColor;
+            r.colorIndex = pInfo.playerIndex;
           }
         }
       }
@@ -437,7 +438,8 @@ function onGarbageSent(msg) {
   var idx = playerOrder.indexOf(msg.toId);
   if (idx < 0 || !boardRenderers[idx]) return;
   var br = boardRenderers[idx];
-  var attackerColor = players.get(msg.senderId)?.playerColor || '#ffffff';
+  var attackerInfo = players.get(msg.senderId);
+  var attackerColor = attackerInfo ? PLAYER_COLORS[attackerInfo.playerIndex] : '#ffffff';
   animations.addGarbageShake(br.x, br.y);
   var shifted = (garbageIndicatorEffects.get(msg.toId) || [])
     .map(function(effect) { return { ...effect, rowStart: effect.rowStart - msg.lines }; })

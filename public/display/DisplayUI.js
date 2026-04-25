@@ -22,9 +22,11 @@ function buildLevelPlaceholder() {
 // --- Layout Calculation ---
 function calculateLayout() {
   if (!ctx || playerOrder.length === 0) return;
-  // Sort by slot index so board positions match player colors (P1 left, P2 right, etc.)
+  // Sort by join time so board positions are stable across color changes
+  // and sticky-host behavior — first joiner is leftmost, last joiner
+  // rightmost, color pick has no effect on seat.
   playerOrder.sort(function(a, b) {
-    return (players.get(a)?.playerIndex ?? 0) - (players.get(b)?.playerIndex ?? 0);
+    return (players.get(a)?.joinedAt ?? Infinity) - (players.get(b)?.joinedAt ?? Infinity);
   });
   clearStampCache();
 
@@ -132,12 +134,14 @@ function updatePlayerList() {
     playerListEl.appendChild(slot);
   }
 
-  // Find the highest occupied slot to know which cards to show
-  var highestOccupied = -1;
-  for (const entry of players) {
-    if (entry[1].playerIndex > highestOccupied) highestOccupied = entry[1].playerIndex;
-  }
-  var visibleSlots = Math.max(placeholderSlots, highestOccupied + 1);
+  // Cards pack tightly: N players fill the first N slots. Ordering follows
+  // join time so a player's seat is stable across color changes — color
+  // picks recolor the card in place rather than swapping slots with a
+  // neighbor. Same rule used by calculateLayout() for the game boards.
+  var sortedPlayers = Array.from(players.entries()).sort(function(a, b) {
+    return (a[1].joinedAt ?? Infinity) - (b[1].joinedAt ?? Infinity);
+  });
+  var visibleSlots = Math.max(placeholderSlots, sortedPlayers.length);
 
   // In AirConsole empty slots are hidden, so the layout bucket is driven by
   // actual player count; elsewhere use the visible-slot count (incl. placeholders).
@@ -154,20 +158,17 @@ function updatePlayerList() {
     // Hide slots beyond visible range
     slot.style.display = j < visibleSlots ? '' : 'none';
 
-    // Find player assigned to this slot by playerIndex
+    // Nth filled slot gets the Nth player from the join-sorted list.
     var playerId = null;
     var info = null;
-    for (const entry of players) {
-      if (entry[1].playerIndex === j) {
-        playerId = entry[0];
-        info = entry[1];
-        break;
-      }
+    if (j < sortedPlayers.length) {
+      playerId = sortedPlayers[j][0];
+      info = sortedPlayers[j][1];
     }
     var wasEmpty = card.classList.contains('empty');
 
     if (info) {
-      var color = info.playerColor || PLAYER_COLORS[info.playerIndex] || '#fff';
+      var color = PLAYER_COLORS[info.playerIndex] || '#fff';
       card.style.setProperty('--player-color', color);
       nameEl.textContent = info.playerName || PLAYER_NAMES[info.playerIndex] || t('player');
       card.classList.remove('empty');
@@ -206,7 +207,8 @@ function updatePlayerList() {
       card.classList.remove('join-pop');
       delete card.dataset.playerId;
       delete slot.dataset.playerId;
-      var levelCtrl = card.querySelector('.level-controls');
+      // Re-assignment: levelCtrl is var-hoisted from the if-branch above.
+      levelCtrl = card.querySelector('.level-controls');
       if (levelCtrl) levelCtrl.remove();
       // Add placeholder level row so empty cards match filled card height
       if (!card.querySelector('.level-placeholder')) {
@@ -235,9 +237,7 @@ function updateStartButton() {
 function applyHostTint() {
   var hostId = getHostClientId();
   var hostPlayer = hostId ? players.get(hostId) : null;
-  var hostColor = hostPlayer
-    ? (hostPlayer.playerColor || PLAYER_COLORS[hostPlayer.playerIndex])
-    : null;
+  var hostColor = hostPlayer ? PLAYER_COLORS[hostPlayer.playerIndex] : null;
   if (hostColor) {
     document.body.style.setProperty('--player-color', hostColor);
   } else {
@@ -315,7 +315,7 @@ function renderResults(results) {
   var winner = sorted[0];
   if (winner) {
     var wInfo = players.get(winner.playerId);
-    var winnerColor = wInfo?.playerColor || PLAYER_COLORS[wInfo?.playerIndex] || '#ffd700';
+    var winnerColor = (wInfo && PLAYER_COLORS[wInfo.playerIndex]) || '#ffd700';
     resultsScreen.style.setProperty('--winner-glow', rgbaFromHex(winnerColor, 0.08));
   }
 
@@ -328,7 +328,7 @@ function renderResults(results) {
     row.style.setProperty('--row-delay', (0.2 + i * 0.08) + 's');
 
     var pInfo = players.get(res.playerId);
-    var pColor = pInfo ? (pInfo.playerColor || PLAYER_COLORS[pInfo.playerIndex]) : null;
+    var pColor = pInfo ? PLAYER_COLORS[pInfo.playerIndex] : null;
 
     if (!solo) {
       var rank = document.createElement('span');

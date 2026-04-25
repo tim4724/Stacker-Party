@@ -210,8 +210,19 @@ describe('sanitizePlayerName', () => {
 // getHostClientId — AirConsole master-controller rule (lowest playerIndex)
 // =========================================================================
 
-// Mirrors DisplayState.js getHostClientId — keep in sync.
-function getHostClientId(players, party, roomState, playerOrder, disconnectedQRs) {
+// Mirrors DisplayState.js getHostClientId / electNextHost — keep in sync.
+//
+// Sticky host: `hostClientId` is a stored slot (not a computed min).
+// It is:
+//   - Initialized by the first joiner (onPeerJoined / onHello).
+//   - Reassigned by electNextHost() when the holder leaves (onPeerLeft),
+//     which picks the oldest-joined remaining present player.
+//   - Preserved across color changes and temporary disconnects.
+// getHostClientId returns the stored host when available; otherwise it
+// returns a read-only fallback (oldest-joined present eligible player)
+// so mid-game disconnect transparently defers host duty until the
+// reassignment happens in the next onPeerLeft.
+function getHostClientId(players, party, roomState, playerOrder, disconnectedQRs, hostClientId) {
   const restricted = (roomState === ROOM_STATE.PLAYING
                    || roomState === ROOM_STATE.COUNTDOWN
                    || roomState === ROOM_STATE.RESULTS)
@@ -226,219 +237,263 @@ function getHostClientId(players, party, roomState, playerOrder, disconnectedQRs
       return acHost;
     }
   }
-  let hostId = null;
-  let hostIdx = Infinity;
+
+  if (hostClientId && players.has(hostClientId)
+      && !disconnected.has(hostClientId)
+      && (!restricted || eligible.has(hostClientId))) {
+    return hostClientId;
+  }
+
+  let fallbackId = null;
+  let fallbackJoin = Infinity;
   for (const entry of players) {
     if (disconnected.has(entry[0])) continue;
     if (restricted && !eligible.has(entry[0])) continue;
-    if (entry[1].playerIndex < hostIdx) {
-      hostIdx = entry[1].playerIndex;
-      hostId = entry[0];
+    const ja = entry[1].joinedAt == null ? Infinity : entry[1].joinedAt;
+    if (ja < fallbackJoin) {
+      fallbackJoin = ja;
+      fallbackId = entry[0];
     }
   }
-  return hostId;
+  return fallbackId;
 }
 
-describe('getHostClientId', () => {
+function electNextHost(players, disconnectedQRs, excludeId) {
+  const disconnected = disconnectedQRs || new Map();
+  let nextId = null;
+  let nextJoin = Infinity;
+  for (const entry of players) {
+    if (entry[0] === excludeId) continue;
+    if (disconnected.has(entry[0])) continue;
+    const ja = entry[1].joinedAt == null ? Infinity : entry[1].joinedAt;
+    if (ja < nextJoin) {
+      nextJoin = ja;
+      nextId = entry[0];
+    }
+  }
+  return nextId;
+}
+
+// Small helper for tests — create an entry with a monotonic joinedAt so
+// tests don't have to hand-pick timestamps. Each call gets a larger value.
+let _testJoinCounter = 0;
+function seed(playerIndex) {
+  return { playerIndex, joinedAt: ++_testJoinCounter };
+}
+
+describe('getHostClientId (sticky host)', () => {
   it('returns null for empty lobby', () => {
     assert.equal(getHostClientId(new Map()), null);
   });
 
-  it('returns the only player', () => {
-    const players = new Map([['a', { playerIndex: 0 }]]);
-    assert.equal(getHostClientId(players), 'a');
+  it('returns the stored host when present and connected', () => {
+    const players = new Map([['a', seed(0)]]);
+    assert.equal(getHostClientId(players, null, undefined, undefined, undefined, 'a'), 'a');
   });
 
-  it('returns lowest-index player regardless of insertion order', () => {
+  it('stored host wins even when another player has a lower palette slot', () => {
+    // Alice was first (host). Bob joined later. Alice picks a higher color —
+    // Bob is now at slot 0 but Alice stays host (sticky).
     const players = new Map([
-      ['b', { playerIndex: 2 }],
-      ['a', { playerIndex: 0 }],
-      ['c', { playerIndex: 1 }]
+      ['alice', { playerIndex: 3, joinedAt: 1 }],
+      ['bob',   { playerIndex: 0, joinedAt: 2 }]
     ]);
-    assert.equal(getHostClientId(players), 'a');
+    assert.equal(getHostClientId(players, null, undefined, undefined, undefined, 'alice'), 'alice');
   });
 
-  it('handoff: next-lowest becomes host when current host leaves', () => {
+  it('host survives a color change (playerIndex no longer affects host)', () => {
+    // Alice joined first with palette slot 0. She changes to slot 5.
+    // hostClientId points to 'alice' throughout — no re-election needed.
     const players = new Map([
-      ['a', { playerIndex: 0 }],
-      ['b', { playerIndex: 1 }],
-      ['c', { playerIndex: 2 }]
+      ['alice', { playerIndex: 0, joinedAt: 1 }],
+      ['bob',   { playerIndex: 1, joinedAt: 2 }]
     ]);
-    assert.equal(getHostClientId(players), 'a');
-    players.delete('a');
-    assert.equal(getHostClientId(players), 'b');
+    assert.equal(getHostClientId(players, null, undefined, undefined, undefined, 'alice'), 'alice');
+    // Color change — just mutate playerIndex.
+    players.get('alice').playerIndex = 5;
+    assert.equal(getHostClientId(players, null, undefined, undefined, undefined, 'alice'), 'alice');
   });
 
-  it('reclaim: a new low-slot joiner becomes host', () => {
-    // Slots 1 and 2 are filled; slot 0 opens up and a new player takes it.
+  it('electNextHost picks oldest-joined remaining player', () => {
     const players = new Map([
-      ['b', { playerIndex: 1 }],
-      ['c', { playerIndex: 2 }]
+      ['alice', { playerIndex: 0, joinedAt: 1 }],
+      ['bob',   { playerIndex: 1, joinedAt: 2 }],
+      ['carol', { playerIndex: 2, joinedAt: 3 }]
     ]);
-    assert.equal(getHostClientId(players), 'b');
-    players.set('newcomer', { playerIndex: 0 });
-    assert.equal(getHostClientId(players), 'newcomer');
+    // Alice (host) is about to leave — next host should be Bob (older than Carol).
+    assert.equal(electNextHost(players, null, 'alice'), 'bob');
   });
 
-  it('AirConsole path: adapter-reported master wins over lowest slot', () => {
-    // A premium device in slot 2 would still be master — AC prioritizes premium.
+  it('handoff flow: onPeerLeft reassigns then getHostClientId returns new host', () => {
+    // Simulates what DisplayConnection does: electNextHost → delete player.
     const players = new Map([
-      ['a', { playerIndex: 0 }],
-      ['b', { playerIndex: 1 }],
-      ['c', { playerIndex: 2 }]
+      ['alice', { playerIndex: 0, joinedAt: 1 }],
+      ['bob',   { playerIndex: 1, joinedAt: 2 }]
+    ]);
+    let hostId = 'alice';
+    assert.equal(getHostClientId(players, null, undefined, undefined, undefined, hostId), 'alice');
+    // Alice leaves — onPeerLeft runs electNextHost BEFORE removing her.
+    hostId = electNextHost(players, null, 'alice');
+    players.delete('alice');
+    assert.equal(hostId, 'bob');
+    assert.equal(getHostClientId(players, null, undefined, undefined, undefined, hostId), 'bob');
+  });
+
+  it('sticky: a returning original host does NOT reclaim', () => {
+    // Alice (host) leaves. onPeerLeft reassigns host to Bob.
+    // Later Alice rejoins — she's a new entry with a new joinedAt and
+    // hostClientId still points to Bob.
+    const players = new Map([
+      ['alice', { playerIndex: 0, joinedAt: 1 }],
+      ['bob',   { playerIndex: 1, joinedAt: 2 }]
+    ]);
+    let hostId = electNextHost(players, null, 'alice');
+    assert.equal(hostId, 'bob');
+    players.delete('alice');
+    // ...time passes...
+    players.set('alice', { playerIndex: 0, joinedAt: 99 });  // returns
+    // hostClientId is not touched on a normal join (only on null-init or leave).
+    assert.equal(getHostClientId(players, null, undefined, undefined, undefined, hostId), 'bob');
+  });
+
+  it('AirConsole path: adapter-reported master wins over stored sticky host', () => {
+    // A premium device is promoted by the AirConsole platform mid-session.
+    // This overrides our sticky slot — AC owns host on that platform.
+    const players = new Map([
+      ['a', seed(0)],
+      ['b', seed(1)],
+      ['c', seed(2)]
     ]);
     const party = { getMasterClientId: () => 'c' };
-    assert.equal(getHostClientId(players, party), 'c');
+    assert.equal(getHostClientId(players, party, undefined, undefined, undefined, 'a'), 'c');
   });
 
-  it('AirConsole path: falls back when master has not sent HELLO yet', () => {
-    // AC reports device 9 as master but we haven't received HELLO from them.
-    // Until players.has(9), use lowest-slot among known players.
-    const players = new Map([
-      ['a', { playerIndex: 0 }],
-      ['b', { playerIndex: 1 }]
-    ]);
+  it('AirConsole path: falls through to sticky when master has not sent HELLO yet', () => {
+    const players = new Map([['a', seed(0)], ['b', seed(1)]]);
     const party = { getMasterClientId: () => '9' };
-    assert.equal(getHostClientId(players, party), 'a');
+    assert.equal(getHostClientId(players, party, undefined, undefined, undefined, 'a'), 'a');
   });
 
-  it('AirConsole path: null master falls through to slot rule', () => {
-    const players = new Map([['a', { playerIndex: 0 }]]);
+  it('AirConsole path: null master falls through to sticky', () => {
+    const players = new Map([['a', seed(0)]]);
     const party = { getMasterClientId: () => null };
-    assert.equal(getHostClientId(players, party), 'a');
+    assert.equal(getHostClientId(players, party, undefined, undefined, undefined, 'a'), 'a');
   });
 
-  it('PLAYING: excludes late joiners not in playerOrder', () => {
-    // Alice and Bob are playing; Carol joined mid-game as slot 2 (not in
-    // playerOrder). Without the restriction the lowest-slot rule would
-    // pick Alice anyway, so set up Carol in slot 0 to prove the restriction
-    // is what's actually doing the work (simulates slot reclaim path).
+  it('RESULTS: late joiner cannot steal Play Again from sticky host', () => {
+    // During RESULTS the restriction prevents a late joiner (not in
+    // playerOrder) from getting host duty — bob stays host even though
+    // 'late' joined afterwards with a lower palette slot.
     const players = new Map([
-      ['carol', { playerIndex: 0 }],  // late joiner, not in playerOrder
-      ['alice', { playerIndex: 1 }],
-      ['bob',   { playerIndex: 2 }]
-    ]);
-    const playerOrder = ['alice', 'bob'];
-    assert.equal(getHostClientId(players, null, ROOM_STATE.PLAYING, playerOrder), 'alice');
-  });
-
-  it('PLAYING: AC master that is not in playerOrder is ignored', () => {
-    // AC promoted Carol (late joiner) to master, but she can't reach the
-    // pause overlay — host stays with an active participant to avoid
-    // deadlocking RETURN_TO_LOBBY.
-    const players = new Map([
-      ['carol', { playerIndex: 2 }],
-      ['alice', { playerIndex: 0 }],
-      ['bob',   { playerIndex: 1 }]
-    ]);
-    const playerOrder = ['alice', 'bob'];
-    const party = { getMasterClientId: () => 'carol' };
-    assert.equal(getHostClientId(players, party, ROOM_STATE.PLAYING, playerOrder), 'alice');
-  });
-
-  it('RESULTS: restriction also applies so late joiner cannot steal Play Again', () => {
-    const players = new Map([
-      ['carol', { playerIndex: 0 }],  // joined during RESULTS
-      ['bob',   { playerIndex: 1 }]   // original player, inherited host
+      ['bob',  { playerIndex: 1, joinedAt: 1 }],
+      ['late', { playerIndex: 0, joinedAt: 2 }]
     ]);
     const playerOrder = ['bob'];
-    assert.equal(getHostClientId(players, null, ROOM_STATE.RESULTS, playerOrder), 'bob');
-  });
-
-  it('LOBBY: restriction lifted — late joiner reclaiming slot 0 can be host', () => {
-    // After returnToLobby, all players are in playerOrder again, so the
-    // restriction is moot. But even a hypothetical player not in playerOrder
-    // should be eligible here (LOBBY is "everyone on equal footing").
-    const players = new Map([
-      ['newcomer', { playerIndex: 0 }],
-      ['existing', { playerIndex: 1 }]
-    ]);
-    assert.equal(getHostClientId(players, null, ROOM_STATE.LOBBY, []), 'newcomer');
-  });
-
-  it('fallback when playerOrder is unexpectedly empty during RESULTS', () => {
-    // Defensive: if playerOrder is empty during RESULTS (shouldn't happen),
-    // fall back to the full candidate set rather than returning null.
-    const players = new Map([['a', { playerIndex: 0 }]]);
-    assert.equal(getHostClientId(players, null, ROOM_STATE.RESULTS, []), 'a');
-  });
-
-  it('PLAYING: disconnected host is skipped; next-lowest takes over', () => {
-    // Host (alice) dropped mid-game; DisplayConnection keeps her in the Map
-    // and in playerOrder for seamless reconnect and flags her via
-    // disconnectedQRs. Host role should hand off to bob.
-    const players = new Map([
-      ['alice', { playerIndex: 0 }],
-      ['bob',   { playerIndex: 1 }],
-      ['carol', { playerIndex: 2 }]
-    ]);
-    const playerOrder = ['alice', 'bob', 'carol'];
-    const disconnectedQRs = new Map([['alice', null]]);
     assert.equal(
-      getHostClientId(players, null, ROOM_STATE.PLAYING, playerOrder, disconnectedQRs),
+      getHostClientId(players, null, ROOM_STATE.RESULTS, playerOrder, null, 'bob'),
       'bob'
     );
   });
 
-  it('RESULTS: disconnected host is skipped; Play Again gates to next-lowest', () => {
+  it('PLAYING: sticky host that is a late joiner is ineligible; oldest active takes over', () => {
+    // Sticky host = 'late' (late joiner). During active game, only players
+    // in playerOrder can act as host — so the fallback elects the oldest
+    // in-order player (alice). hostClientId is NOT mutated here (read-only
+    // fallback); the sticky slot will resume control in LOBBY.
     const players = new Map([
-      ['alice', { playerIndex: 0 }],
-      ['bob',   { playerIndex: 1 }]
+      ['alice', { playerIndex: 1, joinedAt: 1 }],
+      ['bob',   { playerIndex: 2, joinedAt: 2 }],
+      ['late',  { playerIndex: 0, joinedAt: 3 }]
     ]);
     const playerOrder = ['alice', 'bob'];
-    const disconnectedQRs = new Map([['alice', null]]);
     assert.equal(
-      getHostClientId(players, null, ROOM_STATE.RESULTS, playerOrder, disconnectedQRs),
-      'bob'
-    );
-  });
-
-  it('re-promotes original host when they reconnect (disconnectedQRs entry cleared)', () => {
-    const players = new Map([
-      ['alice', { playerIndex: 0 }],
-      ['bob',   { playerIndex: 1 }]
-    ]);
-    const playerOrder = ['alice', 'bob'];
-    const disconnectedQRs = new Map([['alice', null]]);
-    assert.equal(
-      getHostClientId(players, null, ROOM_STATE.PLAYING, playerOrder, disconnectedQRs),
-      'bob'
-    );
-    // Alice reconnects — handleControllerMessage deletes her from the set.
-    disconnectedQRs.delete('alice');
-    assert.equal(
-      getHostClientId(players, null, ROOM_STATE.PLAYING, playerOrder, disconnectedQRs),
+      getHostClientId(players, null, ROOM_STATE.PLAYING, playerOrder, null, 'late'),
       'alice'
     );
   });
 
-  it('AirConsole path: disconnected AC master falls through to next connected', () => {
-    // AC still reports alice as master (SDK update lag / stale query), but
-    // she's disconnected. Skip her and use the lowest-index connected player.
+  it('PLAYING: AC master that is not in playerOrder is ignored', () => {
     const players = new Map([
-      ['alice', { playerIndex: 0 }],
-      ['bob',   { playerIndex: 1 }]
+      ['carol', seed(2)],
+      ['alice', seed(0)],
+      ['bob',   seed(1)]
+    ]);
+    const playerOrder = ['alice', 'bob'];
+    const party = { getMasterClientId: () => 'carol' };
+    assert.equal(
+      getHostClientId(players, party, ROOM_STATE.PLAYING, playerOrder, null, 'alice'),
+      'alice'
+    );
+  });
+
+  it('fallback when playerOrder is unexpectedly empty during RESULTS', () => {
+    // Defensive: restriction is dropped when playerOrder is empty.
+    const players = new Map([['a', seed(0)]]);
+    assert.equal(getHostClientId(players, null, ROOM_STATE.RESULTS, [], null, 'a'), 'a');
+  });
+
+  it('PLAYING: disconnected sticky host → read-only fallback to next-oldest', () => {
+    // Alice is sticky host but currently disconnected. During the blip the
+    // fallback returns bob (oldest other active), without mutating hostClientId.
+    // (In production, onPeerLeft has already been invoked and hostClientId was
+    // transferred to bob — this test covers the brief window BEFORE that runs,
+    // or any race where getHostClientId is called with stale hostClientId.)
+    const players = new Map([
+      ['alice', { playerIndex: 0, joinedAt: 1 }],
+      ['bob',   { playerIndex: 1, joinedAt: 2 }],
+      ['carol', { playerIndex: 2, joinedAt: 3 }]
+    ]);
+    const playerOrder = ['alice', 'bob', 'carol'];
+    const disconnectedQRs = new Map([['alice', null]]);
+    assert.equal(
+      getHostClientId(players, null, ROOM_STATE.PLAYING, playerOrder, disconnectedQRs, 'alice'),
+      'bob'
+    );
+  });
+
+  it('AirConsole path: disconnected AC master falls through to sticky host', () => {
+    const players = new Map([
+      ['alice', { playerIndex: 0, joinedAt: 1 }],
+      ['bob',   { playerIndex: 1, joinedAt: 2 }]
     ]);
     const playerOrder = ['alice', 'bob'];
     const party = { getMasterClientId: () => 'alice' };
     const disconnectedQRs = new Map([['alice', null]]);
+    // AC master 'alice' is disconnected → skip. Sticky host 'alice' is also
+    // disconnected → fallback to oldest connected = 'bob'.
     assert.equal(
-      getHostClientId(players, party, ROOM_STATE.PLAYING, playerOrder, disconnectedQRs),
+      getHostClientId(players, party, ROOM_STATE.PLAYING, playerOrder, disconnectedQRs, 'alice'),
       'bob'
     );
   });
 
   it('returns null when every eligible candidate is disconnected', () => {
     const players = new Map([
-      ['alice', { playerIndex: 0 }],
-      ['bob',   { playerIndex: 1 }]
+      ['alice', seed(0)],
+      ['bob',   seed(1)]
     ]);
     const playerOrder = ['alice', 'bob'];
     const disconnectedQRs = new Map([['alice', null], ['bob', null]]);
     assert.equal(
-      getHostClientId(players, null, ROOM_STATE.PLAYING, playerOrder, disconnectedQRs),
+      getHostClientId(players, null, ROOM_STATE.PLAYING, playerOrder, disconnectedQRs, 'alice'),
       null
     );
+  });
+
+  it('electNextHost returns null when nobody else qualifies', () => {
+    const players = new Map([['alice', { playerIndex: 0, joinedAt: 1 }]]);
+    assert.equal(electNextHost(players, null, 'alice'), null);
+  });
+
+  it('electNextHost skips disconnected candidates', () => {
+    const players = new Map([
+      ['alice', { playerIndex: 0, joinedAt: 1 }],
+      ['bob',   { playerIndex: 1, joinedAt: 2 }],
+      ['carol', { playerIndex: 2, joinedAt: 3 }]
+    ]);
+    const disconnectedQRs = new Map([['bob', null]]);
+    // Alice leaves; Bob is next-oldest but disconnected; Carol wins.
+    assert.equal(electNextHost(players, disconnectedQRs, 'alice'), 'carol');
   });
 });
 

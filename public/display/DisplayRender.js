@@ -126,7 +126,7 @@ function renderFrame(timestamp) {
         garbageIndicatorEffects: _EMPTY_EFFECTS,
         garbageDefenceEffects: _EMPTY_EFFECTS,
         playerName: pInfo?.playerName || PLAYER_NAMES[i],
-        playerColor: pInfo?.playerColor || PLAYER_COLORS[i]
+        playerColor: PLAYER_COLORS[pInfo?.playerIndex ?? i]
       };
       boardRenderers[i].render(empty);
       uiRenderers[i].render(empty);
@@ -156,7 +156,7 @@ function renderFrame(timestamp) {
       playerData.garbageIndicatorEffects = activeGarbageIndicatorEffects;
       playerData.garbageDefenceEffects = activeGarbageDefenceEffects;
       playerData.playerName = pInfo?.playerName || PLAYER_NAMES[j];
-      playerData.playerColor = pInfo?.playerColor || PLAYER_COLORS[j];
+      playerData.playerColor = PLAYER_COLORS[pInfo?.playerIndex ?? j];
 
       boardRenderers[j].render(playerData, timestamp);
       uiRenderers[j].render(playerData, timestamp);

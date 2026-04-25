@@ -247,7 +247,8 @@ function onDisplayRejoined(partyRoomCode, clients) {
   var hostId = getHostClientId();
   var hostPlayer = hostId ? players.get(hostId) : null;
   var hostName = hostPlayer ? hostPlayer.playerName : null;
-  var hostColor = hostPlayer ? hostPlayer.playerColor : null;
+  var hostColorIndex = hostPlayer ? hostPlayer.playerIndex : null;
+  var takenColorIndices = collectTakenColorIndices();
   for (const entry of players) {
     const id = entry[0];
     const info = entry[1];
@@ -256,13 +257,15 @@ function onDisplayRejoined(partyRoomCode, clients) {
     var welcomeMsg = {
       type: MSG.WELCOME,
       playerName: info.playerName,
-      playerColor: info.playerColor,
+      colorIndex: info.playerIndex,
       playerCount: players.size,
       roomState: roomState,
       startLevel: info.startLevel || 1,
       isHost: id === hostId,
       hostName: hostName,
-      hostColor: hostColor
+      hostColorIndex: hostColorIndex,
+      takenColorIndices: takenColorIndices,
+      displayMuted: !!muted
     };
     if (!isLateJoiner) {
       welcomeMsg.alive = lastAliveState[id] != null ? lastAliveState[id] : true;
@@ -290,15 +293,24 @@ function onPeerJoined(clientId) {
 
   var index = nextAvailableSlot();
   if (index < 0) return;
-  var color = PLAYER_COLORS[index % PLAYER_COLORS.length];
 
   players.set(clientId, {
     playerName: 'P' + (index + 1),
-    playerColor: color,
     playerIndex: index,
     startLevel: 1,
-    lastPingTime: Date.now()
+    lastPingTime: Date.now(),
+    // Monotonic tiebreaker for sticky host election (oldest-joined present
+    // player becomes host when the current host leaves) and for lobby/game
+    // board sort order. Never mutated after this — survives color changes
+    // and reconnects. Using a sequence counter instead of Date.now() so
+    // two peers arriving in the same millisecond still get distinct values.
+    joinedAt: ++_joinSequence
   });
+
+  // First joiner in a pristine room owns the host slot. Subsequent joiners
+  // do not — sticky host means the slot only moves when the current host
+  // leaves (see onPeerLeft / electNextHost).
+  if (hostClientId == null) hostClientId = clientId;
 
   // Only add to playerOrder in lobby — late joiners wait for next game.
   // playerOrder is snapshotted at game start by runGameLocally().
@@ -306,6 +318,12 @@ function onPeerJoined(clientId) {
     playerOrder.push(clientId);
     updatePlayerList();
     updateStartButton();
+    // Notify existing controllers that a palette slot just got claimed.
+    // The subsequent HELLO from the joiner takes onHello's reconnect path
+    // (player already in the Map) and does NOT broadcast, so without this
+    // call the other pickers would keep showing the new player's color as
+    // available until the next unrelated LOBBY_UPDATE.
+    broadcastLobbyUpdate();
   }
 }
 
@@ -313,6 +331,18 @@ function onPeerLeft(clientId) {
   if (!players.has(clientId)) return;
 
   cleanupPlayerInput(clientId);
+
+  // Sticky host: transfer the slot immediately if the departing player
+  // held it, in ANY room state. Doing this BEFORE any subsequent mutation
+  // (including the disconnectedQRs flag added by the PLAYING branch below)
+  // ensures the reassignment is picked up by the LOBBY_UPDATE broadcasts
+  // that the state-specific branches trigger. Consequence: a reconnecting
+  // mid-game host does NOT reclaim — they were promoted to a regular
+  // player the instant their WS dropped. This is the intended behavior
+  // per the "sticky host" design.
+  if (hostClientId === clientId) {
+    hostClientId = electNextHost(clientId);
+  }
 
   if (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN) {
     if (playerOrder.indexOf(clientId) >= 0) {
@@ -389,7 +419,8 @@ function broadcastLobbyUpdate() {
   var hostId = getHostClientId();
   var hostPlayer = hostId ? players.get(hostId) : null;
   var hostName = hostPlayer ? hostPlayer.playerName : null;
-  var hostColor = hostPlayer ? hostPlayer.playerColor : null;
+  var hostColorIndex = hostPlayer ? hostPlayer.playerIndex : null;
+  var takenColorIndices = collectTakenColorIndices();
   _lastBroadcastedHostId = hostId;
   applyHostTint();
   for (const entry of players) {
@@ -400,9 +431,20 @@ function broadcastLobbyUpdate() {
       startLevel: entry[1].startLevel || 1,
       isHost: id === hostId,
       hostName: hostName,
-      hostColor: hostColor
+      hostColorIndex: hostColorIndex,
+      colorIndex: entry[1].playerIndex,
+      takenColorIndices: takenColorIndices
     });
   }
+}
+
+// Sorted list of playerIndex values currently claimed by any player in the
+// room. Controllers use it to gray out swatches in the color picker.
+function collectTakenColorIndices() {
+  var out = [];
+  for (const entry of players) out.push(entry[1].playerIndex);
+  out.sort(function(a, b) { return a - b; });
+  return out;
 }
 
 // =====================================================================

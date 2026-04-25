@@ -177,6 +177,16 @@ html, body {
   padding: 12px;
   padding-top: max(env(safe-area-inset-top), 12px);
   z-index: 1;
+  /* Empty middle strip is full-width and z-index:1 so it would otherwise
+     swallow clicks aimed at content beneath — most visibly the top of
+     the color picker hexes in landscape, where the bar overlaps the
+     picker's first row by ~10px. Children (back + settings buttons)
+     re-enable pointer-events on themselves. */
+  pointer-events: none;
+}
+
+#lobby-top-bar > * {
+  pointer-events: auto;
 }
 
 #lobby-settings-btn {
@@ -347,6 +357,112 @@ html, body {
 #level-selector .level-btn:disabled {
   opacity: 0.25;
   cursor: default;
+}
+
+/* --- Color picker — zigzag row of flat-top hexes, rendered to per-swatch
+   canvases. The hex shape and the level-matched style tier (NORMAL / PILLOW
+   / NEON_FLAT) are stamped via getHexStamp() so swatches preview exactly
+   what the player's blocks will look like in-game. Even-indexed swatches
+   sit at the bottom of the strip, odd at the top, producing the classic
+   honeycomb zigzag. The `.taken` and `.selected` states stack on top of
+   the canvas via CSS (no re-blit needed). --- */
+#color-picker {
+  /* Pick the hex width off the viewport (but capped) so phones get a
+     readable size without overflowing the identity card on narrow widths.
+     Buffer aspect (102 × 88) ≈ 1.159 — CSS width/height match it so the
+     canvas doesn't scale non-uniformly and the hex stays undistorted. */
+  /* Honeycomb of 8 hexes — two rows of four, every hex sharing an edge
+     with its neighbor (same packing the in-game board uses). Bigger
+     tap targets than the single-row strip since the picker is half as
+     wide. Hexes are absolutely positioned so the two rows interlock
+     with no flex-line gap between them. */
+  --hex-w: clamp(56px, 18vw, 76px);
+  --hex-h: calc(var(--hex-w) * (88 / 102));
+  position: relative;
+  /* Width = 4 hexes at 0.75 × hex-w spacing → 3.25 × hex-w */
+  width: calc(var(--hex-w) * 3.25);
+  /* Height = row 2 low hex bottom = hex-h + 1.5 × hex-h = 2.5 × hex-h */
+  height: calc(var(--hex-h) * 2.5);
+  margin: 14px auto;
+  animation: fadeUp 0.5s 0.35s ease-out both;
+}
+
+.color-swatch {
+  appearance: none;
+  -webkit-appearance: none;
+  width: var(--hex-w);
+  height: var(--hex-h);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  position: absolute;
+  /* Hit-testing is delegated to a hex-clipped child (.color-swatch__hit)
+     so the four empty corner triangles of the rectangular button pass
+     clicks through to the visible neighbour beneath. Putting the clip
+     on the button itself would also clip the selection drop-shadow
+     filter on the canvas. */
+  pointer-events: none;
+  /* No transform transitions — a tier re-paint should swap pixels
+     instantly with no size animation. */
+  transition: filter var(--transition-fast);
+}
+
+.color-swatch__hit {
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(100% 50%, 75% 100%, 25% 100%, 0% 50%, 25% 0%, 75% 0%);
+  pointer-events: auto;
+}
+
+/* Honeycomb positions. Within each 4-hex row, columns 1 & 3 ride high
+   (top edge at row baseline) and columns 2 & 4 ride low (top edge at
+   row baseline + hex-h/2). Row 2 starts at y = hex-h, exactly where
+   row 1's high hexes end — so the two rows share edges. */
+.color-swatch:nth-child(1) { left: 0;                        top: 0; }
+.color-swatch:nth-child(2) { left: calc(var(--hex-w) * 0.75); top: calc(var(--hex-h) * 0.5); }
+.color-swatch:nth-child(3) { left: calc(var(--hex-w) * 1.5);  top: 0; }
+.color-swatch:nth-child(4) { left: calc(var(--hex-w) * 2.25); top: calc(var(--hex-h) * 0.5); }
+.color-swatch:nth-child(5) { left: 0;                        top: var(--hex-h); }
+.color-swatch:nth-child(6) { left: calc(var(--hex-w) * 0.75); top: calc(var(--hex-h) * 1.5); }
+.color-swatch:nth-child(7) { left: calc(var(--hex-w) * 1.5);  top: var(--hex-h); }
+.color-swatch:nth-child(8) { left: calc(var(--hex-w) * 2.25); top: calc(var(--hex-h) * 1.5); }
+
+.color-swatch > canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* drop-shadow follows the hex alpha, not the button rect — so the
+     selection glow hugs the shape instead of bleeding into a halo square.
+     Transform transition powers the press-down tactile feedback. */
+  transition: filter var(--transition-fast), transform var(--transition-fast);
+  transform-origin: center;
+}
+
+.color-swatch.selected {
+  z-index: 1;
+}
+
+.color-swatch.selected > canvas {
+  filter: drop-shadow(0 0 5px var(--swatch-color, #fff)) drop-shadow(0 0 10px var(--swatch-color, #fff));
+}
+
+/* Press feedback — quick scale-down on tap, springs back when released.
+   :not(.taken) is belt-and-braces alongside the hit-area pointer-events
+   block below. */
+.color-swatch:not(.taken):active > canvas {
+  transform: scale(0.93);
+}
+
+/* Block taps on taken swatches at the hit-area level. The button itself
+   already has pointer-events: none (see .color-swatch above), but its
+   .color-swatch__hit child has pointer-events: auto, and a parent's
+   `none` does NOT override an explicit `auto` on a descendant. */
+.color-swatch.taken {
+  cursor: default;
+}
+.color-swatch.taken .color-swatch__hit {
+  pointer-events: none;
 }
 
 .status-banner {
@@ -1155,6 +1271,21 @@ body.airconsole #ac-status-overlay.hidden { display: none; }
     max-width: none;
   }
 
+  /* Lay out the identity card and color picker side-by-side. Landscape
+     viewports are short on vertical space, and the picker's two-row
+     honeycomb is square-ish, so a row arrangement reads more compactly
+     than the portrait stack. The picker drops its top/bottom margin
+     since the row gap handles spacing now. */
+  .controller-shell__frame--lobby #player-identity {
+    flex-direction: row;
+    align-items: center;
+    gap: 18px;
+  }
+
+  .controller-shell__frame--lobby #color-picker {
+    margin: 0;
+  }
+
   /* Results: list on the left half, title + buttons on the right half.
      Each half gets 1fr so each column fills its side of the frame; the items
      inside (rows/buttons) are centered within their half by their own
@@ -1493,21 +1624,33 @@ body.airconsole #ac-status-overlay.hidden { display: none; }
   }
 }
 
-/* Short landscape with enough vertical room (> 300px):
-   bring the title back on Name + Lobby, compacted so it doesn't crowd the
-   input/card. The h ≤ 220 rule below still hides the whole brand when the
-   soft keyboard collapses the viewport. */
+/* Short landscape with enough vertical room (> 300px) — name screen has
+   room to bring the title back. The lobby is handled separately below
+   because its color-picker honeycomb needs more vertical room. */
 @media (orientation: landscape) and (min-aspect-ratio: 5/4) and (max-height: 499px) and (min-height: 301px) {
-  .controller-shell__frame--name .controller-shell__title,
+  .controller-shell__frame--name .controller-shell__title {
+    display: block;
+    animation: none;
+  }
+
+  /* Restore portrait-style gap between title and input. */
+  .controller-shell__frame--name .controller-shell__body {
+    margin-top: 24px;
+  }
+}
+
+/* Lobby needs enough vertical room for the color picker honeycomb +
+   identity card + START button before the title can return. Below this
+   threshold the title stays hidden so the picker doesn't shove the
+   START button off-screen. */
+@media (orientation: landscape) and (min-aspect-ratio: 5/4) and (max-height: 499px) and (min-height: 400px) {
   .controller-shell__frame--lobby .controller-shell__title {
     display: block;
     animation: none;
   }
 
-  /* Restore portrait-style gap between title and input/card. */
-  .controller-shell__frame--name .controller-shell__body,
   .controller-shell__frame--lobby .controller-shell__body {
-    margin-top: 24px;
+    margin-top: 16px;
   }
 }
 

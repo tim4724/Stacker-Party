@@ -18,9 +18,17 @@ var roomCode = null;
 var joinUrl = null;
 var lastRoomCode = null;
 var gameState = null;
-var players = new Map();       // clientId -> { playerName, playerColor, playerIndex }
-var playerOrder = [];          // compact list of active clientIds for game layout (join order)
-                               // lobby UI uses playerIndex on each player for slot positioning
+var players = new Map();       // clientId -> { playerName, playerIndex, startLevel, lastPingTime, joinedAt }
+                               // color is derived via PLAYER_COLORS[playerIndex] — never stored
+var playerOrder = [];          // compact list of active clientIds for game layout. Lobby cards
+                               // and in-game boards both sort by joinedAt; playerIndex is the
+                               // chosen color slot only.
+var hostClientId = null;       // sticky host — the first joiner owns this slot; handoff happens
+                               // only when the host actually leaves via onPeerLeft. Color changes
+                               // do not affect it. See getHostClientId() / electNextHost() below.
+var _joinSequence = 0;         // monotonic counter for player.joinedAt — Date.now() collides
+                               // when two peers arrive in the same ms, which matters for the
+                               // electNextHost tiebreak and calculateLayout's stable sort.
 var roomState = ROOM_STATE.LOBBY;
 
 // Valid room state transitions
@@ -85,6 +93,8 @@ function resetRoomData() {
   countdown.remaining = 0;
   players.clear();
   playerOrder = [];
+  hostClientId = null;
+  _joinSequence = 0;
   paused = false;
   setAutoPaused(false);
   clearLateJoinerGraceTimer();
@@ -144,24 +154,24 @@ function sanitizePlayerName(name, slotIndex) {
 // Host = the connected player designated as master controller (AirConsole rule:
 // "menus can only be controlled by the Master Controller"). In AirConsole mode
 // we defer to the platform (premium devices get priority); otherwise we fall
-// back to the player with the lowest playerIndex. Only the host can trigger
-// menu actions (start / play again / return-to-lobby). Returns null when no
-// players are connected.
+// back to the sticky host — the first player to join. The stored slot survives
+// color changes (host stays host when they pick a new palette slot) and brief
+// disconnects (a reconnecting host keeps their role). Handoff happens only
+// when the host actually leaves the room via onPeerLeft, which calls
+// electNextHost() to reassign the slot to the next-oldest present player.
 //
 // During COUNTDOWN/PLAYING/RESULTS the candidate set is restricted to active
-// game participants (playerOrder). Otherwise a late joiner — promoted to AC
-// master, or one who reclaims slot 0 after an original player leaves mid-
-// results — would control menu actions they can't even reach: their screen
-// is a "Game in progress" waiting banner with no pause overlay, so gating
-// RETURN_TO_LOBBY on them would deadlock the game. Host opens back up to
-// everyone in LOBBY where late joiners have already been folded into
-// playerOrder (see DisplayGame.js#returnToLobby).
+// game participants (playerOrder). A late joiner — promoted to AC master, or
+// the sticky host whose slot was handed off to a participant — must not
+// control menu actions they can't reach (their screen is a "Game in progress"
+// banner with no pause overlay). Host opens back up to everyone in LOBBY where
+// late joiners have already been folded into playerOrder.
 //
-// Disconnected players (flagged via disconnectedQRs) are excluded so the
-// host role hands off to a present player when the host drops mid-game.
-// Otherwise the gone player stays "host" — remaining controllers see a
-// "Waiting for {name}…" banner on RESULTS that never clears, and the
-// pause-overlay Return-to-lobby button stays hidden for everyone.
+// Disconnected players (flagged via disconnectedQRs) are skipped so the host
+// role temporarily defers to a present player during a mid-game reconnect.
+// If the stored hostClientId is unavailable (disconnected / ineligible), the
+// fallback returns the oldest-joined present player WITHOUT mutating
+// hostClientId — the sticky slot only moves when onPeerLeft hands it off.
 // NOTE: tests/display-state.test.js mirrors this algorithm — keep in sync.
 function getHostClientId() {
   var restricted = (roomState === ROOM_STATE.PLAYING
@@ -180,17 +190,49 @@ function getHostClientId() {
       return acHost;
     }
   }
-  var hostId = null;
-  var hostIdx = Infinity;
+
+  // Sticky host — preferred when currently available.
+  if (hostClientId && players.has(hostClientId)
+      && !disconnectedQRs.has(hostClientId)
+      && (!restricted || eligible.has(hostClientId))) {
+    return hostClientId;
+  }
+
+  // Fallback: oldest-joined eligible present player. Read-only — the
+  // sticky slot is reassigned explicitly by electNextHost() in onPeerLeft,
+  // not here, so that a temporarily-disconnected host keeps their slot.
+  var fallbackId = null;
+  var fallbackJoin = Infinity;
   for (const entry of players) {
     if (disconnectedQRs.has(entry[0])) continue;
     if (restricted && !eligible.has(entry[0])) continue;
-    if (entry[1].playerIndex < hostIdx) {
-      hostIdx = entry[1].playerIndex;
-      hostId = entry[0];
+    var ja = entry[1].joinedAt == null ? Infinity : entry[1].joinedAt;
+    if (ja < fallbackJoin) {
+      fallbackJoin = ja;
+      fallbackId = entry[0];
     }
   }
-  return hostId;
+  return fallbackId;
+}
+
+// Pick the oldest-joined present player other than `excludeId` to become
+// the new sticky host. Used by onPeerLeft when the departing player held
+// the host slot. Returns null if nobody else qualifies (room will promote
+// the next joiner via onPeerJoined's null-check).
+// NOTE: tests/display-state.test.js mirrors this algorithm — keep in sync.
+function electNextHost(excludeId) {
+  var nextId = null;
+  var nextJoin = Infinity;
+  for (const entry of players) {
+    if (entry[0] === excludeId) continue;
+    if (disconnectedQRs.has(entry[0])) continue;
+    var ja = entry[1].joinedAt == null ? Infinity : entry[1].joinedAt;
+    if (ja < nextJoin) {
+      nextJoin = ja;
+      nextId = entry[0];
+    }
+  }
+  return nextId;
 }
 
 // --- DOM References ---

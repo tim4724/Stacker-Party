@@ -21,7 +21,9 @@ function updateLevelDisplay() {
 function applyHostInfo(data) {
   if (data.isHost !== undefined) isHost = !!data.isHost;
   if (data.hostName !== undefined) hostName = data.hostName;
-  if (data.hostColor !== undefined) hostColor = data.hostColor;
+  if (data.hostColorIndex !== undefined) {
+    hostColor = data.hostColorIndex != null ? PLAYER_COLORS[data.hostColorIndex] : null;
+  }
   updateHostVisibility();
   if (typeof updateSettingsHostUI === 'function') updateSettingsHostUI();
 }
@@ -74,8 +76,165 @@ function showLobbyUI() {
   statusDetail.textContent = '';
 
   showScreen('lobby');
+  // Paint after showScreen so that updateHostVisibility (below) sees
+  // currentScreen === 'lobby' and wires up host-gated UI. The picker
+  // itself uses a fixed-size canvas buffer so it doesn't depend on
+  // visibility for measurement.
+  renderColorPicker();
   // Must run after showScreen so currentScreen === 'lobby' when we gate UI.
   updateHostVisibility();
+}
+
+// Fixed canvas buffer for every picker swatch. Pinning these means a
+// repaint (e.g. on level change re-tiering) never reassigns canvas.width —
+// which would clear the buffer and re-anchor DPR, causing a one-frame
+// flicker as the hex jumped by a sub-pixel. CSS width:100%/height:100%
+// scales the buffer to the live button rect. Buffer is the hex stamp's
+// natural output size (height + stamp padding, width = height / sin(60°));
+// not DPR-scaled — acceptable for a small picker swatch, follow-up work
+// if higher fidelity is needed on 3× displays.
+var COLOR_PICKER_CANVAS_H = 88;
+var COLOR_PICKER_CANVAS_W = 102;  // ≈ height / sin(60°) + stamp padding
+
+// Repaint the 8-swatch color picker. Each swatch is a <button> containing a
+// <canvas>; we redraw the canvas on every call so the style tier follows
+// the current startLevel (NORMAL / PILLOW / NEON_FLAT) and swatches preview
+// exactly what the player's blocks will look like in-game.
+function renderColorPicker() {
+  if (!colorPickerEl) return;
+  var taken = new Set(takenColorIndices || []);
+  var tier = (typeof getStyleTier === 'function') ? getStyleTier(startLevel || 1) : STYLE_TIERS.NORMAL;
+  var btns = colorPickerEl.children;
+  for (var i = 0; i < btns.length; i++) {
+    var btn = btns[i];
+    var idx = parseInt(btn.dataset.idx, 10);
+    var isMine = idx === playerColorIndex;
+    var isTaken = !isMine && taken.has(idx);
+    btn.classList.toggle('selected', isMine);
+    btn.classList.toggle('taken', isTaken);
+    btn.setAttribute('aria-checked', isMine ? 'true' : 'false');
+    if (isTaken) {
+      btn.setAttribute('aria-disabled', 'true');
+      // Pull taken swatches out of tab order so keyboard users don't
+      // land on a focusable-but-inert button. Mouse taps are blocked by
+      // .color-swatch.taken .color-swatch__hit { pointer-events: none }
+      // in controller.css, with the JS guard in controller.js as backup.
+      btn.setAttribute('tabindex', '-1');
+    } else {
+      btn.removeAttribute('aria-disabled');
+      btn.removeAttribute('tabindex');
+    }
+    paintColorSwatch(btn, tier, PLAYER_COLORS[idx], isTaken);
+  }
+}
+
+// Draw a single flat-top hex into the swatch's fixed-size canvas buffer.
+// The source stamp is cached per (tier, color, size) by getHexStamp; we
+// just blit it centered. Buffer dims are pinned at buildColorPicker time so
+// repeated repaints (level changes, taken toggles) do not resize the canvas
+// — resizing clears it and re-anchors DPR, which manifested as a one-frame
+// jump on tier swap. Early-returns when CanvasUtils isn't loaded yet.
+//
+// Taken swatches keep the player's real color (dimmed via CSS opacity)
+// and gain a white "X" overlay so the unavailable state is unambiguous
+// without losing the color identity.
+function paintColorSwatch(btn, tier, color, isTaken) {
+  var canvas = btn.firstChild;
+  if (!canvas || typeof getHexStamp !== 'function') return;
+  var w = canvas.width, h = canvas.height;
+  var ctx = canvas.getContext('2d');
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  // Stamp size is the hex's drawn height; pass a value slightly under the
+  // buffer height so the stamp's internal padding fits without overflow.
+  var stampSize = h - 8;
+  var stamp = getHexStamp(tier, color, stampSize);
+  var dpr = (typeof window !== 'undefined' ? window.devicePixelRatio : 1) || 1;
+  var sw = stamp.cssW != null ? stamp.cssW : stamp.width / dpr;
+  var sh = stamp.cssH != null ? stamp.cssH : stamp.height / dpr;
+  if (isTaken) {
+    // Dim the hex with canvas globalAlpha so the X (drawn next at full
+    // alpha) keeps its full chroma. CSS filter on the canvas would dim
+    // both equally, washing the X out.
+    ctx.globalAlpha = 0.4;
+    ctx.drawImage(stamp, (w - sw) / 2, (h - sh) / 2, sw, sh);
+    ctx.globalAlpha = 1;
+
+    // Diagonal "X" centered on the hex in the player's own color so it
+    // pops as the un-dimmed signature against the faded background.
+    var cx = w / 2, cy = h / 2;
+    var arm = h * 0.22;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(2, h * 0.08);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx - arm, cy - arm);
+    ctx.lineTo(cx + arm, cy + arm);
+    ctx.moveTo(cx + arm, cy - arm);
+    ctx.lineTo(cx - arm, cy + arm);
+    ctx.stroke();
+  } else {
+    ctx.drawImage(stamp, (w - sw) / 2, (h - sh) / 2, sw, sh);
+  }
+  btn.style.setProperty('--swatch-color', color);
+}
+
+// Snapshot of the persisted color from the previous session, captured
+// once at script load. persistColorIndex() will overwrite localStorage
+// on the very first WELCOME, so we have to read it BEFORE that — the
+// snapshot is what reclaimPreferredColor compares against.
+var _previousSessionColorIndex = (function () {
+  var raw = null;
+  try { raw = localStorage.getItem('stacker_color_index'); } catch (e) { /* iframe sandbox */ }
+  if (raw == null) return null;
+  var idx = parseInt(raw, 10);
+  return (isNaN(idx) || idx < 0 || idx >= PLAYER_COLORS.length) ? null : idx;
+})();
+
+// Save the player's current color so a future reload can reclaim it.
+// Called whenever the display confirms our colorIndex.
+function persistColorIndex(idx) {
+  try { localStorage.setItem('stacker_color_index', String(idx)); }
+  catch (e) { /* iframe sandbox */ }
+}
+
+// If the previous session's color differs from what the display just
+// assigned, ask for it back. Same-index is a no-op on the display side;
+// collisions are silently rejected. Skip the round-trip when our preferred
+// color is already taken (takenColorIndices is set from the same WELCOME
+// just before this fires).
+function reclaimPreferredColor() {
+  if (_previousSessionColorIndex == null) return;
+  if (_previousSessionColorIndex === playerColorIndex) return;
+  if (typeof sendToDisplay !== 'function' || playerColorIndex == null) return;
+  if (takenColorIndices && takenColorIndices.indexOf(_previousSessionColorIndex) >= 0) return;
+  sendToDisplay(MSG.SET_COLOR, { colorIndex: _previousSessionColorIndex });
+}
+
+// One-time palette paint — creates 8 button+canvas pairs and wires aria.
+// Called from controller.js init. Click delegation happens at the container.
+function buildColorPicker() {
+  if (!colorPickerEl || colorPickerEl.children.length) return;
+  for (var i = 0; i < PLAYER_COLORS.length; i++) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'color-swatch';
+    btn.dataset.idx = String(i);
+    btn.setAttribute('role', 'radio');
+    btn.setAttribute('aria-checked', 'false');
+    btn.setAttribute('aria-label', t('color_choose', { n: i + 1 }));
+    var canvas = document.createElement('canvas');
+    canvas.width = COLOR_PICKER_CANVAS_W;
+    canvas.height = COLOR_PICKER_CANVAS_H;
+    btn.appendChild(canvas);
+    // Hex-clipped hit overlay — see .color-swatch in controller.css for
+    // the rationale (rectangular buttons would steal slanted-edge clicks
+    // from honeycomb neighbours).
+    var hit = document.createElement('span');
+    hit.className = 'color-swatch__hit';
+    btn.appendChild(hit);
+    colorPickerEl.appendChild(btn);
+  }
 }
 
 function updateStartButton() {
@@ -125,11 +284,34 @@ function renderHostBanner(element, key, name, color) {
 // =====================================================================
 
 function onWelcome(data) {
-  playerColor = data.playerColor || PLAYER_COLORS[0];
+  if (data.colorIndex != null) {
+    playerColorIndex = data.colorIndex;
+    playerColor = PLAYER_COLORS[data.colorIndex] || PLAYER_COLORS[0];
+    persistColorIndex(data.colorIndex);
+  } else {
+    // Defensive: the display always sends colorIndex, but if it's missing
+    // keep whatever we already have. Only seed a default when nothing is
+    // set — and seed both pieces so the picker still finds a selected
+    // swatch on the next render.
+    if (playerColorIndex == null) playerColorIndex = 0;
+    if (!playerColor) playerColor = PLAYER_COLORS[0];
+  }
+  if (Array.isArray(data.takenColorIndices)) takenColorIndices = data.takenColorIndices;
+  // Mirror the three setProperty targets in onLobbyUpdate. WELCOME's
+  // colorIndex is the same value the controller already had (the display
+  // doesn't reassign on reconnect), so this is symmetry/defensiveness
+  // rather than a fix for an observed flash.
   document.body.style.setProperty('--player-color', playerColor);
+  playerIdentity.style.setProperty('--player-color', playerColor);
+  gameScreen.style.setProperty('--player-color', playerColor);
   playerCount = data.playerCount || 1;
   gameCancelled = false;
   waitingForNextGame = false;
+  // Try to reclaim the user's preferred color (saved on prior swatch
+  // taps). The display rejects same-idx as a no-op and silently rejects
+  // collisions, so this is safe to fire on every WELCOME — the next
+  // LOBBY_UPDATE settles the truth either way.
+  reclaimPreferredColor();
   // Sync the display's mute state so a reconnecting / newly-promoted host
   // sees the correct Game Music toggle without waiting for the next
   // DISPLAY_MUTED broadcast.
@@ -201,9 +383,21 @@ function onWelcome(data) {
 function onLobbyUpdate(data) {
   playerCount = data.playerCount;
   if (data.startLevel != null) startLevel = data.startLevel;
+  if (data.colorIndex != null && data.colorIndex !== playerColorIndex) {
+    playerColorIndex = data.colorIndex;
+    playerColor = PLAYER_COLORS[data.colorIndex] || playerColor;
+    document.body.style.setProperty('--player-color', playerColor);
+    playerIdentity.style.setProperty('--player-color', playerColor);
+    gameScreen.style.setProperty('--player-color', playerColor);
+    persistColorIndex(data.colorIndex);
+  }
+  if (Array.isArray(data.takenColorIndices)) takenColorIndices = data.takenColorIndices;
   applyHostInfo(data);
   updateStartButton();
-  if (currentScreen === 'lobby') updateLevelDisplay();
+  if (currentScreen === 'lobby') {
+    updateLevelDisplay();
+    renderColorPicker();
+  }
 }
 
 function onGameStart() {
@@ -303,7 +497,7 @@ function renderGameResults(results) {
   if (results && results.length) {
     var winner = results.find(function(r) { return r.rank === 1; });
     if (winner) {
-      var wc = winner.playerColor || PLAYER_COLORS[0];
+      var wc = PLAYER_COLORS[winner.colorIndex] || PLAYER_COLORS[0];
       winnerColor = rgbaFromHex(wc, 0.08);
     }
   }
@@ -319,7 +513,7 @@ function renderGameResults(results) {
   var solo = sorted.length === 1;
   for (var i = 0; i < sorted.length; i++) {
     var r = sorted[i];
-    var pColor = r.playerColor || PLAYER_COLORS[i % PLAYER_COLORS.length];
+    var pColor = PLAYER_COLORS[r.colorIndex] || PLAYER_COLORS[i % PLAYER_COLORS.length];
 
     var row = document.createElement('div');
     row.className = solo ? 'result-row' : 'result-row rank-' + r.rank;
