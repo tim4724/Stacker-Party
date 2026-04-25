@@ -16,8 +16,12 @@ var airconsole = new AirConsole({
 // runs in controller.js. The shim's allowlist excludes stacker_muted (the
 // display's music key — defaults on every session), stacker_player_name,
 // and clientId_* (AC owns identity); haptic, sensitivity, touch-sounds,
-// and color-index round-trip via the SDK.
-AirConsoleAdapter.installAirConsoleStorage(airconsole);
+// and color-index round-trip via the SDK. We hold on to the returned shim
+// directly: if Object.defineProperty silently fails (sealed window in some
+// hosts), Settings.js falls back to real localStorage but our onLoad /
+// requestLoad calls still need to work — `window.localStorage` would lack
+// those methods.
+var _acStorage = AirConsoleAdapter.installAirConsoleStorage(airconsole);
 
 // Capture early onReady — the SDK may fire it before our adapter is wired up.
 var replayEarlyReady = AirConsoleAdapter.captureEarlyReady(airconsole);
@@ -70,8 +74,8 @@ connect = function() {
       captureSessionColorIndex();
       _adapterOnReady.call(airconsole, code);
     }
-    window.localStorage.onLoad(proceed);
-    window.localStorage.requestLoad();
+    _acStorage.onLoad(proceed);
+    _acStorage.requestLoad();
     setTimeout(proceed, 2000);
   };
   // Replay the captured-early onReady into the freshly-wired adapter.
@@ -89,6 +93,13 @@ AirConsoleAdapter.injectVersionLabel('settings-version');
 // proxy for actual phone behavior. This handler maps pointer X to the
 // slider's value range manually and dispatches 'input' so controller.js's
 // existing handler picks up real-touch drags.
+//
+// Manual verification (no automated coverage — CDP touch is misleading):
+// load /controller.html in the AirConsole simulator on a phone profile,
+// open Settings, drag the sensitivity slider with your finger, and
+// confirm the value display updates and the touchpad ratchet feels
+// looser/tighter. The probe at https://github.com/tim4724/HexStacker-Party/pull/115
+// shows what NOT to use.
 (function() {
   var slider = document.getElementById('sensitivity-slider');
   if (!slider) return;
