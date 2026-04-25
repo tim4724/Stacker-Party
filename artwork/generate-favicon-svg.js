@@ -1,5 +1,7 @@
 // Generate favicon.svg AND favicon.ico from the same hex-piece definition,
-// so the two can never drift out of sync.
+// rendered in the game's "pillow" tier style (rounded corners + radial
+// sheen + thin bottom-edge stroke). Mirrors public/shared/CanvasUtils.js's
+// _stampHexPillow so the favicon matches the in-game Lv 6–10 cells.
 //
 // - favicon.svg: vector version, used by modern browsers (link rel="icon"
 //   type="image/svg+xml").
@@ -16,38 +18,71 @@ const fs = require('fs');
 const path = require('path');
 const { execSync, spawnSync } = require('child_process');
 const os = require('os');
+const { PIECE_COLORS } = require('../public/shared/theme.js');
 
-const GOLD = '#FFD700';
+const SQRT3 = Math.sqrt(3);
 
-// Four hex cells forming a "d"-silhouette in flat-top layout:
-//   3-cell zigzag "bowl" row across the bottom, plus a stem cell rising
-//   above the rightmost bowl cell. In flat-top odd-q, moving along +q
-//   zigzags ±√3·R/2 vertically, which gives the bowl its natural curve.
+// The "q" piece from server/HexPiece.js — three cells in a horizontal row
+// at r=0, plus a stem cell up-and-right (q=1, r=-1). In flat-top odd-q the
+// odd-column shift puts the stem cell above the rightmost row cell. q is
+// honey-coloured in the game palette, so the favicon reads as the canonical
+// gold piece without us hardcoding a shade.
 const CELLS = [
-  [-1, 1],  // lower-left  (bowl left)
-  [0,  0],  // middle      (bowl center, slightly higher)
-  [1,  0],  // lower-right (bowl right, base of stem)
-  [1, -1],  // upper-right (stem top)
+  [-1, 0],  // left     (row, lower because col=-1 is odd-shifted)
+  [0,  0],  // middle   (row, raised because col=0 is even)
+  [1,  0],  // right    (row, lower because col=1 is odd-shifted)
+  [1, -1],  // up-right (stem above the rightmost row cell)
 ];
+const PIECE_COLOR = PIECE_COLORS[5]; // q → PARTY_PALETTE[2] (honey, #FFE066)
+
+// Pillow-tier rendering constants (ported from CanvasUtils.js _stampHexPillow).
+const CORNER_FRAC       = 0.15;   // cornerR / circumradius
+const HL_OUTER_FRAC     = 1.1;    // gradient outer radius / circumradius
+const HL_FOCAL_DX_FRAC  = -0.05;  // focal point offset (upper-left light)
+const HL_FOCAL_DY_FRAC  = -0.10;
+const STROKE_FRAC       = 0.04;   // stroke width / cell-size (size = r*√3)
+
+// Rounded-hex SVG path. Each vertex is replaced by a tangent arc of radius
+// `cornerR`, matching CanvasUtils.hexPathRounded.
+function roundedHexPath(cx, cy, r, cornerR) {
+  const verts = [];
+  for (let i = 0; i < 6; i++) {
+    const a = i * Math.PI / 3;
+    verts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+  }
+  let d = '';
+  for (let i = 0; i < 6; i++) {
+    const prev = verts[(i + 5) % 6];
+    const curr = verts[i];
+    const next = verts[(i + 1) % 6];
+    const inLen  = Math.hypot(curr[0] - prev[0], curr[1] - prev[1]);
+    const outLen = Math.hypot(next[0] - curr[0], next[1] - curr[1]);
+    const inDx  = (curr[0] - prev[0]) / inLen;
+    const inDy  = (curr[1] - prev[1]) / inLen;
+    const outDx = (next[0] - curr[0]) / outLen;
+    const outDy = (next[1] - curr[1]) / outLen;
+    const ex = curr[0] - cornerR * inDx,  ey = curr[1] - cornerR * inDy;
+    const xx = curr[0] + cornerR * outDx, xy = curr[1] + cornerR * outDy;
+    d += (i === 0 ? 'M' : 'L') + `${ex.toFixed(3)},${ey.toFixed(3)}`;
+    d += `A${cornerR.toFixed(3)},${cornerR.toFixed(3)} 0 0 1 ${xx.toFixed(3)},${xy.toFixed(3)}`;
+  }
+  return d + 'Z';
+}
 
 function generateHexSVG() {
   const R = 10;            // hex circumradius used for layout math
   const DRAW_R = R * 0.9;  // rendered hex — shrunk so cells have a visible gap
-  const hexH = Math.sqrt(3) * R;
-
-  const hexPoints = [];
-  for (let i = 0; i < 6; i++) {
-    const angle = Math.PI / 3 * i;
-    hexPoints.push(`${(DRAW_R * Math.cos(angle)).toFixed(2)},${(DRAW_R * Math.sin(angle)).toFixed(2)}`);
-  }
-  const hexPointsStr = hexPoints.join(' ');
+  const cornerR   = DRAW_R * CORNER_FRAC;
+  const lineInset = cornerR / SQRT3;
+  const strokeW   = DRAW_R * SQRT3 * STROKE_FRAC;
+  const hexH = SQRT3 * R;
 
   // Flat-top layout: cx = 1.5 * R * q, cy = hexH * (r + q/2). Cells use the
-  // full R for spacing but each hex polygon is drawn at DRAW_R so adjacent
-  // cells have a small gap between them (matches the game's blockGap).
+  // full R for spacing but each hex is drawn at DRAW_R so adjacent cells have
+  // a small gap between them (matches the game's blockGap).
   const centers = CELLS.map(([q, r]) => [1.5 * R * q, hexH * (r + q / 2)]);
 
-  const drawHexH = Math.sqrt(3) * DRAW_R;
+  const drawHexH = SQRT3 * DRAW_R;
   const allX = centers.flatMap(([cx]) => [cx - DRAW_R, cx + DRAW_R]);
   const allY = centers.flatMap(([, cy]) => [cy - drawHexH / 2, cy + drawHexH / 2]);
   const minX = Math.min(...allX);
@@ -61,14 +96,45 @@ function generateHexSVG() {
   const vbW = maxX - minX + pad * 2;
   const vbH = maxY - minY + pad * 2;
 
-  const hexes = centers.map(([cx, cy]) =>
-    `  <polygon points="${hexPointsStr}" transform="translate(${cx.toFixed(2)},${cy.toFixed(2)})" fill="${GOLD}"/>`
-  ).join('\n');
+  // One radial gradient per cell — focal point sits upper-left of cell center.
+  const defs = centers.map(([cx, cy], i) => {
+    const fx = cx + DRAW_R * HL_FOCAL_DX_FRAC;
+    const fy = cy + DRAW_R * HL_FOCAL_DY_FRAC;
+    const gr = DRAW_R * HL_OUTER_FRAC;
+    return `    <radialGradient id="hl${i}" cx="${cx.toFixed(3)}" cy="${cy.toFixed(3)}" r="${gr.toFixed(3)}" fx="${fx.toFixed(3)}" fy="${fy.toFixed(3)}" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="white" stop-opacity="0.3"/>
+      <stop offset="1" stop-color="white" stop-opacity="0"/>
+    </radialGradient>`;
+  }).join('\n');
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vbX.toFixed(2)} ${vbY.toFixed(2)} ${vbW.toFixed(2)} ${vbH.toFixed(2)}">\n${hexes}\n</svg>\n`;
+  // Per cell: filled rounded hex + gradient overlay (clipped by re-using the
+  // same path) + a thin dark line along the bottom edge with the lineInset
+  // shortening so it doesn't touch the rounded corners.
+  const cells = centers.map(([cx, cy], i) => {
+    const d = roundedHexPath(cx, cy, DRAW_R, cornerR);
+    const v1x = cx + DRAW_R * Math.cos(Math.PI / 3);
+    const v1y = cy + DRAW_R * Math.sin(Math.PI / 3);
+    const v2x = cx + DRAW_R * Math.cos(2 * Math.PI / 3);
+    const v2y = cy + DRAW_R * Math.sin(2 * Math.PI / 3);
+    return `  <path d="${d}" fill="${PIECE_COLOR}"/>
+  <path d="${d}" fill="url(#hl${i})"/>
+  <line x1="${(v1x - lineInset).toFixed(3)}" y1="${v1y.toFixed(3)}" x2="${(v2x + lineInset).toFixed(3)}" y2="${v2y.toFixed(3)}" stroke="black" stroke-opacity="0.25" stroke-width="${strokeW.toFixed(3)}"/>`;
+  }).join('\n');
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vbX.toFixed(2)} ${vbY.toFixed(2)} ${vbW.toFixed(2)} ${vbH.toFixed(2)}">
+  <defs>
+${defs}
+  </defs>
+${cells}
+</svg>
+`;
 }
 
-function generateICO(svgPath, icoPath) {
+// Rasterize the SVG at each ICO frame size via headless Chromium (Playwright),
+// then bundle the PNGs into a single .ico via ImageMagick. Chromium handles
+// SVG radial gradients faithfully; ImageMagick's built-in SVG renderer drops
+// gradient fills, which is why we don't use `magick svg.svg PNG:` here.
+async function generateICO(svgPath, icoPath) {
   const magick = spawnSync('magick', ['-version'], { encoding: 'utf8' });
   if (magick.status !== 0) {
     console.warn('magick not found on PATH — skipping favicon.ico generation.');
@@ -76,28 +142,40 @@ function generateICO(svgPath, icoPath) {
     return false;
   }
 
+  let chromium;
+  try {
+    chromium = require('playwright').chromium;
+  } catch {
+    console.warn('playwright not installed — skipping favicon.ico generation.');
+    return false;
+  }
+
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'favicon-'));
   try {
     const sizes = [16, 32, 48, 64];
+    const svgInline = fs.readFileSync(svgPath, 'utf8');
+    const browser = await chromium.launch();
     const frames = [];
-    for (const size of sizes) {
-      const framePath = path.join(tmp, `favicon-${size}.png`);
-      // -resize "NxN>" with -extent NxN forces a square frame even if the SVG
-      // viewBox isn't square (the hex bounding box is wider than tall).
-      // PNG32: forces 32-bit RGBA output — without it ImageMagick palette-
-      // optimizes small frames to 8bpp, which bakes harsh aliased edges into
-      // the ICO (loses alpha gradation).
-      execSync([
-        'magick',
-        '-background', 'none',
-        '-density', '384',
-        svgPath,
-        '-resize', `"${size}x${size}>"`,
-        '-gravity', 'center',
-        '-extent', `${size}x${size}`,
-        `PNG32:${framePath}`,
-      ].join(' '), { stdio: 'inherit' });
-      frames.push(framePath);
+    try {
+      for (const size of sizes) {
+        const framePath = path.join(tmp, `favicon-${size}.png`);
+        // Inline the SVG so setContent doesn't have to fetch it via file://
+        // (which Chromium blocks from data-URL contexts). The SVG keeps its
+        // own viewBox; CSS forces it to fit a square frame so the wider-than-
+        // tall hex composition centers correctly.
+        const html = `<!DOCTYPE html><html><head><style>
+          html,body { margin:0; padding:0; background:transparent; }
+          body { width:${size}px; height:${size}px; display:flex; align-items:center; justify-content:center; }
+          svg { width:100%; height:100%; }
+        </style></head><body>${svgInline}</body></html>`;
+        const page = await browser.newPage({ viewport: { width: size, height: size } });
+        await page.setContent(html);
+        await page.screenshot({ path: framePath, omitBackground: true });
+        await page.close();
+        frames.push(framePath);
+      }
+    } finally {
+      await browser.close();
     }
     execSync(['magick', ...frames, icoPath].join(' '), { stdio: 'inherit' });
     return true;
@@ -113,6 +191,8 @@ const icoPath = path.resolve(publicDir, 'favicon.ico');
 fs.writeFileSync(svgPath, generateHexSVG());
 console.log(`Generated: ${path.relative(process.cwd(), svgPath)}`);
 
-if (generateICO(svgPath, icoPath)) {
-  console.log(`Generated: ${path.relative(process.cwd(), icoPath)}`);
-}
+(async () => {
+  if (await generateICO(svgPath, icoPath)) {
+    console.log(`Generated: ${path.relative(process.cwd(), icoPath)}`);
+  }
+})().catch((err) => { console.error(err); process.exit(1); });

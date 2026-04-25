@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 
-// Standalone social-preview generator — captures cover-builder.html in
-// headless mode at 1280×640 and writes public/artwork/social-preview.png.
-// No server required.
+// Captures artwork/builder.html in headless mode using the `social` STAGES
+// entry and writes public/artwork/social-preview.png (1280×640).
 // Usage: node artwork/generate-social.js
 
 const { chromium } = require('playwright');
@@ -12,8 +11,9 @@ const fs = require('fs');
 
 const SOCIAL_WIDTH = 1280;
 const SOCIAL_HEIGHT = 640;
-const BANNER_DIR = __dirname;
-const OUTPUT = path.resolve(BANNER_DIR, '..', 'public', 'artwork', 'social-preview.png');
+const ARTWORK_DIR = __dirname;
+const BUILDER = path.resolve(ARTWORK_DIR, 'builder.html');
+const OUTPUT = path.resolve(ARTWORK_DIR, '..', 'public', 'artwork', 'social-preview.png');
 
 (async () => {
   const browser = await chromium.launch();
@@ -22,9 +22,14 @@ const OUTPUT = path.resolve(BANNER_DIR, '..', 'public', 'artwork', 'social-previ
     deviceScaleFactor: 2,
   });
   const page = await context.newPage();
-  await page.goto(`file://${path.resolve(BANNER_DIR, 'cover-builder.html')}?headless=social`);
+  await page.goto(`file://${BUILDER}?headless=social`);
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(300);
+  const err = await page.evaluate(() => window.__BUILDER_ERROR__);
+  if (err) {
+    await browser.close();
+    throw new Error(`builder.html reported: ${err}`);
+  }
   fs.mkdirSync(path.dirname(OUTPUT), { recursive: true });
   await page.screenshot({ path: OUTPUT });
   await browser.close();

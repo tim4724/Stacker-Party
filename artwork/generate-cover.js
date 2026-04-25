@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 'use strict';
 
-// Standalone cover-art generator — captures cover-builder.html in headless
-// mode at 1024×1024 and writes artwork/cover-art.png. Not served over HTTP
-// (no consumer in public/), so no copy is made.
+// Captures artwork/builder.html in headless mode using the `cover` STAGES
+// entry and writes artwork/cover-art.png (1024×1024). Not served over
+// HTTP, so no public/ copy is made.
 // Usage: node artwork/generate-cover.js
 
 const { chromium } = require('playwright');
@@ -12,6 +12,7 @@ const path = require('path');
 const COVER_WIDTH = 1024;
 const COVER_HEIGHT = 1024;
 const ARTWORK_DIR = __dirname;
+const BUILDER = path.resolve(ARTWORK_DIR, 'builder.html');
 const ARTWORK_OUT = path.resolve(ARTWORK_DIR, 'cover-art.png');
 
 (async () => {
@@ -21,9 +22,14 @@ const ARTWORK_OUT = path.resolve(ARTWORK_DIR, 'cover-art.png');
     deviceScaleFactor: 2,
   });
   const page = await context.newPage();
-  await page.goto(`file://${path.resolve(ARTWORK_DIR, 'cover-builder.html')}?headless=cover`);
+  await page.goto(`file://${BUILDER}?headless=cover`);
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(300);
+  const err = await page.evaluate(() => window.__BUILDER_ERROR__);
+  if (err) {
+    await browser.close();
+    throw new Error(`builder.html reported: ${err}`);
+  }
   await page.screenshot({ path: ARTWORK_OUT });
   await browser.close();
 
