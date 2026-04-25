@@ -160,9 +160,13 @@ showScreen = function(name) {
 // which would break out of the AC-owned iframe. Surface the bail reason
 // through the AC status overlay instead — AC owns home/lobby navigation.
 // Clears game state so stale incoming messages can't re-trigger game logic.
+// Closes the settings popup too — non-AC mode gets that for free via the
+// page navigation, but here the page stays alive and a stale settings
+// overlay would otherwise sit on top of the AC status overlay.
 bailToWelcome = function(toastKey) {
   gameCancelled = true;
   stopPing();
+  if (typeof closeSettingsOverlay === 'function') closeSettingsOverlay();
   if (_acStatusOverlay) {
     _acStatusOverlay.textContent = toastKey ? t(toastKey) : '';
     _acStatusOverlay.classList.toggle('hidden', !toastKey);

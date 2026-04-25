@@ -122,10 +122,13 @@ function showBailToast(key) {
 // the overlay, so populating the toast is a no-op there — the user just
 // lands on the welcome screen silently, which is the intended behavior.
 // The param is stripped via replaceState so a reload doesn't re-toast.
+// Allow-list known keys so a crafted /?bail=<arbitrary text> URL can't
+// inject a phishy message into the toast.
+var BAIL_KEYS = ['room_not_found', 'game_full', 'game_ended'];
 (function applyBailToast() {
   var params = new URLSearchParams(location.search);
   var bailKey = params.get('bail');
-  if (!bailKey) return;
+  if (!bailKey || BAIL_KEYS.indexOf(bailKey) === -1) return;
   showBailToast(bailKey);
   params.delete('bail');
   var qs = params.toString();
