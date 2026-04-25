@@ -215,7 +215,7 @@
 </head>
 <body>
   <header>
-    <h1>HEX STACKER — COVER BUILDER</h1>
+    <h1>HEX STACKER — BUILDER</h1>
     <div class="subtitle">A/D exploration · live parameters · export PNG</div>
     <div class="spacer"></div>
     <button id="export-btn">Export PNG</button>
@@ -1593,11 +1593,11 @@
     const snippet = buildStageSnippet();
     const btn = document.getElementById('copy-state');
     const orig = btn.textContent;
-    const ok = () => { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = orig; }, 1200); };
-    (navigator.clipboard?.writeText(snippet) || Promise.reject())
-      .then(ok)
-      .catch(() => { console.log(snippet); ok(); });
+    const flash = (label) => { btn.textContent = label; setTimeout(() => { btn.textContent = orig; }, 1200); };
     console.log('[stage snippet]\n' + snippet);
+    (navigator.clipboard?.writeText(snippet) || Promise.reject())
+      .then(() => flash('Copied!'))
+      .catch(() => flash('See console'));
   });
 
   // ============================================================
