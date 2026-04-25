@@ -1,6 +1,6 @@
 'use strict';
 
-const { describe, it } = require('node:test');
+const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 
 // AirConsole is referenced at constructor time for the SCREEN constant; expose
@@ -63,6 +63,15 @@ describe('AirConsoleAdapter onPremium', () => {
 describe('AirConsoleAdapter.installAirConsoleStorage', () => {
   // The shim writes to window.localStorage via Object.defineProperty, so
   // each test installs a fresh window object and lets the shim populate it.
+  // afterEach restores the absent global so a later test that asserts
+  // typeof window === 'undefined' still works.
+  let _prevWindow;
+  beforeEach(() => { _prevWindow = global.window; });
+  afterEach(() => {
+    if (_prevWindow === undefined) delete global.window;
+    else global.window = _prevWindow;
+  });
+
   function installShim(persistentDataByUid) {
     const writes = [];
     const ac = {
@@ -115,11 +124,19 @@ describe('AirConsoleAdapter.installAirConsoleStorage', () => {
     assert.equal(shim.getItem('stacker_color_index'), '5');
   });
 
-  it('writes immediately (no debounce) — every setItem triggers storePersistentData', () => {
+  it('writes immediately (no debounce) — every changed setItem triggers storePersistentData', () => {
     const { shim, writes } = installShim({});
     for (let i = 0; i < 5; i++) shim.setItem('stacker_touch_sensitivity', String(50 + i));
     assert.equal(writes.length, 5);
     assert.equal(writes[4].value, '54');
+  });
+
+  it('skips redundant writes when the value is unchanged', () => {
+    const { shim, writes } = installShim({});
+    shim.setItem('stacker_touch_sensitivity', '60');
+    shim.setItem('stacker_touch_sensitivity', '60');
+    shim.setItem('stacker_touch_sensitivity', '60');
+    assert.equal(writes.length, 1);
   });
 
   it('hydrates cache from onPersistentDataLoaded, allowlist-filtered', async () => {
@@ -155,6 +172,31 @@ describe('AirConsoleAdapter.installAirConsoleStorage', () => {
     shim.removeItem('stacker_haptic_strength');
     assert.equal(shim.getItem('stacker_haptic_strength'), null);
     assert.deepEqual(writes[1], { key: 'stacker_haptic_strength', value: null });
+  });
+
+  it('clear() nulls every stored allowlisted key and empties the cache', () => {
+    const { shim, writes } = installShim({});
+    shim.setItem('stacker_haptic_strength', 'strong');
+    shim.setItem('stacker_touch_sensitivity', '60');
+    shim.setItem('stacker_touch_sounds', '1');
+    shim.clear();
+    assert.equal(shim.length, 0);
+    assert.equal(shim.getItem('stacker_haptic_strength'), null);
+    assert.equal(shim.getItem('stacker_touch_sensitivity'), null);
+    assert.equal(shim.getItem('stacker_touch_sounds'), null);
+    // 3 setItem writes + 3 storePersistentData(_, null) calls from clear()
+    assert.equal(writes.length, 6);
+    const nullWrites = writes.slice(3).map((w) => w.value);
+    assert.deepEqual(nullWrites, [null, null, null]);
+  });
+
+  it('hydration does not clobber a local setItem made before the load resolves', () => {
+    const { ac, shim } = installShim({ uid_1: { stacker_haptic_strength: 'light' } });
+    // User writes locally before hydration fires (mirrors the requestLoad
+    // → user-toggle → onPersistentDataLoaded race).
+    shim.setItem('stacker_haptic_strength', 'strong');
+    ac.onPersistentDataLoaded({ uid_1: { stacker_haptic_strength: 'light' } });
+    assert.equal(shim.getItem('stacker_haptic_strength'), 'strong');
   });
 
   it('requestLoad triggers AC fetch and chains existing onPersistentDataLoaded', async () => {

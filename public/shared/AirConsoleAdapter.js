@@ -217,9 +217,13 @@ class AirConsoleAdapter {
     airconsole.onPersistentDataLoaded = function(data) {
       var uid = getUid();
       var entry = (uid && data && data[uid]) || {};
-      cache = {};
+      // Merge — don't replace. A user-side setItem between requestLoad and
+      // the server response shouldn't be silently clobbered: the request
+      // reflects state at request time, so its response can be stale
+      // relative to what the user just wrote. Any key already in cache is
+      // therefore the local source of truth; only fill empties from server.
       for (var k in entry) {
-        if (ALLOWLIST[k] && entry[k] !== null && entry[k] !== undefined) {
+        if (ALLOWLIST[k] && entry[k] !== null && entry[k] !== undefined && !(k in cache)) {
           cache[k] = String(entry[k]);
         }
       }
@@ -239,6 +243,10 @@ class AirConsoleAdapter {
       setItem: function(key, value) {
         if (!ALLOWLIST[key]) return;
         var v = String(value);
+        // Skip the SDK round-trip when the value hasn't changed. Settings.js
+        // already short-circuits at its setters, but this keeps a tight
+        // boundary at the storage layer in case a future caller bypasses it.
+        if (cache[key] === v) return;
         cache[key] = v;
         try { airconsole.storePersistentData(key, v); } catch (e) { /* ignore */ }
       },
