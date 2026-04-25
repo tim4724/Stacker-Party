@@ -20,9 +20,6 @@ var DISPLAY_CARDS = [
   { key: 'pause',            title: 'Paused',       hostVariant: true },
   { key: 'disconnected',     title: 'Disconnected', hostVariant: true },
   { key: 'results',          title: 'Results',      hostVariant: true },
-  { key: 'bail-room-not-found', title: 'Bail · Room not found', replayable: true },
-  { key: 'bail-game-full',      title: 'Bail · Room full',      replayable: true },
-  { key: 'bail-game-ended',     title: 'Bail · Game ended',     replayable: true },
   { key: 'privacy',          title: 'Privacy', staticPath: '/privacy' },
   { key: 'imprint',          title: 'Imprint', staticPath: '/imprint' }
 ];

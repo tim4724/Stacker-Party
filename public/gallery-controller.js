@@ -1,15 +1,23 @@
 'use strict';
 
-// Every controller screen in one flat grid, ordered by the player's journey
-// through a real session (name entry -> lobby -> play -> end). perColor cards
-// swap the `color` URL param when the view-as selector changes; staticPath
-// cards render /privacy or /imprint.
+// Every phone-shaped screen in one flat grid, ordered by the player's
+// journey through a real session: device-choice overlay (homepage + bail
+// toasts), then the controller flow (name entry -> lobby -> play -> end).
+// perColor cards swap the `color` URL param when the view-as selector
+// changes; staticPath cards render /privacy or /imprint; isDisplayPage
+// cards load the DISPLAY URL — the device-choice overlay only lives on
+// the display page but surfaces naturally at phone size via the mobile
+// CSS media query.
 //
 // Card shape:
-//   { key, title, perColor?, staticPath?, extra? }
+//   { key, title, perColor?, staticPath?, extra?, isDisplayPage? }
 // `extra` is merged into the URL (e.g. host=1 flags the host variant of a
 // screen that otherwise looks the same for host/non-host).
 var CONTROLLER_CARDS = [
+  { key: '',                    title: 'Device choice (homepage)', isDisplayPage: true },
+  { key: 'bail-room-not-found', title: 'Bail · Room not found',    isDisplayPage: true, replayable: true },
+  { key: 'bail-game-full',      title: 'Bail · Room full',         isDisplayPage: true, replayable: true },
+  { key: 'bail-game-ended',     title: 'Bail · Game ended',        isDisplayPage: true, replayable: true },
   { key: 'name',             title: 'Name input' },
   { key: 'name-connecting',  title: 'Connecting…', extra: { name: 'Tim' } },
   { key: 'lobby-host',       title: 'Lobby (host)',        perColor: true },
@@ -65,6 +73,7 @@ var perColorCards = [];
 
 function cardURL(c) {
   if (c.staticPath) return Gallery.staticURL(state, c.staticPath);
+  if (c.isDisplayPage) return Gallery.displayURL(state, c.key || undefined, undefined, c.extra || null);
   var colorIdx = c.perColor ? state.viewAs : 0;
   return Gallery.controllerURL(state, c.key, colorIdx, c.extra || null);
 }
