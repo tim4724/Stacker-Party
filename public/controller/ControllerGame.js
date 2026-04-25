@@ -89,10 +89,10 @@ function showLobbyUI() {
 // repaint (e.g. on level change re-tiering) never reassigns canvas.width —
 // which would clear the buffer and re-anchor DPR, causing a one-frame
 // flicker as the hex jumped by a sub-pixel. CSS width:100%/height:100%
-// scales the buffer to the live button rect. Sized to fit the hex stamp's
-// output (including its internal padding) at 2× the largest clamp()
-// button size, giving crisp rendering on DPR ≤ 2 and acceptable downscale
-// on DPR 3.
+// scales the buffer to the live button rect. Buffer is the hex stamp's
+// natural output size (height + stamp padding, width = height / sin(60°));
+// not DPR-scaled — acceptable for a small picker swatch, follow-up work
+// if higher fidelity is needed on 3× displays.
 var COLOR_PICKER_CANVAS_H = 88;
 var COLOR_PICKER_CANVAS_W = 102;  // ≈ height / sin(60°) + stamp padding
 
@@ -297,7 +297,13 @@ function onWelcome(data) {
     if (!playerColor) playerColor = PLAYER_COLORS[0];
   }
   if (Array.isArray(data.takenColorIndices)) takenColorIndices = data.takenColorIndices;
+  // Mirror the three setProperty targets in onLobbyUpdate. WELCOME's
+  // colorIndex is the same value the controller already had (the display
+  // doesn't reassign on reconnect), so this is symmetry/defensiveness
+  // rather than a fix for an observed flash.
   document.body.style.setProperty('--player-color', playerColor);
+  playerIdentity.style.setProperty('--player-color', playerColor);
+  gameScreen.style.setProperty('--player-color', playerColor);
   playerCount = data.playerCount || 1;
   gameCancelled = false;
   waitingForNextGame = false;
