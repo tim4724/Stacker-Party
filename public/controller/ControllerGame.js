@@ -298,7 +298,12 @@ function onWelcome(data) {
   if (data.colorIndex != null) {
     playerColorIndex = data.colorIndex;
     playerColor = PLAYER_COLORS[data.colorIndex] || PLAYER_COLORS[0];
-    persistColorIndex(data.colorIndex);
+    // Don't persist the display-assigned color here — it's not a user
+    // choice. Persisting it would clobber the previous-session preference
+    // before reclaimPreferredColor gets a chance to read it. The user's
+    // explicit picks are persisted in onLobbyUpdate (display echoes the
+    // accepted SET_COLOR back), which is the only signal that a colorIndex
+    // is actually the user's selection.
   } else {
     // Defensive: the display always sends colorIndex, but if it's missing
     // keep whatever we already have. Only seed a default when nothing is

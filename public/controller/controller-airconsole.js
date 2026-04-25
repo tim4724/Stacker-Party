@@ -61,29 +61,31 @@ connect = function() {
     // here is just to avoid passing undefined into downstream code.
     var nickname = airconsole.getNickname(airconsole.getDeviceId());
     if (nickname) playerName = nickname;
-    // Hold HELLO until persistent data has hydrated. Without this, the
-    // display's WELCOME (assigning a fresh color) can race the AC fetch:
-    // its persistColorIndex() lands first and reclaimPreferredColor()
-    // then has nothing to compare against. The 2 s timeout protects
-    // against an SDK that never fires onPersistentDataLoaded.
-    var fired = false;
-    function proceed(reason) {
-      if (fired) return;
-      fired = true;
-      console.log('[color-debug] proceed fired by', reason,
-                  'cache stacker_color_index=', _acStorage.getItem('stacker_color_index'));
-      ControllerSettings.reload();
-      captureSessionColorIndex();
-      _adapterOnReady.call(airconsole, code);
-    }
-    _acStorage.onLoad(function() { proceed('onLoad'); });
+    // getDeviceId() / getUID() are only valid after onReady — kick the
+    // persistent-data fetch now. We don't hold HELLO: on reconnect the
+    // SDK can fire onReady synchronously (cached state), at which point
+    // adapter.connect() already ran fireReady and our wrap can't
+    // intercept. Color reclaim is instead retried from the onLoad
+    // callback below, which fires reliably whether or not WELCOME
+    // already arrived.
+    _adapterOnReady.call(airconsole, code);
     _acStorage.requestLoad();
-    setTimeout(function() { proceed('timeout'); }, 2000);
   };
-  // Replay the captured-early onReady into the freshly-wired adapter.
-  // No-op if the SDK hasn't fired yet — the live fire will reach the
-  // wrapped onReady normally.
+  // Captured-early replay: if the SDK already fired onReady before our
+  // wrap was installed, run wrapped now. No-op otherwise.
   replayEarlyReady();
+  // Re-apply persisted Settings and re-attempt color reclaim once the
+  // shim's cache has hydrated. Either onWelcome already fired (HELLO
+  // raced ahead) and reclaim was a no-op there because
+  // _previousSessionColorIndex was still null — recapturing here and
+  // reclaiming again catches up. Or onWelcome hasn't fired yet, in which
+  // case its own reclaim call will see the captured value and fire
+  // SET_COLOR. Either path lands on the user's preferred color.
+  _acStorage.onLoad(function() {
+    ControllerSettings.reload();
+    captureSessionColorIndex();
+    if (typeof reclaimPreferredColor === 'function') reclaimPreferredColor();
+  });
 };
 
 AirConsoleAdapter.injectVersionLabel('settings-version');
