@@ -1,0 +1,1721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>HexStacker Party — Builder</title>
+  <link rel="stylesheet" href="../public/shared/fonts/orbitron.css">
+  <link rel="stylesheet" href="../public/shared/theme.css">
+  <style>
+    :root {
+      --b-bg: #06060f;
+      --b-panel: #0e0e1a;
+      --b-panel-2: #14141f;
+      --b-border: #22223a;
+      --b-fg: #e8e8f0;
+      --b-muted: #8a8aa0;
+      --b-accent: #00c8ff;
+      --b-accent-warm: #ffaa00;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      background: var(--b-bg);
+      color: var(--b-fg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    header {
+      display: flex; align-items: center; gap: 20px;
+      padding: 10px 18px;
+      border-bottom: 1px solid var(--b-border);
+      background: var(--b-panel);
+    }
+    header h1 {
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 0.18em;
+      color: var(--b-accent);
+    }
+    header .subtitle { color: var(--b-muted); font-size: 11px; letter-spacing: 0.1em; }
+    header .spacer { flex: 1; }
+    header button {
+      background: var(--b-accent-warm);
+      color: #000;
+      border: 0;
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    header button:hover { filter: brightness(1.1); }
+
+    .layout {
+      display: flex;
+      height: calc(100vh - 46px);
+    }
+
+    aside {
+      width: 320px;
+      flex-shrink: 0;
+      border-right: 1px solid var(--b-border);
+      background: var(--b-panel);
+      overflow-y: auto;
+    }
+    aside.right {
+      border-right: 0;
+      border-left: 1px solid var(--b-border);
+      width: 260px;
+    }
+
+    main {
+      flex: 1;
+      overflow: auto;
+      padding: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--main-bg, #15151f);
+      background-image: var(--main-bg-image,
+        repeating-linear-gradient(0deg,  rgba(255,255,255,0.025) 0 1px, transparent 1px 40px),
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.025) 0 1px, transparent 1px 40px));
+    }
+    .preview-frame {
+      position: relative;
+      width: var(--preview-w, 640px);
+      height: var(--preview-h, 640px);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+      border-radius: var(--cover-radius, 0%);
+    }
+    .preview-frame canvas {
+      display: block;
+      width: var(--preview-w, 640px);
+      height: var(--preview-h, 640px);
+      border-radius: var(--cover-radius, 0%);
+    }
+
+    section.panel {
+      border-bottom: 1px solid var(--b-border);
+      padding: 14px 16px;
+    }
+    section.panel h2 {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--b-accent);
+      margin-bottom: 10px;
+    }
+
+    .field {
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .field label {
+      font-size: 11px;
+      color: var(--b-muted);
+      letter-spacing: 0.04em;
+    }
+    .field input[type="text"],
+    .field input[type="number"],
+    .field select,
+    .field textarea {
+      width: 100%;
+      background: var(--b-bg);
+      color: var(--b-fg);
+      border: 1px solid var(--b-border);
+      border-radius: 3px;
+      padding: 5px 7px;
+      font-family: inherit;
+      font-size: 12px;
+    }
+    .field input[type="range"] {
+      width: 100%;
+    }
+    .field .range-wrap {
+      display: grid;
+      grid-template-columns: 1fr 40px;
+      gap: 6px;
+      align-items: center;
+    }
+    .field .range-value {
+      color: var(--b-fg);
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      text-align: right;
+    }
+    .field input:focus, .field select:focus, .field textarea:focus {
+      outline: 1px solid var(--b-accent);
+      border-color: var(--b-accent);
+    }
+    .field.checkbox {
+      grid-template-columns: 1fr;
+    }
+    .field.checkbox label {
+      color: var(--b-fg);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+
+    .swatch-row {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 4px;
+      margin-top: 4px;
+    }
+    .swatch-row button {
+      aspect-ratio: 1;
+      border: 2px solid transparent;
+      border-radius: 4px;
+      cursor: pointer;
+      padding: 0;
+    }
+    .swatch-row button.selected { border-color: #fff; }
+
+    .action-btn {
+      width: 100%;
+      margin-bottom: 8px;
+      background: var(--b-accent-warm);
+      color: #000;
+      border: 0;
+      padding: 10px;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .action-btn.secondary {
+      background: var(--b-panel-2);
+      color: var(--b-fg);
+      border: 1px solid var(--b-border);
+    }
+    .action-btn:hover { filter: brightness(1.1); }
+
+    .help-text {
+      color: var(--b-muted);
+      font-size: 10px;
+      line-height: 1.5;
+      letter-spacing: 0.03em;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>HEX STACKER — BUILDER</h1>
+    <div class="subtitle">cover &amp; social stages · live parameters · export PNG</div>
+    <div class="spacer"></div>
+    <button id="export-btn">Export PNG</button>
+  </header>
+
+  <div class="layout">
+    <aside class="left">
+      <section class="panel">
+        <h2>Text</h2>
+        <div class="field">
+          <label>Title</label>
+          <input type="text" id="p-title" value="HEX STACKER">
+        </div>
+        <div class="field">
+          <label>Subtitle</label>
+          <input type="text" id="p-subtitle" value="PARTY">
+        </div>
+        <div class="field">
+          <label>Layout</label>
+          <select id="p-title-layout">
+            <option value="default" selected>Default (title + subtitle)</option>
+            <option value="split3">3 lines (HEX / STACKER / PARTY)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Subtitle style</label>
+          <select id="p-subtitle-style">
+            <option value="letterSpaced">Letter-spaced</option>
+            <option value="compact">Compact (no spacing)</option>
+            <option value="bold">Bold (title-matched)</option>
+            <option value="italic">Italic</option>
+            <option value="outline">Outline only</option>
+            <option value="pill" selected>Pill / badge</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Subtitle color</label>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <input type="color" id="p-subtitle-color" value="#f7f1e8" style="width:40px; height:24px; padding:0; border:1px solid var(--b-border); background:var(--b-bg);">
+            <button type="button" id="p-subtitle-color-auto" style="background:var(--b-panel-2); color:var(--b-fg); border:1px solid var(--b-border); border-radius:3px; padding:3px 10px; font-size:11px; cursor:pointer;">Auto</button>
+          </div>
+        </div>
+        <div class="field">
+          <label></label>
+          <div class="swatch-row" id="p-subtitle-color-swatches"></div>
+        </div>
+        <div class="field">
+          <label>Subtitle size</label>
+          <div class="range-wrap">
+            <input type="range" id="p-subtitle-size" min="20" max="200" step="2" value="60">
+            <span class="range-value" id="p-subtitle-size-v">60</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Subtitle y offset</label>
+          <div class="range-wrap">
+            <input type="range" id="p-subtitle-y" min="-300" max="300" step="2" value="0">
+            <span class="range-value" id="p-subtitle-y-v">0</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Stage</h2>
+        <div class="field">
+          <label>Stage</label>
+          <select id="p-stage"></select>
+        </div>
+      </section>
+
+      <section class="panel" id="stage-params">
+        <!-- Populated by buildPiecesStageUI -->
+      </section>
+
+      <section class="panel">
+        <h2>Background</h2>
+        <div class="field">
+          <label>Style</label>
+          <select id="p-bg-style">
+            <option value="solid">Solid plum</option>
+            <option value="radial" selected>Radial glow</option>
+            <option value="warmBloom">Warm bloom</option>
+            <option value="coolVignette">Cool vignette</option>
+            <option value="paper">Light paper</option>
+            <option value="brightTeal">Bright teal</option>
+            <option value="brightMagenta">Bright magenta</option>
+            <option value="arcadeGrid">Arcade grid (neon)</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Palette</h2>
+        <div class="field">
+          <label>Colors</label>
+          <select id="p-palette">
+            <option value="classic" selected>Classic (in-game)</option>
+            <option value="vibrant">Vibrant</option>
+            <option value="electric">Electric neon</option>
+            <option value="candy">Candy pastel</option>
+          </select>
+        </div>
+        <div class="swatch-row" id="swatch-preview"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Cell Style (game tier)</h2>
+        <div class="field">
+          <label>Tier</label>
+          <select id="p-cell-style">
+            <option value="normal" selected>Normal &middot; Lv 1–5</option>
+            <option value="pillow">Pillow &middot; Lv 6–10</option>
+            <option value="neonFlat">Neon Flat &middot; Lv 11+</option>
+          </select>
+        </div>
+      </section>
+    </aside>
+
+    <main>
+      <div class="preview-frame">
+        <canvas id="preview" width="1024" height="1024"></canvas>
+      </div>
+    </main>
+
+    <aside class="right">
+      <section class="panel">
+        <h2>Preview</h2>
+        <div class="field">
+          <label>Display size</label>
+          <select id="p-preview-size">
+            <option value="640" selected>Builder (640)</option>
+            <option value="512">Large (512)</option>
+            <option value="384">Card (384)</option>
+            <option value="256">Medium (256)</option>
+            <option value="160">Tile (160)</option>
+            <option value="96">Thumb (96)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Corner radius (% of size)</label>
+          <div class="range-wrap">
+            <input type="range" id="p-preview-radius" min="0" max="50" step="1" value="0">
+            <span class="range-value" id="p-preview-radius-v">0</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Frame background</label>
+          <select id="p-preview-bg">
+            <option value="default" selected>Default (grid)</option>
+            <option value="dark">Dark</option>
+            <option value="midnight">Midnight</option>
+            <option value="black">Pure black</option>
+            <option value="paper">Light paper</option>
+            <option value="gray">Neutral gray</option>
+            <option value="airconsole">AirConsole store</option>
+          </select>
+        </div>
+        <p class="help-text" style="margin-top:6px;">
+          Stage owns canvas dimensions. Display size is cosmetic.
+        </p>
+      </section>
+      <section class="panel">
+        <h2>Actions</h2>
+        <button class="action-btn" id="export-btn-2">Download PNG</button>
+        <button class="action-btn secondary" id="copy-state">Copy stage snippet</button>
+        <p class="help-text" style="margin-top:10px">
+          Drag pieces in the canvas, edit fields above, then Copy snippet to paste into STAGES.
+        </p>
+      </section>
+    </aside>
+  </div>
+
+  <script src="../public/shared/theme.js"></script>
+  <script>
+  'use strict';
+
+  // ============================================================
+  // Shared geometry + color utilities
+  // ============================================================
+  const SQRT3 = Math.sqrt(3);
+  function hexPath(ctx, cx, cy, r) {
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = Math.PI / 3 * i;
+      const x = cx + r * Math.cos(a);
+      const y = cy + r * Math.sin(a);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  }
+  function hexToRgb(hex){const m=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);return m?{r:+('0x'+m[1]),g:+('0x'+m[2]),b:+('0x'+m[3])}:null;}
+  function clamp255(v){return Math.max(0,Math.min(255,Math.round(v)));}
+  function lighten(hex,pct){const c=hexToRgb(hex);if(!c)return hex;const f=1+pct/100;return `rgb(${clamp255(c.r*f)},${clamp255(c.g*f)},${clamp255(c.b*f)})`;}
+  function darken(hex,pct){const c=hexToRgb(hex);if(!c)return hex;const f=1-pct/100;return `rgb(${clamp255(c.r*f)},${clamp255(c.g*f)},${clamp255(c.b*f)})`;}
+  function rgba(hex,a){const c=hexToRgb(hex);if(!c)return hex;return `rgba(${c.r},${c.g},${c.b},${a})`;}
+
+  // Precomputed flat-top hex unit vertices — mirrors CanvasUtils.HEX_UNIT_VERTICES
+  // so the pillow/neon-flat tier renders match the game exactly.
+  const HEX_UNIT_VERTICES = [];
+  for (let _i = 0; _i < 6; _i++) {
+    const _a = Math.PI / 3 * _i;
+    HEX_UNIT_VERTICES.push(Math.cos(_a), Math.sin(_a));
+  }
+
+  // Rounded-corner flat-top hex path — ported from CanvasUtils.hexPathRounded.
+  // Starts at the midpoint of the V5→V0 edge so the first arcTo has a valid
+  // tangent. Used by the Pillow tier.
+  function hexPathRounded(ctx, cx, cy, size, radius) {
+    if (radius <= 0) { hexPath(ctx, cx, cy, size); return; }
+    const V = HEX_UNIT_VERTICES;
+    ctx.beginPath();
+    ctx.moveTo(cx + size * (V[10] + V[0]) / 2, cy + size * (V[11] + V[1]) / 2);
+    for (let i = 0; i < 6; i++) {
+      const a = (i * 2) % 12;
+      const b = ((i + 1) * 2) % 12;
+      ctx.arcTo(cx + size * V[a],     cy + size * V[a + 1],
+                cx + size * V[b],     cy + size * V[b + 1], radius);
+    }
+    ctx.closePath();
+  }
+
+  // ============================================================
+  // Palette variants — swap the 8 party colors as a unit. Each is an 8-tuple
+  // matching slots 0..7 (red → tangerine). Classic is the live in-game set;
+  // the others are exploratory.
+  // ============================================================
+  const PALETTES = {
+    classic:  PARTY_PALETTE.slice(),
+    vibrant:  ['#FF3A3A', '#00E5D5', '#FFD400', '#B766FF', '#3EFF8B', '#FF3AB7', '#4A6BFF', '#FF6500'],
+    electric: ['#FF0055', '#00FFFF', '#FAF900', '#C000FF', '#00FF66', '#FF00AA', '#0066FF', '#FF6600'],
+    candy:    ['#FF8FB0', '#67E8D9', '#FFDD6B', '#C9A5FF', '#9EF0AD', '#F2A8DE', '#8EADFF', '#FFB37A'],
+  };
+  function getPalette() { return PALETTES[(typeof STATE !== 'undefined' && STATE.palette) || 'classic']; }
+  function P(i) { return getPalette()[i]; }
+
+  // ============================================================
+  // Cell styles — EXACTLY the 3 game tiers from CanvasUtils.js. These are
+  // ported 1:1 from _stampHexNormal / _stampHexPillow / _stampHexNeonFlat
+  // so whatever the builder renders is identical to what the game draws at
+  // each level tier:
+  //   • normal   — Lv 1–5   (gradient + strip highlights)
+  //   • pillow   — Lv 6–10  (rounded corners + radial sheen)
+  //   • neonFlat — Lv 11+   (dark fill + bright outline)
+  // In the game, `size` = drawn cell height and `cr` = circumradius with
+  // `cr = size / SQRT3`. The builder passes circumradius as `r`, so we
+  // derive size from it for faithful proportions.
+  // ============================================================
+  const CELL_STYLES = {
+    normal(ctx, cx, cy, r, color) {
+      const size = r * SQRT3;
+      hexPath(ctx, cx, cy, r);
+      ctx.save();
+      ctx.clip();
+      const ng = ctx.createLinearGradient(cx, cy - r, cx, cy + r);
+      ng.addColorStop(0, lighten(color, 15));
+      ng.addColorStop(1, darken(color, 10));
+      ctx.fillStyle = ng;
+      ctx.fill();
+      // Top highlight strip (opacity.highlight = 0.22 from theme.js)
+      ctx.fillStyle = 'rgba(255,255,255,0.22)';
+      ctx.fillRect(cx - r * 0.5, cy - r * 0.88, r, size * 0.08);
+      // Bottom shadow strip (opacity.shadow = 0.25)
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.fillRect(cx - r * 0.5, cy + r * 0.76, r, size * 0.08);
+      // Subtle inner sheen (opacity.subtle = 0.08)
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      const sh = size * 0.35;
+      ctx.fillRect(cx - r * 0.35, cy - r * 0.5, sh, sh * 0.36);
+      ctx.restore();
+    },
+    pillow(ctx, cx, cy, r, color) {
+      const size = r * SQRT3;
+      const cornerR = r * 0.15;
+      const lineInset = cornerR / SQRT3;
+      hexPathRounded(ctx, cx, cy, r, cornerR);
+      ctx.fillStyle = color;
+      ctx.fill();
+      hexPathRounded(ctx, cx, cy, r, cornerR);
+      ctx.save();
+      ctx.clip();
+      const g = ctx.createRadialGradient(cx - r * 0.05, cy - r * 0.1, 0, cx, cy, r * 1.1);
+      g.addColorStop(0, 'rgba(255,255,255,0.3)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.restore();
+      ctx.lineWidth = Math.max(0.5, size * 0.04);
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.moveTo(cx + r * HEX_UNIT_VERTICES[2] - lineInset, cy + r * HEX_UNIT_VERTICES[3]);
+      ctx.lineTo(cx + r * HEX_UNIT_VERTICES[4] + lineInset, cy + r * HEX_UNIT_VERTICES[5]);
+      ctx.stroke();
+    },
+    neonFlat(ctx, cx, cy, r, color) {
+      const size = r * SQRT3;
+      const rgb = hexToRgb(color);
+      if (!rgb) return;
+      const darkFill = 'rgb(' + (rgb.r * 0.3 | 0) + ',' + (rgb.g * 0.3 | 0) + ',' + (rgb.b * 0.3 | 0) + ')';
+      hexPath(ctx, cx, cy, r);
+      ctx.fillStyle = darkFill;
+      ctx.fill();
+      const bw = Math.max(1, size * 0.08);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = bw;
+      hexPath(ctx, cx, cy, r);
+      ctx.stroke();
+      const insetScale = 1 - bw / r;
+      ctx.save();
+      ctx.globalAlpha = 0.45;
+      ctx.beginPath();
+      ctx.moveTo(cx + r * insetScale * HEX_UNIT_VERTICES[8],  cy + r * insetScale * HEX_UNIT_VERTICES[9]);
+      ctx.lineTo(cx + r * insetScale * HEX_UNIT_VERTICES[10], cy + r * insetScale * HEX_UNIT_VERTICES[11]);
+      ctx.strokeStyle = lighten(color, 20);
+      ctx.lineWidth = Math.max(0.5, size * 0.032);
+      ctx.stroke();
+      ctx.restore();
+    }
+  };
+
+  // Dispatcher — every render path should use drawHexCell; it routes to the
+  // active tier. Defaults to 'normal' before STATE exists (boot window).
+  function drawHexCell(ctx, cx, cy, r, color) {
+    const style = (typeof STATE !== 'undefined' && STATE.cellStyle) || 'normal';
+    (CELL_STYLES[style] || CELL_STYLES.normal)(ctx, cx, cy, r, color);
+  }
+
+  // ============================================================
+  // Piece geometry — mirrors server/HexPiece.js so the pieces-stage template
+  // renders the actual game pieces (I, O, S, Z, q, p, L, J).
+  // ============================================================
+  const PIECES = {
+    I: [[-1,0],[0,0],[1,0],[2,0]],
+    O: [[-1,0],[0,0],[0,-1],[1,-1]],
+    S: [[-2,1],[-1,1],[0,0],[1,0]],
+    Z: [[-1,1],[0,0],[1,0],[2,-1]],
+    q: [[-1,0],[0,0],[1,0],[1,-1]],
+    p: [[-1,1],[0,0],[1,-1],[-1,0]],
+    L: [[-1,1],[0,0],[1,-1],[1,-2]],
+    J: [[1,0],[0,0],[-1,0],[-1,-1]],
+  };
+  // Each piece → palette slot (keeps color identity consistent with the game)
+  const PIECE_SLOT = { I: 0, O: 4, S: 3, Z: 7, q: 2, p: 1, L: 5, J: 6 };
+
+  // Axial 60° CW rotation: (q, r) → (-r, q+r). rotatedCells applies n rotations.
+  function rotateAxialCW(q, r) { return [-r, q + r]; }
+  function rotatedCells(type, rot) {
+    const n = ((rot | 0) % 6 + 6) % 6;
+    let cells = PIECES[type].map(c => c.slice());
+    for (let i = 0; i < n; i++) cells = cells.map(([q, r]) => rotateAxialCW(q, r));
+    return cells;
+  }
+
+  function axialToOffset(q, r) {
+    return { col: q, row: r + ((q - (q & 1)) >> 1) };
+  }
+  function pieceHexCenter(bx, by, col, row, hexSize) {
+    const colW = 1.5 * hexSize;
+    const hexH = SQRT3 * hexSize;
+    return [
+      bx + colW * col + hexSize,
+      by + hexH * (row + 0.5 * (col & 1)) + hexH / 2
+    ];
+  }
+  function drawPiece(ctx, ax, ay, type, hexSize, opts) {
+    opts = opts || {};
+    const cells = rotatedCells(type, opts.rot || 0);
+    if (!cells) return;
+    const color = P(PIECE_SLOT[type]);
+    for (const [q, r] of cells) {
+      const off = axialToOffset(q, r);
+      const [hx, hy] = pieceHexCenter(ax, ay, off.col, off.row, hexSize);
+      drawHexCell(ctx, hx, hy, hexSize * 0.95, color);
+    }
+    if (opts.outline) {
+      // Dashed selection rect around the piece — matches the original builder.
+      const cs = cells.map(([q, r]) => {
+        const off = axialToOffset(q, r);
+        return pieceHexCenter(ax, ay, off.col, off.row, hexSize);
+      });
+      const xs = cs.map(c => c[0]), ys = cs.map(c => c[1]);
+      const x0 = Math.min(...xs) - hexSize - 4;
+      const x1 = Math.max(...xs) + hexSize + 4;
+      const y0 = Math.min(...ys) - hexSize - 4;
+      const y1 = Math.max(...ys) + hexSize + 4;
+      ctx.save();
+      ctx.strokeStyle = '#ffaa00';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+      ctx.restore();
+    }
+  }
+
+  // Downward motion trail for a piece (used when trailLen > 0)
+  function drawPieceTrail(ctx, ax, ay, type, hexSize, length, rot) {
+    const cells = rotatedCells(type, rot || 0);
+    if (!cells || !length) return;
+    const color = P(PIECE_SLOT[type]);
+    const topByCol = new Map();
+    for (const [q, r] of cells) {
+      const off = axialToOffset(q, r);
+      const [cx, cy] = pieceHexCenter(ax, ay, off.col, off.row, hexSize);
+      const prev = topByCol.get(off.col);
+      if (!prev || cy < prev.cy) topByCol.set(off.col, { cx, cy });
+    }
+    const hexH = SQRT3 * hexSize;
+    const flatWidth = hexSize;
+    const intensity = 0.32;
+    const blurPx = hexSize * 0.18;
+    for (const { cx, cy } of topByCol.values()) {
+      const headY = cy - hexH / 2;
+      const tailY = headY - length;
+      ctx.save();
+      ctx.filter = `blur(${blurPx}px)`;
+      const grad = ctx.createLinearGradient(0, tailY, 0, headY);
+      grad.addColorStop(0,    rgba(color, 0));
+      grad.addColorStop(0.75, rgba(color, intensity * 0.25));
+      grad.addColorStop(1,    rgba(color, intensity));
+      ctx.fillStyle = grad;
+      ctx.fillRect(cx - flatWidth / 2, tailY, flatWidth, length);
+      ctx.restore();
+    }
+  }
+
+  // Hit-test: return index of piece under (x, y), or -1.
+  function pieceAt(pieces, x, y) {
+    for (let i = pieces.length - 1; i >= 0; i--) {
+      const d = pieces[i];
+      const cells = rotatedCells(d.type, d.rot || 0);
+      const sz = effectiveSize(d);
+      for (const [q, r] of cells) {
+        const off = axialToOffset(q, r);
+        const [hx, hy] = pieceHexCenter(d.x, d.y, off.col, off.row, sz);
+        const dx = x - hx, dy = y - hy;
+        if (dx*dx + dy*dy < sz * sz) return i;
+      }
+    }
+    return -1;
+  }
+
+  // Global override accessors — when enabled, every piece's size or trail
+  // reads through these instead of its own field. Resize/trail drags on the
+  // selected piece's handles also write through here so the override stays in
+  // sync. STATE may not exist at boot, so guard.
+  function effectiveSize(piece) {
+    return (typeof STATE !== 'undefined' && STATE.overrideSize) ? STATE.globalSize : piece.size;
+  }
+  function effectiveTrail(piece) {
+    return (typeof STATE !== 'undefined' && STATE.overrideTrail) ? STATE.globalTrail : (piece.trailLen || 0);
+  }
+
+  // ============================================================
+  // Pieces-stage on-canvas handles — visible when a piece is selected.
+  //   • rotate (top-right): click to rotate 60° CW
+  //   • resize (bottom-right): drag outward/inward to scale
+  //   • trail  (top-center):   drag down/up to set trail length
+  // ============================================================
+  const HANDLE_R = 20;
+  function pieceBounds(piece) {
+    const cells = rotatedCells(piece.type, piece.rot || 0);
+    const sz = effectiveSize(piece);
+    const xs = [], ys = [];
+    for (const [q, r] of cells) {
+      const off = axialToOffset(q, r);
+      const [hx, hy] = pieceHexCenter(piece.x, piece.y, off.col, off.row, sz);
+      xs.push(hx); ys.push(hy);
+    }
+    return {
+      x0: Math.min(...xs) - sz,
+      x1: Math.max(...xs) + sz,
+      y0: Math.min(...ys) - sz,
+      y1: Math.max(...ys) + sz,
+    };
+  }
+  function pieceHandles(piece) {
+    const b = pieceBounds(piece);
+    const pad = HANDLE_R + 6;
+    return {
+      rotate: { x: b.x1 + pad, y: b.y0 - pad, icon: '\u21bb' },  // ↻
+      resize: { x: b.x1 + pad, y: b.y1 + pad, icon: '\u2921' },  // ⤡
+      trail:  { x: (b.x0 + b.x1) / 2, y: b.y0 - pad, icon: '\u2195' }, // ↕
+    };
+  }
+  function drawPieceHandles(ctx, piece) {
+    const h = pieceHandles(piece);
+    for (const key of ['rotate', 'resize', 'trail']) {
+      const pt = h[key];
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, HANDLE_R, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 170, 0, 0.92)';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.stroke();
+      ctx.fillStyle = '#1E1A2B';
+      ctx.font = 'bold 22px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(pt.icon, pt.x, pt.y + 1);
+      ctx.restore();
+    }
+  }
+  function handleAt(piece, x, y) {
+    const h = pieceHandles(piece);
+    for (const key of ['rotate', 'resize', 'trail']) {
+      const dx = x - h[key].x, dy = y - h[key].y;
+      if (dx*dx + dy*dy < HANDLE_R * HANDLE_R) return key;
+    }
+    return null;
+  }
+
+  // ============================================================
+  // Background styles (shared across templates)
+  // ============================================================
+  function paintBackground(ctx, W, H, style) {
+    if (style === 'solid') {
+      ctx.fillStyle = '#1E1A2B';
+      ctx.fillRect(0, 0, W, H);
+      return;
+    }
+    if (style === 'radial') {
+      const g = ctx.createRadialGradient(W/2, H*0.40, 0, W/2, H*0.5, W*0.85);
+      g.addColorStop(0, '#2E2748');
+      g.addColorStop(1, '#120F1C');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+      return;
+    }
+    if (style === 'warmBloom') {
+      ctx.fillStyle = '#1A1625';
+      ctx.fillRect(0, 0, W, H);
+      const b = ctx.createRadialGradient(W/2, H*0.45, 0, W/2, H*0.5, W*0.6);
+      b.addColorStop(0, 'rgba(255, 224, 102, 0.14)');
+      b.addColorStop(0.5, 'rgba(241, 120, 216, 0.07)');
+      b.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = b;
+      ctx.fillRect(0, 0, W, H);
+      return;
+    }
+    if (style === 'coolVignette') {
+      ctx.fillStyle = '#181421';
+      ctx.fillRect(0, 0, W, H);
+      const v = ctx.createRadialGradient(W/2, H/2, W*0.1, W/2, H/2, W*0.8);
+      v.addColorStop(0, 'rgba(78,205,196,0.09)');
+      v.addColorStop(0.6, 'rgba(0,0,0,0)');
+      v.addColorStop(1, 'rgba(0,0,0,0.5)');
+      ctx.fillStyle = v;
+      ctx.fillRect(0, 0, W, H);
+      return;
+    }
+    if (style === 'paper') {
+      // Warm cream — inverts the usual dark-cover default so the cover pops
+      // in the store grid. Subtle radial darker edge to frame the art.
+      ctx.fillStyle = '#FAF3E4';
+      ctx.fillRect(0, 0, W, H);
+      const edge = ctx.createRadialGradient(W/2, H/2, W*0.35, W/2, H/2, W*0.8);
+      edge.addColorStop(0, 'rgba(0,0,0,0)');
+      edge.addColorStop(1, 'rgba(60, 40, 20, 0.12)');
+      ctx.fillStyle = edge;
+      ctx.fillRect(0, 0, W, H);
+      return;
+    }
+    if (style === 'brightTeal') {
+      const g = ctx.createRadialGradient(W/2, H*0.4, 0, W/2, H/2, W*0.8);
+      g.addColorStop(0, '#5ED9D0');
+      g.addColorStop(1, '#1F8B85');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+      return;
+    }
+    if (style === 'brightMagenta') {
+      const g = ctx.createRadialGradient(W/2, H*0.4, 0, W/2, H/2, W*0.8);
+      g.addColorStop(0, '#FF8AE0');
+      g.addColorStop(1, '#9A2D7A');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+      return;
+    }
+    if (style === 'arcadeGrid') {
+      // Dark navy with a faint receding-grid pattern — arcade / vaporwave cue
+      // that lives under neon drawings without dominating them.
+      ctx.fillStyle = '#080322';
+      ctx.fillRect(0, 0, W, H);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 106, 213, 0.12)';
+      ctx.lineWidth = 1.2;
+      // Horizontal lines getting denser toward the bottom
+      const horizon = H * 0.55;
+      for (let i = 0; i < 18; i++) {
+        const t = i / 17;
+        const y = horizon + (H - horizon) * t * t;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+        ctx.stroke();
+      }
+      // Vanishing vertical lines from horizon
+      for (let i = -8; i <= 8; i++) {
+        ctx.beginPath();
+        ctx.moveTo(W/2 + i * 60, horizon);
+        ctx.lineTo(W/2 + i * 400, H);
+        ctx.stroke();
+      }
+      ctx.restore();
+      // Magenta-to-cyan radial glow on top
+      const g = ctx.createRadialGradient(W/2, horizon, 0, W/2, horizon, W*0.5);
+      g.addColorStop(0, 'rgba(255, 106, 213, 0.22)');
+      g.addColorStop(1, 'rgba(0, 180, 255, 0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+      return;
+    }
+  }
+
+  function titleGradient(ctx, W, fromColor, midColor, toColor) {
+    const g = ctx.createLinearGradient(60, 0, W - 60, 0);
+    g.addColorStop(0,   fromColor || '#FF6B6B');
+    g.addColorStop(0.5, midColor  || '#FFE066');
+    g.addColorStop(1,   toColor   || '#4ECDC4');
+    return g;
+  }
+
+  // ============================================================
+  // Shared wordmark drawers
+  // ============================================================
+  // Shrink font-size until the text fits within maxWidth — prevents titles
+  // from bleeding off-canvas when the user cranks size or types a long name.
+  function fitFontSize(ctx, text, targetSize, maxWidth, weight) {
+    let size = targetSize;
+    const w = weight || '900';
+    ctx.font = `${w} ${size}px Orbitron, sans-serif`;
+    let safety = 80;
+    while (ctx.measureText(text).width > maxWidth && size > 10 && safety-- > 0) {
+      size = Math.max(10, size * 0.94);
+      ctx.font = `${w} ${Math.round(size)}px Orbitron, sans-serif`;
+    }
+    return Math.round(size);
+  }
+
+  // Subtitle drawer — routes on params.subtitleStyle. Y is shifted by
+  // params.subtitleYOffset so the user can fine-tune placement independently
+  // of the per-template default.
+  function drawSubtitle(ctx, W, text, opts) {
+    if (!text) return opts.y;
+    const { size, style, subSpace, params } = opts;
+    const y = (opts.y || 0) + ((params && params.subtitleYOffset) || 0);
+    const s = style || 'letterSpaced';
+    // Optional override — when set, replaces the fill/stroke color of the
+    // text-based styles. For 'pill' it recolors the pill background; for
+    // 'bold' it replaces the title gradient with a solid color.
+    const sc = (params && params.subtitleColor) || null;
+
+    // Letter-spaced helper that auto-widens spacing so glyphs never overlap
+    // at large sizes — Orbitron caps need ~0.7em of width, so the requested
+    // spacing floors to maxLetterW * 1.15.
+    const drawLetterSpaced = (font, fillStyle, shadowAlpha) => {
+      ctx.font = font;
+      ctx.fillStyle = fillStyle;
+      ctx.shadowColor = `rgba(0,0,0,${shadowAlpha})`;
+      ctx.shadowBlur = 8;
+      const letters = text.split('');
+      let maxLetterW = 0;
+      for (const ch of letters) maxLetterW = Math.max(maxLetterW, ctx.measureText(ch).width);
+      const requested = subSpace ?? (size * 1.3);
+      const spacing = Math.max(requested, maxLetterW * 1.15);
+      const baseX = W/2 - spacing * (letters.length - 1) / 2;
+      for (let i = 0; i < letters.length; i++) ctx.fillText(letters[i], baseX + i * spacing, y);
+    };
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+
+    if (s === 'letterSpaced') {
+      drawLetterSpaced(`700 ${size}px Orbitron, sans-serif`, sc || 'rgba(247,241,232,0.80)', 0.5);
+    } else if (s === 'compact') {
+      ctx.font = `700 ${size}px Orbitron, sans-serif`;
+      ctx.fillStyle = sc || 'rgba(247,241,232,0.88)';
+      ctx.shadowColor = 'rgba(0,0,0,0.5)';
+      ctx.shadowBlur = 8;
+      ctx.fillText(text, W/2, y);
+    } else if (s === 'bold') {
+      const big = Math.round(size * 1.35);
+      ctx.font = `900 ${big}px Orbitron, sans-serif`;
+      ctx.fillStyle = sc || titleGradient(ctx, W);
+      ctx.shadowColor = 'rgba(0,0,0,0.55)';
+      ctx.shadowBlur = 18;
+      ctx.shadowOffsetY = 6;
+      ctx.fillText(text, W/2, y);
+    } else if (s === 'italic') {
+      ctx.font = `italic 700 ${size}px Orbitron, sans-serif`;
+      ctx.fillStyle = sc || 'rgba(247,241,232,0.88)';
+      ctx.shadowColor = 'rgba(0,0,0,0.5)';
+      ctx.shadowBlur = 8;
+      ctx.fillText(text, W/2, y);
+    } else if (s === 'outline') {
+      ctx.font = `900 ${size}px Orbitron, sans-serif`;
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = sc || 'rgba(247,241,232,0.92)';
+      ctx.strokeText(text, W/2, y);
+    } else if (s === 'pill') {
+      // Text on a rounded accent-colored pill — badge feel.
+      ctx.font = `900 ${Math.round(size * 0.85)}px Orbitron, sans-serif`;
+      const w = ctx.measureText(text).width;
+      const padX = size * 0.55, padY = size * 0.22;
+      const pillW = w + padX * 2, pillH = size * 0.85 + padY * 2;
+      const px = W/2 - pillW/2, py = y - size * 0.78 - padY;
+      const r = pillH / 2;
+      const accent = sc || getPalette()[2] || '#FFD400';
+      ctx.save();
+      ctx.fillStyle = accent;
+      ctx.shadowColor = 'rgba(0,0,0,0.45)';
+      ctx.shadowBlur = 14;
+      ctx.shadowOffsetY = 4;
+      ctx.beginPath();
+      ctx.moveTo(px + r, py);
+      ctx.lineTo(px + pillW - r, py);
+      ctx.arc(px + pillW - r, py + r, r, -Math.PI/2, Math.PI/2);
+      ctx.lineTo(px + r, py + pillH);
+      ctx.arc(px + r, py + r, r, Math.PI/2, -Math.PI/2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = '#1E1A2B';
+      ctx.fillText(text, W/2, y);
+    }
+    ctx.restore();
+    return y;
+  }
+
+  // Measure total block height (in px, baseline→baseline extent plus top/bot
+  // padding) for vertical-centering math. Rough but good enough given the
+  // user has a titleY slider for fine-tuning.
+  function measureTitleBlock(title, subtitle, size, subSize, params) {
+    const lines = (params.titleLayout === 'split3')
+      ? (title.trim().split(/\s+/).length + (subtitle ? 1 : 0))
+      : 1;
+    const lineH = size * 0.98;
+    let h = size + (lines - 1) * lineH;
+    if (params.titleLayout !== 'split3' && subtitle) h += subSize + 18;
+    return h;
+  }
+
+  function drawInlineTitle(ctx, W, params, opts) {
+    // Single-line title with subtitle below it. When titleLayout === 'split3',
+    // the title is split by whitespace and each word (+ subtitle) is rendered
+    // as a full-title-styled line, stacked vertically around `y`.
+    const { title, subtitle } = params;
+    const size = opts.size ?? 120;
+    const subSize = opts.subSize ?? 44;
+    const maxW = W - 80;
+    const y = opts.y ?? 140;
+
+    if (params.titleLayout === 'split3') {
+      // Title words rendered with title gradient; subtitle (3rd line) uses
+      // the configured subtitleStyle so it can differ from the title.
+      const titleWords = title.trim().split(/\s+/);
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = titleGradient(ctx, W);
+      ctx.shadowColor = 'rgba(0,0,0,0.55)';
+      ctx.shadowBlur = 18;
+      ctx.shadowOffsetY = 6;
+      const lineH = size * 0.98;
+      for (let i = 0; i < titleWords.length; i++) {
+        const fitted = fitFontSize(ctx, titleWords[i], size, maxW);
+        ctx.font = `900 ${fitted}px Orbitron, sans-serif`;
+        ctx.fillText(titleWords[i], W/2, y + i * lineH);
+      }
+      ctx.restore();
+      if (subtitle) {
+        const sSize = params.subtitleSize ?? size;
+        drawSubtitle(ctx, W, subtitle, {
+          y: y + titleWords.length * lineH,
+          size: sSize,
+          style: params.subtitleStyle,
+          params,
+        });
+      }
+      return;
+    }
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = titleGradient(ctx, W);
+    ctx.shadowColor = 'rgba(0,0,0,0.55)';
+    ctx.shadowBlur = 18;
+    ctx.shadowOffsetY = 6;
+    const fitted = fitFontSize(ctx, title, size, maxW);
+    ctx.font = `900 ${fitted}px Orbitron, sans-serif`;
+    ctx.fillText(title, W/2, y);
+    ctx.restore();
+    if (subtitle) {
+      const sSize = params.subtitleSize ?? subSize;
+      drawSubtitle(ctx, W, subtitle, {
+        y: y + sSize + 18,
+        size: sSize,
+        style: params.subtitleStyle,
+        params,
+      });
+    }
+  }
+
+  // ============================================================
+
+  // ============================================================
+  // Stages — named starting states. The `cover` stage drives the
+  // 1024×1024 cover-art.png; `social` drives the 1280×640
+  // social-preview.png. Headless mode picks one via ?headless=cover|social;
+  // interactive mode boots into `cover` and lets the user switch via the
+  // Stage selector. Piece coordinates are in canvas pixel space, so
+  // canvasW/canvasH are part of the stage definition.
+  // ============================================================
+  const STAGES = {
+    cover: {
+      canvasW: 1024, canvasH: 1024,
+      bgStyle: 'radial', palette: 'classic', cellStyle: 'pillow',
+      title: 'HEX STACKER', subtitle: '',
+      titleLayout: 'split3',
+      subtitleStyle: 'pill', subtitleSize: 60, subtitleYOffset: -48,
+      showTitle: true, titleSize: 168, titleY: 472,
+      overrideSize: true, globalSize: 42,
+      overrideTrail: true, globalTrail: 364,
+      pieces: [
+        { type: 'Z', x: 336, y: 147, size: 52, trailLen: 360, rot: 3 },
+        { type: 'q', x: 591, y: 861, size: 52, trailLen: 380, rot: 0 },
+        { type: 'S', x: 659, y: 183, size: 54, trailLen: 0,   rot: 3 },
+        { type: 'L', x: 776, y: 750, size: 54, trailLen: 0,   rot: 1 },
+        { type: 'p', x: 127, y: 751, size: 52, trailLen: 0,   rot: 0 },
+        { type: 'J', x: 152, y: 323, size: 50, trailLen: 0,   rot: 5 },
+        { type: 'I', x: 368, y: 798, size: 50, trailLen: 0,   rot: 2 },
+        { type: 'O', x: 846, y: 391, size: 50, trailLen: 0,   rot: 0 },
+      ],
+      selectedPiece: -1,
+    },
+    social: {
+      canvasW: 1280, canvasH: 640,
+      bgStyle: 'radial', palette: 'classic', cellStyle: 'pillow',
+      title: 'HEX STACKER', subtitle: 'PARTY',
+      titleLayout: 'default',
+      subtitleStyle: 'letterSpaced', subtitleSize: 50, subtitleYOffset: 12,
+      subtitleColor: '#fff3c2',
+      showTitle: true, titleSize: 130, titleY: 320,
+      overrideSize: true, globalSize: 36,
+      overrideTrail: true, globalTrail: 220,
+      pieces: [
+        { type: 'O', x: 211,  y: 112, size: 32, trailLen: 0, rot: 0 },
+        { type: 'p', x: 600,  y: 86,  size: 34, trailLen: 0, rot: 0 },
+        { type: 'S', x: 977,  y: 71,  size: 36, trailLen: 0, rot: 0 },
+        { type: 'q', x: 328,  y: 468, size: 34, trailLen: 0, rot: 1 },
+        { type: 'Z', x: 1067, y: 403, size: 32, trailLen: 0, rot: 0 },
+        { type: 'L', x: 100,  y: 455, size: 36, trailLen: 0, rot: 1 },
+        { type: 'I', x: 577,  y: 484, size: 42, trailLen: 0, rot: 0 },
+        { type: 'J', x: 897,  y: 527, size: 36, trailLen: 0, rot: 0 },
+      ],
+      selectedPiece: -1,
+    },
+  };
+
+  // STATE is a mutable, deep clone of the active stage. Edits flow into
+  // STATE; loadStage replaces it wholesale.
+  const STATE = JSON.parse(JSON.stringify(STAGES.cover));
+
+  const canvas = document.getElementById('preview');
+  const ctx = canvas.getContext('2d');
+
+  // Pieces-stage render — sole render path now that other templates are gone.
+  function render() {
+    const W = canvas.width, H = canvas.height;
+    paintBackground(ctx, W, H, STATE.bgStyle);
+
+    if (STATE.showTitle !== false) {
+      drawInlineTitle(ctx, W, STATE, { size: STATE.titleSize || 110, y: (STATE.titleY || 140), H });
+    }
+
+    // Trails first so pieces render on top.
+    for (const d of STATE.pieces || []) {
+      const tl = effectiveTrail(d);
+      if (tl > 0) drawPieceTrail(ctx, d.x, d.y, d.type, effectiveSize(d), tl, d.rot || 0);
+    }
+    for (let i = 0; i < (STATE.pieces || []).length; i++) {
+      const d = STATE.pieces[i];
+      drawPiece(ctx, d.x, d.y, d.type, effectiveSize(d), { outline: i === STATE.selectedPiece, rot: d.rot || 0 });
+    }
+    if (STATE.selectedPiece >= 0 && STATE.pieces && STATE.pieces[STATE.selectedPiece]) {
+      drawPieceHandles(ctx, STATE.pieces[STATE.selectedPiece]);
+    }
+  }
+
+  function loadStage(name) {
+    const stage = STAGES[name];
+    if (!stage) throw new Error(`unknown stage: ${name}`);
+    for (const k of Object.keys(STATE)) delete STATE[k];
+    Object.assign(STATE, JSON.parse(JSON.stringify(stage)));
+  }
+
+  // ============================================================
+  // UI generation
+  // ============================================================
+  const stageParamsEl = document.getElementById('stage-params');
+
+  // Sole control panel — pieces-stage UI (title fields + per-piece rows).
+  function buildStageParams() {
+    stageParamsEl.innerHTML = '<h2>Stage parameters</h2>';
+    buildPiecesStageUI(stageParamsEl);
+  }
+
+  // ============================================================
+  // Pieces-stage custom UI — title controls + add-piece button + per-piece
+  // rows with type, position, size, trail, delete.
+  // ============================================================
+  const PIECE_TYPES = ['I','O','S','Z','q','p','L','J'];
+
+  function buildPiecesStageUI(container) {
+    // Title toggle + position
+    const titleField = document.createElement('div');
+    titleField.className = 'field checkbox';
+    titleField.innerHTML = `
+      <label>
+        <input type="checkbox" ${STATE.showTitle !== false ? 'checked' : ''}>
+        <span>Show title</span>
+      </label>`;
+    titleField.querySelector('input').addEventListener('change', (e) => {
+      STATE.showTitle = e.target.checked; render();
+    });
+    container.appendChild(titleField);
+
+    container.appendChild(rangeField('titleSize', 'Title size', 60, 180, 2, STATE.titleSize ?? 110));
+    container.appendChild(rangeField('titleY', 'Title y', 40, STATE.canvasH || 1024, 4, STATE.titleY ?? 140));
+
+    // Global size/trail override — when checked, applies to every piece
+    // without overwriting its individual values. Uncheck to restore.
+    container.appendChild(overrideRow('overrideSize', 'globalSize', 'Override size', 20, 200, 2));
+    container.appendChild(overrideRow('overrideTrail', 'globalTrail', 'Override trail', 0, 600, 4));
+
+    // Add piece
+    const addBtn = document.createElement('button');
+    addBtn.className = 'action-btn';
+    addBtn.style.margin = '12px 0 8px';
+    addBtn.textContent = '+ Add piece';
+    addBtn.addEventListener('click', () => {
+      const nextType = PIECE_TYPES[(STATE.pieces.length) % PIECE_TYPES.length];
+      STATE.pieces.push({ type: nextType, x: 512, y: 512, size: 50, trailLen: 0, rot: 0 });
+      STATE.selectedPiece = STATE.pieces.length - 1;
+      buildStageParams();
+      render();
+    });
+    container.appendChild(addBtn);
+
+    if (STATE.pieces.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'help-text';
+      empty.style.marginTop = '8px';
+      empty.textContent = 'No pieces yet. Click "+ Add piece" above.';
+      container.appendChild(empty);
+      return;
+    }
+
+    // Piece rows
+    for (let i = 0; i < STATE.pieces.length; i++) {
+      const piece = STATE.pieces[i];
+      const row = document.createElement('div');
+      row.style.cssText = `
+        border: 1px solid ${i === STATE.selectedPiece ? 'var(--b-accent-warm)' : 'var(--b-border)'};
+        background: ${i === STATE.selectedPiece ? 'rgba(255,170,0,0.08)' : 'var(--b-panel-2)'};
+        border-radius: 4px; padding: 8px; margin-top: 6px;`;
+
+      const col = P(PIECE_SLOT[piece.type]);
+      row.innerHTML = `
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+          <div style="width:18px; height:18px; border-radius:50%; background:${col}; border:1px solid rgba(255,255,255,0.3);"></div>
+          <strong style="font-size:11px; letter-spacing:0.1em;">#${i + 1} &middot; ${piece.type}</strong>
+          <span style="flex:1"></span>
+          <button data-act="del" style="background:transparent; border:1px solid #662222; color:#ff8888; padding:2px 8px; border-radius:3px; font-size:10px; cursor:pointer;">×</button>
+        </div>
+        <div style="display:grid; grid-template-columns: repeat(6, 1fr); gap:4px;">
+          <label style="font-size:9px; color:var(--b-muted)">type</label>
+          <label style="font-size:9px; color:var(--b-muted)">x</label>
+          <label style="font-size:9px; color:var(--b-muted)">y</label>
+          <label style="font-size:9px; color:var(--b-muted)">size</label>
+          <label style="font-size:9px; color:var(--b-muted)">trail</label>
+          <label style="font-size:9px; color:var(--b-muted)">rot</label>
+          <select data-act="type" style="background:var(--b-bg); color:var(--b-fg); border:1px solid var(--b-border); border-radius:2px; font-size:10px; padding:2px;">
+            ${PIECE_TYPES.map(t => `<option value="${t}" ${t===piece.type?'selected':''}>${t}</option>`).join('')}
+          </select>
+          <input data-act="x" type="number" value="${piece.x}" style="width:100%; background:var(--b-bg); color:var(--b-fg); border:1px solid var(--b-border); font-size:10px; padding:2px 3px; border-radius:2px;">
+          <input data-act="y" type="number" value="${piece.y}" style="width:100%; background:var(--b-bg); color:var(--b-fg); border:1px solid var(--b-border); font-size:10px; padding:2px 3px; border-radius:2px;">
+          <input data-act="size" type="number" value="${piece.size}" style="width:100%; background:var(--b-bg); color:var(--b-fg); border:1px solid var(--b-border); font-size:10px; padding:2px 3px; border-radius:2px;">
+          <input data-act="trailLen" type="number" value="${piece.trailLen || 0}" style="width:100%; background:var(--b-bg); color:var(--b-fg); border:1px solid var(--b-border); font-size:10px; padding:2px 3px; border-radius:2px;">
+          <input data-act="rot" type="number" min="0" max="5" value="${piece.rot || 0}" style="width:100%; background:var(--b-bg); color:var(--b-fg); border:1px solid var(--b-border); font-size:10px; padding:2px 3px; border-radius:2px;">
+        </div>
+      `;
+      row.addEventListener('click', (e) => {
+        if (e.target.dataset.act) return;
+        STATE.selectedPiece = i;
+        buildStageParams();
+        render();
+      });
+      row.querySelector('[data-act="del"]').addEventListener('click', (e) => {
+        e.stopPropagation();
+        STATE.pieces.splice(i, 1);
+        if (STATE.selectedPiece >= STATE.pieces.length) STATE.selectedPiece = STATE.pieces.length - 1;
+        buildStageParams();
+        render();
+      });
+      row.querySelector('[data-act="type"]').addEventListener('change', (e) => {
+        piece.type = e.target.value;
+        buildStageParams();
+        render();
+      });
+      for (const k of ['x','y','size','trailLen','rot']) {
+        row.querySelector(`[data-act="${k}"]`).addEventListener('input', (e) => {
+          let v = parseInt(e.target.value, 10) || 0;
+          if (k === 'rot') v = ((v % 6) + 6) % 6;
+          piece[k] = v;
+          render();
+        });
+      }
+      container.appendChild(row);
+    }
+  }
+
+  // Build a paste-ready STAGES entry from the full STATE. Emits just the
+  // inner block — paste over the body of `cover:` or `social:` in STAGES.
+  function buildStageSnippet() {
+    const fmt = (v) => {
+      if (typeof v === 'string') return `'${v.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+      if (Array.isArray(v)) return JSON.stringify(v);
+      if (v === null || v === undefined) return 'null';
+      return String(v);
+    };
+    const lines = [];
+    for (const [k, v] of Object.entries(STATE)) {
+      if (k === 'pieces' || k === 'selectedPiece') continue;
+      lines.push(`  ${k}: ${fmt(v)}`);
+    }
+    if (Array.isArray(STATE.pieces) && STATE.pieces.length > 0) {
+      const piecesLines = STATE.pieces.map(p =>
+        `    { type: '${p.type}', x: ${p.x}, y: ${p.y}, size: ${p.size}, trailLen: ${p.trailLen || 0}, rot: ${p.rot || 0} }`
+      ).join(',\n');
+      lines.push(`  pieces: [\n${piecesLines}\n  ]`);
+    }
+    lines.push(`  selectedPiece: -1`);
+    return `{\n${lines.join(',\n')}\n}`;
+  }
+
+  // Helper — DOM construction for a range field that reads/writes STATE[key]
+  // and re-renders on change. Used inside the pieces-stage custom UI.
+  function rangeField(key, label, min, max, step, current) {
+    const field = document.createElement('div');
+    field.className = 'field';
+    field.innerHTML = `
+      <label>${label}</label>
+      <div class="range-wrap">
+        <input type="range" min="${min}" max="${max}" step="${step}" value="${current}">
+        <span class="range-value">${current}</span>
+      </div>`;
+    const input = field.querySelector('input');
+    const out = field.querySelector('.range-value');
+    input.addEventListener('input', (e) => {
+      const v = step < 1 ? parseFloat(e.target.value) : parseInt(e.target.value, 10);
+      STATE[key] = v;
+      out.textContent = v;
+      render();
+    });
+    if (key === 'titleY') appendCenterButton(field);
+    return field;
+  }
+
+  // Combo row — checkbox toggles a global override + slider drives the value.
+  // The slider stays interactive even when unchecked, so the user can dial in
+  // a target before toggling it on.
+  function overrideRow(toggleKey, valueKey, label, min, max, step) {
+    const row = document.createElement('div');
+    row.className = 'field';
+    row.style.gridTemplateColumns = '1fr';
+    row.innerHTML = `
+      <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+        <input type="checkbox" data-act="toggle" ${STATE[toggleKey] ? 'checked' : ''}>
+        <span>${label}</span>
+      </label>
+      <div class="range-wrap" style="margin-top:4px;">
+        <input type="range" data-act="slider" min="${min}" max="${max}" step="${step}" value="${STATE[valueKey]}">
+        <span class="range-value" data-act="value">${STATE[valueKey]}</span>
+      </div>`;
+    row.querySelector('[data-act="toggle"]').addEventListener('change', (e) => {
+      STATE[toggleKey] = e.target.checked;
+      render();
+    });
+    const slider = row.querySelector('[data-act="slider"]');
+    const out    = row.querySelector('[data-act="value"]');
+    slider.addEventListener('input', (e) => {
+      const v = parseInt(e.target.value, 10) || 0;
+      STATE[valueKey] = v;
+      out.textContent = v;
+      if (STATE[toggleKey]) render();
+    });
+    return row;
+  }
+
+  // Inline ⌖ button next to a Title-Y range — one-shot vertical center.
+  function appendCenterButton(field) {
+    const wrap = field.querySelector('.range-wrap');
+    if (!wrap) return;
+    wrap.style.gridTemplateColumns = '1fr 40px auto';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.title = 'Center title vertically';
+    btn.textContent = '\u2316';  // ⌖
+    btn.style.cssText = 'background:var(--b-panel-2); color:var(--b-accent-warm); border:1px solid var(--b-border); border-radius:3px; padding:0 8px; height:22px; font-size:13px; cursor:pointer; line-height:1;';
+    btn.addEventListener('click', () => {
+      centerTitleVertically();
+      // Sync the slider's displayed value/handle to the new STATE.titleY.
+      const range = wrap.querySelector('input[type="range"]');
+      const out   = wrap.querySelector('.range-value');
+      if (range) range.value = STATE.titleY;
+      if (out)   out.textContent = STATE.titleY;
+    });
+    wrap.appendChild(btn);
+  }
+
+  // ============================================================
+  // Canvas drag handling.
+  // Drag modes: 'move' (body), 'resize' (corner handle), 'trail' (top handle).
+  // Rotate is click-only (each click rotates 60° CW).
+  // ============================================================
+  let drag = null;
+  function canvasToLocal(e) {
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const y = (e.clientY - rect.top)  * (canvas.height / rect.height);
+    return { x, y };
+  }
+  canvas.addEventListener('mousedown', (e) => {
+    const { x, y } = canvasToLocal(e);
+    const sel = STATE.selectedPiece;
+
+    // Handle hit-test takes priority over piece body — so the handles work
+    // even when they overlap other pieces below them.
+    if (sel >= 0 && sel < STATE.pieces.length) {
+      const piece = STATE.pieces[sel];
+      const h = handleAt(piece, x, y);
+      if (h === 'rotate') {
+        piece.rot = (((piece.rot || 0) + 1) % 6);
+        buildStageParams();
+        render();
+        return;
+      }
+      if (h === 'resize') {
+        const d0 = Math.max(1, Math.hypot(x - piece.x, y - piece.y));
+        // When override is active, drag adjusts the global override instead
+        // of the individual piece — keeps the override "live" while resizing.
+        drag = {
+          mode: 'resize', piece, d0,
+          size0: STATE.overrideSize ? STATE.globalSize : piece.size,
+          target: STATE.overrideSize ? 'global' : 'piece',
+        };
+        canvas.style.cursor = 'nwse-resize';
+        return;
+      }
+      if (h === 'trail') {
+        drag = {
+          mode: 'trail', piece, y0: y,
+          trail0: STATE.overrideTrail ? STATE.globalTrail : (piece.trailLen || 0),
+          target: STATE.overrideTrail ? 'global' : 'piece',
+        };
+        canvas.style.cursor = 'ns-resize';
+        return;
+      }
+    }
+
+    const idx = pieceAt(STATE.pieces, x, y);
+    if (idx >= 0) {
+      STATE.selectedPiece = idx;
+      const d = STATE.pieces[idx];
+      drag = { mode: 'move', piece: d, dx: d.x - x, dy: d.y - y };
+      canvas.style.cursor = 'grabbing';
+    } else {
+      STATE.selectedPiece = -1;
+      drag = null;
+    }
+    buildStageParams();
+    render();
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!drag) return;
+    const { x, y } = canvasToLocal(e);
+    const p = drag.piece;
+    if (drag.mode === 'move') {
+      p.x = Math.round(x + drag.dx);
+      p.y = Math.round(y + drag.dy);
+    } else if (drag.mode === 'resize') {
+      const d1 = Math.hypot(x - p.x, y - p.y);
+      const scaled = Math.max(20, Math.min(200, Math.round(drag.size0 * (d1 / drag.d0))));
+      if (drag.target === 'global') STATE.globalSize = scaled;
+      else p.size = scaled;
+    } else if (drag.mode === 'trail') {
+      const dy = y - drag.y0;
+      const tl = Math.max(0, Math.min(600, Math.round(drag.trail0 + dy)));
+      if (drag.target === 'global') STATE.globalTrail = tl;
+      else p.trailLen = tl;
+    }
+    render();
+  });
+  window.addEventListener('mouseup', () => {
+    if (drag) {
+      drag = null;
+      canvas.style.cursor = '';
+      // Skip the rebuild if a sidebar input has focus — rebuilding nukes the
+      // DOM and drops keyboard focus mid-edit. Stale shown values resync on
+      // next click/edit. Render itself is independent of the sidebar.
+      if (!stageParamsEl.contains(document.activeElement)) buildStageParams();
+    }
+  });
+  canvas.addEventListener('mousemove', (e) => {
+    if (drag) return;
+    const { x, y } = canvasToLocal(e);
+    const sel = STATE.selectedPiece;
+    if (sel >= 0 && sel < STATE.pieces.length) {
+      const h = handleAt(STATE.pieces[sel], x, y);
+      if (h === 'rotate') { canvas.style.cursor = 'pointer'; return; }
+      if (h === 'resize') { canvas.style.cursor = 'nwse-resize'; return; }
+      if (h === 'trail')  { canvas.style.cursor = 'ns-resize'; return; }
+    }
+    canvas.style.cursor = pieceAt(STATE.pieces, x, y) >= 0 ? 'grab' : 'default';
+  });
+
+  // Stage selector — populated from STAGES so adding a stage only touches
+  // one place. Switching always discards the current STATE (a stage owns
+  // its title, palette, pieces, etc.). If the user wants to preserve edits,
+  // they should Copy snippet first.
+  const stageSel = document.getElementById('p-stage');
+  for (const [key, stage] of Object.entries(STAGES)) {
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = `${key[0].toUpperCase()}${key.slice(1)} (${stage.canvasW}×${stage.canvasH})`;
+    stageSel.appendChild(opt);
+  }
+  stageSel.addEventListener('change', (e) => {
+    loadStage(e.target.value);
+    resizeCanvas();
+    syncSharedControls();
+    buildStageParams();
+    render();
+  });
+
+  function renderAll() {
+    buildStageParams();
+    render();
+  }
+
+  // ============================================================
+  // Shared-field wiring (title / subtitle / bg / palette / cell style)
+  // ============================================================
+  document.getElementById('p-title').addEventListener('input', (e) => { STATE.title = e.target.value; render(); });
+  document.getElementById('p-subtitle').addEventListener('input', (e) => { STATE.subtitle = e.target.value; render(); });
+  document.getElementById('p-title-layout').addEventListener('change', (e) => { STATE.titleLayout = e.target.value; render(); });
+  document.getElementById('p-subtitle-style').addEventListener('change', (e) => { STATE.subtitleStyle = e.target.value; render(); });
+  document.getElementById('p-subtitle-size').addEventListener('input', (e) => {
+    STATE.subtitleSize = parseInt(e.target.value, 10) || 60;
+    document.getElementById('p-subtitle-size-v').textContent = STATE.subtitleSize;
+    render();
+  });
+  document.getElementById('p-subtitle-y').addEventListener('input', (e) => {
+    STATE.subtitleYOffset = parseInt(e.target.value, 10) || 0;
+    document.getElementById('p-subtitle-y-v').textContent = STATE.subtitleYOffset;
+    render();
+  });
+  document.getElementById('p-subtitle-color').addEventListener('input', (e) => {
+    STATE.subtitleColor = e.target.value;
+    render();
+  });
+  document.getElementById('p-subtitle-color-auto').addEventListener('click', () => {
+    STATE.subtitleColor = null;
+    for (const sw of document.getElementById('p-subtitle-color-swatches').children) {
+      sw.classList.remove('selected');
+    }
+    render();
+  });
+  document.getElementById('p-bg-style').addEventListener('change', (e) => { STATE.bgStyle = e.target.value; render(); });
+  document.getElementById('p-palette').addEventListener('change', (e) => {
+    STATE.palette = e.target.value;
+    updateSwatchPreview();
+    render();
+  });
+  document.getElementById('p-cell-style').addEventListener('change', (e) => { STATE.cellStyle = e.target.value; render(); });
+
+  // ============================================================
+  // Preview controls — purely cosmetic (CSS-driven). The 1024x1024 canvas
+  // pixels never change, so PNG exports are unaffected. These let the user
+  // judge the cover at AirConsole-store sizes / against dark/light surfaces /
+  // with rounded app-icon corners.
+  // ============================================================
+  const PREVIEW_BGS = {
+    default: { color: '#15151f', image:
+      'repeating-linear-gradient(0deg, rgba(255,255,255,0.025) 0 1px, transparent 1px 40px),' +
+      'repeating-linear-gradient(90deg, rgba(255,255,255,0.025) 0 1px, transparent 1px 40px)' },
+    dark:       { color: '#1a1825', image: 'none' },
+    midnight:   { color: '#08060e', image: 'none' },
+    black:      { color: '#000000', image: 'none' },
+    paper:      { color: '#f5f1e8', image: 'none' },
+    gray:       { color: '#5a5566', image: 'none' },
+    airconsole: { color: '#0e1320', image: 'none' },  // approximates AirConsole's dark store bg
+  };
+  const root = document.documentElement;
+
+  // Recompute --preview-w / --preview-h so the displayed frame matches the
+  // canvas aspect at the user's chosen display size. Pixel dims of the
+  // canvas itself are owned by resizeCanvas().
+  function applyPreviewLayout() {
+    const max = parseInt(document.getElementById('p-preview-size').value, 10) || 640;
+    const aspect = (STATE.canvasW || 1024) / (STATE.canvasH || 1024);
+    const w = aspect >= 1 ? max : Math.round(max * aspect);
+    const h = aspect >= 1 ? Math.round(max / aspect) : max;
+    root.style.setProperty('--preview-w', w + 'px');
+    root.style.setProperty('--preview-h', h + 'px');
+  }
+
+  function resizeCanvas() {
+    canvas.width  = STATE.canvasW || 1024;
+    canvas.height = STATE.canvasH || 1024;
+    applyPreviewLayout();
+  }
+
+  document.getElementById('p-preview-size').addEventListener('change', () => {
+    applyPreviewLayout();
+  });
+  document.getElementById('p-preview-radius').addEventListener('input', (e) => {
+    // CSS border-radius accepts % directly — scales with the element's width,
+    // so a 16% radius looks the same on a 96-thumb and a 640-builder preview.
+    root.style.setProperty('--cover-radius', e.target.value + '%');
+    document.getElementById('p-preview-radius-v').textContent = e.target.value + '%';
+  });
+  document.getElementById('p-preview-bg').addEventListener('change', (e) => {
+    const bg = PREVIEW_BGS[e.target.value] || PREVIEW_BGS.default;
+    root.style.setProperty('--main-bg', bg.color);
+    root.style.setProperty('--main-bg-image', bg.image);
+  });
+
+  function syncSharedControls() {
+    // Reflect current STATE in the header form controls (after stage load).
+    document.getElementById('p-title').value = STATE.title ?? '';
+    document.getElementById('p-subtitle').value = STATE.subtitle ?? '';
+    document.getElementById('p-title-layout').value = STATE.titleLayout ?? 'default';
+    document.getElementById('p-subtitle-style').value = STATE.subtitleStyle ?? 'pill';
+    document.getElementById('p-subtitle-size').value = STATE.subtitleSize ?? 60;
+    document.getElementById('p-subtitle-size-v').textContent = STATE.subtitleSize ?? 60;
+    document.getElementById('p-subtitle-y').value = STATE.subtitleYOffset ?? 0;
+    document.getElementById('p-subtitle-y-v').textContent = STATE.subtitleYOffset ?? 0;
+    document.getElementById('p-subtitle-color').value = STATE.subtitleColor || '#f7f1e8';
+    document.getElementById('p-bg-style').value = STATE.bgStyle ?? 'radial';
+    document.getElementById('p-palette').value = STATE.palette ?? 'classic';
+    document.getElementById('p-cell-style').value = STATE.cellStyle ?? 'normal';
+    updateSwatchPreview();
+  }
+
+  // Swatch strip shows the current palette's 8 colors so the user can preview
+  // without rendering a full composition.
+  function updateSwatchPreview() {
+    const wrap = document.getElementById('swatch-preview');
+    wrap.innerHTML = '';
+    const pal = getPalette();
+    for (const col of pal) {
+      const sw = document.createElement('div');
+      sw.style.aspectRatio = '1';
+      sw.style.background = col;
+      sw.style.borderRadius = '3px';
+      sw.style.border = '1px solid rgba(255,255,255,0.1)';
+      wrap.appendChild(sw);
+    }
+    // Subtitle-color quick-pick swatches — same palette, but each is a
+    // clickable button that sets STATE.subtitleColor.
+    const sub = document.getElementById('p-subtitle-color-swatches');
+    sub.innerHTML = '';
+    const active = (STATE.subtitleColor || '').toLowerCase();
+    for (const col of pal) {
+      const sw = document.createElement('button');
+      sw.type = 'button';
+      sw.title = col;
+      if (col.toLowerCase() === active) sw.classList.add('selected');
+      sw.style.aspectRatio = '1';
+      sw.style.background = col;
+      sw.style.borderRadius = '3px';
+      sw.style.border = '1px solid rgba(255,255,255,0.1)';
+      sw.style.cursor = 'pointer';
+      sw.style.padding = '0';
+      sw.addEventListener('click', () => {
+        STATE.subtitleColor = col;
+        document.getElementById('p-subtitle-color').value = col;
+        for (const peer of sub.children) peer.classList.remove('selected');
+        sw.classList.add('selected');
+        render();
+      });
+      sub.appendChild(sw);
+    }
+  }
+
+  // One-shot: compute the Y that vertically centers the current title block
+  // on the canvas, then write it into the active template's Y parameter.
+  // titleY is the *baseline* of line 1 (drawInlineTitle), so the block
+  // spans roughly [y - size] (top) to [y + subtitle extras] (bottom).
+  function centerTitleVertically() {
+    const H = canvas.height;
+    const size = STATE.titleSize ?? 110;
+    const subSize = STATE.subtitleSize ?? 44;
+    const blockH = measureTitleBlock(STATE.title || '', STATE.subtitle || '', size, subSize, STATE);
+    STATE.titleY = Math.round((H - blockH) / 2 + size);
+    buildStageParams();
+    render();
+  }
+
+  // ============================================================
+  // Export
+  // ============================================================
+  function exportPng() {
+    const a = document.createElement('a');
+    a.download = `hex-stacker-${STATE.canvasW}x${STATE.canvasH}.png`;
+    a.href = canvas.toDataURL('image/png');
+    a.click();
+  }
+  document.getElementById('export-btn').addEventListener('click', exportPng);
+  document.getElementById('export-btn-2').addEventListener('click', exportPng);
+
+  document.getElementById('copy-state').addEventListener('click', () => {
+    const snippet = buildStageSnippet();
+    const btn = document.getElementById('copy-state');
+    const orig = btn.textContent;
+    const flash = (label) => { btn.textContent = label; setTimeout(() => { btn.textContent = orig; }, 1200); };
+    console.log('[stage snippet]\n' + snippet);
+    (navigator.clipboard?.writeText(snippet) || Promise.reject())
+      .then(() => flash('Copied!'))
+      .catch(() => flash('See console'));
+  });
+
+  // ============================================================
+  // Headless mode — used by ../generate-cover.js / generate-social.js.
+  // URL: builder.html?headless=cover|social
+  //   • Loads STAGES[mode].
+  //   • Hides every chrome element (header, sidebars, frame outline).
+  //   • Pins the canvas to the stage's native dims with no margin so
+  //     the page screenshot matches the exported PNG.
+  //   • Optional ?w=&h= URL params override the stage's canvas dims.
+  // ============================================================
+  function applyHeadless() {
+    const params = new URLSearchParams(location.search);
+    const mode = params.get('headless');
+    if (!mode) return false;
+    if (!STAGES[mode]) {
+      // Surface to the capture script — generators evaluate this after page
+      // load and abort before screenshotting, so a renamed/typo'd stage
+      // fails loudly instead of silently emitting default-state art.
+      window.__BUILDER_ERROR__ = `headless: unknown stage: ${mode}`;
+      return false;
+    }
+    loadStage(mode);
+
+    const w = parseInt(params.get('w'), 10) || STATE.canvasW;
+    const h = parseInt(params.get('h'), 10) || STATE.canvasH;
+    STATE.canvasW = w; STATE.canvasH = h;
+
+    canvas.width = w;
+    canvas.height = h;
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+
+    // Strip chrome — keep only the canvas at native size.
+    document.querySelector('header')?.remove();
+    document.querySelectorAll('aside').forEach(a => a.remove());
+    const root = document.documentElement;
+    root.style.setProperty('--cover-radius', '0%');
+    root.style.setProperty('--main-bg', '#000');
+    root.style.setProperty('--main-bg-image', 'none');
+    const main = document.querySelector('main');
+    if (main) { main.style.padding = '0'; main.style.width = w + 'px'; main.style.height = h + 'px'; }
+    const frame = document.querySelector('.preview-frame');
+    if (frame) {
+      frame.style.boxShadow = 'none';
+      frame.style.width = w + 'px';
+      frame.style.height = h + 'px';
+    }
+    document.body.style.overflow = 'hidden';
+    return true;
+  }
+
+  // ============================================================
+  // Boot
+  // ============================================================
+  document.fonts.ready.then(() => {
+    if (applyHeadless()) {
+      render();
+    } else {
+      resizeCanvas();
+      syncSharedControls();
+      updateSwatchPreview();
+      renderAll();
+    }
+  });
+  </script>
+</body>
+</html>
