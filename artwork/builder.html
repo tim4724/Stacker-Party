@@ -259,6 +259,10 @@
           </div>
         </div>
         <div class="field">
+          <label></label>
+          <div class="swatch-row" id="p-subtitle-color-swatches"></div>
+        </div>
+        <div class="field">
           <label>Subtitle size</label>
           <div class="range-wrap">
             <input type="range" id="p-subtitle-size" min="20" max="200" step="2" value="60">
@@ -1580,6 +1584,27 @@
       sw.style.borderRadius = '3px';
       sw.style.border = '1px solid rgba(255,255,255,0.1)';
       wrap.appendChild(sw);
+    }
+    // Subtitle-color quick-pick swatches — same palette, but each is a
+    // clickable button that sets STATE.subtitleColor.
+    const sub = document.getElementById('p-subtitle-color-swatches');
+    sub.innerHTML = '';
+    for (const col of pal) {
+      const sw = document.createElement('button');
+      sw.type = 'button';
+      sw.title = col;
+      sw.style.aspectRatio = '1';
+      sw.style.background = col;
+      sw.style.borderRadius = '3px';
+      sw.style.border = '1px solid rgba(255,255,255,0.1)';
+      sw.style.cursor = 'pointer';
+      sw.style.padding = '0';
+      sw.addEventListener('click', () => {
+        STATE.subtitleColor = col;
+        document.getElementById('p-subtitle-color').value = col;
+        render();
+      });
+      sub.appendChild(sw);
     }
   }
 
