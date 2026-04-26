@@ -222,7 +222,9 @@ class AirConsoleAdapter {
       // reflects state at request time, so its response can be stale
       // relative to what the user just wrote. Any key already in cache is
       // therefore the local source of truth; only fill empties from server.
-      for (var k in entry) {
+      var entryKeys = Object.keys(entry);
+      for (var ei = 0; ei < entryKeys.length; ei++) {
+        var k = entryKeys[ei];
         if (ALLOWLIST[k] && entry[k] !== null && entry[k] !== undefined && !(k in cache)) {
           cache[k] = String(entry[k]);
         }
@@ -256,9 +258,10 @@ class AirConsoleAdapter {
         try { airconsole.storePersistentData(key, null); } catch (e) { /* ignore */ }
       },
       clear: function() {
-        for (var k in cache) {
-          if (ALLOWLIST[k]) {
-            try { airconsole.storePersistentData(k, null); } catch (e) { /* ignore */ }
+        var keys = Object.keys(cache);
+        for (var i = 0; i < keys.length; i++) {
+          if (ALLOWLIST[keys[i]]) {
+            try { airconsole.storePersistentData(keys[i], null); } catch (e) { /* ignore */ }
           }
         }
         cache = {};
@@ -301,7 +304,7 @@ class AirConsoleAdapter {
     var el = document.getElementById(elementId);
     if (!el) return;
     var v = '__AC_VERSION__';
-    if (v.indexOf('__') !== 0) { el.textContent = v; return; }
+    if (v !== '__AC_VERSION__') { el.textContent = v; return; }
     fetch('/api/version').then(function(r) { return r.json(); }).then(function(d) {
       el.textContent = d.version || '';
     }).catch(function() {});

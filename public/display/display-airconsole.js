@@ -18,6 +18,12 @@ var airconsole = new AirConsole({
   silence_inactive_players: false
 });
 
+// Install the AC-backed localStorage shim. The display itself doesn't
+// read or write any allowlisted key — `muted = false` above resets the
+// display's music mute directly — but installing the shim guarantees
+// any incidental localStorage call from shared code (e.g. CSP-enabled
+// libraries) silently no-ops instead of bleeding state into the AC
+// iframe storage partition.
 AirConsoleAdapter.installAirConsoleStorage(airconsole);
 
 // Capture early onReady — the SDK may fire it before our adapter is wired up.

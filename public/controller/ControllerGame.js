@@ -216,6 +216,11 @@ function reclaimPreferredColor() {
   if (_previousSessionColorIndex === playerColorIndex) return;
   if (typeof sendToDisplay !== 'function' || playerColorIndex == null) return;
   if (takenColorIndices && takenColorIndices.indexOf(_previousSessionColorIndex) >= 0) return;
+  // Don't override an in-flight user pick: if the user has tapped a
+  // swatch since this session started, that's their preference now —
+  // the previous-session value is moot. Narrow race where reclaim from
+  // onLoad could otherwise undo a tap that landed before hydration.
+  if (userPickedColor) return;
   sendToDisplay(MSG.SET_COLOR, { colorIndex: _previousSessionColorIndex });
 }
 
