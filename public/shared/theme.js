@@ -7,6 +7,9 @@
 // --- Party Palette — 8 slots, single source of truth for pieces, players,
 // and UI accents. Garbage (#808080) is intentionally off-palette to keep
 // its "not yours / threatening" read.
+// All 8 slots also serve as the wordmark gradient stops (.gradient-title in
+// theme.css), arranged in PLAYER_COLORS spectrum order. Keep them in lockstep —
+// if you tweak a slot, sync the gradient.
 const PARTY_PALETTE = Object.freeze([
   '#FF6B6B', // 1 Red        ← UI accent (primary)
   '#4ECDC4', // 2 Teal

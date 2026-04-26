@@ -832,14 +832,12 @@
   }
 
   function titleGradient(ctx, W) {
-    // Mirrors .gradient-title in public/shared/theme.css — 5-stop rainbow
-    // sweep across the party palette (red → honey → mint → teal → violet).
+    // Mirrors .gradient-title in public/shared/theme.css — full 8-stop sweep
+    // across the party palette in PLAYER_COLORS spectrum order
+    // (red → tangerine → honey → mint → teal → indigo → violet → magenta).
     const g = ctx.createLinearGradient(60, 0, W - 60, 0);
-    g.addColorStop(0,    '#FF6B6B');
-    g.addColorStop(0.25, '#FFD93D');
-    g.addColorStop(0.5,  '#7BED6F');
-    g.addColorStop(0.75, '#4ECDC4');
-    g.addColorStop(1,    '#A78BFA');
+    const stops = ['#FF6B6B', '#FF8C42', '#FFE066', '#7BED6F', '#4ECDC4', '#5B7FFF', '#A78BFA', '#F178D8'];
+    stops.forEach((c, i) => g.addColorStop(i / (stops.length - 1), c));
     return g;
   }
 

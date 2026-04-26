@@ -282,14 +282,15 @@
    defensive against future rules that read --player-color on empty cards. */
 .player-card.empty { --player-color: initial; }
 
-/* HEX STACKER wordmark — 5-stop rainbow sweep across the party palette.
-   Mirrored by titleGradient() in artwork/builder.html for canvas-rendered
-   PNGs (cover-art, social-preview). */
+/* HEX STACKER wordmark — full 8-stop sweep across the party palette in
+   PLAYER_COLORS spectrum order (red → tangerine → honey → mint → teal →
+   indigo → violet → magenta). Mirrored by titleGradient() in
+   artwork/builder.html for canvas-rendered PNGs. */
 .gradient-title {
   font-family: 'Orbitron', sans-serif;
   font-weight: 900;
   letter-spacing: 0.08em;
-  background: linear-gradient(135deg, #FF6B6B, #FFD93D, #7BED6F, #4ECDC4, #A78BFA);
+  background: linear-gradient(135deg, #FF6B6B, #FF8C42, #FFE066, #7BED6F, #4ECDC4, #5B7FFF, #A78BFA, #F178D8);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
