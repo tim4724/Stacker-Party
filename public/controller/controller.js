@@ -347,6 +347,18 @@ sensitivitySlider.addEventListener('input', function () {
   vibrate(8);
 });
 
+// Re-sync the settings overlay whenever Settings state changes — covers
+// AirConsole hydration arriving while the overlay is already open: the
+// initial sync ran with defaults, Settings.reload() updates state, this
+// listener pushes the new state back into the DOM. Closed-overlay calls
+// no-op (the open path runs syncs from scratch when the user reopens).
+ControllerSettings.onChange(function () {
+  if (!settingsOverlay || settingsOverlay.classList.contains('hidden')) return;
+  syncMuteControllerToggle();
+  syncHapticButtons();
+  syncSensitivityControls();
+});
+
 function resizePreviewCanvas() {
   // Make the canvas drawing buffer match its displayed size (at device
   // pixel ratio) so the dot markers, tick marks, and chevrons render crisp

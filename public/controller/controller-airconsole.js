@@ -84,7 +84,7 @@ connect = function() {
   _acStorage.onLoad(function() {
     ControllerSettings.reload();
     captureSessionColorIndex();
-    if (typeof reclaimPreferredColor === 'function') reclaimPreferredColor();
+    reclaimPreferredColor();
   });
 };
 

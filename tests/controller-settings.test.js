@@ -102,3 +102,28 @@ describe('ControllerSettings — haptic scaleVibration', () => {
     assert.equal(ControllerSettings.getHapticStrength(), prev);
   });
 });
+
+describe('ControllerSettings — onChange listener', () => {
+  // The AirConsole bootstrap relies on Settings.reload() firing onChange
+  // so the open settings overlay re-syncs after async persistent-data
+  // hydration. Without this, the overlay stays stuck on the defaults
+  // applied at Settings.init() time even after state has been updated.
+  test('reload() notifies registered onChange listeners', () => {
+    let calls = 0;
+    ControllerSettings.onChange(() => { calls++; });
+    ControllerSettings.reload();
+    assert.equal(calls, 1);
+    ControllerSettings.reload();
+    assert.equal(calls, 2);
+  });
+
+  test('setters notify onChange listeners', () => {
+    let calls = 0;
+    ControllerSettings.onChange(() => { calls++; });
+    const prevTier = ControllerSettings.getHapticStrength();
+    const nextTier = prevTier === 'medium' ? 'strong' : 'medium';
+    ControllerSettings.setHapticStrength(nextTier);
+    assert.equal(calls >= 1, true);
+    ControllerSettings.setHapticStrength(prevTier);  // restore
+  });
+});

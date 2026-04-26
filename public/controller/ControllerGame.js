@@ -182,26 +182,26 @@ function paintColorSwatch(btn, tier, color, isTaken) {
 // Snapshot of the persisted color from the previous session. Captured at
 // script load in standalone mode; in AirConsole mode the storage shim
 // hydrates asynchronously after onReady, so the bootstrap re-runs the
-// capture from its onLoad callback (before HELLO leaves the wire and
-// before WELCOME's persistColorIndex() can overwrite the stored value).
+// capture from its onLoad callback. onLobbyUpdate's persistColorIndex is
+// gated on userPickedColor (see ControllerState.js), so display-driven
+// assignments don't clobber the previous-session value before reclaim
+// can read it.
 var _previousSessionColorIndex = null;
 function captureSessionColorIndex() {
   var raw = null;
   try { raw = localStorage.getItem('stacker_color_index'); } catch (e) { /* iframe sandbox */ }
-  console.log('[color-debug] captureSessionColorIndex raw=', raw, 'prev was=', _previousSessionColorIndex);
   if (raw == null) return;
   var idx = parseInt(raw, 10);
   if (!isNaN(idx) && idx >= 0 && idx < PLAYER_COLORS.length) {
     _previousSessionColorIndex = idx;
-    console.log('[color-debug] _previousSessionColorIndex set to', idx);
   }
 }
 captureSessionColorIndex();
 
 // Save the player's current color so a future reload can reclaim it.
-// Called whenever the display confirms our colorIndex.
+// Called from onLobbyUpdate when userPickedColor is true (i.e. the user
+// actually tapped a swatch — display-assigned defaults are ignored).
 function persistColorIndex(idx) {
-  console.log('[color-debug] persistColorIndex(', idx, ')');
   try { localStorage.setItem('stacker_color_index', String(idx)); }
   catch (e) { /* iframe sandbox */ }
 }
@@ -212,13 +212,10 @@ function persistColorIndex(idx) {
 // color is already taken (takenColorIndices is set from the same WELCOME
 // just before this fires).
 function reclaimPreferredColor() {
-  console.log('[color-debug] reclaimPreferredColor prev=', _previousSessionColorIndex,
-              'current=', playerColorIndex, 'taken=', takenColorIndices);
-  if (_previousSessionColorIndex == null) return console.log('[color-debug] reclaim: no prev');
-  if (_previousSessionColorIndex === playerColorIndex) return console.log('[color-debug] reclaim: prev === current');
-  if (typeof sendToDisplay !== 'function' || playerColorIndex == null) return console.log('[color-debug] reclaim: no sendToDisplay');
-  if (takenColorIndices && takenColorIndices.indexOf(_previousSessionColorIndex) >= 0) return console.log('[color-debug] reclaim: prev is taken');
-  console.log('[color-debug] reclaim: sending SET_COLOR(', _previousSessionColorIndex, ')');
+  if (_previousSessionColorIndex == null) return;
+  if (_previousSessionColorIndex === playerColorIndex) return;
+  if (typeof sendToDisplay !== 'function' || playerColorIndex == null) return;
+  if (takenColorIndices && takenColorIndices.indexOf(_previousSessionColorIndex) >= 0) return;
   sendToDisplay(MSG.SET_COLOR, { colorIndex: _previousSessionColorIndex });
 }
 
