@@ -24,7 +24,7 @@ kotlin {
         // Intermediate source set shared by jvm + android for code that needs
         // OkHttp (which has no common KMP metadata). RelayClient lives here so the
         // jvm() target runs it in tests and the android target ships it.
-        val jvmAndroidMain by creating { dependsOn(commonMain.get()) }
+        val jvmAndroidMain = create("jvmAndroidMain") { dependsOn(commonMain.get()) }
         jvmMain { dependsOn(jvmAndroidMain) }
         androidMain { dependsOn(jvmAndroidMain) }
 

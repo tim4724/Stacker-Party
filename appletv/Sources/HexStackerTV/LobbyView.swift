@@ -116,7 +116,7 @@ struct LobbyView: View {
             // even while transparent (same pattern as ResultsView).
             focus = .start
         }
-        .onChange(of: data.players.map { $0.peerIndex }) { ids in
+        .onChange(of: data.players.map { $0.peerIndex }) { _, ids in
             // Track exactly the CURRENT roster (not a grow-only union): a
             // peer who leaves is forgotten, so a disconnect + rejoin pops
             // again — web parity, where a rejoin re-creates the card element

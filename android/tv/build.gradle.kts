@@ -52,7 +52,7 @@ val engineBundle = repoRoot.file("dist/partycore.js")
 // and the fresh-clone `npm ci` bootstrap live in scripts/build-engine.sh, the SAME
 // script sync-engine.sh runs, so the toolchain handling can't drift between the two
 // native phases. Declared inputs/outputs let Gradle skip this when nothing changed.
-val buildEngineBundle by tasks.registering(Exec::class) {
+val buildEngineBundle = tasks.register<Exec>("buildEngineBundle") {
     workingDir = repoRoot.asFile
     // /bin/bash by absolute path so locating the shell itself doesn't depend on the
     // (possibly minimal) PATH Gradle inherits; the script resolves node from there.
@@ -65,7 +65,7 @@ val buildEngineBundle by tasks.registering(Exec::class) {
     inputs.file(repoRoot.file("scripts/build-engine.sh")).withPropertyName("buildEngineScript")
     outputs.file(engineBundle)
 }
-val syncEngineBundle by tasks.registering(Copy::class) {
+val syncEngineBundle = tasks.register<Copy>("syncEngineBundle") {
     from(buildEngineBundle)
     into(engineBundleAssets)
 }
