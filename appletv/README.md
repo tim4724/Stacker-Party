@@ -10,7 +10,7 @@ Native tvOS port of the HexStacker party game. tvOS ships no web browser and no
 | Wire protocol (`../public/shared/protocol.js`) | **Mirrored** to Swift constants (`Net/Protocol.swift`) for type-safety; the JS is not shipped to the device. |
 | Phone controllers | **Unchanged** — players still join from a phone browser via QR. |
 | Party-Server relay | **Unchanged** — Swift connects with `URLSessionWebSocketTask`. |
-| Display rendering / audio / lobby | **Rebuilt natively** (SpriteKit + AVFoundation; a minimal SwiftUI shell hosts the SKView). |
+| Display rendering / audio / lobby | **Rebuilt natively**: the board is SpriteKit, all chrome (lobby, countdown, results, about/licenses, overlays) is SwiftUI, audio is AVFoundation. |
 
 The Swift bridge drives the engine through `PartyCore.frame(nowMs)` (see
 `../server/PartyCore.d.ts`): each call ticks the engine on a capped delta and
@@ -26,15 +26,19 @@ the unit tests (`swift test`), which is what makes "reuse the engine" safe.
 appletv/
   Package.swift                 SwiftPM: builds + tests HexStackerKit on macOS (no Xcode needed)
   project.yml                   XcodeGen spec for the tvOS app target
-  scripts/sync-engine.sh        Builds the canonical engine (npm run build:core) into the app bundle at build time
+  scripts/sync-engine.sh        Builds the canonical engine (npm run build:core) into the app bundle
+  scripts/parity/               Ad-hoc web-vs-native pixel diff (see its README)
   Sources/
     HexStackerKit/              Platform-agnostic core (macOS + tvOS)
       Engine/                   JavaScriptCore bridge over PartyCore + Codable snapshot/command model
-      Net/                      Relay WebSocket client, protocol mirror, room/host FSM
-    HexStackerTV/               tvOS-only app (SpriteKit renderer, SwiftUI lobby, audio, QR)
+      Game/                     DisplayCoordinator: engine <-> net <-> view glue
+      Net/                      Relay WebSocket client, fastlane netcode, protocol mirror, room/host FSM
+      Render/                   Hex geometry, theme, zigzag detection (mirrors the web render math)
+      Parity/                   Loads the WEB render math into JSCore, so ParityTests can diff it against Render/
+    HexStackerTV/               tvOS-only app (SpriteKit board, SwiftUI chrome, audio, QR, WebRTC)
       Generated/engine/         (git-ignored) engine JS mirrored at build time
-  Tests/
-    HexStackerKitTests/         Runs the real engine via JSCore; asserts determinism + snapshot shape
+  Tests/HexStackerKitTests/     Runs the real engine via JSCore; determinism, parity, netcode, FSM
+  UITests/                      Drives the app in the Simulator; captures the screenshot gallery
 ```
 
 ## Build & test the core on macOS (works with Command Line Tools only)
@@ -51,12 +55,12 @@ swift test    # the full verification tier (no Xcode required)
 
 `swift test` is the single verification tier and runs under Command Line Tools
 (swift-testing ships with the toolchain). It rebuilds the engine bundle from the
-canonical source, runs it through the JavaScriptCore bridge, and covers: engine
-determinism + full game loop + coordinator/fastlane wiring
-(`EngineBridgeTests`/`DisplayCoordinatorTests`), cross-engine render parity
-(`ParityTests`), fastlane receiver netcode (`FastlaneTests`), room/host FSM +
-geometry (`KitTests`), localization, and the real `RelayClient` over a loopback
-WebSocket (`RelayClientLiveTests`).
+canonical source, runs it through the JavaScriptCore bridge, and covers engine
+determinism and the full game loop (`EngineBridgeTests`, `DisplayCoordinatorTests`,
+`FrameGoldenConformanceTests`), cross-engine render parity (`ParityTests`),
+fastlane receiver netcode (`FastlaneTests`), room/host FSM + geometry
+(`KitTests`), localization, and the real `RelayClient` over a loopback WebSocket
+(`RelayClientLiveTests`).
 
 ## Build & run the tvOS app (needs full Xcode)
 
@@ -85,8 +89,10 @@ those on hardware before shipping.
 
 ## CI
 
-`tvos-core` runs `swift build` + `swift test`; `tvos-app` builds the app for
-the Simulator SDK (the app-target sources are not in the SwiftPM package).
+`.github/workflows/tvos.yml` runs two parallel jobs: `kit-tests` (`swift test`)
+and `build-test-screenshots`, which builds the app for the Simulator SDK (the
+app-target sources are not in the SwiftPM package) and captures the per-state
+screenshot gallery that the `TV Gallery` workflow assembles.
 
 ## Verification & capture modes
 
@@ -96,6 +102,7 @@ the Simulator SDK (the app-target sources are not in the SwiftPM package).
 | `HEXLOBBY=1` | Lobby with fake players (no relay) |
 | `HEXSNAP=1` | Static fixture render for visual parity (`scripts/parity/`) |
 | `HEXSHOT=<state>` | One display state frozen with fake data; `HEXPLAYERS=<n>` sets the roster |
+| `HEXLICENSES=1` | Opens straight to the licenses page (the Simulator has no Siri-Remote CLI to navigate there) |
 | `HEXGALLERY=1` | All gallery states in one launch, Play/Pause advances (drives `ScreenshotTests`) |
 | `HEXFPS=1` | Debug FPS/node overlay |
 
@@ -120,4 +127,4 @@ uploads straight to TestFlight.
 
 - [ ] Full match on a real Apple TV (live relay + phone controllers).
 - [ ] Render profiling on real hardware (Simulator GPU numbers aren't representative).
-- [ ] WebRTC fastlane handshake with a real phone (input runs over the relay fallback meanwhile).
+- [ ] WebRTC fastlane handshake with a real phone (the relay fallback covers input if it fails).

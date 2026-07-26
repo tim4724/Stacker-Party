@@ -3,23 +3,32 @@
 // factory used by the display to build the lobby/rejoin QR matrix in-browser — see
 // buildQRMatrix() in DisplayConnection.js. The trailing UMD block is inert in the
 // browser bundle (no `define`/`exports`), so the top-level `var qrcode` stays global.
-// Keep this file verbatim on updates so the MIT attribution below is preserved.
-//---------------------------------------------------------------------
 //
-// QR Code Generator for JavaScript
-//
-// Copyright (c) 2009 Kazuhiko Arase
-//
-// URL: http://www.d-project.com/
-//
-// Licensed under the MIT license:
-//  http://www.opensource.org/licenses/mit-license.php
-//
-// The word 'QR Code' is registered trademark of
-// DENSO WAVE INCORPORATED
-//  http://www.denso-wave.com/qrcode/faqpatent-e.html
-//
-//---------------------------------------------------------------------
+// Keep the notice below verbatim on updates, including its `/*!` opener and the
+// licence tag inside it: MIT requires the notice to ship in every copy, and either
+// marker on its own is enough for esbuild to treat the comment as legal and re-emit
+// it into the minified bundle (scripts/build.js sets legalComments: 'eof') — both
+// are here so trimming one doesn't silently drop the notice. Plain `//` lines — how
+// upstream delimits it — get stripped, shipping code without its licence. Don't use
+// either marker on a comment that isn't itself a notice: esbuild would preserve it.
+/*!
+ * --------------------------------------------------------------------
+ *
+ * QR Code Generator for JavaScript
+ *
+ * Copyright (c) 2009 Kazuhiko Arase
+ *
+ * URL: http://www.d-project.com/
+ *
+ * @license Licensed under the MIT license:
+ *  http://www.opensource.org/licenses/mit-license.php
+ *
+ * The word 'QR Code' is registered trademark of
+ * DENSO WAVE INCORPORATED
+ *  http://www.denso-wave.com/qrcode/faqpatent-e.html
+ *
+ * --------------------------------------------------------------------
+ */
 
 var qrcode = function() {
 

@@ -32,7 +32,6 @@ class TouchInput {
       : 48;
     this._applySensitivity(initial);
 
-    // Soft drop interval config
     this.SOFT_DROP_INTERVAL_MS = 50;
 
     // Pointer tracking state

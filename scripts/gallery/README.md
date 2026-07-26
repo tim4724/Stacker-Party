@@ -70,17 +70,16 @@ It ships two ways (the PR's preview comment carries the links):
   for main). A tiny static nginx image (`Dockerfile` here) path-routed onto
   the preview host from the same `cg-<branch>` Kubernetes namespace, so builds
   stay decoupled from the app image. Torn down with the namespace by the
-  existing `Preview Cleanup` workflow on branch delete.
-
-This image is also the home of the LIVE web gallery entry pages
-(`public/gallery*` served at `/gallery` etc. on the same host): they are
-excluded from the game image via `.dockerignore`, so production ships no
-review tooling. Their iframes point at absolute paths that route to the app
-preview pod on the same host, so they drive the real display app as always
-(the display test harness itself still ships in the app bundle; it is inert
-without its URL params and e2e depends on it). Because of that, the workflow
-also runs on plain web pushes, not just after the TV screenshot workflows.
-Locally nothing changes: the dev server serves `public/gallery*` from disk.
+  `Preview Cleanup` workflow on branch delete.
 - **Artifact fallback**: the `tv-gallery` artifact (unzip, open
   `gallery.html`), for when the deploy is unavailable or expired runs are
   being compared.
+
+That nginx image also hosts the LIVE web gallery entry pages (`public/gallery*`,
+served at `/gallery` on the same host), which `.dockerignore` excludes from the
+game image so production ships no review tooling. Their iframes use absolute
+paths that route to the app preview pod, so they still drive the real display
+app. (The display test harness itself does ship in the app bundle: it is inert
+without its URL params, and e2e depends on it.) Hence the workflow runs on plain
+web pushes too, not just after the TV screenshot workflows. Locally nothing
+changes: the dev server serves `public/gallery*` from disk.

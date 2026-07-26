@@ -135,7 +135,6 @@ for (var _type in PIECES) {
   PIECE_ROTATIONS[_type] = _buildRotationCycle(_initial);
 }
 
-// ===================== HEX PIECE CLASS =====================
 class Piece {
   constructor(type) {
     this.type = type;

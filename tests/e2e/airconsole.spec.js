@@ -434,7 +434,6 @@ test.describe.serial('AirConsole Integration', () => {
     await s.screenFrame.waitForSelector('#results-screen:not(.hidden)', { timeout: 60000 });
     await s.ctrlFrame.waitForSelector('#gameover-screen:not(.hidden)', { timeout: 60000 });
 
-    // Play again
     await s.ctrlFrame.locator('#play-again-btn').click();
     await s.screenFrame.waitForFunction(() => roomState === 'playing', null, { timeout: 15000 });
     await s.ctrlFrame.waitForSelector('#game-screen:not(.hidden):not(.countdown)', { timeout: 15000 });

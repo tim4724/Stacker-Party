@@ -64,7 +64,6 @@ showCursor();
 // Initialize
 // =====================================================================
 
-// --- Window Resize ---
 window.addEventListener('resize', function() {
   resizeCanvas();
   if (welcomeBg) welcomeBg.resize(window.innerWidth, window.innerHeight);
@@ -158,7 +157,6 @@ var BAIL_KEYS = ['room_not_found', 'game_full', 'game_ended'];
   restoreDeviceChoice();
 })();
 
-// --- Trailer modal ---
 var trailerModal = document.getElementById('trailer-modal');
 var trailerVideo = document.getElementById('trailer-video');
 var trailerCloseBtn = document.getElementById('trailer-close-btn');

@@ -10,7 +10,9 @@ Multiplayer hex stacker where phones become controllers and a shared screen show
 
 ## Overview
 
-HexStacker Party supports 1 to 8 players on a single shared display. One browser window acts as the game screen (TV, monitor, or laptop), while each player joins by scanning a QR code with their phone. The display runs the authoritative game engine; the Node.js server only serves static files and a QR code API.
+HexStacker Party supports 1 to 8 players on a single shared display. One browser window acts as the game screen (TV, monitor, or laptop), while each player joins by scanning a QR code with their phone. The display runs the authoritative game engine; the Node.js server only serves static files.
+
+The display also ships as native apps for Apple TV and Android TV, which run the same engine bundle. See [Native TV ports](#native-tv-ports).
 
 ## Architecture
 
@@ -87,17 +89,38 @@ public/
   display/   # Display client: game authority, Canvas renderer
   controller/# Phone touch controller
   shared/    # Protocol, relay connection, colors, theme, shared UI
+partyplug/   # Reusable party-game transport/room kit (own README + tests)
+appletv/     # Native tvOS display port (Swift, see appletv/README.md)
+android/     # Native Android TV display port (Kotlin/Compose, Gradle)
 scripts/     # build.js (esbuild bundles), asset-manifest.js (canonical script
-             #   load order), AirConsole HTML generator
+             #   load order), AirConsole HTML generator, gallery/
 tests/       # Unit tests (node:test) and Playwright E2E
 dist/        # Build output (gitignored): partycore.js + web-manifest.json
-artwork/     # Banner, favicon, and cover art generators (Playwright)
+artwork/     # Banner, favicon, icon and cover art generators (Playwright)
 ```
 
 Browser script load order lives in `scripts/asset-manifest.js`; the app `index.html`
 files use `<!--CONTROLLER_SCRIPTS-->` / `<!--DISPLAY_SCRIPTS-->` placeholders that the
 server expands to either one hashed bundle (production / `SERVE_BUNDLES=1`) or the
 individual files (dev).
+
+## Native TV ports
+
+Apple TV and Android TV have no usable browser for the display, so both rebuild the
+**display** natively while reusing the engine verbatim: `server/*.js` +
+`partyplug/RoomFlow.js` are bundled by `npm run build:core` into `dist/partycore.js`
+and executed in JavaScriptCore (tvOS) / QuickJS (Android). Controllers stay web pages,
+so nothing changes for players.
+
+```bash
+npm run build:core                                        # Android's :tv preBuild needs dist/partycore.js
+(cd android && ./gradlew :core:jvmTest :tv:assembleDebug)
+(cd appletv && swift test)                                # rebuilds the bundle itself; see appletv/README.md
+```
+
+Renderer differences between the three platforms are caught by the cross-platform
+screen gallery (`scripts/gallery/`), not by the engine, which is byte-exact across
+all three per the frame-golden conformance tests.
 
 ## Configuration
 
@@ -127,15 +150,16 @@ npm run test:e2e:airconsole
 k6 run scripts/relay-loadtest.k6.js
 ```
 
-Unit tests use Node.js's built-in `node:test` runner with `node:assert/strict` — no test framework dependency. E2E tests use Playwright against a live server on port 4100. UI regressions are caught via the live gallery at `/gallery.html`. The relay load test models 5-client rooms (1 display + 4 controllers) against the configured relay URL; see the script header for environment knobs.
+Unit tests use Node.js's built-in `node:test` runner with `node:assert/strict` — no test framework dependency. E2E tests use Playwright against a live server on port 4100. UI regressions are caught via the live gallery at `/gallery`. The relay load test models 5-client rooms (1 display + 4 controllers) against the configured relay URL; see the script header for environment knobs.
 
 ## Tech Stack
 
 - **Runtime**: Node.js
 - **Relay**: [Party-Sockets](https://github.com/tim4724/Party-Sockets) WebSocket relay (signaling + game events)
 - **P2P**: WebRTC DataChannels for low-latency controller input
-- **QR codes**: [qrcode](https://github.com/soldair/node-qrcode)
 - **Frontend**: Vanilla JavaScript, Canvas API
+- **QR codes**: [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) by Kazuhiko Arase (MIT), vendored at `public/shared/qrcode-generator.js` and run client-side. The native ports use their platform's own encoder (CoreImage on tvOS, [ZXing](https://github.com/zxing/zxing) on Android TV)
+- **Native TV**: Swift + SpriteKit (tvOS), Kotlin + Compose/Canvas (Android TV), both running the shared engine bundle
 - **Bundling**: esbuild (build-time devDep) for production web bundles and the native `dist/partycore.js` core
 - **Testing**: Node.js built-in test runner + Playwright
-- **Production deps**: 1 npm package (`qrcode`)
+- **Runtime deps**: none — the server ships zero npm dependencies

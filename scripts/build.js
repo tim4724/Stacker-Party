@@ -58,7 +58,11 @@ async function buildApp(appDir, name, scripts) {
     minifySyntax: true,
     minifyIdentifiers: false,
     target: 'es2017',
-    legalComments: 'none',
+    // 'eof', not 'none': third-party sources whose licence requires the notice
+    // to travel with the code (currently /shared/qrcode-generator.js, MIT) mark
+    // it with `/*!` + `@license`, and esbuild re-emits those at the end of the
+    // bundle. First-party comments carry no such marker and are still stripped.
+    legalComments: 'eof',
     sourcemap: 'external',
     sourcefile: name + '.bundle.src.js',
   });

@@ -149,7 +149,6 @@ const ENGINE_FILES = new Set([
   'GalleryFixtures.js',
 ]);
 
-// --- MIME types ---
 const MIME_TYPES = {
   '.html': 'text/html',
   '.js': 'text/javascript',
@@ -203,7 +202,6 @@ function pickEncoding(acceptEncoding) {
   return null;
 }
 
-// --- HTTP Server ---
 const server = http.createServer((req, res) => {
   let urlPath = req.url.split('?')[0];
 
