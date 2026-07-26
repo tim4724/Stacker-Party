@@ -30,8 +30,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     container:
-      # Keep this tag in sync with @playwright/test in package.json
-      image: mcr.microsoft.com/playwright:v1.62.0-noble
+      # Keep this tag in sync with @playwright/test in package.json, which is
+      # pinned exactly (no caret) for that reason: a floating range can resolve
+      # past the newest published image. MCR lags the npm release — check
+      # https://mcr.microsoft.com/v2/playwright/tags/list for a stable
+      # v<version>-noble tag before bumping the package.
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
