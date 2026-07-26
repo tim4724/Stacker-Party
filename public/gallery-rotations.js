@@ -93,7 +93,6 @@
     ctx.lineTo(centerBottom.x, geo.boardHeight);
     ctx.stroke();
 
-    // Piece blocks.
     var blocks = piece.getAbsoluteBlocks();
     ctx.fillStyle = color;
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';

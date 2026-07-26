@@ -1121,7 +1121,6 @@ describe('PlayerBoard - garbage and zigzag clear interaction', () => {
     // Drop a piece to trigger line clear detection
     b.spawnPiece();
     var result = b.hardDrop();
-    // The completed garbage row should clear
     assert.ok(result.linesCleared >= 1, 'should clear the completed garbage row');
   });
 

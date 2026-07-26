@@ -7,16 +7,14 @@ PartyPlug gives a game its transport and its room/lobby/host lifecycle; the game
 brings its own screens, input, and rules.
 
 Vanilla JS, no build step. Every module is UMD — it works under Node (for tests)
-and in the browser via a global. Serve this directory to the browser under
-`/partyplug/` (add a static route in your server).
+and in the browser via a global. Serve this directory under `/partyplug/`.
+Hand-written `.d.ts` types and a co-located test suite (`partyplug/tests/`) ship
+with it.
 
-It ships as a versioned package (`partyplug/package.json`, currently `0.1.0`)
-with hand-written `.d.ts` types per module and its own co-located test suite
-(`partyplug/tests/`). The runtime is CommonJS/UMD; a native-ESM build is a
-deliberate future step (see below). There is **no default export** — import each
-module by subpath (`require('partyplug/RoomFlow')`, or `/partyplug/RoomFlow.js`
-in the browser), as the `exports` map declares; a bare `require('partyplug')`
-intentionally resolves nothing.
+There is **no default export**: import each module by subpath
+(`require('partyplug/RoomFlow')`, or `/partyplug/RoomFlow.js` in the browser), as
+the `exports` map declares. A bare `require('partyplug')` intentionally resolves
+nothing.
 
 ## Mental model
 
@@ -78,10 +76,6 @@ relay config is deployment-level, not framework-level.
 
 ## API reference
 
-Conceptual model: slot 0 is always the display, slots 1..N are controllers. The
-transport classes are interchangeable (`PartyConnection` and `AirConsoleAdapter`
-share one interface).
-
 ### `PartyConnection` — relay WebSocket client
 
 ```js
@@ -111,12 +105,11 @@ Callbacks (assigned as properties):
 - `onError()`
 - `onMessage(from, data)` for game messages
 - `onProtocol(type, msg)` for relay events (`created`, `joined`, `peer_joined`, `peer_left`)
-- `onState(data)` for the host's retained snapshot: the relay keeps the latest
-  `setState` blob on the room, pushes it live to current peers (sender
-  excluded), and replays it right after `joined` on every (re)join — so a
-  briefly-dropped client catches up without the host fanning out per-recipient
-  messages. Routed to `onState`, never `onProtocol`, so a host that authors
-  state but never consumes it (the usual display) just leaves `onState` unset.
+- `onState(data)` for the host's retained snapshot. The relay keeps the latest
+  `setState` blob on the room, pushes it live to current peers (sender excluded),
+  and replays it right after `joined` on every (re)join, so a briefly-dropped
+  client catches up without per-recipient fan-out. A host that authors state but
+  never consumes it (the usual display) just leaves `onState` unset.
 
 Props: `relayUrl`, `clientId`, `reconnectAttempt`.
 
@@ -218,21 +211,20 @@ Reads: `state`, `host` (effective), `hostPeerIndex` (sticky), `isHost(peerIndex)
 `list()`, `get(peerIndex)`, `has(peerIndex)`, `size`, `connectedCount`,
 `isDisconnected(peerIndex)`.
 
-Liveness (half-open presence timeout — opt in via
-`liveness: { timeoutMs?, graceMs?, enabledProvider? }`): a half-open dead
-connection (sleeping phone, dropped Wi-Fi) never closes its socket, so the
-relay's `peer_left` alone can't catch it. The host stamps every inbound message
-with `onSeen(peerIndex, nowMs)` and polls the pure predicates: `isExpired(id,
-nowMs)`, `expiredPeers(nowMs)` (silent-past-`timeoutMs` peers; always empty in
-`LOBBY`), `allParticipantsDisconnected()`, `hasLateJoiners()`, and
-`graceTick(nowMs)` (arms a `graceMs` return-to-lobby deadline while every
-participant is gone but late joiners wait; fires `true` exactly once). The
-detectors never mutate presence and never emit — the host applies an expiry
-through the normal `markDisconnected` path, keeping the single-writer
-invariant. All time is an injected `nowMs`; RoomFlow stays clock-free (the
-reference game's `tests/portable-purity.test.js` gates this). Set
+Liveness — opt in via `liveness: { timeoutMs?, graceMs?, enabledProvider? }`. A
+half-open dead connection (sleeping phone, dropped Wi-Fi) never closes its
+socket, so `peer_left` alone can't catch it. The host stamps every inbound
+message with `onSeen(peerIndex, nowMs)` and polls the pure predicates
+`isExpired`, `expiredPeers` (always empty in `LOBBY`),
+`allParticipantsDisconnected`, `hasLateJoiners`, and `graceTick` (arms a
+`graceMs` return-to-lobby deadline while every participant is gone but late
+joiners wait; fires `true` exactly once).
+
+The detectors never mutate presence and never emit — the host applies an expiry
+through the normal `markDisconnected` path, keeping the single-writer invariant.
+All time is an injected `nowMs`, so RoomFlow stays clock-free. Set
 `enabledProvider: () => false` where the transport owns connection tracking
-(AirConsole). See `RoomFlow.d.ts` for the full signatures.
+(AirConsole). Full signatures in `RoomFlow.d.ts`.
 
 Static: `RoomFlow.lowestFreeSlot(used, max)` returns the lowest free dense slot
 in `[0, max)` given the slot values in use. Pure and **sparse-safe** — pass slot
@@ -297,57 +289,44 @@ liveness flips the slot back to present.
 
 Read these before building a game on RoomFlow:
 
-- **The state machine is single-session, single-phase.** It models one
-  `lobby -> countdown -> playing -> results` cycle. There is no rounds/phases
-  concept and no `PAUSED` state. Games that need rounds, phases, or an in-game
-  timer model those above the kit; these are the first things to extend if a
-  game needs them.
+- **The state machine is single-session, single-phase.** One
+  `lobby -> countdown -> playing -> results` cycle: no rounds, no phases, no
+  `PAUSED`. Games needing those model them above the kit; they are the first
+  things to extend.
 - **The countdown is game-owned.** The kit exposes the `COUNTDOWN` state but runs
-  no timer: a game does `transitionTo('countdown')`, runs its own
-  timer/visuals/controller messaging, then `transitionTo('playing')`.
-- **Two integration shapes; prefer event-driven.** The recommended shape is to
-  subscribe to events and read `flow.state` / `flow.host` directly, and query
-  `flow.isDisconnected()` rather than keeping a parallel presence structure. A
-  game retrofitting an existing codebase can instead wrap `transitionTo` and
-  alias the roster Map, but new games should use the event-driven shape.
-- **`flow.players` is a stable Map; `reset()` clears it in place.** If you alias
-  it, that alias stays valid across `reset()`. Never reassign `flow.players`.
-- **Runtime style is conservative.** Browser-facing modules stay plain
-  CommonJS/UMD without a build step. Older extracted modules use ES5 constructor
-  patterns; newer transport adapters use class syntax where browser targets
-  already support it. Prefer matching the file you are editing over normalizing
-  style across the whole kit.
+  no timer: `transitionTo('countdown')`, run your own timer/visuals/messaging,
+  then `transitionTo('playing')`.
+- **Prefer the event-driven shape.** Subscribe to events, read `flow.state` /
+  `flow.host` directly, and query `flow.isDisconnected()` instead of keeping a
+  parallel presence structure. (A retrofit can instead wrap `transitionTo` and
+  alias the roster Map, but new games should not.)
+- **`flow.players` is a stable Map; `reset()` clears it in place.** An alias
+  stays valid across `reset()`. Never reassign `flow.players`.
+- **Runtime style is conservative.** Plain CommonJS/UMD, no build step. Older
+  modules use ES5 constructor patterns, newer adapters use class syntax — match
+  the file you are editing rather than normalizing across the kit.
 
 ## Not in the kit (yet)
 
 The networking and flow layers are the parts genuinely shared by every game in
-this style, so they came first. The following are reusable in principle but are
-better extracted **against a second game** than guessed at from one. The first
-is the next planned addition:
+this style, so they came first. The rest is reusable in principle but is better
+extracted **against a second game** than guessed at from one:
 
-- **Cross-device claim (optional).** Same-device reconnect needs no kit help:
-  the Party Sockets relay keys slots by `clientId` and restores the **same**
-  `peerIndex` when a client rejoins with its stored `clientId` (see "Reconnect"
-  under RoomFlow, above), so the roster slot survives untouched. `rekey(oldId,
-  newId)` exists only
-  for the *cross-device* case (a different phone, with a fresh `clientId`, taking
-  over a dropped player). The game-side glue there is a claim token (e.g. a
-  `claim=<index>` reconnect QR); a `flow.claim(token, newPeerIndex)` helper could
-  fold the eligibility check + rekey into the kit if cross-device takeover is a
-  feature you want.
-- **Lobby + join flow** (QR rendering, roster cards, name/identity picker, the
-  screen shell). The DOM stays game-side; the *logic* (seat allocation via
-  `lowestFreeSlot`, host gating) is shareable.
+- **Cross-device claim.** `rekey` handles the roster move; the missing piece is
+  the claim token (e.g. a `claim=<index>` reconnect QR). A
+  `flow.claim(token, newPeerIndex)` helper could fold the eligibility check +
+  rekey into the kit. Next planned addition.
+- **Lobby + join flow** (QR rendering, roster cards, name picker, screen shell).
+  The DOM stays game-side; the *logic* (seat allocation, host gating) is
+  shareable.
 - **Theming tokens + i18n engine.**
-- **A view contract** (`createGameDisplay` / `createGameController` interfaces +
-  a per-game manifest) that lets a game declare its inputs and rendering without
-  touching the protocol.
-- **A native-ESM build.** Today the modules are CommonJS/UMD; an ESM build (or a
-  monorepo workspace package) would remove vendor-and-drift for bundler-based
-  games. (Partially there: the reference game's `scripts/build.js` already
-  esbuild-bundles `RoomFlow` together with its engine into an iife `HexCore`
-  artifact, `dist/partycore.js`, that JavaScriptCore/QuickJS load on native. That
-  consumes the UMD form; a true ESM build is still the cleaner end state.)
+- **A view contract** (`createGameDisplay` / `createGameController` + a per-game
+  manifest) so a game declares its inputs and rendering without touching the
+  protocol.
+- **A native-ESM build**, to remove vendor-and-drift for bundler-based games.
+  Partially there: the reference game's `scripts/build.js` already esbuild-bundles
+  `RoomFlow` with its engine into an iife `HexCore` artifact that
+  JavaScriptCore/QuickJS load on native, but it consumes the UMD form.
 
 ---
 

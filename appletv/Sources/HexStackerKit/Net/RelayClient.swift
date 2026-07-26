@@ -3,7 +3,8 @@ import Foundation
 /// The display's WebSocket client for the Party-Server relay. Ported from
 /// partyplug/PartyConnection.js + the display-side handshake in
 /// DisplayConnection.js. The native display is always relay slot 0 and the room
-/// creator. v1 uses the relay for ALL traffic (no WebRTC fastlane).
+/// creator. It carries every display -> controller message, plus controller input
+/// whenever the WebRTC fastlane (Fastlane.swift) is not up.
 ///
 /// Responsibilities: create/join handshake, send/broadcast envelopes, inbound
 /// routing, capped-exponential reconnect with instance (shard) pinning, and the

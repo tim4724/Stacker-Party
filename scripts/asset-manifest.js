@@ -117,6 +117,10 @@ const AC_DEAD = [
   '/partyplug/PartyFastlane.js',
   // Only caller is the device-choice share banner, CSS-hidden in AC mode.
   '/shared/share-helper.js',
+  // AC players join from the AirConsole app, never by scanning: the AC display
+  // bootstrap stubs buildQRMatrix to return null, so the encoder is never
+  // called. Dropping it also keeps third-party (MIT) code out of the AC ZIP.
+  '/shared/qrcode-generator.js',
   // Couch Games shell bootstrap, self-gated on ?cgv=1 — never set in AC.
   '/controller/controller-couchgames.js',
   // Gallery/Playwright-only harnesses, gated on URL params AC never carries.
