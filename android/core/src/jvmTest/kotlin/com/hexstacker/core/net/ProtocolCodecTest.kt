@@ -73,12 +73,6 @@ class ProtocolCodecTest {
 
     @Test
     fun outboundBuilderShapes() {
-        assertEquals(Msg.GAME_START, type(OutboundMessage.gameStart()))
-
-        val cd = OutboundMessage.countdownGo()
-        assertEquals(Msg.COUNTDOWN, type(cd))
-        assertEquals("GO", cd["value"]?.jsonPrimitive?.contentOrNull)
-
         val ps = OutboundMessage.playerState(level = 5, lines = 12, alive = true, garbageIncoming = 3)
         assertEquals(Msg.PLAYER_STATE, type(ps))
         assertEquals(5, ps["level"]?.jsonPrimitive?.intOrNull)
@@ -118,11 +112,7 @@ class ProtocolCodecTest {
         assertTrue(json.contains("\"send\""))
     }
 
-    @Test
-    fun gameEndCarriesResultsArray() {
-        val results = buildJsonObject { put("playerId", 1) }
-        val frame = OutboundMessage.gameEnd(elapsed = 1234.0, results = kotlinx.serialization.json.JsonArray(listOf(results)))
-        assertEquals(Msg.GAME_END, type(frame))
-        assertEquals(1, frame["results"]!!.jsonArray.size)
-    }
+    // The game_end / game_start / countdown builders are gone with the retired
+    // room protocol: the ranking now rides the retained snapshot instead. What is
+    // left to encode is player_state, pong and error, covered above.
 }

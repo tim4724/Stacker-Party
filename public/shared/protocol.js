@@ -28,19 +28,22 @@ var MSG = {
   PING: 'ping',
 
   // Display -> Specific Controller
-  WELCOME: 'welcome',
-  GAME_OVER: 'game_over',
-  LOBBY_UPDATE: 'lobby_update',
+  //
+  // This is the whole set. Everything the display used to say ABOUT THE ROOM
+  // (identity, roster, host, room state, countdown, pause, mute, results, and
+  // which screen to show) now rides one retained snapshot published with
+  // set_state, so there is no second channel left that could disagree with it.
+  // See server/RoomBrain.js, which builds that snapshot for all three displays.
+  //
+  // Retired with the snapshot, and deliberately NOT kept as reserved names:
+  // welcome, lobby_update, game_start, countdown, game_end, game_over,
+  // game_paused, game_resumed, display_muted. A controller from before the
+  // change simply never hears them; it was already being replaced wholesale
+  // (they ship together), and leaving the constants around invites a new send.
   PONG: 'pong',
   PLAYER_STATE: 'player_state',
 
   // Display -> All Controllers (broadcast)
-  COUNTDOWN: 'countdown',
-  DISPLAY_MUTED: 'display_muted',
-  GAME_START: 'game_start',
-  GAME_END: 'game_end',
-  GAME_PAUSED: 'game_paused',
-  GAME_RESUMED: 'game_resumed',
   ERROR: 'error'
 };
 

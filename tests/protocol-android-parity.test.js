@@ -20,13 +20,12 @@ const path = require('path');
 
 const { MSG, INPUT, ROOM_STATE, RELAY_URL, STUN_URL } = require('../public/shared/protocol.js');
 const constants = require('../server/constants.js');
-const { RoomBrain } = require('../server/RoomBrain.js');
 
 const ROOT = path.join(__dirname, '..');
 const KOTLIN = {
   protocol: read('android/core/src/commonMain/kotlin/com/hexstacker/core/net/Protocol.kt'),
   inputAction: read('android/core/src/commonMain/kotlin/com/hexstacker/core/engine/InputAction.kt'),
-  roomFlow: read('android/core/src/commonMain/kotlin/com/hexstacker/core/room/RoomFlow.kt'),
+  engineConstants: read('android/core/src/commonMain/kotlin/com/hexstacker/core/model/EngineConstants.kt'),
   coordinator: read('android/core/src/commonMain/kotlin/com/hexstacker/core/display/DisplayCoordinator.kt'),
 };
 
@@ -77,7 +76,7 @@ test('RoomState and InputAction wire values mirror protocol.js', () => {
 test('relay endpoints and limits mirror the web', () => {
   assert.strictEqual(kotlinConst(KOTLIN.protocol, 'RELAY_URL'), RELAY_URL);
   assert.strictEqual(kotlinConst(KOTLIN.protocol, 'STUN_URL'), STUN_URL);
-  assert.strictEqual(kotlinConst(KOTLIN.roomFlow, 'MAX_PLAYERS'), constants.MAX_PLAYERS);
+  assert.strictEqual(kotlinConst(KOTLIN.engineConstants, 'MAX_PLAYERS'), constants.MAX_PLAYERS);
   // Display slot 0 + MAX_PLAYERS controllers; the web hardcodes the same figure
   // in its create call.
   assert.strictEqual(kotlinConst(KOTLIN.protocol, 'MAX_CLIENTS'), constants.MAX_PLAYERS + 1);
@@ -107,19 +106,15 @@ test('the controller-URL template registered on create mirrors the web shape', (
 test('timing constants mirror server/constants.js and PartyConnection.js', () => {
   assert.strictEqual(kotlinConst(KOTLIN.protocol, 'SELF_HEARTBEAT_DEAD_MS'), constants.SELF_HEARTBEAT_DEAD_MS);
 
-  // DisplayCoordinator wires RoomFlow with literals mirroring constants.js.
-  const liveness = KOTLIN.coordinator.match(/livenessTimeoutMs = ([\d.]+)/);
-  const grace = KOTLIN.coordinator.match(/graceMs = ([\d.]+)/);
-  assert.strictEqual(Number(liveness[1]), constants.LIVENESS_TIMEOUT_MS);
-  assert.strictEqual(Number(grace[1]), constants.LATE_JOINER_GRACE_MS);
+  // DisplayCoordinator hands these to the room brain as its `liveness` options.
+  assert.strictEqual(kotlinConst(KOTLIN.coordinator, 'LIVENESS_TIMEOUT_MS'), constants.LIVENESS_TIMEOUT_MS);
+  assert.strictEqual(kotlinConst(KOTLIN.coordinator, 'LATE_JOINER_GRACE_MS'), constants.LATE_JOINER_GRACE_MS);
 
-  // Snapshot-publish throttle. Read from the canonical module rather than from
-  // web source text: every display, this one included, gets the value from
-  // RoomBrain now, so this pins Kotlin to the same constant the web reads.
-  assert.strictEqual(
-    kotlinConst(KOTLIN.coordinator, 'LOBBY_BROADCAST_MIN_INTERVAL_MS'),
-    RoomBrain.SNAPSHOT_THROTTLE_MS
-  );
+  // The snapshot-publish throttle is NOT pinned here any more: Kotlin no longer
+  // declares it. DisplayCoordinator reads RoomBrain.SNAPSHOT_THROTTLE_MS out of the
+  // bundle at start-up (RoomBrainClient.snapshotThrottleMs), so there is no second
+  // copy of the value to keep in step — which is a stronger guarantee than this
+  // file could give. The read itself is covered by the Kotlin conformance test.
 
   // Reconnect backoff (web PartyConnection: `|| 5` default attempts and
   // `Math.min(1000 * Math.pow(1.5, attempt - 1), 5000)`).

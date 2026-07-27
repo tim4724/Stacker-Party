@@ -103,17 +103,17 @@ class RoomBrainClient private constructor(private val bridge: EngineBridge) {
     suspend fun setAlive(peerIndex: Int, alive: Boolean): Changed =
         mutate(call("setAlive", num(peerIndex), JsonPrimitive(alive)))
 
-    suspend fun clearAlive() = unit(call("clearAlive"))
+    suspend fun clearAlive() = unitMutating(call("clearAlive"))
 
     suspend fun setResults(results: JsonArray?) =
-        unit(call("setResults", results ?: JsonNull))
+        unitMutating(call("setResults", results ?: JsonNull))
 
     suspend fun setMuted(muted: Boolean): Changed = mutate(call("setMuted", JsonPrimitive(muted)))
 
-    suspend fun setPaused(paused: Boolean) = unit(call("setPaused", JsonPrimitive(paused)))
-    suspend fun setAutoPaused(paused: Boolean) = unit(call("setAutoPaused", JsonPrimitive(paused)))
+    suspend fun setPaused(paused: Boolean) = unitMutating(call("setPaused", JsonPrimitive(paused)))
+    suspend fun setAutoPaused(paused: Boolean) = unitMutating(call("setAutoPaused", JsonPrimitive(paused)))
     suspend fun setConnectionPaused(paused: Boolean) =
-        unit(call("setConnectionPaused", JsonPrimitive(paused)))
+        unitMutating(call("setConnectionPaused", JsonPrimitive(paused)))
 
     // =====================================================================
     // Room lifecycle
@@ -135,7 +135,7 @@ class RoomBrainClient private constructor(private val bridge: EngineBridge) {
      *  sat the round out (flagged `newPlayer`). Returns the enriched array. */
     suspend fun enrichResults(ranking: JsonArray): JsonArray = decode(call("enrichResults", ranking))
 
-    suspend fun reset() = unit(call("reset"))
+    suspend fun reset() = unitMutating(call("reset"))
 
     // =====================================================================
     // Liveness (predicates in the brain, effects in the shell)
@@ -162,9 +162,10 @@ class RoomBrainClient private constructor(private val bridge: EngineBridge) {
     suspend fun graceTick(nowMs: Double): Boolean = decode(call("graceTick", num(nowMs)))
     suspend fun connectedCount(): Int = decode(bridge.roomGetJson("connectedCount"))
 
-    /** `RoomBrain.SNAPSHOT_THROTTLE_MS`: the shells' publish-throttle window, so the
-     *  policy is single-sourced with the web instead of hand-mirrored here. */
-    suspend fun snapshotThrottleMs(): Double = decode(bridge.roomConstJson("SNAPSHOT_THROTTLE_MS"))
+    /** The publish-throttle window (RoomBrain.SNAPSHOT_THROTTLE_MS, exposed on the
+     *  prototype for exactly this read), so the policy is single-sourced with the web
+     *  instead of hand-mirrored into a Kotlin constant that then drifts. */
+    suspend fun snapshotThrottleMs(): Double = decode(bridge.roomGetJson("snapshotThrottleMs"))
 
     // =====================================================================
     // Internals
@@ -187,15 +188,17 @@ class RoomBrainClient private constructor(private val bridge: EngineBridge) {
         return result
     }
 
+    /** Void mutators that move the snapshot: the three pause flags, alive, results and
+     *  reset all project into it, so the read model must follow them. */
+    private suspend fun unitMutating(json: String) {
+        unit(json)
+        refresh()
+    }
+
     private fun unit(json: String) {
         // Void mutators answer "null"; the check exists only to catch a method whose
         // shape changed under us (a JS throw already surfaced as an exception).
         check(json == "null") { "unexpected room return value: $json" }
-    }
-
-    private suspend fun unitMutating(json: String) {
-        unit(json)
-        refresh()
     }
 
     private inline fun <reified T> decode(json: String): T = EngineJson.json.decodeFromString(json)

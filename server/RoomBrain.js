@@ -146,6 +146,15 @@ RoomBrain.cleanInboundName = cleanInboundName;
 // Read accessors
 // =====================================================================
 
+// Also an INSTANCE property, not just the static below. The native bridges
+// expose `roomGet(prop)`, which is an instance lookup, so a static on the
+// constructor is unreachable from tvOS and Android; without this each of them
+// has to hand-mirror the number, which is exactly the drift the module exists
+// to stop.
+Object.defineProperty(RoomBrain.prototype, 'snapshotThrottleMs', {
+  get: function () { return SNAPSHOT_THROTTLE_MS; },
+});
+
 Object.defineProperty(RoomBrain.prototype, 'state', {
   get: function () { return this.flow.state; },
 });

@@ -5,10 +5,11 @@ public enum CountdownValue: Equatable { case number(Int), go }
 
 /// One display-ready results row: the engine's raw `PlayerResult` joined with the
 /// roster's name/color, or a late joiner who sat the match out (rank/lines/level
-/// nil, `newPlayer` true). Typed end-to-end inside the kit; `payload` is the wire
-/// form (game_end broadcast, WELCOME replay), omitting nil fields like the web.
-public struct MatchResult: Equatable {
-    public var playerId: Int        // var: remapped onto the new index by a ?claim= rejoin
+/// nil, `newPlayer` true). Produced by the room brain's `enrichResults`; `payload`
+/// is the wire form that rides the RESULTS snapshot, omitting nil fields like the
+/// web.
+public struct MatchResult: Equatable, Decodable {
+    public let playerId: Int
     public let playerName: String?
     public let colorIndex: Int?
     public let rank: Int?
@@ -28,6 +29,22 @@ public struct MatchResult: Equatable {
         self.level = level
         self.alive = alive
         self.newPlayer = newPlayer
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case playerId, playerName, colorIndex, rank, lines, level, alive, newPlayer
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        playerId = try c.decode(Int.self, forKey: .playerId)
+        playerName = try c.decodeIfPresent(String.self, forKey: .playerName)
+        colorIndex = try c.decodeIfPresent(Int.self, forKey: .colorIndex)
+        rank = try c.decodeIfPresent(Int.self, forKey: .rank)
+        lines = try c.decodeIfPresent(Int.self, forKey: .lines)
+        level = try c.decodeIfPresent(Int.self, forKey: .level)
+        alive = try c.decodeIfPresent(Bool.self, forKey: .alive)
+        newPlayer = try c.decodeIfPresent(Bool.self, forKey: .newPlayer) ?? false
     }
 
     public var payload: [String: Any] {
@@ -83,14 +100,47 @@ public extension DisplayOutput {
     func setDisplayMuted(_ muted: Bool) {}
 }
 
-/// The native display brain: owns the relay transport, the RoomFlow roster, and
-/// the engine; implements the display-side protocol handling and game lifecycle
-/// (lobby -> countdown -> playing -> results). Ported from DisplayGame.js /
-/// DisplayInput.js / DisplayConnection.js. Single-threaded: call from the main
-/// thread; `tick(deltaMs:)` is driven once per frame by the renderer.
+/// What a RoomBrain mutator hands back — the fields THIS shell acts on. Every
+/// mutator returns a small object whose only universal member is the `publish`
+/// hint; the rest are per-method, so ONE all-optional struct decodes all of them
+/// and each call site reads only what it asked for (unknown members are ignored,
+/// and a void mutator returns JSON `null`, which becomes the all-nil value).
+struct RoomResult: Decodable {
+    var publish: String?         // 'now' | 'soon' | 'none'
+    var added: Bool?             // peerJoined
+    var accepted: Bool?          // hello
+    var roomFull: Bool?          // hello
+    var claimed: Bool?           // hello (a cross-device rejoin was honoured)
+    var oldPeerIndex: Int?       // hello, the index the claim came from
+    var known: Bool?             // peerLeft
+    var action: String?          // peerLeft: 'disconnected' | 'removed' | 'none'
+    var returnedToLobby: Bool?   // peerLeft, from the results screen
+    var changed: Bool?           // transitionTo
+}
+
+/// One batched liveness pull (`RoomBrain.tick`): who just went silent, and whether
+/// the late-joiner grace window elapsed.
+struct RoomTick: Decodable {
+    let expired: [Int]
+    let graceFired: Bool
+}
+
+/// The native display brain: owns the relay transport, the engine, and the display
+/// half of the game lifecycle (lobby -> countdown -> playing -> results).
+///
+/// Room state is NOT owned here. Roster, auto-naming, name sanitizing, colour
+/// slots, host election, pause/mute/results facts and the retained snapshot all
+/// live in `server/RoomBrain.js`, which runs inside the same JavaScriptCore
+/// context as the engine and is reached through `EngineBridge`'s room API. The
+/// web display and Android TV load that same module out of the same bundle, so
+/// the three displays cannot drift; what is left here is transport, timers,
+/// rendering and audio.
+///
+/// Single-threaded: call from the main thread; `tick(deltaMs:)` is driven once
+/// per frame by the renderer. JavaScriptCore is synchronous, so every room call
+/// below returns before the next line runs.
 public final class DisplayCoordinator {
 
-    public let flow = RoomFlow()
     private let transport: RelayTransport
     // Optional peer-to-peer input fast path (WebRTC DataChannels). Controller
     // input arrives over it when open and falls back to the relay otherwise; the
@@ -106,31 +156,21 @@ public final class DisplayCoordinator {
     let engineDirectory: URL
     private let seedProvider: () -> UInt32
 
+    /// The match-scoped engine handle the state machine gates on. Points at the
+    /// same object as `runtime` while a match is live; nil'ed at match end.
     var engine: EngineBridge?
-    // The reusable JS runtime behind `engine`. Evaluating the bundle in a fresh
-    // JSContext is the expensive part of a match start (in-process JSC has no JIT),
-    // while Bridge.create re-inits a game on an existing runtime for free — so the
-    // runtime is built ONCE (prewarmed off-main when the first controller says
-    // hello, or synchronously at the first START) and reused for every match.
-    // `engine` stays the match-scoped handle the state machine gates on.
+    /// The session-lived JavaScriptCore runtime. It holds BOTH the engine (rebuilt
+    /// per match via Bridge.create, which is free on an existing context) and the
+    /// room brain (constructed once by `roomInit` and never torn down). Because the
+    /// brain lives here, this handle is built once and then never dropped — see
+    /// `brain()`.
     private var runtime: EngineBridge?
-    private var runtimePrewarmInFlight = false
+    /// Latched after a failed build so a missing/broken core bundle doesn't retry
+    /// (and re-log) on every relay packet.
+    private var runtimeFailed = false
     private var room: String?
     private var instance: String?
 
-    // Pause is a union of independent reasons so they don't clobber each other
-    // (a host Continue must not un-pause an all-disconnected freeze, etc.). The
-    // engine/music follow the effective `paused` via reconcilePause.
-    private var pausedManual = false        // host / remote pressed Pause
-    private var pausedAuto = false          // every participant disconnected (silent)
-    private var pausedConnection = false    // the display's OWN relay link is down
-    private var paused: Bool { pausedManual || pausedAuto || pausedConnection }
-    /// The only pause a controller can act on. The auto- (everyone disconnected)
-    /// and connection (our own link down) pauses are display-internal: never
-    /// broadcast, self-clearing, and a controller shown either gets a Continue
-    /// that cannot work — resumeGame() ignores it because the display isn't
-    /// manually paused, so no GAME_RESUMED follows and the overlay never clears.
-    private var userVisiblePaused: Bool { pausedManual }
     // True while we are IN the room, not merely holding an open socket. While it's
     // false, controller traffic can't arrive, so the controller-liveness sweep must be
     // skipped (every lastSeen is stale through no fault of the controllers). Cleared
@@ -141,28 +181,34 @@ public final class DisplayCoordinator {
     // Monotonic clock fed to PartyCore.frame(); only deltas matter, so it never
     // needs resetting across games (a fresh engine re-primes on its first frame).
     private var frameClockMs = 0.0
-    var playerOrder: [Int] = []
-    // Per-participant KO state, so a WELCOME sent to a reconnecting (or
-    // display-blip re-welcomed) controller reports alive:false for a player who
-    // was already KO'd — without this the eliminated phone flips back to the live
-    // playing UI (mirrors the web's lastAliveState). Only ever records false; a
-    // player defaults alive until KO'd.
-    private var aliveState: [Int: Bool] = [:]
-    // The enriched results of the just-finished match, replayed in the WELCOME to
-    // a controller that joins/reconnects on the RESULTS screen so its phone shows
-    // the ranking instead of a blank results view (mirrors the web's lastResults).
-    private var lastResults: [MatchResult]?
     private var pendingSeed: UInt32 = 0
     var demoSeedOverride: UInt32?   // deterministic seed for HEXDEMO
-    private var muted = false
     private let nowProvider: () -> Double    // wall-clock ms for liveness (injectable for tests)
 
-    // Retained-snapshot throttle (web _lastLobbyBroadcastAt / _lobbyBroadcastTimer).
+    /// Peers heard from since the last frame. Batched deliberately: the brain's
+    /// `tick(nowMs, seen)` exists so an 8-player input burst costs ONE bridge
+    /// crossing per frame instead of one per packet.
+    private var seenSinceTick: Set<Int> = []
+
+    /// Which boards currently show a rejoin QR. Shell state, not room state: it is
+    /// the set of overlays we have raised (the web's `disconnectedQRs`).
+    /// INVARIANT: it moves in lockstep with the brain's presence set — every site
+    /// that raises one calls markDisconnected, every site that clears one calls
+    /// markReconnected. If they drift, host election (which reads the brain) skips
+    /// a present player. It is also what makes the per-packet reconnect check free.
+    private var rejoinQRs: Set<Int> = []
+
+    // Retained-snapshot throttle. Leading + trailing, with the trailing edge pumped
+    // from tick(): the brain decides WHICH calls take the throttled path (every
+    // mutator returns a 'now' | 'soon' | 'none' hint), the shell only owns the
+    // timer, because a timer needs a real clock and the brain has none.
     private var lastSnapshotAt = -1e12
     private var snapshotPending = false
-    /// Coalesce bursty republishes (join storms, colour picks, host churn) into at
-    /// most one leading + one trailing set_state per window. Web's value.
-    private static let lobbyBroadcastMinIntervalMs = 400.0
+    /// RoomBrain.snapshotThrottleMs, read out of the bundle once the brain is up
+    /// (see `brain()`), so the window is not mirrored in Swift at all. The
+    /// fallback only covers the window before the first successful roomInit, and
+    /// on a runtime that failed to build there is no publishing to throttle.
+    public private(set) var snapshotThrottleMs = 500.0
 
     // The single-threaded contract (class doc) is otherwise enforced by nothing:
     // a RelayClient built with a non-main callbackQueue would race the fields
@@ -180,9 +226,6 @@ public final class DisplayCoordinator {
     // stored properties, so their state lives here.
     var demoActive = false
     var demoTick = 0
-    /// A JavaScriptCore bridge used only to read the static GalleryFixtures data
-    /// (built lazily, reused across a shot). nil if the core bundle fails to load.
-    var galleryBridge: EngineBridge?
 
     // Render-on-input coalescing: true once handleInput has pulled a snapshot
     // since the last tick(), so message bursts cost at most one pull per frame.
@@ -210,12 +253,199 @@ public final class DisplayCoordinator {
         self.nowProvider = nowProvider
     }
 
-    public var state: RoomState { flow.state }
-    public var isMuted: Bool { muted }
+    // MARK: - The room brain
+
+    /// Liveness policy handed to the brain at construction, mirroring
+    /// server/constants.js (LIVENESS_TIMEOUT_MS / LATE_JOINER_GRACE_MS). Pinned to
+    /// those values by tests/protocol-swift-parity.test.js.
+    static let livenessTimeoutMs = 3000
+    static let lateJoinerGraceMs = 5000
+
+    /// The session's JavaScriptCore runtime, materialized on first use with the
+    /// room brain already constructed inside it.
+    ///
+    /// Room state exists before the first rendered frame — the relay's `created`
+    /// and `peer_joined` land early — so this is called from `start()`,
+    /// SYNCHRONOUSLY, before `transport.connect()`. That ordering is the whole
+    /// answer to "the brain lives in a runtime that used to be built lazily": the
+    /// runtime is now built once per session, up front, and the old off-main
+    /// per-match prewarm is gone with it (there is nothing left to prewarm, and an
+    /// async build would reintroduce exactly the race this closes). The offline
+    /// harnesses (gallery shots, local demo) never call `start()` and reach it here
+    /// through their first roster write instead.
+    @discardableResult
+    private func brain() -> EngineBridge? {
+        if let runtime { return runtime }
+        guard !runtimeFailed else { return nil }
+        do {
+            let e = try EngineBridge(engineDirectory: engineDirectory)
+            // Surface fire-and-forget engine/room exceptions instead of dropping them.
+            e.onEngineError = { message in
+                FileHandle.standardError.write(Data("[engine] \(message)\n".utf8))
+            }
+            try e.roomInit(optionsJSON: Self.roomOptionsJSON)
+            // The publish window comes from the module too: Android reads the
+            // same property, so the number lives in exactly one place.
+            if let ms = try? e.roomGet(Double.self, "snapshotThrottleMs") { snapshotThrottleMs = ms }
+            runtime = e
+            return e
+        } catch {
+            runtimeFailed = true
+            FileHandle.standardError.write(Data("[room] runtime unavailable: \(error)\n".utf8))
+            return nil
+        }
+    }
+
+    private static var roomOptionsJSON: String {
+        "{\"maxPlayers\":\(EngineConstants.maxPlayers),"
+        + "\"liveness\":{\"timeoutMs\":\(livenessTimeoutMs),\"graceMs\":\(lateJoinerGraceMs)}}"
+    }
+
+    /// Encode a room call's arguments as the JSON array the bridge expects. Values
+    /// are the JSON-native types the brain takes (numbers, strings, bools, arrays,
+    /// dictionaries — including a raw inbound HELLO, which arrived as JSON anyway).
+    ///
+    /// Returns nil rather than a fallback if the list won't encode, and the callers
+    /// then DROP the call: a HELLO carrying something JSONSerialization refuses
+    /// would otherwise reach the brain with zero arguments, and
+    /// `hello(undefined, ...)` seats a roster row under the key `undefined`.
+    private static func argsJSON(_ args: [Any]) -> String? {
+        guard !args.isEmpty else { return "[]" }
+        guard JSONSerialization.isValidJSONObject(args),
+              let data = try? JSONSerialization.data(withJSONObject: args),
+              let json = String(data: data, encoding: .utf8) else { return nil }
+        return json
+    }
+
+    /// JSON-safe optional. JSONSerialization rejects a wrapped `Optional`, so an
+    /// absent field crosses as an explicit null — which the brain's parseInt /
+    /// typeof checks reject exactly like a missing one.
+    private static func opt<T>(_ value: T?) -> Any { value.map { $0 as Any } ?? NSNull() }
+
+    /// Call a room mutator and decode its result. Non-throwing on purpose: every
+    /// caller is a void relay/remote entry point on a display that has to keep
+    /// running, so a bridge failure is logged (by EngineBridge's exception drain)
+    /// and degrades to "nothing happened" rather than propagating.
+    @discardableResult
+    private func roomDo(_ method: String, _ args: [Any] = []) -> RoomResult {
+        roomValue(RoomResult.self, method, args) ?? RoomResult()
+    }
+
+    /// Call a room method and decode a typed return value (`nil` on a void return
+    /// or a bridge failure).
+    private func roomValue<T: Decodable>(_ type: T.Type, _ method: String, _ args: [Any] = []) -> T? {
+        guard let bridge = brain(), let argsText = Self.argsJSON(args) else { return nil }
+        return try? bridge.roomCall(T.self, method, argsText)
+    }
+
+    /// Read a room property (`state`, `host`, `participants`, `muted`, ...).
+    private func roomProperty<T: Decodable>(_ type: T.Type, _ property: String) -> T? {
+        guard let bridge = brain() else { return nil }
+        return try? bridge.roomGet(T.self, property)
+    }
+
+    /// A scalar property, read as raw JSON. Scalars are the hot reads (`state` and
+    /// the three pause flags are consulted on the input and frame paths), and a
+    /// one-token JSON text is cheaper to match than to hand to JSONDecoder.
+    private func roomScalar(_ property: String) -> String? {
+        guard let bridge = brain() else { return nil }
+        return try? bridge.roomGetJSON(property)
+    }
+
+    private func roomFlag(_ property: String) -> Bool { roomScalar(property) == "true" }
+
+    /// A predicate call, matched on the raw JSON for the same reason as roomScalar.
+    private func roomBool(_ method: String, _ args: [Any] = []) -> Bool {
+        guard let bridge = brain(), let argsText = Self.argsJSON(args) else { return false }
+        return (try? bridge.roomCallJSON(method, argsText)) == "true"
+    }
+
+    private func roomInt(_ method: String, _ args: [Any] = []) -> Int? {
+        guard let bridge = brain(), let argsText = Self.argsJSON(args) else { return nil }
+        return (try? bridge.roomCallJSON(method, argsText)).flatMap { Int($0) }
+    }
+
+    /// The same runtime the brain lives in, for the gallery's static
+    /// GalleryFixtures reads. One JSContext per coordinator: the gallery used to
+    /// build a second one, back when the first existed only per match.
+    var fixtureBridge: EngineBridge? { brain() }
+
+    // MARK: - Room reads (the shell's window onto the brain)
+
+    public var state: RoomState {
+        // JSON string literal: "lobby" with the quotes. The four room states are
+        // fixed ASCII words, so there is nothing for a decoder to unescape.
+        guard let json = roomScalar("state"), json.count > 2 else { return .lobby }
+        return RoomState(rawValue: String(json.dropFirst().dropLast())) ?? .lobby
+    }
+
+    /// The effective host: platform master, else the sticky slot, else the
+    /// oldest-joined eligible present player. All of it lives in the kit's RoomFlow
+    /// inside the brain.
+    public var hostPeerIndex: Int? {
+        guard let json = roomScalar("host") else { return nil }
+        return Int(json)   // "null" -> nil, which is exactly "no host"
+    }
+
+    /// The full roster, join-ordered. Carries `connected` and `joinedAt`, which the
+    /// wire snapshot deliberately does not, so this is what the lobby UI reads.
+    public func roster() -> [PlayerRecord] { roomValue([PlayerRecord].self, "list") ?? [] }
+
+    /// One roster row, or nil. A missing peer answers JSON `null`, which simply
+    /// fails to decode into a keyed container.
+    public func player(_ peerIndex: Int) -> PlayerRecord? {
+        roomValue(PlayerRecord.self, "get", [peerIndex])
+    }
+
+    public var playerCount: Int { roomScalar("size").flatMap { Int($0) } ?? 0 }
+
+    /// Active participants in board-layout order. Not the same as the roster: in
+    /// the lobby everyone is a participant, mid-game a late joiner is not.
+    var participants: [Int] { roomProperty([Int].self, "participants") ?? [] }
+
+    func isDisconnected(_ peerIndex: Int) -> Bool { roomBool("isDisconnected", [peerIndex]) }
+
+    var allParticipantsDisconnected: Bool { roomBool("allParticipantsDisconnected") }
+
+    // MARK: - Fixture roster (gallery shots + the local demo)
+
+    /// Register a roster row verbatim, bypassing slot allocation and auto-naming.
+    /// Gallery scenarios and the HEXLOBBY/HEXDEMO harnesses need a deterministic,
+    /// possibly non-contiguous roster that a real join sequence would never produce;
+    /// real joins go through peerJoined / hello, where the allocation policy lives.
+    func seedPlayer(peerIndex: Int, playerName: String, colorSlot: Int, startLevel: Int = 1) {
+        roomDo("addPlayer", [peerIndex, [
+            "playerName": playerName,
+            "playerIndex": colorSlot,
+            "startLevel": startLevel,
+            "helloSeen": true,
+        ]])
+    }
+
+    /// Lowest free colour slot, for the fixture path above.
+    func nextColorSlot() -> Int { roomInt("nextAvailableColorSlot") ?? 0 }
+
+    // Pause is a union of independent reasons so they don't clobber each other (a
+    // host Continue must not un-pause an all-disconnected freeze). The brain holds
+    // all three and projects only the manual one into the snapshot: the auto-
+    // (everyone disconnected) and connection (our own link down) pauses are
+    // display-internal, self-clearing, and a controller shown either would get a
+    // Continue that cannot work.
+    private var pausedManual: Bool { roomFlag("paused") }
+    private var pausedAuto: Bool { roomFlag("autoPaused") }
+    private var pausedConnection: Bool { roomFlag("connectionPaused") }
+    private var paused: Bool { pausedManual || pausedAuto || pausedConnection }
+
+    public var isMuted: Bool { roomFlag("muted") }
 
     // MARK: - Lifecycle
 
     public func start() {
+        assertOwningThread()
+        // Build the runtime (and with it the room brain) BEFORE the socket opens —
+        // see brain(). Everything below can be answered by a relay callback.
+        brain()
+
         transport.onCreated = { [weak self] room, instance, region in
             self?.onCreated(room: room, instance: instance)
         }
@@ -229,18 +459,6 @@ public final class DisplayCoordinator {
         // Controller input arriving over the fastlane routes through the SAME
         // handler as relay input, so dedup/liveness/game logic is single-sourced.
         fastlane?.onInput = { [weak self] from, data in self?.onMessage(from: from, data: data) }
-        flow.onRosterChange = { [weak self] players in
-            self?.output?.updateLobby(players: players, hostPeerIndex: self?.flow.host)
-        }
-        // A silent disconnect mid-game can reshuffle the effective host; the new
-        // host's controller must learn it gained the menu controls. LOBBY/RESULTS
-        // already rebroadcast on roster changes, so only cover the in-game states.
-        flow.onHostChange = { [weak self] _ in
-            guard let self else { return }
-            if self.flow.state == .countdown || self.flow.state == .playing {
-                self.maybeBroadcastHostChange()
-            }
-        }
         transport.connect()
     }
 
@@ -259,15 +477,13 @@ public final class DisplayCoordinator {
 
     private func onJoined(room: String, peers: [Int]) {
         assertOwningThread()
-        // Display relay-reconnect: reconcile present controllers and re-welcome
-        // everyone. Re-stamp + un-flag the still-present peers (mirrors the web's
-        // onDisplayRejoined) so they don't instantly expire on the next liveness
-        // sweep, and clear any rejoin overlay that was raised during the blip.
+        // Display relay-reconnect: reconcile present controllers, then republish.
         self.room = room
-        let now = nowProvider()
-        // We re-push WELCOME to everyone below, so a later host change must
-        // broadcast regardless of the pre-disconnect sentinel (web parity).
-        lastBroadcastedHostId = nil
+        // Re-confirm the lobby QR: the link was down (QR untrusted, rendered dimmed)
+        // and this `joined` proves the room survived, so the same code + QR are valid
+        // again. The room-gone path re-confirms via onCreated instead.
+        let url = joinURL(room: room, instance: instance)
+        output?.roomReady(room: room, joinURL: url, qrText: url)
         // Re-stamp the still-present peers and clear any rejoin overlay; collect the
         // ones the relay no longer lists, then route each through the SAME
         // state-aware onPeerLeft the web delegates to (lobby → remove the slot;
@@ -275,36 +491,29 @@ public final class DisplayCoordinator {
         // results → trim the order + maybe return to the lobby). Marking them
         // disconnected inline instead would strand the board with no rejoin QR and,
         // because expiredPeers skips already-disconnected peers, never self-heal.
-        // Re-confirm the lobby QR: the link was down (QR untrusted, rendered dimmed)
-        // and this `joined` proves the room survived, so the same code + QR are valid
-        // again. The room-gone path re-confirms via onCreated instead.
-        let url = joinURL(room: room, instance: instance)
-        output?.roomReady(room: room, joinURL: url, qrText: url)
         var goneIds: [Int] = []
-        for p in flow.list() {
-            if peers.contains(p.peerIndex) {
-                flow.onSeen(p.peerIndex, now)
-                if flow.isDisconnected(p.peerIndex) {
-                    flow.markReconnected(p.peerIndex)
-                    output?.setDisconnected(playerId: p.peerIndex, joinURL: nil)
-                }
-            } else {
-                goneIds.append(p.peerIndex)
+        for p in roster() {
+            guard peers.contains(p.peerIndex) else { goneIds.append(p.peerIndex); continue }
+            seenSinceTick.insert(p.peerIndex)
+            if !p.connected {
+                roomDo("markReconnected", [p.peerIndex])
+                clearRejoinQR(p.peerIndex)
             }
         }
         for id in goneIds { onPeerLeft(id) }
-        // BEFORE the WELCOMEs, not after: the roster is reconciled (so the
-        // all-disconnected guard sees post-reconcile truth) but sendWelcome reports
-        // `paused`, and that field is the controller's authority. Resuming afterwards
-        // makes every rejoin WELCOME say paused=true and then chase it with a
-        // GAME_RESUMED — and if a controller latches the first and misses the second
-        // it is stranded on a pause overlay whose Continue cannot help, because
-        // resumeGame() is gated on `pausedManual` and the display is no longer paused
-        // at all. Web onDisplayRejoined resumes before its WELCOME loop for the same
-        // reason. The GAME_RESUMED that connectionResume broadcasts is then merely
-        // redundant, which is the harmless direction.
+        // BEFORE the republish, not after: the roster is reconciled (so the
+        // all-disconnected guard sees post-reconcile truth) but the snapshot reports
+        // `paused`, and that field is the controller's authority. Publishing first and
+        // resuming afterwards would send a paused=true snapshot and chase it with a
+        // resumed one — a controller that latched the first and missed the second is
+        // stranded on a pause overlay whose Continue cannot help, because resumeGame()
+        // is gated on the manual pause and the display is no longer paused at all.
+        // Web onDisplayRejoined resumes before its publish for the same reason.
         roomLinkRestored()
-        for p in flow.list() { sendWelcome(to: p.peerIndex, isLateJoiner: isLateJoiner(p.peerIndex)) }
+        // Republish so every controller sees a fresh snapshot: it is what clears
+        // their reconnect overlay and their display-gone bail timer, and (after the
+        // resume above) what tells them the game is running again.
+        publishAs("now")
     }
 
     /// A relay-level `error`. A fatal room error on (re)connect — the relay lost
@@ -318,31 +527,27 @@ public final class DisplayCoordinator {
         engine = nil
         output?.stopMusic()
         output?.setPaused(false)
-        pausedManual = false; pausedAuto = false; pausedConnection = false
-        aliveState = [:]
-        lastResults = nil
-        playerOrder = []
-        lastBroadcastedHostId = nil
-        flow.reset()                 // clear the roster + return to the lobby state
+        rejoinQRs.removeAll()
+        seenSinceTick.removeAll()
+        // Clears the roster, participants, alive flags, results, the manual and auto
+        // pause flags, and the room state back to lobby. Mute survives (a device
+        // preference, not room state); the connection pause is ours to clear.
+        roomDo("reset")
+        roomDo("setConnectionPaused", [false])
         output?.showScreen(.lobby)   // drop the frozen game immediately
         transport.recreateRoom()     // fresh room; onCreated re-shows the lobby with the new code
     }
 
     private func onPeerJoined(_ index: Int) {
         assertOwningThread()
-        // An in-session reconnect lands on the SAME slot, so the relay re-emits
-        // peer_joined for a peer we already know. Defer to the controller's HELLO
-        // (onMessage clears its disconnect + restores the QR) rather than calling
-        // addPlayer again, which would overwrite the kept color/level and strand
-        // the rejoin overlay (mirrors the web's `if (players.has(i)) return`).
-        guard !flow.contains(index) else { return }
-        let slot = flow.lowestFreeSlot()
-        guard slot >= 0 else {
-            transport.sendTo(index, OutboundMessage.error(message: "Room is full"))
-            return
-        }
-        flow.addPlayer(peerIndex: index, playerName: autoName(slot: slot), colorSlot: slot)
-        if flow.state == .lobby { broadcastLobby() }
+        // The brain allocates the colour slot, invents the placeholder auto-name (with
+        // the blocklist this platform used to be missing entirely) and decides whether
+        // this joiner is a lobby member or a late joiner waiting out the round. It
+        // refuses silently on a full room and on a duplicate — an in-session reconnect
+        // lands on the SAME slot, and re-adding would clobber the kept colour/level.
+        let res = roomDo("peerJoined", [index, nowProvider()])
+        guard res.added == true else { return }
+        publishAs(res.publish)
     }
 
     private func onPeerLeft(_ index: Int) {
@@ -350,48 +555,36 @@ public final class DisplayCoordinator {
         // Drop any peer-to-peer channel to the departed controller; a reconnecting
         // controller re-offers and a fresh fastlane peer is built (web parity).
         fastlane?.closePeer(index)
-        switch flow.state {
-        case .lobby:
-            flow.removePlayer(index)
-            // Unconditional now that this is one retained set_state rather than a
-            // per-player fanout: when the LAST lobby player leaves there is nobody to
-            // fan out to, but the retained snapshot must stop naming a departed player
-            // (and a stale host) to the next (re)joiner. Web removeLobbyPlayer's
-            // else-branch publishes the empty roster for the same reason.
-            broadcastLobby()
-        case .results:
-            // Drop the leaver and return to the lobby once no connected participant
-            // remains (late joiners don't count), mirroring the web RESULTS path.
-            flow.removePlayer(index)
-            playerOrder.removeAll { $0 == index }
-            flow.setActiveOrder(playerOrder)
-            if hasConnectedParticipant() {
-                if flow.size > 0 { broadcastLobby() }
-            } else {
-                returnToLobby()
-            }
-        case .countdown, .playing:
-            // End any in-progress soft drop so the departed board doesn't keep
-            // falling fast until the engine's own deadline fires (web cleanupPlayerInput).
-            engine?.softDropEnd(playerId: index)
-            if playerOrder.contains(index) {
-                flow.markDisconnected(index)   // keep slot
-                output?.setDisconnected(playerId: index, joinURL: rejoinURL(index))
-            } else {
-                flow.removePlayer(index)
-            }
+        // End any in-progress soft drop so the departed board doesn't keep falling
+        // fast until the engine's own deadline fires (web cleanupPlayerInput).
+        engine?.softDropEnd(playerId: index)
+        // The brain owns the branch: mid-game an active participant keeps their row
+        // (so the slot stays pinned for a reconnect via claimReconnect), while a late
+        // joiner and anyone leaving in lobby/results is dropped outright, with the
+        // sticky-host handoff and the empty-results return to lobby handled inside.
+        let res = roomDo("peerLeft", [index])
+        guard res.known == true else { return }
+        if res.action == "disconnected" {
+            raiseRejoinQR(index)
+            checkAllParticipantsDisconnected()
+        } else {
+            // The row is gone, so its overlay flag must go too, or a later peer
+            // landing on the same index would read as a returning disconnect.
+            rejoinQRs.remove(index)
         }
-    }
-
-    /// A peer that is part of the current round (the active order). Used to gate
-    /// the welcome's alive/paused payload and the RESULTS return-to-lobby.
-    private func isLateJoiner(_ id: Int) -> Bool {
-        (flow.state == .playing || flow.state == .countdown) && !playerOrder.contains(id)
+        if res.returnedToLobby == true { returnToLobbyUI() }
+        // The roster changed in every branch: someone is gone, the host may have moved
+        // to a present player, and a mid-game departure flips that player's `alive` for
+        // the remaining boards. Publishing unconditionally also covers the
+        // last-player-leaves case, where the snapshot must stop naming a departed
+        // player (and a stale host) to the next peer that joins.
+        publishAs(res.publish)
     }
 
     /// Any active participant still present and connected.
     private func hasConnectedParticipant() -> Bool {
-        playerOrder.contains { flow.contains($0) && !flow.isDisconnected($0) }
+        let active = Set(participants)
+        return roster().contains { active.contains($0.peerIndex) && $0.connected }
     }
 
     // MARK: - Inbound messages
@@ -404,28 +597,33 @@ public final class DisplayCoordinator {
         // message, so it falls straight through to the parse below.)
         if let fastlane, fastlane.handleSignal(from: from, data: data) { return }
         guard let msg = ControllerMessage(data) else { return }
-        flow.onSeen(from, nowProvider())
-        if flow.isDisconnected(from) {
-            flow.markReconnected(from)
-            output?.setDisconnected(playerId: from, joinURL: nil)   // clear rejoin overlay
-            if pausedAuto { autoResume() }                          // a participant returned
+
+        // Any message proves the sender is alive. The stamp is batched into the next
+        // frame's tick(); the reconnect edge is read off our OWN rejoin-QR set, so a
+        // packet from a healthy controller costs nothing across the bridge.
+        seenSinceTick.insert(from)
+        let wasDisconnected = rejoinQRs.contains(from)
+        if wasDisconnected {
+            clearRejoinQR(from)
+            roomDo("markReconnected", [from])
+            roomDo("onSeen", [from, nowProvider()])
         }
 
         switch msg.type {
-        case MSG.hello: handleHello(from: from, msg: msg)
+        case MSG.hello: handleHello(from: from, data: data)
         case MSG.input: handleInput(from: from, msg: msg)
         case MSG.softDrop:
             // Guard the Double->Int conversion: a malformed `speed` (e.g. 1e308)
             // would trap in Int.init and abort the display; ignore it instead.
-            if flow.state == .playing, !paused {
+            if state == .playing, !paused {
                 engine?.softDropStart(playerId: from, speed: msg.speed.flatMap { $0.isFinite && abs($0) < 9.0e15 ? Int($0) : nil })
             }
         case MSG.softDropEnd:
-            if flow.state == .playing { engine?.softDropEnd(playerId: from) }
+            if state == .playing { engine?.softDropEnd(playerId: from) }
         case MSG.startGame:
-            if flow.state == .lobby, flow.size >= 1 { beginCountdown() }
+            if state == .lobby, playerCount >= 1 { beginCountdown() }
         case MSG.playAgain:
-            if flow.state == .results, flow.size >= 1 { beginCountdown() }
+            if state == .results, playerCount >= 1 { beginCountdown() }
         case MSG.returnToLobby: returnToLobby()
         case MSG.pauseGame: pauseGame()
         case MSG.resumeGame: resumeGame()
@@ -437,77 +635,69 @@ public final class DisplayCoordinator {
         case MSG.ping: transport.sendTo(from, OutboundMessage.pong(t: msg.t))
         default: break
         }
+
+        // Auto-resume after processing the message, so the reconnecting controller
+        // has already been sent a snapshot describing the paused game before the
+        // resume publishes over the top of it.
+        if wasDisconnected, pausedAuto { autoResume() }
     }
 
-    private func handleHello(from: Int, msg: ControllerMessage) {
-        // Cross-device mid-game rejoin: a returning participant arrives under a NEW
-        // peer index carrying ?claim=<oldIdx> (sent as rejoinToken/rejoinId). Re-key
-        // the kept record + engine state onto the new index instead of seating them
-        // as a fresh late joiner. Mirrors the web's claimReconnectPeer.
-        if claimReconnect(from: from, msg: msg) { return }
+    /// `data` is the RAW hello, not the parsed `ControllerMessage`: the brain reads
+    /// `name`/`autoName`/`colorIndex`/`rejoinToken`/`rejoinId` itself, and its
+    /// lenient parsing (a rejoin token arrives as the string from `?claim=`) is
+    /// exactly the parsing the web display does. Re-normalizing it here first would
+    /// be a second implementation of the thing this refactor deleted.
+    private func handleHello(from: Int, data: [String: Any]) {
+        // Everything a HELLO decides lives in the brain: the name (sanitized, with
+        // empty and legacy P1-P8 submissions resolving to room-unique HX names), the
+        // preferred colour (honoured right away, so the snapshot below already names
+        // the colour the controller will keep), whether a cross-device rejoin claim is
+        // valid, and whether the room is full.
+        let res = roomDo("hello", [from, data, nowProvider()])
 
-        if flow.player(from) == nil {
-            let slot = flow.lowestFreeSlot()
-            guard slot >= 0 else {
+        // The room half of a claim moved inside; the game half is ours.
+        if res.claimed == true, let oldId = res.oldPeerIndex {
+            applyReconnectClaim(oldId: oldId, from: from)
+        }
+
+        guard res.accepted == true else {
+            if res.roomFull == true {
                 transport.sendTo(from, OutboundMessage.error(message: "Room is full"))
-                return
             }
-            let name = sanitizeName(msg.name) ?? autoName(slot: slot)
-            flow.addPlayer(peerIndex: from, playerName: name, colorSlot: slot)
-            flow.onSeen(from, nowProvider())
-        } else if let name = sanitizeName(msg.name), msg.autoName != true {
-            flow.player(from)?.playerName = name
+            return
         }
-        sendWelcome(to: from, isLateJoiner: isLateJoiner(from))
-        if flow.state == .lobby || flow.state == .results { broadcastLobby() }
-        // Someone is in the lobby, so a START may follow: get the runtime ready.
-        if flow.state == .lobby { prewarmRuntime() }
+
+        // One publish settles everything a HELLO can move: this controller's own
+        // identity (name, colour, level), the roster the others render, and the host,
+        // since a reconnecting ex-host reclaims the role their pinned slot held through
+        // the disconnect. A brand-new joiner needs it too: it is how they learn who
+        // they are and which screen to show.
+        publishAs(res.publish)
+        if res.claimed == true, pausedAuto { autoResume() }
     }
 
-    /// Honor a `?claim=<oldIdx>` rejoin: move the dropped participant's slot, board
-    /// and garbage state from `oldId` to the returning peer `from`. Returns true if
-    /// the claim was applied (caller is done). Only valid for a disconnected
-    /// participant of the current round.
-    private func claimReconnect(from: Int, msg: ControllerMessage) -> Bool {
-        // `!playerOrder.contains(from)`: an active participant can't claim
-        // another board — rekeying onto an id that already owns a board would
-        // silently drop one of the two in the engine's Map rebuild (a forged
-        // rejoinToken in a re-sent HELLO could otherwise corrupt the match).
-        // A genuine cross-device rejoin always arrives under a FRESH index.
-        guard let oldId = msg.rejoinToken ?? msg.rejoinId, oldId != from,
-              flow.isDisconnected(oldId), playerOrder.contains(oldId),
-              !playerOrder.contains(from) else { return false }
-        // Engine-first: re-key the engine board (input + snapshot map to the kept
-        // board) BEFORE moving the roster, so a failed engine rekey can't leave the
-        // roster pointing at a board the engine never moved. engine is non-nil here
-        // (built in beginCountdown); guard defensively, and with no engine there is
-        // no board to desync from a roster-only move.
-        if let engine, !engine.rekeyPlayer(oldId: oldId, newId: from) { return false }
-        guard flow.rekey(oldId: oldId, newId: from) else { return false }
-        playerOrder = playerOrder.map { $0 == oldId ? from : $0 }
-        flow.setActiveOrder(playerOrder)
-        flow.onSeen(from, nowProvider())
-        // Carry the KO state onto the new peer index so a claim-rejoin after a KO
-        // still reports alive:false in its welcome (web parity).
-        if let wasAlive = aliveState.removeValue(forKey: oldId) { aliveState[from] = wasAlive }
-        // Remap the cached ranking too: a claim on the RESULTS screen (player
-        // dropped mid-game, match ended before they returned) replays
-        // lastResults in the WELCOME, and the controller matches its own row
-        // by playerId (web parity: claimReconnectPeer does the same).
-        lastResults = lastResults?.map { entry in
-            var e = entry
-            if e.playerId == oldId { e.playerId = from }
-            return e
+    /// Finish a cross-device rejoin the brain has already accepted: everything keyed
+    /// by peer index that lives OUTSIDE the room (the engine's board, garbage queue
+    /// and drop cooldown, and the rejoin overlays) moves from the old index to the
+    /// new one. The room half (roster record, sticky host slot, participant order,
+    /// alive flags, cached ranking) moved inside the brain's claimReconnect.
+    ///
+    /// The engine's own rekey refusal is unreachable by construction — the brain
+    /// only accepts a claim whose old index IS a participant (so it owns a board)
+    /// and whose new index is NOT (so it owns none) — but a refusal would desync
+    /// roster and engine, so it is logged rather than swallowed.
+    private func applyReconnectClaim(oldId: Int, from: Int) {
+        engine?.softDropEnd(playerId: oldId)
+        engine?.softDropEnd(playerId: from)
+        if let engine, !engine.rekeyPlayer(oldId: oldId, newId: from) {
+            FileHandle.standardError.write(Data("[engine] rekeyPlayer \(oldId) -> \(from) refused\n".utf8))
         }
-        output?.setDisconnected(playerId: oldId, joinURL: nil)   // clear the dropped board's rejoin QR
-        if pausedAuto { autoResume() }                          // a participant returned
-        sendWelcome(to: from, isLateJoiner: false)
-        if flow.state == .lobby || flow.state == .results { broadcastLobby() }
-        return true
+        clearRejoinQR(oldId)
+        clearRejoinQR(from)
     }
 
     private func handleInput(from: Int, msg: ControllerMessage) {
-        guard flow.state == .playing, !paused, let action = msg.action,
+        guard state == .playing, !paused, let action = msg.action,
               InputAction(rawValue: action) != nil else { return }
         engine?.processInput(playerId: from, action: action)
         // Render-on-input: reflect the applied input on the very next display frame
@@ -523,71 +713,92 @@ public final class DisplayCoordinator {
     }
 
     private func handleSetLevel(from: Int, msg: ControllerMessage) {
-        guard let level = msg.level, (1...15).contains(level), let rec = flow.player(from) else { return }
-        rec.startLevel = level
-        // startLevel rides the retained roster snapshot like every other roster field,
-        // which is what let LOBBY_UPDATE go entirely. Cheaper than the targeted echo it
-        // replaces, too: the snapshot's 400ms leading+trailing throttle collapses a
-        // burst of +/- taps into ~2.5 publishes/sec however fast they come.
-        if flow.state == .lobby { broadcastLobby() }
+        // Held-finger control: the brain's 'soon' hint routes this through the
+        // throttle, so a burst of +/- taps collapses to at most ~2 publishes per
+        // second and the trailing one always carries the final level. Outside the
+        // lobby the stepper is unreachable and the hint is 'none'.
+        publishAs(roomDo("setLevel", [from, Self.opt(msg.level)]).publish)
     }
 
+    /// Re-claim a palette slot. The brain silently rejects collisions so concurrent
+    /// picks don't spam the sender with errors; the next snapshot carries the truth.
     private func handleSetColor(from: Int, msg: ControllerMessage) {
-        guard let slot = msg.colorIndex, (0..<EngineConstants.maxPlayers).contains(slot),
-              let rec = flow.player(from) else { return }
-        // Reject if taken by another player.
-        if flow.list().contains(where: { $0.peerIndex != from && $0.colorSlot == slot }) { return }
-        rec.colorSlot = slot
-        broadcastLobby()
+        publishAs(roomDo("setColor", [from, Self.opt(msg.colorIndex)]).publish)
     }
 
+    /// Live rename from an already-registered controller (e.g. an AirConsole profile
+    /// edit). Unlike SET_COLOR this is allowed in every state, including mid-game,
+    /// because it only relabels the player and never touches game state.
     private func handleSetName(from: Int, msg: ControllerMessage) {
-        guard let name = sanitizeName(msg.name), let rec = flow.player(from) else { return }
-        rec.playerName = name
-        if from == flow.host { broadcastLobby() }
-        else if flow.state == .lobby || flow.state == .results { refreshDisplayLobby() }
+        publishAs(roomDo("setName", [from, Self.opt(msg.name)]).publish)
     }
 
     private func handleSetMute(from: Int, msg: ControllerMessage) {
-        guard from == flow.host else { return }
-        muted = (msg.muted == true)
-        transport.broadcast(OutboundMessage.displayMuted(muted))
-        // Apply to live audio immediately (mirrors remoteToggleMute); without this
-        // the flag only took effect at the next match start.
-        if muted { output?.pauseMusic() }
-        else if flow.state == .playing && !paused { output?.resumeMusic() }
-        output?.setDisplayMuted(muted)   // keep a visible pause-menu switch live
+        // Host-only: non-host controllers can't mute the shared display.
+        guard from == hostPeerIndex else { return }
+        setDisplayMuted(msg.muted == true)
+    }
+
+    /// Apply the display mute and publish it: `displayMuted` rides the snapshot,
+    /// which is what the retired DISPLAY_MUTED broadcast used to do. Also applies to
+    /// live audio immediately, so the flag doesn't only take effect at the next
+    /// match start.
+    private func setDisplayMuted(_ next: Bool) {
+        let res = roomDo("setMuted", [next])
+        if next { output?.pauseMusic() }
+        else if state == .playing && !paused { output?.resumeMusic() }
+        output?.setDisplayMuted(next)   // keep a visible pause-menu switch live
+        publishAs(res.publish)
     }
 
     // MARK: - Countdown + game
 
     func beginCountdown() {
-        guard flow.transition(to: .countdown) else { return }
-        pruneDisconnected()
-        // Late joiners enter the participant order, sorted by join time so the
-        // leftmost board is the first joiner.
-        for id in flow.list().map({ $0.peerIndex }) where !playerOrder.contains(id) { playerOrder.append(id) }
-        playerOrder = playerOrder.filter { flow.contains($0) }
-        playerOrder.sort { (flow.player($0)?.joinedAt ?? .max) < (flow.player($1)?.joinedAt ?? .max) }
-        // Pruning may have emptied the round (e.g. a Play-Again that races the
-        // presence sweep with every participant already gone). Don't launch a
-        // zero-player engine — bounce back to the lobby (web parity).
-        guard !playerOrder.isEmpty else { returnToLobby(); return }
-        flow.setActiveOrder(playerOrder)
-        // Stamp everyone present so a controller that went briefly quiet in the
-        // lobby isn't instantly expired once the COUNTDOWN liveness gate applies.
-        flow.primeLiveness(nowProvider())
+        assertOwningThread()
+        guard state == .lobby || state == .results else { return }
+        // Web startNewGame, in its order: clear the pause reasons and the previous
+        // match's ranking / KO flags, drop everyone who went missing (AirConsole flags
+        // without expiring; relay mode can expire one before a QR flag was set), then
+        // decide whether there is still a game to start.
+        setPauseReasons(manual: false, auto: false, connection: false)
+        roomDo("setResults", [NSNull()])
+        roomDo("clearAlive")
+        roomDo("pruneDisconnected", [nowProvider()])
+        rejoinQRs.removeAll()
+        roomDo("clearDisconnected", [nowProvider()])
+        // Everyone who remained was disconnected — don't launch an empty game. From
+        // RESULTS this returns to the lobby; from LOBBY returnToLobby no-ops and the
+        // publish below refreshes the (now empty) lobby controls.
+        guard playerCount >= 1 else {
+            if state == .lobby { publishAs("now") } else { returnToLobby() }
+            return
+        }
+        // Fold in the late joiners who sat out the previous round.
+        roomDo("admitWaiting")
+        guard roomDo("transitionTo", ["countdown"]).changed == true else { return }
+        // Sort participants by join time so the leftmost board is the first joiner,
+        // and pin the result as this round's active set (and host-eligibility set).
+        let order = roomValue([Int].self, "freezeParticipantOrder") ?? []
+        // Stamp everyone present so a controller that went briefly quiet in the lobby
+        // isn't instantly expired once the COUNTDOWN liveness gate applies. tick() is
+        // the brain's batched seen-list entry point; its expiry decisions are empty by
+        // construction here, because it has just stamped every peer it could report.
+        roomDo("tick", [nowProvider(), roster().map(\.peerIndex)])
+        guard !order.isEmpty else { returnToLobby(); return }
+
         pendingSeed = demoSeedOverride ?? seedProvider()
-        pausedManual = false; pausedAuto = false; pausedConnection = false
-        aliveState = [:]      // fresh match: everyone alive, last ranking is stale
-        lastResults = nil
         countdownElapsed = 0
+        countdownStep = -1
 
         // Build the engine now and show the game screen so the boards are visible
         // behind the countdown overlay, matching the web's 3-2-1-GO over the game
         // board. Render the PRE-GAME projection (empty wells: no spawn piece,
         // ghost, hold, or next queue) — the web hides those until play begins.
-        guard makeEngine() else { returnToLobby(); return }
+        guard makeEngine(order: order) else { returnToLobby(); return }
+        // Controllers route their screens purely off snapshot.roomState, so the
+        // COUNTDOWN transition's publish is what dims their pad; the digits themselves
+        // never cross the wire (that is what the retired COUNTDOWN broadcast did).
+        publishAs("now")
         output?.showScreen(.game)
         if let engine, let snap = try? engine.snapshot() { output?.renderSnapshot(snap.preGame()) }
         // First countdown value in the SAME call as the screen change, so the
@@ -596,52 +807,30 @@ public final class DisplayCoordinator {
         emitCountdownStep(0)
     }
 
-    private func makeEngine() -> Bool {
-        let players: [(id: Int, startLevel: Int)] = playerOrder.map {
-            (id: $0, startLevel: flow.player($0)?.startLevel ?? 1)
-        }
+    private func makeEngine(order: [Int]) -> Bool {
+        guard let bridge = brain() else { return false }
+        var levels: [Int: Int] = [:]
+        for rec in roster() { levels[rec.peerIndex] = rec.startLevel }
+        let players: [(id: Int, startLevel: Int)] = order.map { (id: $0, startLevel: levels[$0] ?? 1) }
         do {
-            let e = try runtime ?? EngineBridge(engineDirectory: engineDirectory)
-            // Surface fire-and-forget engine exceptions instead of dropping them.
-            e.onEngineError = { message in
-                FileHandle.standardError.write(Data("[engine] \(message)\n".utf8))
-            }
-            try e.createGame(players: players, seed: pendingSeed)
-            runtime = e
-            engine = e
+            try bridge.createGame(players: players, seed: pendingSeed)
+            engine = bridge
             return true
         } catch {
-            runtime = nil // don't reuse a runtime that failed mid-create
+            // Deliberately NOT dropping the runtime the way the old per-match build
+            // did: the room brain lives in this same context, so discarding it would
+            // take the whole room with it. A JS throw inside Bridge.create leaves the
+            // context itself intact.
             FileHandle.standardError.write(Data("[engine] createGame failed: \(error)\n".utf8))
             return false
         }
     }
 
-    /// Build the JS runtime ahead of the first match, off the main thread, so the
-    /// START press doesn't pay the bundle evaluation. Triggered when a controller
-    /// joins the lobby — always seconds before any START. JSC serializes context
-    /// access via the virtual machine's lock, so constructing on a background
-    /// queue and using on main afterwards is safe. If a START wins the race,
-    /// makeEngine builds its own runtime and the late prewarm result is discarded.
-    private func prewarmRuntime() {
-        guard runtime == nil, !runtimePrewarmInFlight else { return }
-        runtimePrewarmInFlight = true
-        let dir = engineDirectory
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            let e = try? EngineBridge(engineDirectory: dir)
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.runtimePrewarmInFlight = false
-                if self.runtime == nil { self.runtime = e }
-            }
-        }
-    }
-
     private func startPlaying() {
-        // The engine and game screen are already set up in beginCountdown; go
-        // live so tick() starts advancing the simulation.
-        flow.transition(to: .playing)
-        transport.broadcast(OutboundMessage.gameStart())
+        // The engine and game screen are already set up in beginCountdown; go live so
+        // tick() starts advancing the simulation. The transition publishes, which is
+        // what arms the controllers' touch input (the retired GAME_START broadcast).
+        publishAs(roomDo("transitionTo", ["playing"]).publish)
     }
 
     /// Drive one frame. The renderer calls this every display tick with the real
@@ -651,23 +840,22 @@ public final class DisplayCoordinator {
         renderedInputSinceTick = false   // new frame: re-arm render-on-input
         flushPendingSnapshot()           // trailing edge of the set_state throttle
         let deltaMs = min(max(rawDelta, 0), Self.maxFrameDeltaMs)
+        let roomState = state
         // The local demo has no controllers sending heartbeats, so keep its
         // synthetic players "seen" — otherwise the liveness sweep flags them
         // disconnected after 3 s and auto-pauses the self-playing game, and
         // on RESULTS the presence sweep would auto-return a finished demo
         // match to the lobby (which cuts the HEXTOUR results dwell short).
-        if demoActive, flow.state != .lobby {
-            flow.primeLiveness(nowProvider())
-        }
-        switch flow.state {
+        if demoActive, roomState != .lobby { seenSinceTick.formUnion(participants) }
+        switch roomState {
         case .countdown:
-            pollPresence(nowProvider())
-            guard flow.state == .countdown else { return }
+            pollPresence(nowProvider(), roomState)
+            guard state == .countdown else { return }
             advanceCountdown(deltaMs: deltaMs)
         case .playing:
-            pollPresence(nowProvider())
+            pollPresence(nowProvider(), roomState)
             // pollPresence can return to lobby (grace) — re-check before ticking.
-            guard flow.state == .playing, !paused, let engine else { return }
+            guard state == .playing, !paused, let engine else { return }
             if demoActive { driveDemoInput() }
             // Pull one engine frame through PartyCore (the native integration
             // surface): it ticks, drains events, value-copies the snapshot and
@@ -693,9 +881,11 @@ public final class DisplayCoordinator {
         case .results:
             // Run presence so the results screen returns to the lobby once every
             // controller has dropped (web RESULTS auto-return).
-            pollPresence(nowProvider())
+            pollPresence(nowProvider(), roomState)
         case .lobby:
-            break
+            // Flush the batched liveness stamps anyway, so a lobby that sat idle
+            // doesn't hand the first COUNTDOWN sweep a roster of stale timestamps.
+            _ = drainSeen(nowProvider())
         }
     }
 
@@ -710,32 +900,40 @@ public final class DisplayCoordinator {
 
     private func emitCountdownStep(_ step: Int) {
         countdownStep = step
-        switch step {
+        // The digits are display-only now: controllers learn they are counting down
+        // from snapshot.roomState and learn the game is live from the COUNTDOWN ->
+        // PLAYING transition, so nothing per-second crosses the wire (web parity).
         // Beeps are gated by `!muted` (like startMusic below), matching the web
         // where playCountdownBeep returns early when muted (DisplayAudio.js).
-        case 0: transport.broadcast(OutboundMessage.countdown(value: 3)); output?.showCountdown(.number(3)); if !muted { output?.playCountdownBeep(go: false) }
-        case 1: transport.broadcast(OutboundMessage.countdown(value: 2)); output?.showCountdown(.number(2)); if !muted { output?.playCountdownBeep(go: false) }
-        case 2: transport.broadcast(OutboundMessage.countdown(value: 1)); output?.showCountdown(.number(1)); if !muted { output?.playCountdownBeep(go: false) }
+        let quiet = isMuted
+        switch step {
+        case 0: output?.showCountdown(.number(3)); if !quiet { output?.playCountdownBeep(go: false) }
+        case 1: output?.showCountdown(.number(2)); if !quiet { output?.playCountdownBeep(go: false) }
+        case 2: output?.showCountdown(.number(1)); if !quiet { output?.playCountdownBeep(go: false) }
         case 3:
-            transport.broadcast(OutboundMessage.countdown(value: "GO"))
             output?.showCountdown(.go)
-            if !muted { output?.playCountdownBeep(go: true); output?.startMusic() }
+            if !quiet { output?.playCountdownBeep(go: true); output?.startMusic() }
         default:
             startPlaying()
         }
     }
 
-    /// Map PartyCore's normalized host-effect commands to controller sends and
-    /// the match-end transition. Board animations are driven separately from the
-    /// frame's `events`. Mirrors the
-    /// web DisplayGame onEvent/onGameEnd handlers, now single-sourced through the
-    /// command vocabulary (see server/PartyCore.d.ts).
+    /// Map PartyCore's normalized host-effect commands to controller sends and the
+    /// match-end transition. Board animations are driven separately from the frame's
+    /// `events`. Mirrors the web DisplayGame onEvent/onGameEnd handlers, now
+    /// single-sourced through the command vocabulary (see server/PartyCore.d.ts).
     private func dispatchCommands(_ commands: [HostCommand]) {
         for c in commands {
             switch c.type {
             case "playerState":
                 guard let pid = c.playerId else { break }
-                if c.alive == false { aliveState[pid] = false }   // remember the KO for reconnect resync
+                if c.alive == false {
+                    // Record the KO in the room: the snapshot's per-player `alive` is
+                    // what a reconnecting eliminated phone reads, and it is what
+                    // replaced the retired GAME_OVER send (which PartyCore still
+                    // surfaces as a `playerEliminated` command we no longer need).
+                    publishAs(roomDo("setAlive", [pid, false]).publish)
+                }
                 if let level = c.level, let lines = c.lines, let alive = c.alive {
                     // Full form (after a line clear): level/lines/alive + pre-resolved
                     // incoming garbage.
@@ -743,120 +941,159 @@ public final class DisplayCoordinator {
                         level: level, lines: lines, alive: alive,
                         garbageIncoming: c.garbageIncoming ?? 0))
                 } else if c.alive == false {
-                    // Short form (after a KO): just alive:false.
+                    // Short form (after a KO): just alive:false. Kept alongside the
+                    // snapshot because it is what fires the KO overlay the instant it
+                    // happens, rather than on the next retained-state push.
                     transport.sendTo(pid, OutboundMessage.playerDead())
-                }
-            case "playerEliminated":
-                if let pid = c.playerId {
-                    aliveState[pid] = false
-                    transport.sendTo(pid, OutboundMessage.gameOver())
                 }
             case "gameEnd":
                 endGame(results: c.results ?? [], elapsed: c.elapsed ?? 0)
             default:
-                // pieceLock / lineClear / playerKO / garbageCancelled / garbageSent
-                // are rendered from `events`.
+                // pieceLock / lineClear / playerKO / playerEliminated /
+                // garbageCancelled / garbageSent are rendered from `events` or fully
+                // covered by the snapshot.
                 break
             }
         }
     }
 
     private func endGame(results: [PlayerResult], elapsed: Double) {
-        let enriched = enrichResults(results)
-        lastResults = enriched   // replayed in the WELCOME to controllers joining on RESULTS
-        flow.transition(to: .results)
+        // Label the ranking with the roster's names and colours and append the players
+        // who sat this round out, flagged newPlayer so every screen renders them
+        // rather than omitting them.
+        let enriched = roomValue([MatchResult].self, "enrichResults", [results.map(\.payload)]) ?? []
+        // Stash the ranking BEFORE the transition: the transition publishes, and the
+        // RESULTS snapshot is what carries the ranking to controllers.
+        roomDo("setResults", [enriched.map(\.payload)])
+        let res = roomDo("transitionTo", ["results"])
+        engine = nil
         output?.stopMusic()
         // Clear any pause overlay/menu BEFORE building the results menu — setPaused
         // clears the focus menu, so it must run before showResults sets the
         // results buttons (otherwise the results menu is wiped → no Left/Right).
         output?.setPaused(false)
-        transport.broadcast(OutboundMessage.gameEnd(elapsed: elapsed, results: enriched.map { $0.payload }))
         output?.showResults(enriched)
         output?.showScreen(.results)   // reveal the results layer (hide the frozen game)
-        engine = nil
+        publishAs(res.publish)
     }
 
     private func returnToLobby() {
-        guard flow.state != .lobby else { return }
-        pausedManual = false; pausedAuto = false; pausedConnection = false
-        aliveState = [:]
-        lastResults = nil
+        guard state != .lobby else { return }
+        setPauseReasons(manual: false, auto: false, connection: false)
+        // Remove disconnected players, then fold in the late joiners who were waiting
+        // out the round (web returnToLobby).
+        roomDo("pruneDisconnected", [nowProvider()])
+        roomDo("admitWaiting")
+        roomDo("setResults", [NSNull()])
+        roomDo("clearAlive")
+        // Publishes: controllers see roomState back at LOBBY and route themselves
+        // there, which is what the retired RETURN_TO_LOBBY broadcast used to do.
+        let res = roomDo("transitionTo", ["lobby"])
+        returnToLobbyUI()
+        publishAs(res.publish)
+    }
+
+    /// The shell half of a lobby return. Split out because the brain can decide the
+    /// room is back in the lobby on its own (the last results participant leaving),
+    /// in which case `returnToLobby()`'s state guard would skip the UI entirely.
+    private func returnToLobbyUI() {
         engine = nil
         output?.stopMusic()
         output?.setPaused(false)
-        pruneDisconnected()
-        playerOrder = []
-        flow.clearDisconnected()
-        flow.transition(to: .lobby)
-        broadcastLobby()
-        transport.broadcast(OutboundMessage.returnToLobby(playerCount: flow.size))
+        rejoinQRs.removeAll()
+        roomDo("clearDisconnected", [nowProvider()])
         output?.showScreen(.lobby)
     }
 
-    /// Drive the engine + music to match the effective `paused` after a reason flag
-    /// changed. Idempotent; re-primes the frame clock on freeze so the first frame
+    // MARK: - Pause
+
+    /// Write the three pause reasons and drive engine + music to match the effective
+    /// state. Idempotent; re-primes the frame clock on freeze so the first frame
     /// after resume re-primes with delta 0 instead of a catch-up jump.
-    private func reconcilePause(wasPaused: Bool) {
-        guard paused != wasPaused else { return }
-        if paused {
+    private func setPauseReasons(manual: Bool? = nil, auto: Bool? = nil, connection: Bool? = nil) {
+        let was = paused
+        if let manual { roomDo("setPaused", [manual]) }
+        if let auto { roomDo("setAutoPaused", [auto]) }
+        if let connection { roomDo("setConnectionPaused", [connection]) }
+        let now = paused
+        guard now != was else { return }
+        if now {
             engine?.pause()
             engine?.resetFrameClock()
             output?.pauseMusic()
         } else {
             engine?.resume()
-            if !muted { output?.resumeMusic() }
+            if !isMuted { output?.resumeMusic() }
         }
     }
 
-    private var isPausableState: Bool { flow.state == .playing || flow.state == .countdown }
+    private var isPausableState: Bool { let s = state; return s == .playing || s == .countdown }
 
     private func pauseGame() {   // host / remote (Pause)
         guard isPausableState, !pausedManual else { return }
-        let was = paused; pausedManual = true; reconcilePause(wasPaused: was)
+        setPauseReasons(manual: true)
         output?.setPaused(true)
-        transport.broadcast(OutboundMessage.gamePaused())
+        // userVisiblePaused may still be false here (an auto- or connection pause is
+        // display-internal); publishing either way keeps the snapshot honest, and it
+        // is what the retired GAME_PAUSED broadcast used to do.
+        publishAs("now")
     }
 
     private func resumeGame() {  // host / remote (Continue)
-        guard isPausableState, pausedManual, !flow.allParticipantsDisconnected else { return }
-        let was = paused; pausedManual = false; reconcilePause(wasPaused: was)
+        guard isPausableState, pausedManual, !allParticipantsDisconnected else { return }
+        setPauseReasons(manual: false)
         output?.setPaused(false)
-        transport.broadcast(OutboundMessage.gameResumed())
+        publishAs("now")
+    }
+
+    /// Web checkAllPlayersDisconnected: once every participant is gone, honour a
+    /// grace fire that lands between sweeps (a manually-paused host who then
+    /// disconnects strands late joiners the same way an unpaused one does), else
+    /// silently auto-pause.
+    private func checkAllParticipantsDisconnected() {
+        // Don't auto-pause during COUNTDOWN — let it finish so rejoin QRs become visible.
+        guard state == .playing, allParticipantsDisconnected else { return }
+        if roomBool("graceTick", [nowProvider()]) { returnToLobby(); return }
+        autoPauseAllDisconnected()
     }
 
     /// Silent auto-pause when every participant has disconnected: no overlay, no
-    /// broadcast (all controllers are gone). Absorbs an in-progress manual pause
-    /// (converting it and hiding its overlay) so the overlay isn't stranded.
+    /// publish beyond the flag itself (all controllers are gone). Absorbs an
+    /// in-progress manual pause (converting it and hiding its overlay) so the overlay
+    /// isn't stranded: resumeGame is gated shut while everyone is gone, so a manual
+    /// pause left showing could never be dismissed via Continue. A reconnect
+    /// auto-resumes. Web DisplayGame.js dismissAutoPausedOverlay.
     private func autoPauseAllDisconnected() {
-        guard flow.state == .playing, !pausedAuto else { return }
-        let was = paused
-        // If the host had already manually paused, convert that into the auto-pause
-        // and hide the stranded overlay: resumeGame is gated shut while everyone is
-        // gone, so a manual pause left showing could never be dismissed via Continue.
-        // A reconnect auto-resumes. Web DisplayGame.js dismissAutoPausedOverlay.
-        if pausedManual { pausedManual = false; output?.setPaused(false) }
-        pausedAuto = true
-        reconcilePause(wasPaused: was)
+        guard !pausedAuto else { return }
+        let hadManual = pausedManual
+        setPauseReasons(manual: false, auto: true)
+        if hadManual {
+            output?.setPaused(false)
+            // A manual pause just became an auto-pause: userVisiblePaused flips true ->
+            // false, so returning players must not be handed a pause overlay whose
+            // Continue the display would ignore.
+            publishAs("now")
+        }
     }
 
     /// A participant returned — lift the all-disconnected auto-pause.
     private func autoResume() {
-        guard pausedAuto, !flow.allParticipantsDisconnected else { return }
-        let was = paused; pausedAuto = false; reconcilePause(wasPaused: was)
-        if !paused { transport.broadcast(OutboundMessage.gameResumed()) }
+        guard pausedAuto, !allParticipantsDisconnected else { return }
+        setPauseReasons(auto: false)
+        if !paused { publishAs("now") }
     }
 
     /// The display's OWN relay link dropped: freeze the sim so it doesn't run blind
-    /// behind the reconnect overlay. No broadcast (the relay is down). Driven by
-    /// the connection-state observer (setRelayConnected).
+    /// behind the reconnect overlay. No publish (the relay is down). Driven by the
+    /// connection-state observer (setRelayConnected).
     private func connectionPause() {
-        guard flow.state == .playing || flow.state == .countdown, !pausedConnection else { return }
-        let was = paused; pausedConnection = true; reconcilePause(wasPaused: was)
+        guard isPausableState, !pausedConnection else { return }
+        setPauseReasons(connection: true)
     }
 
     private func connectionResume() {
         guard pausedConnection else { return }
-        let was = paused; pausedConnection = false; reconcilePause(wasPaused: was)
+        setPauseReasons(connection: false)
     }
 
     /// Observe the display's relay link. Only the DROP is actionable here: it freezes
@@ -879,9 +1116,9 @@ public final class DisplayCoordinator {
     ///   us, so no controller can prove it is alive; re-stamping at `.open` instead
     ///   buys only `livenessTimeoutMs` while the handshake deadline is twice that, so
     ///   a slow `joined` expired the whole roster.
-    /// - The link-drop pause. Resuming at `.open` broadcasts GAME_RESUMED into a
-    ///   socket the relay has not yet re-admitted to the room, so the message can be
-    ///   dropped server-side and controllers stay stuck behind their overlay.
+    /// - The link-drop pause. Resuming at `.open` publishes a resumed snapshot into a
+    ///   socket the relay has not yet re-admitted to the room, so it can be dropped
+    ///   server-side and controllers stay stuck behind their overlay.
     ///
     /// Web ties both to the same reply (onDisplayRejoined), as does the Android port
     /// (handleJoined). Callers re-stamp presence first where there is a roster to
@@ -895,32 +1132,46 @@ public final class DisplayCoordinator {
 
     // MARK: - Presence / liveness
 
-    /// Once-per-frame presence sweep (countdown + playing). Flags silently-dead
-    /// controllers, returns to the lobby after the late-joiner grace, and silently
-    /// auto-pauses / auto-resumes on the all-disconnected boundary. Mirrors the web
-    /// DisplayLiveness loop + checkAllPlayersDisconnected.
-    private func pollPresence(_ now: Double) {
+    /// Push the batched "heard from" set across and read back the brain's liveness
+    /// decisions. One bridge crossing per frame however many packets landed.
+    private func drainSeen(_ now: Double) -> RoomTick {
+        let seen = Array(seenSinceTick)
+        seenSinceTick.removeAll(keepingCapacity: true)
+        return roomValue(RoomTick.self, "tick", [now, seen]) ?? RoomTick(expired: [], graceFired: false)
+    }
+
+    /// Once-per-frame presence sweep. Flags silently-dead controllers, returns to the
+    /// lobby after the late-joiner grace, and silently auto-pauses / auto-resumes on
+    /// the all-disconnected boundary. Mirrors the web DisplayLiveness loop +
+    /// checkAllPlayersDisconnected.
+    private func pollPresence(_ now: Double, _ roomState: RoomState) {
         // Skip the controller-liveness sweep while the display's OWN link is down:
         // no controller traffic can arrive, so every lastSeen is stale through no
         // fault of the controllers (web DisplayLiveness `displayDead` early-return).
         // Without this, a recoverable display outage would expire every controller
-        // and (with a late joiner) grace-return the match to the lobby.
-        guard relayConnected else { return }
-        for id in flow.expiredPeers(now) {
-            flow.markDisconnected(id)
-            // The per-board rejoin QR only applies while boards are on screen.
-            if flow.state == .countdown || flow.state == .playing {
+        // and (with a late joiner) grace-return the match to the lobby. The stamps
+        // still drain, so nothing piles up while we are out of the room.
+        guard relayConnected else { _ = drainSeen(now); return }
+        let sweep = drainSeen(now)
+        for id in sweep.expired {
+            roomDo("markDisconnected", [id])
+            // Track the flag in every state (host election reads it), but the
+            // per-board rejoin QR only applies while boards are on screen.
+            rejoinQRs.insert(id)
+            if roomState == .countdown || roomState == .playing {
                 output?.setDisconnected(playerId: id, joinURL: rejoinURL(id))
             }
         }
-        switch flow.state {
+        // A silent expiry can take out the host, and every host-gated control — the
+        // controllers' menus and the display's own host-tinted chrome — reads the host
+        // from the snapshot, so republish as soon as the sweep flags anyone.
+        if !sweep.expired.isEmpty { publishAs("now") }
+
+        switch roomState {
         case .playing:
-            if flow.graceTick(now) { returnToLobby(); return }
-            if flow.allParticipantsDisconnected {
-                autoPauseAllDisconnected()
-            } else if pausedAuto {
-                autoResume()
-            }
+            if sweep.graceFired { returnToLobby(); return }
+            if allParticipantsDisconnected { checkAllParticipantsDisconnected() }
+            else if pausedAuto { autoResume() }
         case .results:
             // No connected controller left on the results screen → back to the
             // lobby (mirrors the web RESULTS peer-left path; controllers ping at
@@ -931,29 +1182,40 @@ public final class DisplayCoordinator {
         }
     }
 
-    /// Re-publish the room state iff the effective host changed since the last
-    /// broadcast (mirror of web maybeBroadcastHostChange). Skips when nobody is
-    /// left to notify.
-    private var lastBroadcastedHostId: Int?
-    private func maybeBroadcastHostChange() {
-        guard flow.size > 0, flow.host != lastBroadcastedHostId else { return }
-        broadcastLobby()
+    // MARK: - Rejoin QR overlays
+
+    /// Raise a dropped participant's rejoin QR. INVARIANT (see `rejoinQRs`): the
+    /// overlay set and the brain's presence set move together, so this is also the
+    /// single place a mid-game disconnect is recorded.
+    private func raiseRejoinQR(_ peerIndex: Int) {
+        rejoinQRs.insert(peerIndex)
+        roomDo("markDisconnected", [peerIndex])
+        output?.setDisconnected(playerId: peerIndex, joinURL: rejoinURL(peerIndex))
+    }
+
+    private func clearRejoinQR(_ peerIndex: Int) {
+        rejoinQRs.remove(peerIndex)
+        output?.setDisconnected(playerId: peerIndex, joinURL: nil)
     }
 
     // MARK: - Apple TV remote (display-side controls)
 
     /// Start a match from the lobby (or play again from results).
     public func remoteStartMatch() {
-        if (flow.state == .lobby || flow.state == .results) && flow.size >= 1 { beginCountdown() }
+        assertOwningThread()
+        let s = state
+        if (s == .lobby || s == .results) && playerCount >= 1 { beginCountdown() }
     }
 
     /// Return to the lobby (the "New Game" action on results / pause).
     public func remoteReturnToLobby() {
-        if flow.state != .lobby { returnToLobby() }
+        assertOwningThread()
+        if state != .lobby { returnToLobby() }
     }
 
     /// Pause/resume during a game or the 3-2-1 countdown (the web allows both).
     public func remoteTogglePause() {
+        assertOwningThread()
         guard isPausableState else { return }
         if pausedManual { resumeGame() } else { pauseGame() }
     }
@@ -961,7 +1223,7 @@ public final class DisplayCoordinator {
     /// The Play/Pause button: context toggle — start in the lobby, play again on
     /// results, pause/resume (Continue) during a game or countdown.
     public func remotePlayPause() {
-        switch flow.state {
+        switch state {
         case .lobby, .results: remoteStartMatch()
         case .countdown, .playing: remoteTogglePause()
         }
@@ -982,139 +1244,67 @@ public final class DisplayCoordinator {
     /// UI can show a brief indicator.
     @discardableResult
     public func remoteToggleMute() -> Bool {
-        muted.toggle()
-        transport.broadcast(OutboundMessage.displayMuted(muted))
-        if muted { output?.pauseMusic() }
-        else if flow.state == .playing && !paused { output?.resumeMusic() }
-        output?.setDisplayMuted(muted)
-        return muted
+        assertOwningThread()
+        let next = !isMuted
+        setDisplayMuted(next)
+        return next
     }
 
-    // MARK: - Outbound builders
+    // MARK: - Retained room snapshot
 
-    /// Publish ONE retained room snapshot via `set_state` instead of fanning out a
-    /// per-recipient LOBBY_UPDATE (web doBroadcastLobbyUpdate, PR #170): the relay
-    /// pushes it live to connected controllers and replays it to any (re)joining peer
-    /// right after `joined`, so N messages collapse to one set_state and a briefly
-    /// dropped controller catches up for free. Controllers derive playerCount, taken
-    /// colours, host name/colour and their own colour from the roster (controller
-    /// onState); per-recipient startLevel still goes out targeted (sendLobbyUpdate on
-    /// SET_LEVEL) and WELCOME stays authoritative for identity.
-    private func broadcastLobby() {
-        lastBroadcastedHostId = flow.host   // so maybeBroadcastHostChange won't re-fire
-        publishRoomSnapshot()
+    /// Apply a mutator's publish hint. Keeps the three-way decision in one place so
+    /// call sites read as "do the thing, then honour the hint".
+    ///
+    /// The display's OWN lobby repaints on both publishing hints, immediately: it is
+    /// a local value copy rather than a relay message, and the web repaints on
+    /// exactly these edges too (updatePlayerList sits beside every publishAs call
+    /// site there).
+    private func publishAs(_ hint: String?) {
+        guard hint == "now" || hint == "soon" else { return }
         refreshDisplayLobby()
+        if hint == "now" { publishRoomSnapshot() } else { publishRoomSnapshotSoon() }
+    }
+
+    /// Publish now, superseding any pending throttled publish. This is the ONLY thing
+    /// the display tells controllers about the room: the relay pushes the snapshot
+    /// live to everyone connected AND replays it to a (re)joining peer right after
+    /// `joined`, so the live-update path and the resync-after-a-blip path are the
+    /// same code and cannot disagree with each other.
+    private func publishRoomSnapshot() {
+        snapshotPending = false
+        lastSnapshotAt = nowProvider()
+        guard let bridge = brain(),
+              let json = try? bridge.roomSnapshotJSON(),
+              let data = json.data(using: .utf8),
+              let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return }
+        // Built by RoomBrain, byte-identically on the web and Android TV, which is
+        // the whole point of the module.
+        transport.setState(dict)
     }
 
     /// Throttled, leading + trailing: a call after a quiet period publishes
     /// immediately; calls inside the window collapse into one trailing publish that
     /// reads live state at fire time (the frame loop drives the trailing edge).
-    private func publishRoomSnapshot() {
-        let now = nowProvider()
-        guard now - lastSnapshotAt >= Self.lobbyBroadcastMinIntervalMs else {
-            snapshotPending = true
-            return
-        }
-        snapshotPending = false
-        lastSnapshotAt = now
-        transport.setState(buildRoomSnapshot())
+    private func publishRoomSnapshotSoon() {
+        guard !snapshotPending else { return }
+        if nowProvider() - lastSnapshotAt >= snapshotThrottleMs { publishRoomSnapshot() }
+        else { snapshotPending = true }
     }
 
     /// Fire a pending trailing snapshot once the throttle window has elapsed.
     private func flushPendingSnapshot() {
-        guard snapshotPending else { return }
-        let now = nowProvider()
-        guard now - lastSnapshotAt >= Self.lobbyBroadcastMinIntervalMs else { return }
-        snapshotPending = false
-        lastSnapshotAt = now
-        transport.setState(buildRoomSnapshot())
+        guard snapshotPending, nowProvider() - lastSnapshotAt >= snapshotThrottleMs else { return }
+        publishRoomSnapshot()
     }
 
-    /// Web buildRoomSnapshot: roster keyed by peerIndex (display-facing name + colour
-    /// slot) plus the effective host. Globally-shared state only — per-recipient
-    /// fields (startLevel, alive, results, paused) stay on WELCOME / LOBBY_UPDATE.
-    /// Tiny (<1 KiB for a full room), well under the relay's 16 KiB cap.
-    private func buildRoomSnapshot() -> [String: Any] {
-        var roster: [String: Any] = [:]
-        for p in flow.list() {
-            roster[String(p.peerIndex)] = ["name": p.playerName, "color": p.colorSlot, "startLevel": p.startLevel]
-        }
-        // NSNull, not nil: JSONSerialization drops an `Any?` and the controller reads
-        // `hostPeerIndex == null` as "no host" (web sends an explicit null).
-        return ["hostPeerIndex": flow.host.map { $0 as Any } ?? NSNull(), "players": roster]
-    }
-
-    /// Rebuild the display's own lobby UI from the current roster. Needed because
-    /// name/color/level changes mutate records in place and don't fire
-    /// onRosterChange, which is what the display lobby otherwise listens to.
+    /// Rebuild the display's own lobby UI from the current roster. Reads the full
+    /// records (not the wire snapshot): the lobby cards sort by `joinedAt`, which the
+    /// snapshot deliberately doesn't carry.
     private func refreshDisplayLobby() {
-        output?.updateLobby(players: flow.list(), hostPeerIndex: flow.host)
-    }
-
-
-    private func sendWelcome(to id: Int, isLateJoiner: Bool) {
-        guard let rec = flow.player(id) else { return }
-        let host = flow.host
-        var welcome: [String: Any] = [
-            "type": MSG.welcome,
-            "playerName": rec.playerName,
-            "colorIndex": rec.colorSlot,
-            "playerCount": flow.size,
-            "roomState": flow.state.rawValue,
-            "startLevel": rec.startLevel,
-            "isHost": id == host,
-            "takenColorIndices": flow.takenColorSlots(),
-            "displayMuted": muted,
-        ]
-        // Omit nil host fields rather than `as Any`-coercing them (see sendLobbyUpdate).
-        if let hostName = host.flatMap({ flow.player($0)?.playerName }) { welcome["hostName"] = hostName }
-        if let hostColor = host.flatMap({ flow.player($0)?.colorSlot }) { welcome["hostColorIndex"] = hostColor }
-        // Report the participant's real alive state (false once KO'd) so a
-        // reconnecting eliminated phone stays on its game-over screen instead of
-        // flipping back to the live playing UI (web parity: lastAliveState).
-        if !isLateJoiner { welcome["alive"] = aliveState[id] ?? true; welcome["paused"] = userVisiblePaused }
-        // Replay the finished ranking to a controller landing on RESULTS.
-        if flow.state == .results, let lastResults { welcome["results"] = lastResults.map { $0.payload } }
-        transport.sendTo(id, welcome)
-    }
-
-    private func enrichResults(_ results: [PlayerResult]) -> [MatchResult] {
-        var out: [MatchResult] = []
-        var rankedIds = Set<Int>()
-        for r in results {
-            rankedIds.insert(r.playerId)
-            let rec = flow.player(r.playerId)
-            out.append(MatchResult(playerId: r.playerId,
-                                   playerName: rec?.playerName, colorIndex: rec?.colorSlot,
-                                   rank: r.rank, lines: r.lines, level: r.level, alive: r.alive))
-        }
-        // Late joiners who sat out.
-        for rec in flow.list() where !rankedIds.contains(rec.peerIndex) {
-            out.append(MatchResult(playerId: rec.peerIndex, playerName: rec.playerName,
-                                   colorIndex: rec.colorSlot, newPlayer: true))
-        }
-        return out
+        output?.updateLobby(players: roster(), hostPeerIndex: hostPeerIndex)
     }
 
     // MARK: - Helpers
-
-    private func pruneDisconnected() {
-        for rec in flow.list() where flow.isDisconnected(rec.peerIndex) {
-            flow.removePlayer(rec.peerIndex)
-            playerOrder.removeAll { $0 == rec.peerIndex }
-        }
-    }
-
-    private func autoName(slot: Int) -> String { "HX-\(slot + 1)" }
-
-    private func sanitizeName(_ raw: String?) -> String? {
-        guard let raw else { return nil }
-        let stripped = raw.unicodeScalars.filter { !$0.properties.isDefaultIgnorableCodePoint && $0 >= " " }
-        var s = String(String.UnicodeScalarView(stripped)).trimmingCharacters(in: .whitespacesAndNewlines)
-        if s.isEmpty { return nil }
-        if s.count > 16 { s = String(s.prefix(16)) }
-        return s
-    }
 
     private func joinURL(room: String, instance: String?) -> String {
         var url = "\(Protocol.controllerBaseURL)/\(room)"

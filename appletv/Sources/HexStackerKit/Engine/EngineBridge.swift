@@ -8,7 +8,7 @@ import JavaScriptCore
 /// The engine ships as ONE esbuild bundle, `partycore.js` (built from
 /// `server/core-entry.js` by `npm run build:core`; see `scripts/build.js`). It is
 /// an iife exposing the global `HexCore` with `HexCore.PartyCore` and
-/// `HexCore.RoomFlow`, so there is no module load order to maintain and no
+/// `HexCore.RoomBrain`, so there is no module load order to maintain and no
 /// `window`/`require`/CommonJS shim to provide — esbuild inlined the graph
 /// (`tests/core-bundle-runtime.test.js` proves it loads with none of those).
 /// PartyCore is the blessed native integration surface (`server/PartyCore.d.ts`):

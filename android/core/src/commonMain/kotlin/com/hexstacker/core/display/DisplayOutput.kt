@@ -3,6 +3,7 @@ package com.hexstacker.core.display
 import com.hexstacker.core.model.GameEvent
 import com.hexstacker.core.model.GameSnapshot
 import com.hexstacker.core.room.PlayerRecord
+import kotlinx.serialization.Serializable
 
 /** Which top-level display screen is showing. */
 enum class DisplayScreen { LOBBY, GAME, RESULTS }
@@ -14,12 +15,13 @@ sealed interface CountdownValue {
 }
 
 /**
- * The enriched per-player results row. A typed replacement for the Swift port's
- * `[[String: Any]]`, shared by the `game_end` wire builder and the renderer.
- *
- * Wire keys (see DisplayCoordinator.resultsToJsonArray): `colorIndex` (==
- * [colorIndex]), `newPlayer` (late joiner who sat out).
+ * The enriched per-player results row, decoded from what `RoomBrain.enrichResults`
+ * hands back: the engine's ranking labelled with roster names/colours, plus the
+ * players who sat the round out (flagged [newPlayer]). The RESULTS snapshot carries
+ * the identical array to controllers, so the TV and the phones render one ranking
+ * built in one place. The field names are the wire keys; do not rename them.
  */
+@Serializable
 data class ResultEntry(
     val playerId: Int,
     val playerName: String? = null,

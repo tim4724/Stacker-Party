@@ -15,8 +15,7 @@ public extension DisplayCoordinator {
         demoActive = true
         demoTick = 0
         for i in 1...max(1, playerCount) {
-            let slot = flow.lowestFreeSlot()
-            flow.addPlayer(peerIndex: i, playerName: "Demo \(i)", colorSlot: max(0, slot))
+            seedPlayer(peerIndex: i, playerName: "Demo \(i)", colorSlot: max(0, nextColorSlot()))
         }
         demoSeedOverride = seed   // deterministic seed, applied inside beginCountdown
         beginCountdown()
@@ -42,14 +41,15 @@ public extension DisplayCoordinator {
 
     /// Force the running match to its REAL end: hard-drop every player but the
     /// first until the engine reports game over, so the next tick dispatches
-    /// the production gameEnd path (results screen, flow.state = .results).
-    /// Faking the results screen from fixtures instead would leave flow.state
+    /// the production gameEnd path (results screen, the room state = .results).
+    /// Faking the results screen from fixtures instead would leave the room state
     /// mid-match and dead-end the tour's PLAY AGAIN. Bounded, and a no-op
     /// outside .playing (a call landing in the countdown would inject input
     /// into a not-yet-started game).
     func tourForceMatchEnd() {
-        guard flow.state == .playing, let engine, playerOrder.count > 1 else { return }
-        let victims = playerOrder.dropFirst()
+        let order = participants
+        guard state == .playing, let engine, order.count > 1 else { return }
+        let victims = order.dropFirst()
         for _ in 0..<400 where !engine.isEnded {
             for id in victims { engine.processInput(playerId: id, action: "hard_drop") }
         }
@@ -59,7 +59,7 @@ public extension DisplayCoordinator {
     internal func driveDemoInput() {
         demoTick += 1
         let actions = ["left", "right", "rotate_cw", "right", "rotate_cw", "left"]
-        for (i, id) in playerOrder.enumerated() {
+        for (i, id) in participants.enumerated() {
             let phase = demoTick + i * 5
             if phase % 7 == 0 { engine?.processInput(playerId: id, action: actions[(phase / 7) % actions.count]) }
             if phase % 24 == 0 { engine?.processInput(playerId: id, action: "hard_drop") }
@@ -121,12 +121,9 @@ public extension DisplayCoordinator {
 
     // MARK: - Gallery fixture rendering
 
-    private func galleryFixtures() -> EngineBridge? {
-        if galleryBridge == nil { galleryBridge = try? EngineBridge(engineDirectory: engineDirectory) }
-        return galleryBridge
-    }
+    private func galleryFixtures() -> EngineBridge? { fixtureBridge }
 
-    /// Seed the RoomFlow roster from `roster(count)` (id == slot == colorIndex) so
+    /// Seed the room roster from `roster(count)` (id == slot == colorIndex) so
     /// board / card lookups resolve the canonical names, colors and levels. Returns
     /// the fixture entries (the levels feed the pre-game countdown boards).
     /// `longNames` swaps in the 16-char LONG_NAMES fixture (lobby-long shot).
@@ -134,7 +131,7 @@ public extension DisplayCoordinator {
     private func seedGalleryRoster(count: Int, longNames: Bool = false) -> [GalleryRosterEntry] {
         guard let roster = try? galleryFixtures()?.galleryRoster(count: count, longNames: longNames) else { return [] }
         for e in roster {
-            flow.addPlayer(peerIndex: e.id, playerName: e.name, colorSlot: e.slot, startLevel: e.level)
+            seedPlayer(peerIndex: e.id, playerName: e.name, colorSlot: e.slot, startLevel: e.level)
         }
         return roster
     }

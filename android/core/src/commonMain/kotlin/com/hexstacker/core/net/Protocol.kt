@@ -78,19 +78,10 @@ object Msg {
     const val PING = "ping"
 
     // Display -> specific controller
-    const val WELCOME = "welcome"
-    const val GAME_OVER = "game_over"
-    const val LOBBY_UPDATE = "lobby_update"
     const val PONG = "pong"
     const val PLAYER_STATE = "player_state"
 
     // Display -> all controllers (broadcast)
-    const val COUNTDOWN = "countdown"
-    const val DISPLAY_MUTED = "display_muted"
-    const val GAME_START = "game_start"
-    const val GAME_END = "game_end"
-    const val GAME_PAUSED = "game_paused"
-    const val GAME_RESUMED = "game_resumed"
     const val ERROR = "error"
 
     /** Internal display self-liveness canary (echoed via relay slot 0); not in protocol.js MSG. */
@@ -217,15 +208,6 @@ object OutboundMessage {
         put("type", Msg.PONG); if (t != null) put("t", t)
     }
 
-    fun countdown(value: Int): JsonObject = buildJsonObject { put("type", Msg.COUNTDOWN); put("value", value) }
-    fun countdownGo(): JsonObject = buildJsonObject { put("type", Msg.COUNTDOWN); put("value", "GO") }
-    fun gameStart(): JsonObject = buildJsonObject { put("type", Msg.GAME_START) }
-    fun gamePaused(): JsonObject = buildJsonObject { put("type", Msg.GAME_PAUSED) }
-    fun gameResumed(): JsonObject = buildJsonObject { put("type", Msg.GAME_RESUMED) }
-    fun gameOver(): JsonObject = buildJsonObject { put("type", Msg.GAME_OVER) }
-    fun displayMuted(muted: Boolean): JsonObject = buildJsonObject { put("type", Msg.DISPLAY_MUTED); put("muted", muted) }
-    fun returnToLobby(playerCount: Int): JsonObject =
-        buildJsonObject { put("type", Msg.RETURN_TO_LOBBY); put("playerCount", playerCount) }
 
     fun error(message: String): JsonObject = buildJsonObject { put("type", Msg.ERROR); put("message", message) }
     fun playerState(level: Int, lines: Int, alive: Boolean, garbageIncoming: Int): JsonObject = buildJsonObject {
@@ -234,9 +216,6 @@ object OutboundMessage {
     }
 
     fun playerDead(): JsonObject = buildJsonObject { put("type", Msg.PLAYER_STATE); put("alive", false) }
-    fun gameEnd(elapsed: Double, results: JsonArray): JsonObject = buildJsonObject {
-        put("type", Msg.GAME_END); put("elapsed", elapsed); put("results", results)
-    }
 }
 
 /** The relay transport the DisplayCoordinator drives (mirror Protocol.swift RelayTransport). */

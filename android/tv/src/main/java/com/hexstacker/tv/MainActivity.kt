@@ -94,19 +94,19 @@ class MainActivity : ComponentActivity() {
     private lateinit var coordinator: DisplayCoordinator
     private lateinit var ui: TvDisplayOutput
 
-    // One QuickJS engine for the whole app, reused across matches (Bridge.create
-    // re-inits the game without re-parsing the bundle). Warmed up in the background
-    // during lobby idle (see onCreate) so the first START doesn't wait on the asset
-    // read + bundle compile; engineFactory awaits the SAME deferred, so a START that
-    // beats the warm-up just joins it instead of racing a second engine into being.
+    // One QuickJS runtime for the whole app: the session-lived room brain plus a game
+    // re-inited per match (Bridge.create, no bundle re-parse). Started as soon as the
+    // coordinator's consumer asks for it, because the room brain has to exist before the
+    // first relay room event is handled; everyone awaits the SAME deferred, so a START
+    // that beats the bootstrap just joins it instead of racing a second runtime into being.
     private var engineDeferred: Deferred<EngineBridge>? = null
 
     // The system "Remove animations" accessibility state, feeding LocalReduceMotion.
     // Compose state so a toggle picked up on resume recomposes the chrome.
     private var reduceMotion by mutableStateOf(false)
 
-    /** Get-or-start the engine creation. Main-thread only (no lock needed: the
-     *  warm-up launcher and the coordinator's engineFactory both run on Main). */
+    /** Get-or-start the runtime creation. Main-thread only (no lock needed: the
+     *  warm-up launcher and the coordinator's bridgeProvider both run on Main). */
     private fun engineAsync(): Deferred<EngineBridge> =
         engineDeferred ?: lifecycleScope.async(Dispatchers.IO) {
             val bundle = assets.open("partycore.js").bufferedReader().use { it.readText() }
@@ -152,11 +152,11 @@ class MainActivity : ComponentActivity() {
         coordinator = DisplayCoordinator(
             transport = relay,
             output = ui,
-            engineFactory = { specs, seed ->
-                val b = engineAsync().await()
-                b.createGame(specs, seed)
-                b
-            },
+            // ONE runtime for the session: the room brain lives in it from
+            // coordinator.start() onwards and each match's game is created in the same
+            // context. Awaiting it is also what orders the bootstrap — room events can
+            // arrive before the bundle has finished compiling, and they queue behind this.
+            bridgeProvider = { engineAsync().await() },
             fastlane = fastlane,
             // Surface boundary errors the coordinator swallows to keep its loop alive
             // (engine/parse failures would otherwise vanish without a trace).
@@ -215,15 +215,14 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Warm the heavy lazies during lobby idle, once the entrance animation has
-        // played out (~950ms): the QuickJS engine (asset read + bundle compile, so the
-        // first START is instant) and ExoPlayer + beep PCM (so the countdown/GO have
-        // nothing left to build). Both are safe to lose to lifecycle cancellation —
-        // first use re-creates them on demand.
+        // Warm ExoPlayer + the beep PCM during lobby idle, once the entrance animation
+        // has played out (~950ms), so the countdown/GO have nothing left to build. Safe
+        // to lose to lifecycle cancellation: first use re-creates it on demand. The
+        // QuickJS runtime is no longer warmed here — coordinator.start() above already
+        // asked for it, because the room brain runs inside it.
         lifecycleScope.launch {
             awaitFrame()
             delay(WARMUP_DELAY_MS)
-            engineAsync()
             music.warmUp()
         }
 

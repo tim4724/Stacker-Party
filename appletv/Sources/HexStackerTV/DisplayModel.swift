@@ -146,8 +146,11 @@ final class DisplayModel: ObservableObject {
                                              output: self,
                                              fastlane: fastlane)
         self.coordinator = coordinator
-        boardScene.rosterLookup = { [weak coordinator] id in
-            coordinator?.flow.player(id).map { ($0.colorSlot, $0.playerName) }
+        // Boards read the roster off the published lobby state, not the room: the
+        // seats are already snapshot-derived (updateLobby), and a lookup on the
+        // render path has no business crossing into the JS runtime.
+        boardScene.rosterLookup = { [weak self] id in
+            self?.state.lobby?.players.first { $0.peerIndex == id }.map { ($0.colorSlot, $0.name) }
         }
         guard relayBacked else { return }
 
@@ -283,7 +286,7 @@ final class DisplayModel: ObservableObject {
         // found", and visibly swap the QR mid-lobby. Forget the room and
         // reset to the waiting scaffold instead: the next foreground
         // presents like a fresh open — blank card, then the new room's QR.
-        if coordinator?.flow.list().isEmpty ?? true {
+        if state.lobby?.players.isEmpty ?? true {
             relay?.unpinRoom()
             room = nil
             joinURL = nil
@@ -478,7 +481,7 @@ final class DisplayModel: ObservableObject {
         default:
             coordinator?.renderShot(shot, playerCount: pc)
         }
-        // The fixtures seed RoomFlow directly (no roster broadcast), so fold the
+        // The fixtures seed the room roster directly (no publish), so fold the
         // seeded roster into the published lobby here or host-tinted chrome
         // (pause CONTINUE, music switch, results PLAY AGAIN) would render its
         // accent fallback in every shot.
@@ -555,8 +558,11 @@ extension DisplayModel: DisplayOutput {
     }
 
     private func buildLobby(players: [PlayerRecord]? = nil, hostPeerIndex: Int? = nil) -> LobbyData {
-        let roster = players ?? coordinator?.flow.list() ?? []
-        let host = hostPeerIndex ?? coordinator?.flow.host
+        // The fold-in paths (roomReady, the gallery shots) have no roster in hand and
+        // read it back through the room API, which is the one place `connected` and
+        // `joinedAt` are available at all — the wire snapshot carries neither.
+        let roster = players ?? coordinator?.roster() ?? []
+        let host = hostPeerIndex ?? coordinator?.hostPeerIndex
         return LobbyData(
             room: room ?? "",
             joinURL: joinURL ?? "",

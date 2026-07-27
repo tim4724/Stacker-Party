@@ -2,9 +2,10 @@ package com.hexstacker.tv.ui
 
 /**
  * Small, plain render-data classes for the stateless TV chrome composables.
- * These are intentionally decoupled from `:core` networking/coordinator types
- * (which don't exist yet); the integrator maps `RoomFlow`/`PlayerRecord` and the
- * coordinator's `ResultEntry` into these when wiring the screens.
+ * These are intentionally decoupled from the `:core` networking/coordinator types:
+ * MainActivity maps the room brain's `PlayerRecord` roster and the coordinator's
+ * `ResultEntry` into these when wiring the screens, so the chrome holds no room
+ * state of its own.
  *
  * `colorIndex` is a `Theme.playerColor(slot)` index (0..7); see [playerColor].
  */

@@ -17,9 +17,11 @@ const path = require('path');
 
 const { MSG, INPUT, ROOM_STATE, RELAY_URL, STUN_URL } = require('../public/shared/protocol.js');
 const constants = require('../server/constants.js');
+const { RoomBrain } = require('../server/RoomBrain.js');
 
 const ROOT = path.join(__dirname, '..');
 const SWIFT = read('appletv/Sources/HexStackerKit/Net/Protocol.swift');
+const COORDINATOR = read('appletv/Sources/HexStackerKit/Game/DisplayCoordinator.swift');
 
 function read(p) {
   return fs.readFileSync(path.join(ROOT, p), 'utf8');
@@ -97,6 +99,38 @@ test('the controller base URL matches the Android mirror', () => {
   const kt = kotlin.match(/const val CONTROLLER_BASE_URL = "([^"]*)"/);
   assert.ok(kt, 'Kotlin const CONTROLLER_BASE_URL not found');
   assert.strictEqual(swiftStringConsts(swiftEnum('Protocol')).controllerBaseURL, kt[1]);
+});
+
+// The room LAYER is no longer mirrored — tvOS runs server/RoomBrain.js itself, and
+// RoomBrainConformanceTests replays the shared golden through its bridge — so there
+// is nothing left here to pin about naming, colours, host election or the snapshot.
+// What survives is the handful of numbers the shell still has to hold in Swift,
+// because they configure or schedule the brain rather than living inside it.
+test('the snapshot throttle is READ from the brain, not mirrored in Swift', () => {
+  // The brain hands back a 'now' | 'soon' | 'none' hint per mutator; the WINDOW
+  // the 'soon' hint is throttled by has to be the brain's own. Swift reads it
+  // through roomGet at roomInit time, exactly as Kotlin does, so there is no
+  // constant here to drift. This asserts the READ still happens: a future edit
+  // that quietly reinstates a Swift literal would otherwise go unnoticed.
+  assert.match(
+    COORDINATOR,
+    /roomGet\(Double\.self, "snapshotThrottleMs"\)/,
+    'Swift no longer reads the throttle window from the brain'
+  );
+  assert.ok(
+    !/(static )?let snapshotThrottleMs = /.test(COORDINATOR),
+    'the throttle window is mirrored as a Swift constant again; read it from the brain instead'
+  );
+});
+
+test('the liveness policy handed to the brain matches the canonical constants', () => {
+  // Constructor options, so they are Swift-side by necessity; the web display passes
+  // the same two values from server/constants.js.
+  const timeout = COORDINATOR.match(/static let livenessTimeoutMs = (\d+)/);
+  const grace = COORDINATOR.match(/static let lateJoinerGraceMs = (\d+)/);
+  assert.ok(timeout && grace, 'Swift liveness constants not found');
+  assert.strictEqual(Number(timeout[1]), constants.LIVENESS_TIMEOUT_MS);
+  assert.strictEqual(Number(grace[1]), constants.LATE_JOINER_GRACE_MS);
 });
 
 test('the controller-URL template registered on create mirrors the web shape', () => {

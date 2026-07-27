@@ -37,6 +37,11 @@ enum EngineFixture {
     /// The committed V8-recorded golden the conformance test byte-compares against.
     static let frameGolden = repoRoot.appendingPathComponent("tests/fixtures/partycore-frame-golden.json")
 
+    /// The cross-platform RoomBrain golden: constructor options, the canonical op
+    /// log, and the expected return value + snapshot after every step. Self-contained
+    /// on purpose — this leg can't `require` the JS fixture the Node leg reads.
+    static let roomBrainGolden = repoRoot.appendingPathComponent("tests/fixtures/room-brain-golden.json")
+
     private static func run(_ arguments: [String]) {
         let proc = Process()
         proc.currentDirectoryURL = repoRoot
@@ -108,7 +113,12 @@ final class FakeOutput: DisplayOutput {
     func roomReady(room: String, joinURL: String, qrText: String) {
         self.room = room; self.joinURL = joinURL; self.qrText = qrText
     }
-    func updateLobby(players: [PlayerRecord], hostPeerIndex: Int?) {}
+    var lobbyPlayers: [PlayerRecord] = []   // last roster handed to the display lobby
+    var lobbyHost: Int?
+    func updateLobby(players: [PlayerRecord], hostPeerIndex: Int?) {
+        lobbyPlayers = players
+        lobbyHost = hostPeerIndex
+    }
     func showCountdown(_ v: CountdownValue) { countdowns.append(v) }
     func renderSnapshot(_ s: GameSnapshot) { renderCount += 1; lastSnapshot = s }
     func showResults(_ r: [MatchResult]) { results = r; calls.append("showResults") }

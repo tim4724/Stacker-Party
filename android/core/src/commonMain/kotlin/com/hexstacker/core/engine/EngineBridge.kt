@@ -174,6 +174,21 @@ class EngineBridge private constructor(
     // coordinator start and surviving across matches, so [roomInit] must run
     // before any room event is handled.
 
+    /**
+     * Wrap a JS expression yielding JSON so that what crosses back is pure ASCII.
+     *
+     * quickjs-kt decodes an outbound JS string from UTF-8 and mishandles 4-byte
+     * sequences — every astral character, i.e. every emoji: the tail bytes are dropped,
+     * which both mangles a player's name and can truncate the JSON into something that
+     * no longer parses. Re-encoding each non-ASCII code unit as a \uXXXX escape keeps
+     * the JSON valid, decodes back to the exact same text on this side, and costs a
+     * regex pass over ~1 KB. Only the ROOM reads need it: the engine's frame/snapshot
+     * payloads are numeric.
+     */
+    private fun asciiJson(expr: String): String =
+        "($expr).replace(/[\\u0080-\\uffff]/g, function (c) {" +
+            " return '\\\\u' + ('000' + c.charCodeAt(0).toString(16)).slice(-4); })"
+
     suspend fun roomInit(optionsJson: String = "{}"): Unit = lock.withLock {
         eval("roomInit", "Bridge.roomInit(${jsString(optionsJson)})")
     }
@@ -183,29 +198,17 @@ class EngineBridge private constructor(
      * JSON-encoded return value comes back (`"null"` for void methods).
      */
     suspend fun roomCallJson(method: String, argsJson: String = "[]"): String = lock.withLock {
-        evalTyped<String>("roomCall($method)", "Bridge.roomCall(${jsString(method)}, ${jsString(argsJson)})")
+        evalTyped<String>("roomCall($method)", asciiJson("Bridge.roomCall(${jsString(method)}, ${jsString(argsJson)})"))
     }
 
     /** Read a RoomBrain property (`state`, `host`, `participants`, ...) as JSON. */
     suspend fun roomGetJson(property: String): String = lock.withLock {
-        evalTyped<String>("roomGet($property)", "Bridge.roomGet(${jsString(property)})")
+        evalTyped<String>("roomGet($property)", asciiJson("Bridge.roomGet(${jsString(property)})"))
     }
 
     /** The retained room snapshot, ready to hand straight to `set_state`. */
     suspend fun roomSnapshotJson(): String = lock.withLock {
-        evalTyped<String>("roomSnapshotJSON", "Bridge.roomSnapshotJSON()")
-    }
-
-    /**
-     * A RoomBrain MODULE constant (`SNAPSHOT_THROTTLE_MS`, `NAME_MAX_LEN`, ...) as
-     * JSON. Deliberately NOT a fifth room entry point on the shim: [roomGetJson]
-     * reads instance properties and these hang off the constructor, and the two
-     * native shims are kept token-identical by
-     * `tests/room-bridge-shim-parity.test.js` — growing the shared surface for a
-     * value each shell reads once at start-up would be a poor trade.
-     */
-    suspend fun roomConstJson(name: String): String = lock.withLock {
-        evalTyped<String>("roomConst($name)", "JSON.stringify(HexCore.RoomBrain[${jsString(name)}])")
+        evalTyped<String>("roomSnapshotJSON", asciiJson("Bridge.roomSnapshotJSON()"))
     }
 
     /**

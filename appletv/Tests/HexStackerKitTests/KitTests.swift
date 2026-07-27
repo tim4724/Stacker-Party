@@ -1,108 +1,13 @@
 import Testing
 @testable import HexStackerKit
 
-// Pure-logic tests for the kit (room/host FSM, geometry, theme, color math).
-// Run under `swift test` (works with only Command Line Tools; no full Xcode).
-
-@Suite struct RoomFlowTests {
-    @Test func firstJoinerIsHostThenPromotesOnLeave() {
-        let flow = RoomFlow()
-        flow.addPlayer(peerIndex: 1, playerName: "A", colorSlot: 0)
-        flow.addPlayer(peerIndex: 2, playerName: "B", colorSlot: 1)
-        #expect(flow.host == 1)
-        #expect(flow.lowestFreeSlot() == 2)
-        #expect(flow.takenColorSlots() == [0, 1])
-        flow.removePlayer(1)
-        #expect(flow.host == 2)
-    }
-
-    @Test func transitionsAreValidated() {
-        let flow = RoomFlow()
-        #expect(flow.transition(to: .playing) == false)   // lobby -> playing invalid
-        #expect(flow.transition(to: .countdown) == true)
-        #expect(flow.transition(to: .playing) == true)
-    }
-
-    @Test func midGameHostStaysPinnedAcrossBlip() {
-        let flow = RoomFlow()
-        flow.addPlayer(peerIndex: 1, playerName: "A", colorSlot: 0)
-        flow.addPlayer(peerIndex: 2, playerName: "B", colorSlot: 1)
-        flow.transition(to: .countdown)
-        flow.transition(to: .playing)
-        flow.markDisconnected(1)
-        #expect(flow.host == 2)            // effective host falls back
-        #expect(flow.hostPeerIndex == 1)   // sticky slot stays pinned
-        flow.markReconnected(1)
-        #expect(flow.host == 1)            // reclaims on reconnect
-    }
-
-    // MARK: - Liveness / presence timeout + late-joiner grace
-
-    @Test func livenessExpiresSilentPeersOutsideLobbyOnly() {
-        let flow = RoomFlow(livenessTimeoutMs: 1000, graceMs: 5000)
-        flow.addPlayer(peerIndex: 1, playerName: "A", colorSlot: 0)
-        flow.addPlayer(peerIndex: 2, playerName: "B", colorSlot: 1)
-        flow.onSeen(1, 0); flow.onSeen(2, 0)
-        #expect(flow.expiredPeers(5000).isEmpty)   // LOBBY: idle is fine
-        flow.transition(to: .countdown)
-        #expect(flow.expiredPeers(500).isEmpty)    // within the window
-        #expect(flow.expiredPeers(1500) == [1, 2]) // both silent past 1000ms
-        flow.onSeen(1, 1500)
-        #expect(flow.expiredPeers(2000) == [2])    // 1 stamped fresh, only 2 stale
-    }
-
-    @Test func allParticipantsDisconnectedAndLateJoinerGrace() {
-        let flow = RoomFlow(livenessTimeoutMs: 1000, graceMs: 2000)
-        flow.addPlayer(peerIndex: 1, playerName: "A", colorSlot: 0)
-        flow.addPlayer(peerIndex: 2, playerName: "B", colorSlot: 1)
-        flow.transition(to: .countdown)   // order = [1, 2]
-        flow.transition(to: .playing)
-        #expect(!flow.allParticipantsDisconnected)
-        flow.markDisconnected(1); flow.markDisconnected(2)
-        #expect(flow.allParticipantsDisconnected)
-        // No late joiners: grace never fires (the game waits, paused, for a return).
-        #expect(flow.graceTick(0) == false)
-        #expect(flow.graceTick(99_999) == false)
-        // A late joiner arrives → grace arms, then fires once after graceMs.
-        flow.addPlayer(peerIndex: 3, playerName: "C", colorSlot: 2)   // not in order
-        #expect(flow.hasLateJoiners)
-        #expect(flow.graceTick(0) == false)       // arms deadline at 0 + 2000
-        #expect(flow.graceTick(1000) == false)    // before deadline
-        #expect(flow.graceTick(2000) == true)     // fires exactly once
-        #expect(flow.graceTick(2000) == false)    // cleared
-    }
-
-    @Test func graceDeadlineClearedOnLeavingPlaying() {
-        let flow = RoomFlow(livenessTimeoutMs: 1000, graceMs: 2000)
-        flow.addPlayer(peerIndex: 1, playerName: "A", colorSlot: 0)
-        flow.addPlayer(peerIndex: 2, playerName: "B", colorSlot: 1)
-        flow.transition(to: .countdown); flow.transition(to: .playing)
-        flow.markDisconnected(1); flow.markDisconnected(2)
-        flow.addPlayer(peerIndex: 3, playerName: "C", colorSlot: 2)   // late joiner
-        #expect(flow.graceTick(0) == false)        // game 1 arms deadline at 0 + 2000
-        flow.transition(to: .lobby)                 // non-grace exit must clear it
-        // Game 2: rebuild the same all-disconnected + late-joiner condition. With 3
-        // now the only connected player, COUNTDOWN snapshots order = [3].
-        flow.transition(to: .countdown); flow.transition(to: .playing)
-        flow.markDisconnected(3)
-        // A qualifying tick PAST the stale game-1 deadline (2000) must RE-ARM
-        // (false), not fire immediately from a leftover deadline.
-        #expect(flow.graceTick(3000) == false, "stale deadline cleared on lobby return")
-        #expect(flow.graceTick(5000) == true, "re-armed deadline fires at the new time")
-    }
-
-    @Test func reconnectClearsGraceDeadline() {
-        let flow = RoomFlow(livenessTimeoutMs: 1000, graceMs: 2000)
-        flow.addPlayer(peerIndex: 1, playerName: "A", colorSlot: 0)
-        flow.addPlayer(peerIndex: 2, playerName: "B", colorSlot: 1)
-        flow.transition(to: .countdown); flow.transition(to: .playing)
-        flow.markDisconnected(1); flow.markDisconnected(2)
-        flow.addPlayer(peerIndex: 3, playerName: "C", colorSlot: 2)
-        #expect(flow.graceTick(0) == false)       // armed
-        flow.markReconnected(1)                    // a participant returns
-        #expect(flow.graceTick(5000) == false)     // condition gone → deadline cleared, no fire
-    }
-}
+// Pure-logic tests for the kit (geometry, theme, color math). Run under
+// `swift test` (works with only Command Line Tools; no full Xcode).
+//
+// The room/host FSM used to be tested here against a hand-ported Swift RoomFlow.
+// That port is gone: the room layer is server/RoomBrain.js running in the shared
+// JavaScriptCore context, so its behaviour is pinned by the cross-platform golden
+// (RoomBrainConformanceTests) and its Node twin, not by a second implementation.
 
 @Suite struct GeometryTests {
     @Test func boardDimensions() {

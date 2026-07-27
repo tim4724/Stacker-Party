@@ -72,20 +72,19 @@ public enum MSG {
     public static let ping = "ping"
 
     // Display -> specific controller
-    public static let welcome = "welcome"
-    public static let gameOver = "game_over"
-    public static let lobbyUpdate = "lobby_update"
     public static let pong = "pong"
     public static let playerState = "player_state"
 
     // Display -> all controllers (broadcast)
-    public static let countdown = "countdown"
-    public static let displayMuted = "display_muted"
-    public static let gameStart = "game_start"
-    public static let gameEnd = "game_end"
-    public static let gamePaused = "game_paused"
-    public static let gameResumed = "game_resumed"
     public static let error = "error"
+
+    // welcome / lobby_update / game_start / countdown / game_end / game_over /
+    // game_paused / game_resumed / display_muted are GONE. The retained room
+    // snapshot (server/RoomBrain.js) is the single source of truth controllers
+    // derive their whole UI from, screen routing included, so there is no second
+    // channel left that could disagree with it. DisplayCoordinatorTests
+    // .retiredMessageTypesAreNeverSent walks a whole session asserting none of
+    // those strings reaches the wire.
 
     // Internal: display self-liveness canary (echoed via relay slot 0).
     public static let heartbeat = "_heartbeat"
@@ -100,7 +99,9 @@ public enum InputAction: String, CaseIterable {
     case hold
 }
 
-/// Room states, from `ROOM_STATE`. Kept identical to RoomFlow's states.
+/// Room states, from `ROOM_STATE`. Kept identical to the room brain's states
+/// (server/RoomBrain.js -> partyplug/RoomFlow.js), which the snapshot reports as
+/// `roomState` and controllers route their screens off.
 public enum RoomState: String {
     case lobby
     case countdown
@@ -171,21 +172,7 @@ public enum OutboundMessage {
         return m
     }
 
-    public static func countdown(value: Any) -> [String: Any] {
-        // value is a number (3/2/1) or the string "GO".
-        ["type": MSG.countdown, "value": value]
-    }
 
-    public static func gameStart() -> [String: Any] { ["type": MSG.gameStart] }
-    public static func gamePaused() -> [String: Any] { ["type": MSG.gamePaused] }
-    public static func gameResumed() -> [String: Any] { ["type": MSG.gameResumed] }
-    public static func gameOver() -> [String: Any] { ["type": MSG.gameOver] }
-    public static func displayMuted(_ muted: Bool) -> [String: Any] {
-        ["type": MSG.displayMuted, "muted": muted]
-    }
-    public static func returnToLobby(playerCount: Int) -> [String: Any] {
-        ["type": MSG.returnToLobby, "playerCount": playerCount]
-    }
     public static func error(message: String) -> [String: Any] {
         ["type": MSG.error, "message": message]
     }
@@ -197,7 +184,4 @@ public enum OutboundMessage {
         ["type": MSG.playerState, "alive": false]
     }
 
-    public static func gameEnd(elapsed: Double, results: [[String: Any]]) -> [String: Any] {
-        ["type": MSG.gameEnd, "elapsed": elapsed, "results": results]
-    }
 }
