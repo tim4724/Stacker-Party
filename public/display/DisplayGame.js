@@ -403,11 +403,9 @@ var engineEvents = [];
 //
 // The split is the native one: raw `events` drive the board ANIMATIONS, and the
 // normalized commands drive everything with a consequence outside this screen
-// (controller sends, the KO record, the match-end transition). Sampling the
-// snapshot HERE, after update() returns, is also what fixes the old divergence:
-// the web used to read it inside the line_clear callback, which fires before the
-// clear's defence has cancelled incoming garbage, so a controller was told a
-// garbageIncoming the engine had already reduced.
+// (controller sends, the KO record, the match-end transition). The snapshot is
+// sampled HERE, once, after update() returns, rather than mid-event inside each
+// handler the way this shell used to do it.
 function stepEngine(deltaMs) {
   displayGame.update(deltaMs);
   if (!engineEvents.length) return;
@@ -435,13 +433,11 @@ function dispatchCommands(commands) {
       // Record the KO in the room: the snapshot's per-player `alive` is what a
       // reconnecting eliminated phone reads.
       if (c.alive === false) publishAs(roomCore.setAlive(c.playerId, false).publish);
-      if (c.level != null) {
-        // Full form (after a line clear): level/lines/alive + pre-resolved
-        // incoming garbage.
+      if (c.lines != null) {
+        // Full form (after a line clear): the new line count, plus alive, which
+        // is false when the same frame's clear also topped this player out.
         party.sendTo(c.playerId, {
-          type: MSG.PLAYER_STATE,
-          level: c.level, lines: c.lines,
-          alive: c.alive, garbageIncoming: c.garbageIncoming || 0
+          type: MSG.PLAYER_STATE, lines: c.lines, alive: c.alive
         });
       } else if (c.alive === false) {
         // Short form (after a KO). Kept alongside the snapshot because it is what

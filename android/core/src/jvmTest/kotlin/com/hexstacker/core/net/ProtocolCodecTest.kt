@@ -73,13 +73,12 @@ class ProtocolCodecTest {
 
     @Test
     fun outboundBuilderShapes() {
-        val ps = OutboundMessage.playerState(level = 5, lines = 12, alive = true, garbageIncoming = 3)
+        val ps = OutboundMessage.playerState(lines = 12, alive = true)
         assertEquals(Msg.PLAYER_STATE, type(ps))
-        assertEquals(5, ps["level"]?.jsonPrimitive?.intOrNull)
         assertEquals(12, ps["lines"]?.jsonPrimitive?.intOrNull)
-        assertEquals(3, ps["garbageIncoming"]?.jsonPrimitive?.intOrNull)
+        assertEquals(setOf("type", "lines", "alive"), ps.keys)
 
-        // Short KO form omits level/lines.
+        // Short KO form omits lines.
         val dead = OutboundMessage.playerDead()
         assertEquals(Msg.PLAYER_STATE, type(dead))
         assertEquals(false, dead["alive"]?.jsonPrimitive?.contentOrNull?.toBoolean())

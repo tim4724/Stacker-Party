@@ -957,12 +957,11 @@ public final class DisplayCoordinator {
                     // surfaces as a `playerEliminated` command we no longer need).
                     publishAs(roomDo("setAlive", [pid, false]).publish)
                 }
-                if let level = c.level, let lines = c.lines, let alive = c.alive {
-                    // Full form (after a line clear): level/lines/alive + pre-resolved
-                    // incoming garbage.
-                    transport.sendTo(pid, OutboundMessage.playerState(
-                        level: level, lines: lines, alive: alive,
-                        garbageIncoming: c.garbageIncoming ?? 0))
+                if let lines = c.lines, let alive = c.alive {
+                    // Full form (after a line clear): the new line count, plus alive,
+                    // which is false when the same frame's clear also topped this
+                    // player out.
+                    transport.sendTo(pid, OutboundMessage.playerState(lines: lines, alive: alive))
                 } else if c.alive == false {
                     // Short form (after a KO): just alive:false. Kept alongside the
                     // snapshot because it is what fires the KO overlay the instant it

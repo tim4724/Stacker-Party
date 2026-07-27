@@ -115,9 +115,7 @@ enum FrameParsing {
             lines: int(d["lines"]),
             blocks: try value(d["blocks"]).map { try cells($0, "command.blocks") },
             clearCells: try value(d["clearCells"]).map { try cells($0, "command.clearCells") },
-            level: int(d["level"]),
             alive: bool(d["alive"]),
-            garbageIncoming: int(d["garbageIncoming"]),
             elapsed: double(d["elapsed"]),
             results: try value(d["results"]).map { json -> [PlayerResult] in
                 guard let arr = json as? [Any] else { throw ParseError(field: "command.results") }

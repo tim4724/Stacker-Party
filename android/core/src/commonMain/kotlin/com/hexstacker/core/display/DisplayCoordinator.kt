@@ -936,9 +936,9 @@ class DisplayCoordinator(
                 CommandType.PLAYER_STATE -> {
                     val pid = c.playerId ?: continue
                     // Targeted, and NOT room state: it is what fires a controller's own
-                    // level/lines HUD and its KO overlay the instant either happens.
-                    if (c.level != null && c.lines != null && c.alive != null) {
-                        transport.sendTo(pid, OutboundMessage.playerState(c.level, c.lines, c.alive, c.garbageIncoming ?: 0))
+                    // line-clear feedback and its KO overlay the instant either happens.
+                    if (c.lines != null && c.alive != null) {
+                        transport.sendTo(pid, OutboundMessage.playerState(c.lines, c.alive))
                     } else if (c.alive == false) {
                         transport.sendTo(pid, OutboundMessage.playerDead()) // short form after KO
                     }

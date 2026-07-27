@@ -357,26 +357,22 @@ declare namespace PartyCore {
     lines: number;
   }
   /**
-   * Player HUD state. Emitted in two forms:
-   *   - after `line_clear`: the full form (level, lines, alive, garbageIncoming).
+   * The per-player facts a controller acts on the instant they change, rather
+   * than on the next retained-snapshot push. Emitted in two forms:
+   *   - after `line_clear`: `{ lines, alive }` (alive can be false, when the same
+   *     frame's clear also topped the player out).
    *   - after `player_ko`: only `{ alive: false }`.
+   *
+   * Deliberately NOT the player's whole HUD: `level` and a pre-resolved
+   * `garbageIncoming` used to ride along here and no controller ever read either,
+   * so they were dropped rather than kept "for completeness". Anything a
+   * controller needs on reconnect belongs in the room snapshot, not here.
    */
   interface PlayerStateCommand {
     type: 'playerState';
     playerId: string;
-    level?: number;
     lines?: number;
     alive?: boolean;
-    /** Pre-resolved incoming garbage (board-pending + delayed queue), from the
-     *  snapshot, saving the host a mid-event getSnapshot. Full form only.
-     *
-     *  KNOWN DIVERGENCE from the web (accepted, not a bug): this reads the
-     *  POST-frame snapshot, taken after Game.handleLineClear() applied this
-     *  clear's defense, so it reflects the reduced (post-cancellation) amount.
-     *  The web (DisplayGame.js) samples it synchronously inside the line_clear
-     *  event, which fires BEFORE defense runs, so it reports the pre-cancellation
-     *  amount. Native's value is the more accurate one; see PartyCore.js. */
-    garbageIncoming?: number;
   }
   interface PlayerKOCommand {
     type: 'playerKO';

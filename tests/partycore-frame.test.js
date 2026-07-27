@@ -133,12 +133,14 @@ test('toCommands maps each engine event type to the host-effect vocabulary', () 
       { type: 'playerEliminated', playerId: 'p2' },
     ]);
 
-  // line_clear -> lineClear anim, then playerState with snapshot-resolved garbageIncoming
+  // line_clear -> lineClear anim, then the post-update playerState. Only what a
+  // controller acts on rides along: no level, no pre-resolved garbageIncoming
+  // (both were on this command for a while and no controller ever read either).
   assert.deepStrictEqual(
     PartyCore.toCommands([{ type: 'line_clear', playerId: 'p1', lines: 1, rows: [3], clearCells: [[0, 3]] }], snapshot),
     [
       { type: 'lineClear', playerId: 'p1', clearCells: [[0, 3]], lines: 1 },
-      { type: 'playerState', playerId: 'p1', level: 2, lines: 11, alive: true, garbageIncoming: 4 },
+      { type: 'playerState', playerId: 'p1', lines: 11, alive: true },
     ]);
 
   assert.deepStrictEqual(
@@ -151,7 +153,7 @@ test('toCommands maps each engine event type to the host-effect vocabulary', () 
     [{ type: 'gameEnd', elapsed: 1234, results: [{ playerId: 'p1', rank: 1 }] }]);
 });
 
-test('snapshot pendingGarbage and line_clear garbageIncoming include the delayed GarbageManager queue', () => {
+test('snapshot pendingGarbage includes the delayed GarbageManager queue', () => {
   const pc = newPartyCore(1);
   pc.init();
   // Queue a delayed (GarbageManager) delivery to p2 — distinct from p2's
@@ -164,11 +166,6 @@ test('snapshot pendingGarbage and line_clear garbageIncoming include the delayed
   assert.equal(boardOnly, 0, 'board-only pendingGarbage excludes the delayed queue');
   assert.equal(p2.pendingGarbage, 3, 'snapshot pendingGarbage includes the delayed queue');
   assert.ok(p2.pendingGarbage > boardOnly, 'snapshot pendingGarbage strictly exceeds board-only');
-
-  const cmds = PartyCore.toCommands(
-    [{ type: 'line_clear', playerId: 'p2', lines: 1, rows: [], clearCells: [] }], snap);
-  const playerState = cmds.find((c) => c.type === 'playerState');
-  assert.equal(playerState.garbageIncoming, 3, 'garbageIncoming uses the snapshot (board + delayed) value');
 });
 
 test('value-copy snapshot is non-aliasing across retained frames', () => {
@@ -338,9 +335,8 @@ test('rekeyPlayer voids both delivery ledgers so the new id gets a full render',
 });
 
 test('the web display drives its off-screen effects through the shared mapping', () => {
-  // The web used to hand-write this mapping in its engine callback, which is how
-  // it ended up telling controllers a garbageIncoming the engine had already
-  // reduced (see toCommands). It now dispatches the same command list the TVs do,
+  // The web used to hand-write this mapping in its engine callback, and drifted
+  // from the TVs while doing it. It now dispatches the same command list they do,
   // so the callback must only BUFFER: any send or room mutation inside it is the
   // per-shell mapping this test exists to keep deleted.
   const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'display', 'DisplayGame.js'), 'utf8');

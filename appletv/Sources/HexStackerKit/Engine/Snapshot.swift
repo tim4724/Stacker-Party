@@ -157,9 +157,7 @@ public struct HostCommand: Decodable, Equatable {
     public let lines: Int?         // lineClear / playerState / garbageCancelled / garbageSent
     public let blocks: [Cell]?     // pieceLock
     public let clearCells: [Cell]? // lineClear
-    public let level: Int?         // playerState (full)
     public let alive: Bool?        // playerState
-    public let garbageIncoming: Int?    // playerState (full form)
     public let elapsed: Double?         // gameEnd
     public let results: [PlayerResult]? // gameEnd (raw, pre-enrichment)
 }

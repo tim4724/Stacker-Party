@@ -271,9 +271,9 @@ PartyCore.prototype.deliverFrame = function(nowMs) {
 // effects themselves (which socket, which animation) stay per-shell.
 //
 // PURE: depends only on its args (no instance, no cross-frame state), so the web
-// can hand it the live zero-copy getSnapshot() it already renders from.
-// garbageIncoming is pre-resolved from the snapshot (board-pending + delayed
-// GarbageManager queue), removing the host's mid-event getSnapshot.
+// can hand it the live zero-copy getSnapshot() it already renders from. The
+// snapshot is read for the post-update per-player figures a line clear reports;
+// it is sampled once by the caller rather than mid-event by each host.
 PartyCore.toCommands = function(events, snapshot) {
   var commands = [];
   for (var i = 0; i < events.length; i++) {
@@ -298,22 +298,14 @@ PartyCore.toCommands = function(events, snapshot) {
           if (snapshot.players[j].id === e.playerId) { p = snapshot.players[j]; break; }
         }
         if (p) {
+          // Read post-update (the caller samples the snapshot once, after the
+          // engine tick), so a clear that also tops the player out reports
+          // alive:false here rather than a frame late.
           commands.push({
             type: 'playerState',
             playerId: e.playerId,
-            level: p.level,
             lines: p.lines,
-            alive: p.alive,
-            // Read from `snapshot`, which the caller captured AFTER update()
-            // returned, i.e. after Game.handleLineClear() applied this clear's
-            // defence and cancelled incoming garbage — so a clear that cancels
-            // garbage reports the reduced, post-cancellation amount. The web used
-            // to sample getSnapshot() inside its own line_clear callback, which
-            // fires at the TOP of handleLineClear (Game.js) BEFORE defence runs,
-            // and so told the controller a number the engine had already reduced.
-            // It now goes through this mapping like the TVs do, so there is one
-            // answer on all three displays and it is the accurate one.
-            garbageIncoming: p.pendingGarbage
+            alive: p.alive
           });
         }
         break;
