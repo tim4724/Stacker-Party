@@ -1085,7 +1085,9 @@ public final class DisplayCoordinator {
     }
 
     /// The host pressed Continue. Refused unless the freeze is theirs to lift, and
-    /// while every participant is gone (there would be nobody to play).
+    /// while every participant is gone (there would be nobody to play). In that second
+    /// case the overlay deliberately stays up: it carries New Game, which is what an
+    /// operator staring at an emptied room actually wants.
     private func resumeGame() {
         let res = liftPause(.manual)
         guard res.changed == true else { return }
@@ -1103,13 +1105,13 @@ public final class DisplayCoordinator {
         autoPause()
     }
 
-    /// Every participant dropped. Silent: no overlay, and the hint is 'now' only when
-    /// this ABSORBED a manual pause — whose overlay must come down with it, because
-    /// Continue is gated shut while everyone is gone and it could never be dismissed.
+    /// Every participant dropped. Silent: controllers never see this reason, so the
+    /// room core hints 'none' and nothing goes out — there is nobody left to tell.
+    /// Refused if the host had already paused by hand (RoomCore rule 2), which is what
+    /// keeps their pause and its Continue intact for whoever comes back.
     private func autoPause() {
         let res = freezePause(.auto)
         guard res.changed == true else { return }
-        setPauseOverlay(false)
         publishAs(res.publish)
     }
 

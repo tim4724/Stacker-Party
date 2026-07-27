@@ -1,5 +1,6 @@
 package com.hexstacker.tv
 
+import android.content.pm.ApplicationInfo
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -115,6 +116,18 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Debug-only QR retarget, for testing a branch preview of the controller:
+        //   adb shell am start -n com.hexstacker.tv/.MainActivity \
+        //     --es hexHost preview-<branch>.hexstacker.com
+        // Must happen before the relay connects (the origin also rides `create` as the
+        // controller-URL template). Unset => production, so a launcher start is always
+        // production. Debuggable builds only: any app on the device can send an extra,
+        // and a release build must never let one repoint the QR.
+        if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+            val base = RelayConfig.setControllerBase(intent?.getStringExtra("hexHost"))
+            if (base != RelayConfig.DEFAULT_CONTROLLER_BASE_URL) Log.i("MainActivity", "controller base: $base")
+        }
 
         board = BoardSurfaceView(this)
         // The board must NOT grab D-pad focus, or the Compose lobby/results buttons
@@ -570,12 +583,12 @@ class TvDisplayOutput(
 
     private fun buildLobby(): LobbyData {
         val host = joinUrl.substringAfter("://", "").substringBefore("/").ifEmpty {
-            RelayConfig.CONTROLLER_BASE_URL.substringAfter("://")
+            RelayConfig.controllerBaseUrl.substringAfter("://")
         }
         return LobbyData(
             joinHost = "$host/",
             joinCode = room,
-            joinUrl = joinUrl.ifEmpty { RelayConfig.CONTROLLER_BASE_URL },
+            joinUrl = joinUrl.ifEmpty { RelayConfig.controllerBaseUrl },
             players = roster.map { LobbyPlayer(it.peerIndex, it.playerName, it.colorSlot, it.startLevel) },
             hostColorIndex = hostSlot,
         )

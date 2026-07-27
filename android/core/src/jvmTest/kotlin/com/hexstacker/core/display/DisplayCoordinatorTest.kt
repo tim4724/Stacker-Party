@@ -255,33 +255,37 @@ class DisplayCoordinatorTest {
             assertFalse(out.pausedFlag)
             assertFalse(t.lastState().paused)
 
-            // Pause again, then everyone disconnects. The manual pause converts into a
-            // silent auto-pause: the stranded overlay hides (Continue can't be reached
-            // while everyone is gone, so a shown overlay could never be dismissed), but
-            // the game stays paused. A DISPLAY-remote resume is still blocked (a
-            // controller resume would reconnect the sender first; the remote does not).
+            // Pause again, then everyone disconnects. The host's pause SURVIVES: the
+            // all-disconnected auto-pause is refused rather than taking it over (RoomCore
+            // rule 2, first freeze wins), because a reason the display lifts by itself
+            // would restart the match the moment somebody reconnected, with nobody having
+            // pressed Continue.
             t.deliver(1, simple(Msg.PAUSE_GAME)); coord.awaitIdle()
             assertTrue(out.pausedFlag, "manual pause shows the overlay")
             t.peerLeft(1); t.peerLeft(2); coord.awaitIdle()
             assertEquals(0, coord.roomCore.connectedCount())
-            assertFalse(out.pausedFlag, "overlay hides when the last player drops during a manual pause")
-            assertFalse(t.lastState().paused, "and controllers are told the pause is no longer actionable")
+            assertTrue(out.pausedFlag, "the host's overlay stays up when the last player drops")
+            assertTrue(t.lastState().paused, "and controllers still see a pause they can act on")
 
-            // The pause key now RAISES the overlay again — it is the only route to New
-            // Game with every controller gone — but as a pure view toggle: the game must
-            // not resume, and controllers must still not be told of an actionable pause.
+            // The pause key is inert here: Continue needs somebody left to play. The
+            // overlay deliberately stays up rather than toggling, because it carries New
+            // Game — the only route out of a frozen match with every controller gone.
             val resumesBefore = out.musicResumes
             coord.remoteTogglePause()
-            assertTrue(out.pausedFlag, "the pause key raises the overlay so New Game is reachable")
-            assertFalse(t.lastState().paused, "...without publishing an actionable pause")
-            assertEquals(resumesBefore, out.musicResumes, "game stays paused (no resume) while everyone is disconnected")
-            coord.remoteTogglePause()
-            assertFalse(out.pausedFlag, "pressing again dismisses it, still without resuming")
-            assertEquals(resumesBefore, out.musicResumes)
+            assertTrue(out.pausedFlag, "the overlay stays, keeping New Game reachable")
+            assertTrue(t.lastState().paused)
+            assertEquals(resumesBefore, out.musicResumes, "game stays paused while everyone is disconnected")
 
-            // A participant reconnecting lifts the converted auto-pause.
+            // A participant reconnecting must NOT resume: the auto-resume can only lift an
+            // auto-pause, and this freeze is the host's. This is the regression guard.
             t.deliver(1, simple(Msg.PING)); coord.awaitIdle()
-            assertTrue(out.musicResumes > resumesBefore, "reconnect resumes the game")
+            assertEquals(resumesBefore, out.musicResumes, "a reconnect cannot lift the host's pause")
+            assertTrue(t.lastState().paused)
+
+            // Continue works again now that somebody is back — and only now.
+            t.deliver(1, simple(Msg.RESUME_GAME)); coord.awaitIdle()
+            assertTrue(out.musicResumes > resumesBefore, "the host's Continue resumes it")
+            assertFalse(t.lastState().paused)
 
             coord.stop()
         } finally {

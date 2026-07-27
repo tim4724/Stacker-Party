@@ -565,7 +565,11 @@ function applyOwnIdentity(mine) {
     // resolves would clobber the previous-session preference in cache.
     if (userPickedColor) persistColorIndex(mine.color);
   }
-  if (mine.startLevel != null) startLevel = mine.startLevel;
+  // Absent means 1: the snapshot omits the three per-player fields at their
+  // defaults (see RoomCore.snapshot). Coalescing rather than skipping matters —
+  // a stepper wound up to 9 and then reset by a new room must fall back to 1,
+  // not keep the value the last snapshot happened to carry.
+  startLevel = mine.startLevel != null ? mine.startLevel : 1;
 }
 
 // The one place a screen is chosen.

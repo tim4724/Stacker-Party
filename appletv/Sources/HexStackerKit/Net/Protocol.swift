@@ -14,15 +14,48 @@ public enum Protocol {
     /// Slot 0 (display) + up to 8 players (MAX_PLAYERS).
     public static let maxClients = 9
 
-    /// Where phone controllers load the web controller (the QR target). The
-    /// join URL is `<base>/<room>#<instance>`, matching the web display.
-    public static let controllerBaseURL = "https://hexstacker.com"
+    /// Where phone controllers load the web controller (the QR target) in a
+    /// shipped build. The join URL is `<base>/<room>#<instance>`, matching the
+    /// web display.
+    public static let defaultControllerBaseURL = "https://hexstacker.com"
+
+    /// The origin the QR / join URL actually points at. The web display reads
+    /// this off `window.location` for free, so a preview deploy retargets its own
+    /// QR automatically; a TV app has no origin to read, which is why the knob is
+    /// explicit. Production unless a debug launch calls `setControllerBase`
+    /// (HEXHOST, see DisplayModel.start), which nothing in a shipped build does.
+    public static private(set) var controllerBaseURL = defaultControllerBaseURL
 
     /// Controller-URL template sent with `create`. The relay fills
     /// {room}/{instance} and hands the result to clients that hold only the
     /// room code (`joined`, `GET /room/:code`). Same shape as the QR join URL
     /// the web display registers (controllerUrlTemplate in DisplayConnection.js).
-    public static let controllerURLTemplate = "https://hexstacker.com/{room}#{instance}"
+    public static var controllerURLTemplate: String { "\(controllerBaseURL)/{room}#{instance}" }
+
+    /// Point the QR / join URL at another origin, e.g. a branch preview. Call
+    /// before the relay connects: the origin also rides the `create` frame as the
+    /// controller-URL template. A nil/blank/unusable value leaves production in
+    /// place, so the caller can hand the raw launch value straight through.
+    /// Mirrored by RelayConfig.setControllerBase (Kotlin).
+    @discardableResult
+    public static func setControllerBase(_ raw: String?) -> String {
+        if let base = normalizedBase(raw) { controllerBaseURL = base }
+        return controllerBaseURL
+    }
+
+    /// `raw` as a bare origin: trimmed, scheme defaulted to https, any path or
+    /// trailing slash dropped ("preview-x.hexstacker.com" -> "https://preview-x.hexstacker.com").
+    /// nil when it names no host or carries a scheme a phone can't open.
+    public static func normalizedBase(_ raw: String?) -> String? {
+        guard var s = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty else { return nil }
+        if !s.contains("://") { s = "https://" + s }
+        guard let sep = s.range(of: "://") else { return nil }
+        let scheme = String(s[s.startIndex..<sep.lowerBound]).lowercased()
+        guard scheme == "http" || scheme == "https" else { return nil }
+        let authority = s[sep.upperBound...].prefix { $0 != "/" && $0 != "?" && $0 != "#" }
+        guard !authority.isEmpty else { return nil }
+        return "\(scheme)://\(authority)"
+    }
 }
 
 /// Transport abstraction the coordinator drives. `RelayClient` is the live

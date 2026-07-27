@@ -102,7 +102,10 @@ function deriveWelcomeEquivalent(snap, peerIndex) {
     colorIndex: mine.color,
     playerCount: roster.playerCount,
     roomState: snap.roomState,
-    startLevel: mine.startLevel,
+    // Absent means default, exactly as ControllerGame.js reads it: the snapshot
+    // omits startLevel/alive/helloSeen at their defaults (see RoomCore.snapshot),
+    // so a mirror that read them raw would diverge from the real controller here.
+    startLevel: mine.startLevel != null ? mine.startLevel : 1,
     isHost: roster.isHost,
     hostName: roster.hostName,
     hostColorIndex: roster.hostColorIndex,
@@ -112,7 +115,7 @@ function deriveWelcomeEquivalent(snap, peerIndex) {
   // WELCOME signalled "late joiner" by OMITTING alive/paused. The snapshot
   // says it positively, via absence from `participants`.
   if (!waitingForNextGame) {
-    out.alive = mine.alive;
+    out.alive = mine.alive !== false;
     out.paused = snap.paused;
   }
   if (snap.roomState === 'results' && snap.results) out.results = snap.results;
@@ -192,13 +195,19 @@ describe('room snapshot: display builder', () => {
       displayMuted: false,
       participants: [1, 3],
       players: {
-        1: { name: 'Ann', color: 2, startLevel: 5, alive: true, helloSeen: true },
-        3: { name: 'Bo', color: 0, startLevel: 1, alive: true, helloSeen: true },
+        // Peer 3 sits at every default, so its row is name + colour and nothing
+        // else. That is the whole point of the omission rule: an 8-player lobby
+        // is 456 bytes instead of 816.
+        1: { name: 'Ann', color: 2, startLevel: 5 },
+        3: { name: 'Bo', color: 0 },
       },
     });
   });
 
-  test('carries startLevel per player, defaulting to 1', () => {
+  // ABSENT MEANS DEFAULT for the three per-player flags. This is the contract the
+  // web controller, Kotlin's RoomPlayer and the golden fixture all depend on, so
+  // pin both halves: present when it differs, gone when it does not.
+  test('startLevel rides the snapshot only when it is not the default 1', () => {
     const room = makeRoom({
       hostPeerIndex: 1,
       players: new Map([
@@ -208,10 +217,10 @@ describe('room snapshot: display builder', () => {
     });
     const snap = room.snapshot();
     assert.equal(snap.players[1].startLevel, 9);
-    assert.equal(snap.players[3].startLevel, 1);
+    assert.ok(!('startLevel' in snap.players[3]), 'a level-1 player carries no startLevel');
   });
 
-  test('a KO flips only that player alive:false', () => {
+  test('a KO flips only that player alive:false; the living carry nothing', () => {
     const room = makeRoom({
       roomState: 'playing',
       hostPeerIndex: 1,
@@ -223,7 +232,7 @@ describe('room snapshot: display builder', () => {
       lastAliveState: { 3: false },
     });
     const snap = room.snapshot();
-    assert.equal(snap.players[1].alive, true);
+    assert.ok(!('alive' in snap.players[1]), 'a living player carries no alive flag');
     assert.equal(snap.players[3].alive, false);
   });
 
@@ -255,7 +264,7 @@ describe('room snapshot: display builder', () => {
       ]),
     });
     const snap = room.snapshot();
-    assert.equal(snap.players[1].helloSeen, true);
+    assert.ok(!('helloSeen' in snap.players[1]), 'a settled player carries no helloSeen');
     assert.equal(snap.players[3].helloSeen, false);
     // The placeholder still claims its colour for everyone else's picker.
     assert.deepEqual(applyRoster(snap, snap.players, 1).takenColorIndices, [0, 2]);

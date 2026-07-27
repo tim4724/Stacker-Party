@@ -23,8 +23,18 @@ object RelayConfig {
     /** Slot 0 (display) + MAX_PLAYERS(8) controllers. */
     const val MAX_CLIENTS = 9
 
-    /** Where phones load the controller (QR target). Join URL = "<base>/<room>#<instance>". */
-    const val CONTROLLER_BASE_URL = "https://hexstacker.com"
+    /** Where phones load the controller (QR target) in a shipped build. Join URL = "<base>/<room>#<instance>". */
+    const val DEFAULT_CONTROLLER_BASE_URL = "https://hexstacker.com"
+
+    /**
+     * The origin the QR / join URL actually points at. The web display reads this off
+     * `window.location` for free, so a preview deploy retargets its own QR automatically;
+     * a TV app has no origin to read, which is why the knob is explicit. Production
+     * unless a debug launch calls [setControllerBase] (`--es hexHost`, see MainActivity),
+     * which nothing in a shipped build does.
+     */
+    var controllerBaseUrl: String = DEFAULT_CONTROLLER_BASE_URL
+        private set
 
     /**
      * Controller-URL template sent with `create`. The relay fills {room}/{instance}
@@ -32,7 +42,34 @@ object RelayConfig {
      * `GET /room/:code`). Same shape as the QR join URL the web display registers
      * (controllerUrlTemplate in DisplayConnection.js).
      */
-    const val CONTROLLER_URL_TEMPLATE = "https://hexstacker.com/{room}#{instance}"
+    val controllerUrlTemplate: String get() = "$controllerBaseUrl/{room}#{instance}"
+
+    /**
+     * Point the QR / join URL at another origin, e.g. a branch preview. Call before the
+     * relay connects: the origin also rides the `create` frame as the controller-URL
+     * template. A null/blank/unusable value leaves production in place, so the caller can
+     * hand the raw launch value straight through. Mirrored by Protocol.setControllerBase (Swift).
+     */
+    fun setControllerBase(raw: String?): String {
+        normalizedBase(raw)?.let { controllerBaseUrl = it }
+        return controllerBaseUrl
+    }
+
+    /**
+     * [raw] as a bare origin: trimmed, scheme defaulted to https, any path or trailing
+     * slash dropped ("preview-x.hexstacker.com" -> "https://preview-x.hexstacker.com").
+     * null when it names no host or carries a scheme a phone can't open.
+     */
+    fun normalizedBase(raw: String?): String? {
+        var s = raw?.trim().orEmpty()
+        if (s.isEmpty()) return null
+        if (!s.contains("://")) s = "https://$s"
+        val scheme = s.substringBefore("://").lowercase()
+        if (scheme != "http" && scheme != "https") return null
+        val authority = s.substringAfter("://").takeWhile { it != '/' && it != '?' && it != '#' }
+        if (authority.isEmpty()) return null
+        return "$scheme://$authority"
+    }
 
     const val MAX_RECONNECT_ATTEMPTS = 5
     const val RECONNECT_BASE_MS = 1000L

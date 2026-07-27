@@ -173,20 +173,22 @@ class DisplayCoordinator(
     }
 
     /** The host pressed Continue. Refused unless the freeze is theirs to lift, and while
-     *  every participant is gone (there would be nobody to play). */
+     *  every participant is gone (there would be nobody to play). In that second case the
+     *  overlay deliberately stays up: it carries New Game, which is what an operator
+     *  staring at an emptied room actually wants. */
     private suspend fun resumeGame() {
         val res = liftPause(PauseReason.MANUAL)
         if (!res.changed) return
         publishAs(res.publish)
     }
 
-    /** Every participant dropped. Silent: no overlay, and the hint is PUBLISH_NOW only
-     *  when this ABSORBED a manual pause — whose overlay must come down with it, because
-     *  Continue is gated shut while everyone is gone and it could never be dismissed. */
+    /** Every participant dropped. Silent: controllers never see this reason, so the room
+     *  core hints 'none' and nothing goes out — there is nobody left to tell. Refused if
+     *  the host had already paused by hand (RoomCore rule 2), which is what keeps their
+     *  pause and its Continue intact for whoever comes back. */
     private suspend fun autoPause() {
         val res = freezePause(PauseReason.AUTO)
         if (!res.changed) return
-        setPauseOverlay(false)
         publishAs(res.publish)
     }
 
@@ -613,8 +615,8 @@ class DisplayCoordinator(
         // well as in the sweep: an event landing on/after the deadline between polls would
         // otherwise slip a full window.
         if (roomCore.graceTick(nowWallMs())) { returnToLobby(); return }
-        // autoPause absorbs whatever we were frozen for, taking a stranded manual
-        // overlay down with it; it no-ops if we are already auto-paused.
+        // No-op if anything already has us frozen, a host's manual pause included: that
+        // pause is theirs to lift, and its Continue keeps working throughout.
         autoPause()
     }
 
@@ -1248,14 +1250,14 @@ class DisplayCoordinator(
 
     private fun joinUrl(code: String, instance: String?): String {
         val frag = instance?.takeIf { it.isNotEmpty() }?.let { "#$it" } ?: ""
-        return "${RelayConfig.CONTROLLER_BASE_URL}/$code$frag"
+        return "${RelayConfig.controllerBaseUrl}/$code$frag"
     }
 
     /** Cross-device rejoin URL for a dropped participant (carries ?claim=<idx>). */
     private fun rejoinUrl(peerIndex: Int): String {
         val r = roomCode ?: return ""
         val frag = instance?.takeIf { it.isNotEmpty() }?.let { "#$it" } ?: ""
-        return "${RelayConfig.CONTROLLER_BASE_URL}/$r?claim=$peerIndex$frag"
+        return "${RelayConfig.controllerBaseUrl}/$r?claim=$peerIndex$frag"
     }
 
     private fun nowWallMs(): Double = clock?.invoke() ?: epoch.elapsedNow().toDouble(DurationUnit.MILLISECONDS)

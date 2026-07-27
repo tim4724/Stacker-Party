@@ -56,11 +56,10 @@ airconsole.onPause = function() {
   if (roomState !== ROOM_STATE.PLAYING && roomState !== ROOM_STATE.COUNTDOWN) return;
   _acPaused = true;
   // The platform froze us, not the host: the same display-internal category as
-  // an all-disconnected auto-pause, so it reuses that reason. Only when nothing
-  // else has us frozen, though — AUTO absorbs a manual pause (deliberately, so
-  // its stranded overlay comes down), and here that would quietly discard the
-  // host's pause when the platform resumes us again.
-  if (!paused) autoPause();
+  // an all-disconnected auto-pause, so it reuses that reason. A host pause
+  // already standing wins (RoomCore rule 2), so this no-ops rather than handing
+  // their freeze to onResume below to lift.
+  autoPause();
 };
 
 airconsole.onResume = function() {
@@ -74,7 +73,7 @@ airconsole.onResume = function() {
 airconsole.onAdShow = function() {
   if (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN) {
     _adPaused = true;
-    if (!paused) autoPause();   // display-internal, like onPause above
+    autoPause();   // display-internal, like onPause above; a host pause wins
   }
   if (music && !muted) { music.pause(); _adMutedByUs = true; }
 };

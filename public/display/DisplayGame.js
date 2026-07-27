@@ -89,9 +89,9 @@ function thawGame() {
 }
 
 // The host pressed Pause (their controller, the display's own button, or a TV
-// remote). Refused outside a running game, and while already frozen for a
-// display-internal reason: the room core keeps both decisions, so there is no
-// state check here to drift from tvOS and Android's.
+// remote). Refused outside a running game, and while already frozen for any
+// other reason: the room core keeps both decisions, so there is no state check
+// here to drift from tvOS and Android's.
 function pauseGame() {
   var res = roomCore.pause(PAUSE.MANUAL);
   if (!res.changed) return;
@@ -101,7 +101,9 @@ function pauseGame() {
 }
 
 // The host pressed Continue. Refused unless the freeze is theirs to lift, and
-// while every participant is gone (there would be nobody to play).
+// while every participant is gone (there would be nobody to play). In that
+// second case the overlay deliberately stays up: it carries New Game, which is
+// what an operator staring at an emptied room actually wants.
 function resumeGame() {
   var res = roomCore.resume(PAUSE.MANUAL);
   if (!res.changed) return;
@@ -109,13 +111,14 @@ function resumeGame() {
   publishAs(res.publish);
 }
 
-// Every participant dropped mid-game. Silent: no overlay, and the hint is 'now'
-// only when this absorbed a manual pause, whose overlay must come down with it.
+// Every participant dropped mid-game. Silent: controllers never see this reason,
+// so the room core hints 'none' and nothing goes out — there is nobody left to
+// tell. Refused if the host had already paused by hand, which is what keeps
+// their pause (and its Continue) intact for whoever comes back.
 function autoPause() {
   var res = roomCore.pause(PAUSE.AUTO);
   if (!res.changed) return;
   freezeGame();
-  hidePauseOverlay();
   publishAs(res.publish);
 }
 
@@ -273,8 +276,9 @@ function checkAllPlayersDisconnected() {
     return;
   }
 
-  // autoPause absorbs whatever we were frozen for, hiding a stranded manual
-  // overlay along the way; it no-ops if we are already auto-paused.
+  // No-op if anything already has us frozen, a host's manual pause included:
+  // that pause is theirs to lift, and its Continue works again the moment any
+  // participant returns.
   autoPause();
 }
 
@@ -566,9 +570,10 @@ function showPauseOverlay() {
   countdownOverlay.classList.add('paused');
 }
 
-// Take the pause overlay down without touching the pause itself. Used by
-// autoPause when it absorbs a manual pause: the overlay's Continue is gated shut
-// while every participant is gone, so leaving it up would strand it.
+// Take the pause overlay down without touching the pause itself. Used by the
+// thaw, and by the display's own Continue while auto-paused: there the overlay
+// is pure chrome the operator raised, so dismissing it must not try to resume a
+// freeze only a returning participant can lift.
 function hidePauseOverlay() {
   fadeHide(pauseOverlay, 200);
   if (currentScreen === SCREEN.GAME) {

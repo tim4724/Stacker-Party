@@ -87,7 +87,7 @@ test.describe('Reconnection', () => {
     expect(await page.evaluate(() => disconnectedQRs.size)).toBe(1);
   });
 
-  test('manual pause then all players disconnect hides the stranded overlay', async ({ page, context }) => {
+  test('a manual pause survives everyone disconnecting, and a rejoin does not lift it', async ({ page, context }) => {
     const { roomCode } = await createRoom(page);
     const controller = await joinController(context, roomCode, 'Alice');
 
@@ -102,18 +102,37 @@ test.describe('Reconnection', () => {
     await page.click('#pause-btn');
     await expect(page.locator('#pause-overlay')).toBeVisible();
     expect(await page.evaluate(() => paused)).toBe(true);
-    expect(await page.evaluate(() => pauseReason)).not.toBe('auto');
+    expect(await page.evaluate(() => pauseReason)).toBe('manual');
 
-    // Now the sole player disconnects. The manual pause must convert into a
-    // silent auto-pause and the stranded overlay must hide again (Continue is
-    // gated shut while everyone is gone, so it could otherwise never be
-    // dismissed — the reported bug).
+    // Now the sole player disconnects. The all-disconnected auto-pause is REFUSED
+    // rather than taking the host's pause over (RoomCore rule 2, first freeze
+    // wins): handing it to a reason the display lifts by itself is what made the
+    // rejoin below silently restart the match.
+    const aliceId = await controller.evaluate(() => peerIndex);
     await controller.close();
-
-    await expect(page.locator('#pause-overlay')).toBeHidden();
+    await page.waitForFunction((id) => disconnectedQRs.has(id), aliceId, { timeout: 10000 });
+    expect(await page.evaluate(() => pauseReason)).toBe('manual');
     expect(await page.evaluate(() => paused)).toBe(true);
-    expect(await page.evaluate(() => pauseReason)).toBe('auto');
-    expect(await page.evaluate(() => disconnectedQRs.size)).toBe(1);
+    // The overlay stays up, which is also what keeps New Game reachable: with
+    // every controller gone it is the only way out of a frozen match.
+    await expect(page.locator('#pause-overlay')).toBeVisible();
+
+    // Alice reclaims her seat (the rejoin QR, i.e. a real participant returning
+    // rather than a fresh late joiner). THE regression: the auto-resume must not
+    // fire, because this freeze was never an auto-pause.
+    const rejoined = await scanReconnectClaim(context, roomCode, String(aliceId));
+    await page.waitForFunction((id) => !disconnectedQRs.has(id), aliceId, { timeout: 10000 });
+    expect(await page.evaluate(() => paused)).toBe(true);
+    expect(await page.evaluate(() => pauseReason)).toBe('manual');
+    // Her controller is handed the pause too, so Continue is where she expects it.
+    await expect(rejoined.locator('#pause-overlay')).toBeVisible();
+
+    // ...and Continue works again now that somebody is back.
+    await page.mouse.move(10, 10);
+    await page.click('#pause-continue-btn');
+    await expect(page.locator('#pause-overlay')).toBeHidden();
+    expect(await page.evaluate(() => paused)).toBe(false);
+    await rejoined.close();
   });
 
   test('single player: controller disconnecting during countdown shows disconnect overlay', async ({ page, context }) => {

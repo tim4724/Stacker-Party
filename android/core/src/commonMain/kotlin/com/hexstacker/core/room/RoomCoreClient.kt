@@ -111,9 +111,10 @@ class RoomCoreClient private constructor(private val bridge: EngineBridge) {
 
     suspend fun setMuted(muted: Boolean): Changed = mutate(call("setMuted", JsonPrimitive(muted)))
 
-    /** Freeze for [reason]. Takes effect while the room is RUNNING, except AUTO,
-     *  which absorbs an existing freeze. The rule lives in the room core so tvOS and
-     *  the web display cannot answer it differently. */
+    /** Freeze for [reason]. Takes effect while the room is RUNNING and nothing else has
+     *  us frozen — first freeze wins, so a display-internal reason can never overwrite
+     *  (and then silently lift) a host's deliberate pause. The rule lives in the room
+     *  core so tvOS and the web display cannot answer it differently. */
     suspend fun pause(reason: PauseReason): Changed =
         mutate(call("pause", JsonPrimitive(reason.wire)))
 

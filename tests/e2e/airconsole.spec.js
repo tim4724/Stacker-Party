@@ -537,11 +537,11 @@ test.describe.serial('AirConsole Integration', () => {
   });
 
   // Regression: an AirConsole platform pause rides the display-internal AUTO
-  // reason, and AUTO deliberately ABSORBS an existing freeze (a stranded
-  // all-disconnected overlay has to come down). A host's manual pause must
-  // survive it anyway — otherwise backgrounding the game and coming back
-  // silently restarts a match the host stopped, with no one having pressed
-  // Continue. Same rule for an ad break.
+  // reason, so without RoomCore's first-freeze-wins rule it would take over a
+  // host's manual pause and then lift it on resume — backgrounding the game and
+  // coming back would silently restart a match the host stopped, with no one
+  // having pressed Continue. Same rule for an ad break. The all-disconnected
+  // auto-pause is the same shape and is pinned in the golden op log instead.
   test('a host pause survives an AirConsole platform pause and an ad', async ({ page, context }) => {
     if (!USE_MOCK) {
       test.skip(true, 'Pause test only in mock mode');

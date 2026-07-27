@@ -202,7 +202,7 @@ class RelayClient(
                     CreateFrame(
                         clientId = clientId,
                         maxClients = maxClients,
-                        url = RelayConfig.CONTROLLER_URL_TEMPLATE,
+                        url = RelayConfig.controllerUrlTemplate,
                     ),
                 ),
             )

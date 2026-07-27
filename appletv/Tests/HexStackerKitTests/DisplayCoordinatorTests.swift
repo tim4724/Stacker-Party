@@ -120,9 +120,11 @@ import Foundation
         let p1 = roster?["1"] as? [String: Any]
         #expect(p1?["name"] as? String == "Pl1")
         #expect(p1?["color"] as? Int == coord.player(1)?.colorSlot)
-        #expect(p1?["startLevel"] as? Int == 1)
-        #expect(p1?["alive"] as? Bool == true)
-        #expect(p1?["helloSeen"] as? Bool == true, "their HELLO landed, so their own controller may render")
+        // ABSENT MEANS DEFAULT: startLevel 1 / alive true / helloSeen true never ride
+        // the wire, which is most of an 8-player lobby snapshot. See RoomCore.snapshot.
+        #expect(p1?["startLevel"] == nil)
+        #expect(p1?["alive"] == nil)
+        #expect(p1?["helloSeen"] == nil, "their HELLO landed, so their own controller may render")
     }
 
     /// The colour rose and the +/- stepper are finger-speed controls where only the
@@ -201,7 +203,7 @@ import Foundation
 
         ft.onMessage?(1, ["type": "hello", "name": "Ann", "colorIndex": 3])
         let settled = (ft.states.last?["players"] as? [String: Any])?["1"] as? [String: Any]
-        #expect(settled?["helloSeen"] as? Bool == true)
+        #expect(settled?["helloSeen"] == nil, "the placeholder flag is gone; absent means seen")
         #expect(settled?["name"] as? String == "Ann")
         #expect(settled?["color"] as? Int == 3, "the preferred colour is honoured at HELLO time")
         #expect(coord.playerCount == 1, "one row, claimed once")
@@ -312,7 +314,7 @@ import Foundation
         #expect(fo.renderCount > frozen, "and the sim is running again")
     }
 
-    @Test func manualPauseThenAllDisconnectHidesStrandedOverlay() {
+    @Test func manualPauseSurvivesEveryoneDisconnectingAndReconnecting() {
         let clock = Clock()
         let (coord, ft, fo) = makeLobby(players: 2, clock: clock)
         coord.remoteStartMatch(); runCountdown(coord)
@@ -328,25 +330,34 @@ import Foundation
         // which is why the silence below has to start from a drained sweep.
         coord.tick(deltaMs: 16)
 
-        // Both controllers then go silent past the liveness window. The manual
-        // pause converts into a silent auto-pause: the stranded overlay hides
-        // (Continue is gated shut while everyone is gone, so a shown overlay
-        // could never be dismissed), but the sim stays frozen.
+        // Both controllers then go silent past the liveness window. The host's pause
+        // SURVIVES: the all-disconnected auto-pause is refused rather than taking it
+        // over (RoomCore rule 2, first freeze wins). Handing it to a reason the display
+        // lifts by itself would restart the match on the first reconnect, with nobody
+        // having pressed Continue.
         clock.ms = 10_000
         coord.tick(deltaMs: 16)
         #expect(coord.allParticipantsDisconnected)
-        #expect(fo.paused == false, "overlay hides when the last player drops during a manual pause")
-        #expect(ft.states.last?["paused"] as? Bool == false,
-                "returning players must not be handed a pause the display would ignore")
+        #expect(fo.paused == true, "the host's overlay stays up, keeping New Game reachable")
+        #expect(ft.states.last?["paused"] as? Bool == true,
+                "and controllers still see a pause they can act on")
         let frozen = fo.renderCount
         coord.tick(deltaMs: 16); coord.tick(deltaMs: 16)
         #expect(fo.renderCount == frozen, "game stays paused (engine frozen) while everyone is gone")
 
-        // A controller message returns → auto-resume, sim advances again.
+        // A controller returns. It must NOT resume: the auto-resume can only lift an
+        // auto-pause, and this freeze is the host's. THE regression guard.
         ft.onMessage?(1, ["type": "input", "action": "left"])
         #expect(!coord.allParticipantsDisconnected)
         coord.tick(deltaMs: 16)
-        #expect(fo.renderCount > frozen, "auto-resumed: engine advancing again")
+        #expect(fo.renderCount == frozen, "a reconnect cannot lift the host's pause")
+        #expect(ft.states.last?["paused"] as? Bool == true)
+
+        // Continue works again now that somebody is back — and only now.
+        ft.onMessage?(1, ["type": "resume_game"])
+        coord.tick(deltaMs: 16)
+        #expect(fo.renderCount > frozen, "the host's Continue resumes it")
+        #expect(ft.states.last?["paused"] as? Bool == false)
     }
 
     // MARK: - Cross-device mid-game rejoin (?claim=)
@@ -412,8 +423,12 @@ import Foundation
 
         // KO only player 1 (spam hard_drop); players 2 & 3 stay idle+alive.
         var ticks = 0
+        // Absent means alive: the snapshot omits the per-player flags at their defaults
+        // (RoomCore.snapshot), so only a KO puts `alive` on the wire at all.
         func aliveInSnapshot(_ id: Int) -> Bool? {
-            ((ft.states.last?["players"] as? [String: Any])?[String(id)] as? [String: Any])?["alive"] as? Bool
+            guard let row = (ft.states.last?["players"] as? [String: Any])?[String(id)] as? [String: Any]
+            else { return nil }
+            return row["alive"] as? Bool ?? true
         }
         while aliveInSnapshot(1) != false && ticks < 8000 {
             ft.onMessage?(1, ["type": "input", "action": "hard_drop"])

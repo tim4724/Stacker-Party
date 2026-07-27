@@ -296,19 +296,19 @@
     {
       "m": "resume",
       "a": [
+        "auto"
+      ]
+    },
+    {
+      "m": "resume",
+      "a": [
         "manual"
       ]
     },
     {
       "m": "resume",
       "a": [
-        "auto"
-      ]
-    },
-    {
-      "m": "resume",
-      "a": [
-        "auto"
+        "manual"
       ]
     },
     {
@@ -444,10 +444,28 @@
       ]
     },
     {
+      "m": "pause",
+      "a": [
+        "auto"
+      ]
+    },
+    {
+      "m": "resume",
+      "a": [
+        "auto"
+      ]
+    },
+    {
+      "g": "pauseReason"
+    },
+    {
       "m": "resume",
       "a": [
         "manual"
       ]
+    },
+    {
+      "g": "paused"
     },
     {
       "m": "resume",
@@ -496,18 +514,6 @@
             "lines": 10,
             "playerName": "Bo",
             "colorIndex": 3
-          },
-          {
-            "playerId": 3,
-            "playerName": "HX-7",
-            "colorIndex": 0,
-            "newPlayer": true
-          },
-          {
-            "playerId": 4711,
-            "playerName": "Sparse",
-            "colorIndex": 1,
-            "newPlayer": true
           },
           {
             "playerId": 5,
@@ -721,8 +727,6 @@
           "1": {
             "name": "HX-61",
             "color": 0,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           }
         }
@@ -745,8 +749,6 @@
           "1": {
             "name": "HX-61",
             "color": 0,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           }
         }
@@ -772,15 +774,11 @@
           "1": {
             "name": "HX-61",
             "color": 0,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "2": {
             "name": "HX-43",
             "color": 1,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           }
         }
@@ -801,15 +799,11 @@
           "1": {
             "name": "HX-61",
             "color": 0,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "2": {
             "name": "HX-43",
             "color": 1,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           }
         }
@@ -835,16 +829,11 @@
         "players": {
           "1": {
             "name": "Ann",
-            "color": 5,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 5
           },
           "2": {
             "name": "HX-43",
             "color": 1,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           }
         }
@@ -870,17 +859,11 @@
         "players": {
           "1": {
             "name": "Ann",
-            "color": 5,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 5
           },
           "2": {
             "name": "Bo",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -902,17 +885,11 @@
         "players": {
           "1": {
             "name": "Ann",
-            "color": 5,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 5
           },
           "2": {
             "name": "Bo",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -935,17 +912,11 @@
         "players": {
           "1": {
             "name": "Ann",
-            "color": 5,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 5
           },
           "2": {
             "name": "Bo‍b",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -968,17 +939,11 @@
         "players": {
           "1": {
             "name": "ThisNameIsFarToo",
-            "color": 5,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 5
           },
           "2": {
             "name": "Bo‍b",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -1001,17 +966,11 @@
         "players": {
           "1": {
             "name": "ThisNameIsFarToo",
-            "color": 5,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 5
           },
           "2": {
             "name": "HX-71",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -1034,17 +993,11 @@
         "players": {
           "1": {
             "name": "HX-29",
-            "color": 5,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 5
           },
           "2": {
             "name": "HX-71",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -1067,17 +1020,11 @@
         "players": {
           "1": {
             "name": "Ann",
-            "color": 5,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 5
           },
           "2": {
             "name": "HX-71",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -1102,23 +1049,15 @@
         "players": {
           "1": {
             "name": "Ann",
-            "color": 5,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 5
           },
           "2": {
             "name": "HX-71",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           },
           "3": {
             "name": "HX-42",
             "color": 0,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           }
         }
@@ -1145,24 +1084,15 @@
         "players": {
           "1": {
             "name": "Ann",
-            "color": 5,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 5
           },
           "2": {
             "name": "HX-71",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           },
           "3": {
             "name": "HX-83",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           }
         }
       }
@@ -1188,24 +1118,15 @@
         "players": {
           "1": {
             "name": "Ann",
-            "color": 5,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 5
           },
           "2": {
             "name": "HX-71",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           }
         }
       }
@@ -1230,23 +1151,15 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           }
         }
       }
@@ -1270,23 +1183,15 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           }
         }
       }
@@ -1310,23 +1215,15 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           }
         }
       }
@@ -1350,23 +1247,15 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           }
         }
       }
@@ -1390,23 +1279,15 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           }
         }
       }
@@ -1431,23 +1312,15 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
-            "color": 3,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 3
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           }
         }
       }
@@ -1471,23 +1344,15 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
-            "color": 3,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 3
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           }
         }
       }
@@ -1511,23 +1376,15 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
-            "color": 3,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 3
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           }
         }
       }
@@ -1551,23 +1408,15 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
-            "color": 3,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 3
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           }
         }
       }
@@ -1592,23 +1441,15 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
-            "color": 3,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 3
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           }
         }
       }
@@ -1635,29 +1476,19 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
-            "color": 3,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 3
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "4711": {
             "name": "HX-98",
             "color": 1,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           }
         }
@@ -1686,30 +1517,19 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
-            "color": 3,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 3
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -1734,30 +1554,19 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
-            "color": 3,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 3
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -1784,30 +1593,19 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
-            "color": 3,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 3
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -1832,30 +1630,19 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
-            "color": 3,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 3
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -1880,30 +1667,20 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -1930,30 +1707,20 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -1980,37 +1747,25 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "HX-81",
             "color": 2,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -2038,37 +1793,24 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -2094,37 +1836,24 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -2150,37 +1879,24 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -2206,37 +1922,24 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -2258,37 +1961,149 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "changed": false,
+        "reason": "manual",
+        "publish": "none"
+      },
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": 1,
+        "paused": true,
+        "displayMuted": false,
+        "participants": [
+          1,
+          2,
+          3,
+          4711
+        ],
+        "players": {
+          "1": {
+            "name": "Ann",
+            "color": 5,
+            "startLevel": 9
+          },
+          "2": {
+            "name": "HX-71",
+            "color": 3,
+            "alive": false
+          },
+          "3": {
+            "name": "HX-7",
+            "color": 0
+          },
+          "5": {
+            "name": "Late",
+            "color": 2
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": true,
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": 1,
+        "paused": true,
+        "displayMuted": false,
+        "participants": [
+          1,
+          2,
+          3,
+          4711
+        ],
+        "players": {
+          "1": {
+            "name": "Ann",
+            "color": 5,
+            "startLevel": 9
+          },
+          "2": {
+            "name": "HX-71",
+            "color": 3,
+            "alive": false
+          },
+          "3": {
+            "name": "HX-7",
+            "color": 0
+          },
+          "5": {
+            "name": "Late",
+            "color": 2
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "changed": false,
+        "reason": "manual",
+        "publish": "none"
+      },
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": 1,
+        "paused": true,
+        "displayMuted": false,
+        "participants": [
+          1,
+          2,
+          3,
+          4711
+        ],
+        "players": {
+          "1": {
+            "name": "Ann",
+            "color": 5,
+            "startLevel": 9
+          },
+          "2": {
+            "name": "HX-71",
+            "color": 3,
+            "alive": false
+          },
+          "3": {
+            "name": "HX-7",
+            "color": 0
+          },
+          "5": {
+            "name": "Late",
+            "color": 2
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1
           }
         }
       }
@@ -2296,7 +2111,7 @@
     {
       "result": {
         "changed": true,
-        "reason": "auto",
+        "reason": null,
         "publish": "now"
       },
       "snapshot": {
@@ -2314,201 +2129,24 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
-          }
-        }
-      }
-    },
-    {
-      "result": true,
-      "snapshot": {
-        "roomState": "playing",
-        "hostPeerIndex": 1,
-        "paused": false,
-        "displayMuted": false,
-        "participants": [
-          1,
-          2,
-          3,
-          4711
-        ],
-        "players": {
-          "1": {
-            "name": "Ann",
-            "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
-          },
-          "2": {
-            "name": "HX-71",
-            "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
-          },
-          "3": {
-            "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
-          },
-          "5": {
-            "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
-          },
-          "4711": {
-            "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
-          }
-        }
-      }
-    },
-    {
-      "result": {
-        "changed": false,
-        "reason": "auto",
-        "publish": "none"
-      },
-      "snapshot": {
-        "roomState": "playing",
-        "hostPeerIndex": 1,
-        "paused": false,
-        "displayMuted": false,
-        "participants": [
-          1,
-          2,
-          3,
-          4711
-        ],
-        "players": {
-          "1": {
-            "name": "Ann",
-            "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
-          },
-          "2": {
-            "name": "HX-71",
-            "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
-          },
-          "3": {
-            "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
-          },
-          "5": {
-            "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
-          },
-          "4711": {
-            "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
-          }
-        }
-      }
-    },
-    {
-      "result": {
-        "changed": true,
-        "reason": null,
-        "publish": "none"
-      },
-      "snapshot": {
-        "roomState": "playing",
-        "hostPeerIndex": 1,
-        "paused": false,
-        "displayMuted": false,
-        "participants": [
-          1,
-          2,
-          3,
-          4711
-        ],
-        "players": {
-          "1": {
-            "name": "Ann",
-            "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
-          },
-          "2": {
-            "name": "HX-71",
-            "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
-          },
-          "3": {
-            "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
-          },
-          "5": {
-            "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
-          },
-          "4711": {
-            "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -2534,37 +2172,24 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -2590,37 +2215,24 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -2642,37 +2254,24 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -2698,37 +2297,24 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -2754,37 +2340,24 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -2809,37 +2382,24 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -2861,37 +2421,24 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -2913,37 +2460,24 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -2965,37 +2499,24 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -3017,37 +2538,24 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -3074,44 +2582,29 @@
           "1": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "2": {
             "name": "HX-71",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "6": {
             "name": "HX-98",
             "color": 4,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -3139,37 +2632,24 @@
           "2": {
             "name": "HX-71",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "6": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -3196,37 +2676,24 @@
           "2": {
             "name": "HX-71",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "6": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -3248,37 +2715,24 @@
           "2": {
             "name": "HX-71",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "6": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -3306,37 +2760,24 @@
           "2": {
             "name": "Bo",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "6": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -3361,37 +2802,24 @@
           "2": {
             "name": "Bo",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "6": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -3422,37 +2850,24 @@
           "2": {
             "name": "Bo",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "6": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -3474,37 +2889,24 @@
           "2": {
             "name": "Bo",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "6": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -3526,37 +2928,24 @@
           "2": {
             "name": "Bo",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "6": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -3578,37 +2967,24 @@
           "2": {
             "name": "Bo",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "6": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -3630,37 +3006,24 @@
           "2": {
             "name": "Bo",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "6": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -3682,37 +3045,24 @@
           "2": {
             "name": "Bo",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "6": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -3738,37 +3088,24 @@
           "2": {
             "name": "Bo",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "6": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -3794,37 +3131,188 @@
           "2": {
             "name": "Bo",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "6": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "changed": false,
+        "reason": "manual",
+        "publish": "none"
+      },
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": null,
+        "paused": true,
+        "displayMuted": true,
+        "participants": [
+          6,
+          2,
+          3,
+          4711
+        ],
+        "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3,
+            "alive": false
+          },
+          "3": {
+            "name": "HX-7",
+            "color": 0
+          },
+          "5": {
+            "name": "Late",
+            "color": 2
+          },
+          "6": {
+            "name": "Ann",
+            "color": 5,
+            "startLevel": 9
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": "manual",
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": null,
+        "paused": true,
+        "displayMuted": true,
+        "participants": [
+          6,
+          2,
+          3,
+          4711
+        ],
+        "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3,
+            "alive": false
+          },
+          "3": {
+            "name": "HX-7",
+            "color": 0
+          },
+          "5": {
+            "name": "Late",
+            "color": 2
+          },
+          "6": {
+            "name": "Ann",
+            "color": 5,
+            "startLevel": 9
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "changed": false,
+        "reason": "manual",
+        "publish": "none"
+      },
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": null,
+        "paused": true,
+        "displayMuted": true,
+        "participants": [
+          6,
+          2,
+          3,
+          4711
+        ],
+        "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3,
+            "alive": false
+          },
+          "3": {
+            "name": "HX-7",
+            "color": 0
+          },
+          "5": {
+            "name": "Late",
+            "color": 2
+          },
+          "6": {
+            "name": "Ann",
+            "color": 5,
+            "startLevel": 9
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": true,
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": null,
+        "paused": true,
+        "displayMuted": true,
+        "participants": [
+          6,
+          2,
+          3,
+          4711
+        ],
+        "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3,
+            "alive": false
+          },
+          "3": {
+            "name": "HX-7",
+            "color": 0
+          },
+          "5": {
+            "name": "Late",
+            "color": 2
+          },
+          "6": {
+            "name": "Ann",
+            "color": 5,
+            "startLevel": 9
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1
           }
         }
       }
@@ -3850,37 +3338,24 @@
           "2": {
             "name": "Bo",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "6": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -3902,37 +3377,24 @@
           "2": {
             "name": "Bo",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "6": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -3954,37 +3416,24 @@
           "2": {
             "name": "Bo",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "6": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -4006,37 +3455,24 @@
           "2": {
             "name": "Bo",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "6": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -4061,37 +3497,24 @@
           "2": {
             "name": "Bo",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "6": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -4111,18 +3534,6 @@
           "lines": 10,
           "playerName": "Bo",
           "colorIndex": 3
-        },
-        {
-          "playerId": 3,
-          "playerName": "HX-7",
-          "colorIndex": 0,
-          "newPlayer": true
-        },
-        {
-          "playerId": 4711,
-          "playerName": "Sparse",
-          "colorIndex": 1,
-          "newPlayer": true
         },
         {
           "playerId": 5,
@@ -4146,37 +3557,24 @@
           "2": {
             "name": "Bo",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "6": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -4198,37 +3596,24 @@
           "2": {
             "name": "Bo",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "3": {
             "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 0
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "6": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         },
         "results": [
@@ -4266,30 +3651,20 @@
           "2": {
             "name": "Bo",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "6": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         },
         "results": [
@@ -4325,30 +3700,20 @@
           "2": {
             "name": "Bo",
             "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
+            "alive": false
           },
           "5": {
             "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 2
           },
           "6": {
             "name": "Ann",
             "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
+            "startLevel": 9
           },
           "4711": {
             "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 1
           }
         }
       }
@@ -4488,8 +3853,6 @@
           "10": {
             "name": "HX-34",
             "color": 0,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           }
         }
@@ -4515,15 +3878,11 @@
           "10": {
             "name": "HX-34",
             "color": 0,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "11": {
             "name": "HX-74",
             "color": 1,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           }
         }
@@ -4550,22 +3909,16 @@
           "10": {
             "name": "HX-34",
             "color": 0,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "11": {
             "name": "HX-74",
             "color": 1,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "12": {
             "name": "HX-28",
             "color": 2,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           }
         }
@@ -4593,29 +3946,21 @@
           "10": {
             "name": "HX-34",
             "color": 0,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "11": {
             "name": "HX-74",
             "color": 1,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "12": {
             "name": "HX-28",
             "color": 2,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "13": {
             "name": "HX-57",
             "color": 3,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           }
         }
@@ -4644,36 +3989,26 @@
           "10": {
             "name": "HX-34",
             "color": 0,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "11": {
             "name": "HX-74",
             "color": 1,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "12": {
             "name": "HX-28",
             "color": 2,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "13": {
             "name": "HX-57",
             "color": 3,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "14": {
             "name": "HX-2",
             "color": 4,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           }
         }
@@ -4703,43 +4038,31 @@
           "10": {
             "name": "HX-34",
             "color": 0,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "11": {
             "name": "HX-74",
             "color": 1,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "12": {
             "name": "HX-28",
             "color": 2,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "13": {
             "name": "HX-57",
             "color": 3,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "14": {
             "name": "HX-2",
             "color": 4,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "15": {
             "name": "HX-77",
             "color": 5,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           }
         }
@@ -4770,50 +4093,36 @@
           "10": {
             "name": "HX-34",
             "color": 0,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "11": {
             "name": "HX-74",
             "color": 1,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "12": {
             "name": "HX-28",
             "color": 2,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "13": {
             "name": "HX-57",
             "color": 3,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "14": {
             "name": "HX-2",
             "color": 4,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "15": {
             "name": "HX-77",
             "color": 5,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "16": {
             "name": "HX-81",
             "color": 6,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           }
         }
@@ -4847,58 +4156,41 @@
           "10": {
             "name": "HX-34",
             "color": 0,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "11": {
             "name": "HX-74",
             "color": 1,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "12": {
             "name": "HX-28",
             "color": 2,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "13": {
             "name": "HX-57",
             "color": 3,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "14": {
             "name": "HX-2",
             "color": 4,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "15": {
             "name": "HX-77",
             "color": 5,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "16": {
             "name": "HX-81",
             "color": 6,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "17": {
             "name": "Nope",
-            "color": 7,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 7
           }
         }
       }
@@ -4924,58 +4216,41 @@
           "10": {
             "name": "HX-34",
             "color": 0,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "11": {
             "name": "HX-74",
             "color": 1,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "12": {
             "name": "HX-28",
             "color": 2,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "13": {
             "name": "HX-57",
             "color": 3,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "14": {
             "name": "HX-2",
             "color": 4,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "15": {
             "name": "HX-77",
             "color": 5,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "16": {
             "name": "HX-81",
             "color": 6,
-            "startLevel": 1,
-            "alive": true,
             "helloSeen": false
           },
           "17": {
             "name": "Nope",
-            "color": 7,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
+            "color": 7
           }
         }
       }

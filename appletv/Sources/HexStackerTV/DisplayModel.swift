@@ -60,6 +60,13 @@ final class DisplayModel: ObservableObject {
     func start() {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
         try? AVAudioSession.sharedInstance().setActive(true)
+
+        // Debug-only QR retarget, for testing a branch preview of the controller:
+        // set HEXHOST=preview-<branch>.hexstacker.com in the Run scheme. Applied
+        // before the relay connects (the origin also rides `create` as the
+        // controller-URL template). Unset => production; env vars can't be set on
+        // a TestFlight/App Store launch, so a shipped build always is.
+        Protocol.setControllerBase(ProcessInfo.processInfo.environment["HEXHOST"])
         // Capture hook (mirrors HEXSHOT / HEXSNAP): open the licenses page straight
         // away so it can be screenshotted deterministically — the tvOS simulator has
         // no Siri-Remote CLI to navigate to it. Inert without the env var.

@@ -96,10 +96,10 @@ class ProtocolCodecTest {
 
         val templated = RelayJson.encodeToString(
             CreateFrame.serializer(),
-            CreateFrame(clientId = "display", maxClients = 9, url = RelayConfig.CONTROLLER_URL_TEMPLATE),
+            CreateFrame(clientId = "display", maxClients = 9, url = RelayConfig.controllerUrlTemplate),
         )
         assertTrue(
-            templated.contains("\"url\":\"${RelayConfig.CONTROLLER_URL_TEMPLATE}\""),
+            templated.contains("\"url\":\"${RelayConfig.controllerUrlTemplate}\""),
             "create carries the controller-URL template",
         )
     }
@@ -115,4 +115,24 @@ class ProtocolCodecTest {
     // The game_end / game_start / countdown builders are gone with the retired
     // room protocol: the ranking now rides the retained snapshot instead. What is
     // left to encode is player_state, pong and error, covered above.
+
+    // Kept to `normalizedBase` (pure) rather than `setControllerBase`: the live base
+    // is process-global, and a test that moved it would leak into every other test's
+    // join URLs. Mirrored by ParityTests.controllerBaseOverrideNormalizes (Swift):
+    // the two TV apps must accept the same launch value.
+    @Test
+    fun normalizesTheControllerBaseOverride() {
+        assertEquals("https://preview-x.hexstacker.com", RelayConfig.normalizedBase("preview-x.hexstacker.com"))
+        assertEquals("https://preview-x.hexstacker.com", RelayConfig.normalizedBase("  preview-x.hexstacker.com/  "))
+        assertEquals("https://preview-x.hexstacker.com", RelayConfig.normalizedBase("https://preview-x.hexstacker.com"))
+        // A pasted join URL keeps only the origin (the room code is appended per room).
+        assertEquals("https://preview-x.hexstacker.com", RelayConfig.normalizedBase("https://preview-x.hexstacker.com/ABCD#eu"))
+        // LAN dev server: explicit http and a port survive.
+        assertEquals("http://192.168.1.20:4000", RelayConfig.normalizedBase("http://192.168.1.20:4000"))
+        // Nothing usable -> null, so the caller keeps production.
+        assertNull(RelayConfig.normalizedBase(null))
+        assertNull(RelayConfig.normalizedBase("   "))
+        assertNull(RelayConfig.normalizedBase("https://"))
+        assertNull(RelayConfig.normalizedBase("ftp://example.com"))
+    }
 }

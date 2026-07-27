@@ -105,11 +105,12 @@ test('relay endpoints and limits mirror the web', () => {
 test('the controller base URL matches the Android mirror', () => {
   // The web display derives the QR join URL from window.location, so there is
   // no canonical JS constant; the two native mirrors must at least agree with
-  // each other.
+  // each other. Both are overridable at launch (HEXHOST / --es hexHost, for
+  // testing a branch preview); what has to match is the shipped default.
   const kotlin = read('android/core/src/commonMain/kotlin/com/hexstacker/core/net/Protocol.kt');
-  const kt = kotlin.match(/const val CONTROLLER_BASE_URL = "([^"]*)"/);
-  assert.ok(kt, 'Kotlin const CONTROLLER_BASE_URL not found');
-  assert.strictEqual(swiftStringConsts(swiftEnum('Protocol')).controllerBaseURL, kt[1]);
+  const kt = kotlin.match(/const val DEFAULT_CONTROLLER_BASE_URL = "([^"]*)"/);
+  assert.ok(kt, 'Kotlin const DEFAULT_CONTROLLER_BASE_URL not found');
+  assert.strictEqual(swiftStringConsts(swiftEnum('Protocol')).defaultControllerBaseURL, kt[1]);
 });
 
 // The room LAYER is no longer mirrored — tvOS runs server/RoomCore.js itself, and
@@ -160,6 +161,14 @@ test('the controller-URL template registered on create mirrors the web shape', (
   // Same guard as tests/protocol-android-parity.test.js: every display flavor
   // registers <base>/{room}#{instance} on create so a code-only join resolves
   // to the same controller page regardless of which display hosts the room.
-  const proto = swiftStringConsts(swiftEnum('Protocol'));
-  assert.strictEqual(proto.controllerURLTemplate, `${proto.controllerBaseURL}/{room}#{instance}`);
+  //
+  // Derived from the LIVE base (not the prod literal) on purpose: a debug launch
+  // pointed at a branch preview must register the preview template too, so the QR
+  // and a code-only join resolve to the same origin.
+  assert.match(
+    swiftEnum('Protocol'),
+    /controllerURLTemplate: String \{ "\\\(controllerBaseURL\)\/\{room\}#\{instance\}" \}/,
+    'Swift controllerURLTemplate no longer derives <base>/{room}#{instance} from controllerBaseURL',
+  );
+  assert.strictEqual(swiftStringConsts(swiftEnum('Protocol')).defaultControllerBaseURL, 'https://hexstacker.com');
 });

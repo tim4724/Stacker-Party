@@ -74,7 +74,8 @@ describe('Display: joining during a game', () => {
       'placeholder until their HELLO lands');
 
     roomCore.hello('player4', { name: 'Dave' }, 1100);
-    assert.equal(roomCore.snapshot().players['player4'].helloSeen, true);
+    // Omitted == true, per RoomCore.snapshot's absent-means-default rule.
+    assert.ok(!('helloSeen' in roomCore.snapshot().players['player4']));
     assert.ok(!roomCore.isParticipant('player4'), 'still waiting out the round');
   });
 
@@ -100,7 +101,7 @@ describe('Display: joining during a game', () => {
 
     const snap = roomCore.snapshot();
     assert.equal(snap.players['player1'].alive, false);
-    assert.equal(snap.players['player2'].alive, true);
+    assert.ok(!('alive' in snap.players['player2']), 'the survivor carries no alive flag');
   });
 
   test('someone joining on the results screen sees the ranking', () => {

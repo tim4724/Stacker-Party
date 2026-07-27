@@ -138,12 +138,12 @@ function RoomCore(opts) {
   this._muted = false;
 
   // WHY we are frozen, or null. One field rather than a composite plus two
-  // reason flags: the reasons are mutually exclusive in practice (each call site
-  // already decides which one wins), and three booleans encode four impossible
-  // states for every real one. They also drifted — the composite was a separate
-  // stored flag on web and Android but a derived OR on tvOS, and reset() cleared
-  // two of the three, so a stale connection flag could silently suppress a
-  // genuine host pause. See PAUSE_REASONS and setPause.
+  // reason flags: the reasons ARE mutually exclusive (rule 2 below: the first
+  // freeze wins and holds until its own trigger lifts it), and three booleans
+  // encode four impossible states for every real one. They also drifted — the
+  // composite was a separate stored flag on web and Android but a derived OR on
+  // tvOS, and reset() cleared two of the three, so a stale connection flag could
+  // silently suppress a genuine host pause. See PAUSE_REASONS and pause().
   this._pauseReason = null;
 }
 
@@ -226,10 +226,13 @@ RoomCore.prototype.isParticipant = function (peerIndex) { return this._participa
 //
 // 1. A freeze takes only while the game is RUNNING (playing or countdown).
 //
-// 2. It is refused while we are already frozen — except AUTO, which ABSORBS the
-//    existing freeze: when the last participant drops, a manual pause must
-//    become an auto one or its overlay is stranded behind a Continue rule 3
-//    refuses.
+// 2. FIRST FREEZE WINS: a reason is refused while we are already frozen for a
+//    different one. No reason absorbs another, and in particular a
+//    display-internal freeze can never overwrite a host's deliberate pause —
+//    doing so would hand that pause to a trigger that lifts itself, and the
+//    match would silently restart with nobody having pressed Continue (the last
+//    participant drops, then one of them reconnects; or, in AirConsole, the
+//    platform backgrounds the game and hands it back).
 //
 // 3. resume(reason) takes only if `reason` is why we are frozen, and Continue
 //    and the auto-resume additionally need somebody left to play. Every reason
@@ -240,14 +243,23 @@ RoomCore.prototype.isParticipant = function (peerIndex) { return this._participa
 //    resume(null) is the room-lifecycle clear (a new match, a return to the
 //    lobby, a fresh room): it ends the freeze outright, whatever it was.
 //
+// Rules 2 and 3 together mean a manual pause standing when the room empties is
+// kept rather than converted away. Its Continue goes inert for as long as the
+// room is empty, which is correct — there is nobody to play with, and the
+// overlay it sits on is already showing New Game, the thing an operator in that
+// situation actually wants — and it works again the moment any participant
+// returns. Nothing times out here: an all-disconnected room stays frozen
+// indefinitely so a locked phone or a wifi blip cannot discard a match in
+// progress. The only automatic return to the lobby is RoomFlow's late-joiner
+// grace, which arms only while somebody IS waiting to play (see graceTick).
+//
 // Both return a publish hint, which is 'now' exactly when snapshot.paused flips.
-// Controllers only ever see the MANUAL pause, so that covers the case all three
-// shells used to hand-code: an absorbed manual pause must be republished, or
-// returning players are handed a Continue the display would ignore.
+// Controllers only ever see the MANUAL pause, so AUTO and CONNECTION move
+// nothing on the wire and always hint 'none'.
 RoomCore.prototype.pause = function (reason) {
   if (PAUSE_REASONS.indexOf(reason) < 0) return this._pauseResult(false);
   if (!this._isRunning()) return this._pauseResult(false);
-  if (this._pauseReason !== null && reason !== PAUSE_AUTO) return this._pauseResult(false);
+  if (this._pauseReason !== null) return this._pauseResult(false);
   return this._setPauseReason(reason);
 };
 
@@ -287,22 +299,29 @@ RoomCore.prototype._setPauseReason = function (next) {
 // Everything a controller renders, in one object: identity, roster, host, room
 // state, pause, liveness and the final ranking. Controllers derive their whole
 // UI from this, screen routing included, so there is no second message left that
-// could drift out of sync with it. Tiny: well under 2 KiB even for a full room
-// sitting on results, against the relay's 16 KiB retained-state cap.
+// could drift out of sync with it.
+//
+// ABSENT MEANS DEFAULT for the three per-player flags below (startLevel 1, alive
+// true, helloSeen true). They are the only fields multiplied by the roster, and
+// at 8 players carrying them explicitly costs ~360 bytes of a snapshot that is
+// otherwise ~450 in the lobby, i.e. most of it, to say "nothing unusual here".
+// Every decoder already defaults them: the web controller tests `=== false` /
+// `!== false`, and Kotlin's RoomPlayer declares the same defaults (tvOS never
+// decodes the roster, it forwards the JSON verbatim). Do not extend this to the
+// top-level scalars — `displayMuted` in particular must stay present, because
+// its absence would be indistinguishable from an unmute a controller must apply.
 RoomCore.prototype.snapshot = function () {
   var roster = {};
   for (var entry of this.players) {
     var p = entry[1];
-    roster[entry[0]] = {
-      name: p.playerName,
-      color: p.playerIndex,
-      startLevel: p.startLevel || 1,
-      alive: this._alive[entry[0]] !== false,
-      // False until this player's HELLO lands (see peerJoined). Their own
-      // controller waits for it before rendering itself; everyone else reads the
-      // row regardless, so the palette slot is claimed immediately.
-      helloSeen: p.helloSeen !== false,
-    };
+    var row = { name: p.playerName, color: p.playerIndex };
+    if ((p.startLevel || 1) !== 1) row.startLevel = p.startLevel;
+    if (this._alive[entry[0]] === false) row.alive = false;
+    // Absent until this player's HELLO lands (see peerJoined). Their own
+    // controller waits for it before rendering itself; everyone else reads the
+    // row regardless, so the palette slot is claimed immediately.
+    if (p.helloSeen === false) row.helloSeen = false;
+    roster[entry[0]] = row;
   }
   var snap = {
     roomState: this.flow.state,
@@ -800,6 +819,13 @@ RoomCore.prototype.admitWaiting = function () {
 // flagged newPlayer and every screen renders them as such instead of dropping
 // them. Mutates and returns the array, which is also what the RESULTS snapshot
 // then carries.
+//
+// A sit-out who is DISCONNECTED is skipped: they are still in the roster (only a
+// hard peer_left removes a late joiner, so one the liveness sweep merely flagged
+// stays), and listing an absent player as "joining the next round" on the
+// results screen states something we have no reason to believe. Participants are
+// unaffected either way — they are already in the ranking, disconnected or not,
+// because the engine builds it from the participant list.
 RoomCore.prototype.enrichResults = function (ranking) {
   if (!Array.isArray(ranking)) return ranking;
   var played = {};
@@ -813,7 +839,7 @@ RoomCore.prototype.enrichResults = function (ranking) {
     }
   }
   for (var entry of this.players) {
-    if (!played[entry[0]]) {
+    if (!played[entry[0]] && !this.flow.isDisconnected(entry[0])) {
       ranking.push({
         playerId: entry[0],
         playerName: entry[1].playerName,

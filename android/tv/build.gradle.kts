@@ -109,10 +109,12 @@ android {
         // Android TV emulator via `:tv:connectedDebugAndroidTest` (not wired
         // into CI, which has no emulator).
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        // Real Android TVs are arm64-v8a; x86_64 is for the emulator. Dropping the
-        // legacy armeabi-v7a + x86 quickjs .so halves the native payload.
+        // armeabi-v7a is NOT legacy here: the Google TV Streamer (and the older
+        // Chromecast with Google TV) run a 32-bit-only userspace, so an
+        // arm64-only APK cannot install on them at all. x86_64 is for the
+        // emulator. x86 stays dropped (no current TV or emulator needs it).
         ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
     }
     buildTypes {

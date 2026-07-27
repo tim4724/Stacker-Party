@@ -82,20 +82,21 @@ const OPS = [
   { m: 'hello', a: [5, { name: 'Late' }, 2000] },
 
   // --- the pause state machine -------------------------------------------
-  // Three rules: a freeze takes only while the room is RUNNING, it is refused
-  // while we are already frozen (except 'auto', which absorbs one), and a resume
-  // takes only if it names the current reason and somebody is left to play.
+  // Three rules: a freeze takes only while the room is RUNNING; it is refused
+  // while we are already frozen for a different reason (FIRST FREEZE WINS); and
+  // a resume takes only if it names the current reason, with 'auto' additionally
+  // needing somebody left to play, because "everyone came back" IS its trigger.
   // Every step's {changed, reason, publish} is the assertion — publish is 'now'
   // exactly when snapshot.paused flips, i.e. only for the manual pause.
   { m: 'pause', a: ['manual'] },                // -> snapshot.paused true
   { m: 'pause', a: ['connection'] },            // REFUSED: already frozen, manual stands
   { m: 'resume', a: ['connection'] },           // REFUSED: not why we are frozen
   { g: 'pauseReason' },                         // ...so a link blip leaves the host's pause
-  { m: 'pause', a: ['auto'] },                  // absorbs it; hint 'now' (visible flipped off)
-  { g: 'paused' },                              // ...but the room IS still frozen
-  { m: 'resume', a: ['manual'] },               // REFUSED: Continue can't lift an auto-pause
-  { m: 'resume', a: ['auto'] },                 // the returning participant can
-  { m: 'resume', a: ['auto'] },                 // idempotent: no second publish
+  { m: 'pause', a: ['auto'] },                  // REFUSED as well: no reason absorbs another
+  { g: 'paused' },
+  { m: 'resume', a: ['auto'] },                 // REFUSED: an auto-resume can't lift a host pause
+  { m: 'resume', a: ['manual'] },               // Continue lifts what Continue set
+  { m: 'resume', a: ['manual'] },               // idempotent: no second publish
   { m: 'pause', a: ['bogus'] },                 // unknown reasons are refused, not stored
   { g: 'pauseReason' },
   { m: 'pause', a: ['connection'] },            // running -> link drop takes
@@ -126,17 +127,24 @@ const OPS = [
   { m: 'markDisconnected', a: [3] },
   { m: 'markDisconnected', a: [4711] },
   { m: 'allParticipantsDisconnected', a: [] },
-  // Nobody left to play: a freeze still takes, but neither Continue nor the
-  // auto-resume may lift it — the rule that keeps a returning player from
-  // meeting an overlay whose Continue the display would ignore.
+  // THE regression this section exists for: a host pause standing when the room
+  // empties has to SURVIVE. Convert it to 'auto' and the auto-resume lifts it the
+  // moment anyone reconnects, silently restarting a match nobody continued.
   { m: 'pause', a: ['manual'] },
-  { m: 'resume', a: ['manual'] },               // REFUSED: no participant is back
+  { m: 'pause', a: ['auto'] },                  // REFUSED: the host's pause stands
+  { m: 'resume', a: ['auto'] },                 // REFUSED: not why we are frozen...
+  { g: 'pauseReason' },                         // ...so a reconnect cannot end this freeze
+  { m: 'resume', a: ['manual'] },               // REFUSED too: no participant is back yet
+  { g: 'paused' },                              // the host's freeze is intact and still visible
   { m: 'resume', a: [null] },                   // the lifecycle clear is exempt
   { m: 'graceTick', a: [10000] },               // arms the deadline
   { m: 'graceTick', a: [10001] },               // still inside the window
   { m: 'graceTick', a: [16000] },               // fires
 
   // --- results ------------------------------------------------------------
+  // Sit-outs are appended flagged newPlayer, but only the ones still CONNECTED:
+  // peers 3 and 4711 are disconnected above and must not be listed as joining the
+  // next round, while the late joiner 5 (never flagged) must be.
   { m: 'transitionTo', a: ['results'] },
   { m: 'enrichResults', a: [[{ playerId: 6, rank: 1, lines: 20 }, { playerId: 2, rank: 2, lines: 10 }]] },
   { m: 'setResults', a: [[{ playerId: 6, rank: 1, lines: 20 }, { playerId: 2, rank: 2, lines: 10 }]] },

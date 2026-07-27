@@ -71,7 +71,9 @@ describe('Display: preferred color on HELLO', () => {
     onHello(room, 'p1', { type: MSG.HELLO, name: 'Alice', colorIndex: 5 });
     assert.strictEqual(room.players.get('p1').playerIndex, 5);
     const row = lastPublished(room)['p1'];
-    assert.strictEqual(row.helloSeen, true);
+    // helloSeen omitted == true (RoomCore.snapshot's absent-means-default rule),
+    // which is what tells p1's controller the row is finally theirs to render.
+    assert.ok(!('helloSeen' in row), 'the placeholder flag is gone');
     assert.strictEqual(row.color, 5,
       'the first snapshot p1 acts on already has the honored color, so the reclaim SET_COLOR no-ops');
   });
@@ -102,7 +104,7 @@ describe('Display: preferred color on HELLO', () => {
     onHello(room, 'p1', { type: MSG.HELLO, name: 'Alice', colorIndex: 3 });
     assert.strictEqual(room.players.get('p1').playerIndex, 3);
     assert.strictEqual(lastPublished(room)['p1'].color, 3);
-    assert.strictEqual(lastPublished(room)['p1'].helloSeen, true);
+    assert.ok(!('helloSeen' in lastPublished(room)['p1']));
   });
 
   // Every HELLO publishes, even when nothing about the colour moved: the
@@ -113,7 +115,7 @@ describe('Display: preferred color on HELLO', () => {
 
     onHello(room, 'p1', { type: MSG.HELLO, name: 'Alice', colorIndex: 0 });
     assert.strictEqual(room.published.length, 1);
-    assert.strictEqual(lastPublished(room)['p1'].helloSeen, true);
+    assert.ok(!('helloSeen' in lastPublished(room)['p1']));
   });
 
   test('honored color is published so existing controllers grey out the swatch', () => {
