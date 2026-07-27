@@ -197,6 +197,18 @@ class EngineBridge private constructor(
     }
 
     /**
+     * A RoomBrain MODULE constant (`SNAPSHOT_THROTTLE_MS`, `NAME_MAX_LEN`, ...) as
+     * JSON. Deliberately NOT a fifth room entry point on the shim: [roomGetJson]
+     * reads instance properties and these hang off the constructor, and the two
+     * native shims are kept token-identical by
+     * `tests/room-bridge-shim-parity.test.js` — growing the shared surface for a
+     * value each shell reads once at start-up would be a poor trade.
+     */
+    suspend fun roomConstJson(name: String): String = lock.withLock {
+        evalTyped<String>("roomConst($name)", "JSON.stringify(HexCore.RoomBrain[${jsString(name)}])")
+    }
+
+    /**
      * Close the QuickJS runtime. `suspend` + [lock] so it can never overlap an
      * in-flight frame()/input call; hopping to [dispatcher] additionally keeps the
      * native teardown off the caller's (Main) thread.

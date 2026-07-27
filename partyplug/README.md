@@ -74,6 +74,49 @@ function startGame() {
 One Party Sockets relay can serve many games (rooms are namespaced by code), so
 relay config is deployment-level, not framework-level.
 
+## The retained-snapshot pattern
+
+The single highest-value thing to build on top of the kit, and the reason
+`setState` / `onState` exist.
+
+Publish **one** object describing the whole room, and let controllers derive
+their entire UI from it, screen routing included. Send them nothing else about
+the room. The relay keeps the latest blob, pushes it live to everyone connected,
+and replays it to any peer right after `joined`. So the live-update path and the
+resync-after-a-reconnect path become the *same code* and cannot disagree.
+
+That last property is the point. The alternative (per-recipient messages for
+live updates, plus a separate "here is the current state" message on join) is
+two code paths describing one truth, and they drift. The bug that motivated this
+in HexStacker was a controller stranded on a pause overlay whose Continue button
+could not work, because the rejoin payload said `paused: true` and the follow-up
+that would have cleared it had already gone out.
+
+The kit deliberately does **not** define the snapshot's shape, because the shape
+is entirely game-specific. What it gives you is the transport guarantee and the
+`RoomFlow` half of the content (room state, roster, host, presence).
+
+The worked example is HexStacker's `server/RoomBrain.js`: it *composes*
+`RoomFlow`, adds the game-flavoured layer (naming, colour slots, per-player
+game facts), and projects the whole thing into one snapshot. Notes worth
+copying if you write your own:
+
+- **Compose, do not fork.** `RoomFlow.addPlayer(peerIndex, fields)` takes opaque
+  game data, so your fields ride along on the same record.
+- **Keep it pure.** No clock, no timers, no IO. Take `nowMs` as a parameter and
+  inject randomness. That is what lets the same module run in a browser, in
+  Node tests, and inside JavaScriptCore / QuickJS on a TV, which is how three
+  HexStacker displays came to share one implementation instead of three.
+- **Return effects, do not fire callbacks.** Have each mutator return what
+  happened (including whether the caller should publish now, publish throttled,
+  or not at all) rather than emitting. Across a native JS bridge, callbacks are
+  awkward and ordering-sensitive; a returned value is not.
+- **Throttle publishes for finger-speed controls,** leading + trailing so the
+  first change still feels instant, and keep the *timer* in the shell where a
+  real clock lives.
+- **Make application idempotent on the receiving end.** Diff against what is
+  already rendered; a snapshot arrives for reasons unrelated to you.
+
 ## API reference
 
 ### `PartyConnection` — relay WebSocket client
