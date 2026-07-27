@@ -82,12 +82,26 @@ function RoomBrain(opts) {
 
   this.maxPlayers = opts.maxPlayers != null ? opts.maxPlayers : GameConstants.MAX_PLAYERS;
 
-  // Injected so the conformance harness can replay a fixed sequence across all
-  // three platforms. Auto-name picks are deliberately random (sequential picks
-  // made every room read HX-1, HX-2, HX-3, which looks assigned rather than
-  // chosen), and randomness is the one thing a cross-platform golden test cannot
-  // diff. Production passes the default everywhere.
-  this._rng = typeof opts.rng === 'function' ? opts.rng : Math.random;
+  // Auto-name picks are deliberately random: sequential picks made every room
+  // read HX-1, HX-2, HX-3, which looks assigned rather than chosen. Randomness
+  // is also the one thing a cross-platform golden test cannot diff, so it is
+  // injectable two ways. `rng` takes a function (in-process callers). `rngSeed`
+  // takes a NUMBER, which is what the conformance harness uses, because the
+  // native bridges are JSON-only and cannot pass a function across. Production
+  // supplies neither and gets Math.random on all three platforms.
+  if (opts.rngSeed != null) {
+    // mulberry32: tiny, deterministic, and identical wherever the bundle runs.
+    var seed = opts.rngSeed >>> 0;
+    this._rng = function () {
+      seed = (seed + 0x6D2B79F5) | 0;
+      var t = seed;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  } else {
+    this._rng = typeof opts.rng === 'function' ? opts.rng : Math.random;
+  }
 
   this.flow = new RoomFlow({
     masterProvider: opts.masterProvider,
