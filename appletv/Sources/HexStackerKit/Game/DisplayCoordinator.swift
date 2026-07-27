@@ -1062,8 +1062,6 @@ public final class DisplayCoordinator {
         return res
     }
 
-    private var isPausableState: Bool { let s = state; return s == .playing || s == .countdown }
-
     /// Is the pause overlay on screen? Pure VIEW state, deliberately NOT `paused`:
     /// while auto-paused the overlay is the only route to New Game (every controller
     /// is gone, so no one can send RETURN_TO_LOBBY), and the operator can raise it
@@ -1276,10 +1274,11 @@ public final class DisplayCoordinator {
         if state != .lobby { returnToLobby() }
     }
 
-    /// Pause/resume during a game or the 3-2-1 countdown (the web allows both).
+    /// Pause/resume during a game or the 3-2-1 countdown (the web allows both). No state
+    /// guard: the room core refuses a freeze outside a running game, and the `.auto`
+    /// branch is reachable only while one is already in force, which implies running.
     public func remoteTogglePause() {
         assertOwningThread()
-        guard isPausableState else { return }
         switch pauseReason {
         case .manual: resumeGame()
         // Nothing left to pause — but the overlay carries New Game, and with every

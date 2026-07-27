@@ -295,7 +295,7 @@ newGameResultsBtn.addEventListener('click', function() {
 function setDisplayMuted(next) {
   next = !!next;
   if (next === muted) return;
-  muted = next;
+  var res = roomCore.setMuted(next);
   try { localStorage.setItem('stacker_muted', muted ? '1' : '0'); } catch (e) { /* iframe sandbox */ }
   muteBtn.querySelector('.sound-waves').style.display = muted ? 'none' : '';
   muteBtn.setAttribute('aria-checked', muted ? 'false' : 'true');
@@ -310,7 +310,7 @@ function setDisplayMuted(next) {
   // Publish so the host controller's Game Music toggle reflects changes made
   // via the display's own mute button, and so a newly-promoted host opening
   // the settings popup sees the correct state without a page reload.
-  publishAs('now');
+  publishAs(res.publish);
 }
 
 muteBtn.addEventListener('click', function() {

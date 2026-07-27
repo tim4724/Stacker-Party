@@ -221,6 +221,11 @@ var preCreatedRoom = null;  // { roomCode, joinUrl }
 
 // Mute. The room core holds it (the snapshot carries displayMuted); localStorage is
 // this shell's business, so the persisted value is read here and pushed in.
+//
+// The setter deliberately drops the publish hint: its only writers are the two
+// load-time seeds below (and display-airconsole.js), which run before there is a room
+// to publish to. Every user-driven change goes through setDisplayMuted, which honours
+// the hint like every other mutator on this display.
 Object.defineProperty(window, 'muted', {
   configurable: true,
   get: function () { return roomCore.muted; },

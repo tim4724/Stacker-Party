@@ -104,12 +104,9 @@ class DisplayCoordinator(
     private var roomCode: String? = null
     private var instance: String? = null
 
-    // WHY the game is frozen, or null. A display-owned INPUT to the snapshot (the room
-    // core projects only [PauseReason.MANUAL] into the single `paused` a controller
-    // sees), mirrored here because the frame loop reads [paused] every tick and
-    // crossing into JS for that is absurd. Every write goes through [applyPause], so the
-    // room core never falls behind.
-    private var pauseReason: PauseReason? = null
+    // WHY the game is frozen, or null. Owned by [RoomCoreClient], which mirrors the room
+    // core's answer on every pause/resume/reset, so there is nothing to keep in step here.
+    private val pauseReason: PauseReason? get() = brainOrNull?.pauseReason
     private val paused: Boolean get() = pauseReason != null
     private var muted = false
 
@@ -119,12 +116,12 @@ class DisplayCoordinator(
      * which reason wins, which trigger may lift which freeze — belongs to
      * roomCore.pause/resume, which the web display and Apple TV run too. Nothing here
      * re-checks the room state or who is still connected.
+     *
+     * [wasPaused] is sampled by the callers BEFORE the room-core call, because [paused]
+     * reads through to the answer that call already landed.
      */
-    private suspend fun applyPause(res: RoomCoreClient.Changed) {
-        if (!res.changed) return
-        val wasPaused = paused
-        pauseReason = res.reason?.let { wire -> PauseReason.entries.firstOrNull { it.wire == wire } }
-        if (paused == wasPaused) return
+    private suspend fun applyPause(res: RoomCoreClient.Changed, wasPaused: Boolean) {
+        if (!res.changed || paused == wasPaused) return
         if (paused) {
             engine?.pause()
             engine?.resetFrameClock() // forget the frame clock so resume re-primes with delta 0
@@ -140,15 +137,16 @@ class DisplayCoordinator(
         }
     }
 
-    private suspend fun freezePause(reason: PauseReason): RoomCoreClient.Changed =
-        roomCore.pause(reason).also { applyPause(it) }
+    private suspend fun freezePause(reason: PauseReason): RoomCoreClient.Changed {
+        val wasPaused = paused
+        return roomCore.pause(reason).also { applyPause(it, wasPaused) }
+    }
 
     /** `null` is the room-lifecycle clear: it ends the freeze whatever it was. */
-    private suspend fun liftPause(reason: PauseReason?): RoomCoreClient.Changed =
-        roomCore.resume(reason).also { applyPause(it) }
-
-    private val isPausableState: Boolean
-        get() = state == RoomState.PLAYING || state == RoomState.COUNTDOWN
+    private suspend fun liftPause(reason: PauseReason?): RoomCoreClient.Changed {
+        val wasPaused = paused
+        return roomCore.resume(reason).also { applyPause(it, wasPaused) }
+    }
 
     /** Is the pause overlay on screen? Pure VIEW state, deliberately NOT [paused]:
      *  while auto-paused the overlay is the only route to New Game (every controller is
@@ -620,12 +618,6 @@ class DisplayCoordinator(
         autoPause()
     }
 
-    /** A participant reconnected. Named for the call sites; the reason check and the
-     *  all-disconnected gate both live in [autoResume]. */
-    private suspend fun checkAutoResume() {
-        autoResume()
-    }
-
     /**
      * The display's own relay link state. On a drop, pause the running game (controllers
      * are unreachable, so nothing can be published). The resume lives in [handleJoined], not
@@ -689,7 +681,7 @@ class DisplayCoordinator(
         // a snapshot describing the paused game before the resume publishes over the top of
         // it. markReconnected above already cleared the presence flag, so the next graceTick
         // drops the late-joiner deadline; no explicit cancel needed.
-        if (wasDisconnected && room.isParticipant(from)) checkAutoResume()
+        if (wasDisconnected && room.isParticipant(from)) autoResume()
     }
 
     private suspend fun handleHello(from: Int, msg: ControllerMessage) {
@@ -711,7 +703,7 @@ class DisplayCoordinator(
         // disconnect. A brand-new joiner needs it too: it is how they learn who they are
         // and which screen to show.
         publishAs(res.publish)
-        if (res.claimed) checkAutoResume()
+        if (res.claimed) autoResume()
     }
 
     /** The HELLO body the room core reads. The legacy `rejoinId` is normalized onto
@@ -1035,7 +1027,6 @@ class DisplayCoordinator(
         // Roster, participants, liveness, results, the pause reason and the room state,
         // all back to a fresh room. Mute survives (a device preference, not room state).
         roomCore.reset()
-        pauseReason = null   // reset() cleared the room core's copy; keep the mirror in step
 
         output.showScreen(DisplayScreen.LOBBY)
         refreshDisplayLobby()
@@ -1069,9 +1060,10 @@ class DisplayCoordinator(
         return if (actions.trySend(Action.Remote(RemoteKind.TOGGLE_MUTE, ack)).isSuccess) ack.await() else false
     }
 
-    /** The remote's pause key (and Back / Menu during a game). */
+    /** The remote's pause key (and Back / Menu during a game). No state guard: the room
+     *  core refuses a freeze outside a running game, and the AUTO branch below is
+     *  reachable only while one is already in force, which implies running. */
     private suspend fun togglePause() {
-        if (!isPausableState) return
         when (pauseReason) {
             PauseReason.MANUAL -> resumeGame()
             // Nothing left to pause — but the overlay carries New Game, and with every

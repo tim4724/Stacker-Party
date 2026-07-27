@@ -111,17 +111,38 @@ class RoomCoreClient private constructor(private val bridge: EngineBridge) {
 
     suspend fun setMuted(muted: Boolean): Changed = mutate(call("setMuted", JsonPrimitive(muted)))
 
+    /**
+     * WHY the game is frozen, or null. The room core is the authority; this is a Kotlin
+     * mirror because the frame loop reads it every tick and crossing into JS for that is
+     * absurd. It lives HERE rather than in the coordinator so that the three calls able
+     * to move it are the three below, in one file: a coordinator-side copy had to be
+     * hand-cleared after [reset] and nothing would have caught the next call that forgot.
+     *
+     * Note the snapshot cannot serve this: it deliberately projects only
+     * [PauseReason.MANUAL] into the single `paused` a controller is allowed to see.
+     */
+    var pauseReason: PauseReason? = null
+        private set
+
     /** Freeze for [reason]. Takes effect while the room is RUNNING and nothing else has
      *  us frozen — first freeze wins, so a display-internal reason can never overwrite
      *  (and then silently lift) a host's deliberate pause. The rule lives in the room
      *  core so tvOS and the web display cannot answer it differently. */
     suspend fun pause(reason: PauseReason): Changed =
-        mutate(call("pause", JsonPrimitive(reason.wire)))
+        pauseCall(call("pause", JsonPrimitive(reason.wire)))
 
     /** Lift the freeze if [reason] is why we are frozen; null ends it outright (the
      *  room-lifecycle clear: a new match, a return to the lobby). */
     suspend fun resume(reason: PauseReason?): Changed =
-        mutate(call("resume", reason?.let { JsonPrimitive(it.wire) } ?: JsonNull))
+        pauseCall(call("resume", reason?.let { JsonPrimitive(it.wire) } ?: JsonNull))
+
+    /** Every pause/resume answer carries the reason now in force whether or not the call
+     *  changed anything, so the mirror re-syncs on refusals too and cannot drift. */
+    private suspend fun pauseCall(json: String): Changed {
+        val res: Changed = mutate(json)
+        pauseReason = res.reason?.let { wire -> PauseReason.entries.firstOrNull { it.wire == wire } }
+        return res
+    }
 
     // =====================================================================
     // Room lifecycle
@@ -143,7 +164,11 @@ class RoomCoreClient private constructor(private val bridge: EngineBridge) {
      *  sat the round out (flagged `newPlayer`). Returns the enriched array. */
     suspend fun enrichResults(ranking: JsonArray): JsonArray = decode(call("enrichResults", ranking))
 
-    suspend fun reset() = unitMutating(call("reset"))
+    /** Fresh room: roster, participants, liveness, results and the pause all go. */
+    suspend fun reset() {
+        unitMutating(call("reset"))
+        pauseReason = null   // reset() clears the room core's copy; the mirror follows here
+    }
 
     // =====================================================================
     // Liveness (predicates in the room core, effects in the shell)
