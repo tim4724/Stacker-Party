@@ -281,6 +281,15 @@ payload**. Zero is the most common value in this data (every empty grid cell), s
 packed encoding must bias every value (+1 is free) or use a real binary channel. The
 first prototype came back one character long, which is how this was found.
 
+The bias has a second edge, and it bites at the *other* end: `String.fromCharCode`
+takes its argument mod `0x10000`, so a raw `0xffff` biases to `0x10000` and comes back
+out as the very NUL the bias exists to avoid. The usable wire range is therefore
+`0..0xfffe`, and values wider than one code unit must cross as **15-bit** halves — a
+16-bit half is exactly the one that can land on `0xffff`. With 16-bit halves `elapsed`
+hit it 65.5s into every match (and every 65.5s after), truncating that frame on both
+TVs; roughly one four-minute match in five. `encodeInts` now asserts the range, so a
+future field that outgrows it fails in the packer rather than on a TV.
+
 ## 9. The clean end state
 
 Four changes, in dependency order. Together they take the 8-seat frame from ~14 ms of
@@ -391,9 +400,11 @@ deliberately.
 * `tests/partycore-packed.test.js` — round-trips every delivered frame of a driven
   corpus (1/2/8 seats, 1200 frames each) through pack -> unpack, plus hand-built
   snapshots for the shapes the engine does not reliably reach (clearing cells, absent
-  piece/ghost, empty next queue, values past the 16-bit split, negative coordinates).
+  piece/ghost, empty next queue, values past the split, negative coordinates).
 * The same file asserts the payload never contains a NUL at any board state — the
-  invariant the +1 bias exists for, since both bridges marshal JS strings as C strings.
+  invariant the +1 bias exists for, since both bridges marshal JS strings as C strings —
+  and pins every split field on the `0xffff` boundary and either side of it, plus a
+  match walked across all four `elapsed` boundary crossings.
 * `tests/fixtures/partycore-packed-golden.json` pins packed payloads and the frames
   they must decode to; `PackedFrameTest` (Kotlin) replays it through the port. A layout
   change landing on one side only fails the build rather than a TV.

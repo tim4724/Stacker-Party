@@ -24,13 +24,17 @@ import kotlinx.serialization.Serializable
  *
  * Every value is biased +1 on the wire: quickjs-kt hands JS strings over as C
  * strings, so a NUL code unit would truncate the payload — and 0 is the most
- * common raw value here (every empty grid cell). Coordinates are biased by
- * [COORD_BIAS] first, because a piece still in the spawn buffer has a negative row.
+ * common raw value here (every empty grid cell). That same bias is why values
+ * wider than one code unit cross as two FIFTEEN-bit halves rather than sixteen:
+ * a raw 0xffff biases to 0x10000, which the packer's `fromCharCode` wraps back to
+ * the very NUL the bias exists to avoid. Coordinates are biased by [COORD_BIAS]
+ * first, because a piece still in the spawn buffer has a negative row.
  */
 internal object PackedFrame {
 
-    const val PACK_VERSION = 1
+    const val PACK_VERSION = 2
     private const val COORD_BIAS = 256
+    private const val SPLIT_SHIFT = 15
 
     /** The `{events, commands}` tail, which stays JSON: both are small, rare, and
      *  genuinely heterogeneous, so packing them would buy nothing and cost clarity. */
@@ -48,7 +52,7 @@ internal object PackedFrame {
         check(version == PACK_VERSION) { "packed layout version $version, expected $PACK_VERSION" }
         var snapshot: GameSnapshot? = null
         if (r.next() == 1) {
-            val count = (r.next() shl 16) or r.next()
+            val count = r.split()
             val bodyStart = r.at
             snapshot = readSnapshot(r)
             // Landing anywhere but the tail means the layout drifted between this
@@ -63,10 +67,16 @@ internal object PackedFrame {
     private class Reader(val s: String) {
         var at = 0
         fun next(): Int = s[at++].code - 1
+
+        /** Reassemble a value the packer split into two 15-bit halves, high first. */
+        fun split(): Int {
+            val hi = next()
+            return (hi shl SPLIT_SHIFT) or next()
+        }
     }
 
     private fun readSnapshot(r: Reader): GameSnapshot {
-        val elapsed = ((r.next() shl 16) or r.next()).toDouble()
+        val elapsed = r.split().toDouble()
         val n = r.next()
         val players = ArrayList<PlayerState>(n)
         repeat(n) { players.add(readPlayer(r)) }
@@ -76,10 +86,10 @@ internal object PackedFrame {
     private fun readPlayer(r: Reader): PlayerState {
         val id = r.next()
         val level = r.next()
-        val lines = (r.next() shl 16) or r.next()
+        val lines = r.split()
         val alive = r.next() == 1
         val pendingGarbage = r.next()
-        val gridVersion = (r.next() shl 16) or r.next()
+        val gridVersion = r.split()
 
         // Absent whenever the delivery filter stripped it (unchanged since the last
         // one this host was sent); EngineBridge re-attaches its cached rows.

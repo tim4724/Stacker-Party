@@ -80,7 +80,8 @@ test('pack -> unpack round-trips every delivered frame', () => {
 // The driven corpus above reaches whatever the engine happens to emit, which does
 // not include every SHAPE the format has to carry. These are built by hand so each
 // branch — absent piece, absent ghost, clearing cells, empty queues, values past
-// the 16-bit split — is exercised deliberately rather than by luck.
+// the split (and exactly on its NUL boundary) — is exercised deliberately rather
+// than by luck.
 function player(over) {
   return Object.assign({
     id: 3,
@@ -111,7 +112,12 @@ const EDGE_CASES = {
   'empty next queue': player({ nextPieces: [] }),
   'dead player': player({ alive: false }),
   'grid stripped': (() => { const p = player({}); delete p.grid; return p; })(),
-  'values past the 16-bit split': player({ lines: 70000, gridVersion: 131073 }),
+  'values past the split': player({ lines: 70000, gridVersion: 131073 }),
+  // 0xffff is the value the +1 bias turns back into a NUL (fromCharCode takes its
+  // argument mod 0x10000), so every split field is pinned at exactly that boundary
+  // and on both sides of it. This is why halves are 15 bits, not 16.
+  'split halves land exactly on 0xffff': player({ lines: 0xffff, gridVersion: 0xffff }),
+  'split halves either side of 0xffff': player({ lines: 0xfffe, gridVersion: 0x10000 }),
   'negative coordinates throughout': player({
     currentPiece: {
       type: 'I3', typeId: 1, anchorCol: 0, anchorRow: -4,
@@ -149,6 +155,35 @@ test('payload never contains a NUL, at any board state', () => {
         players + 'p: frame ' + i + ' packed a NUL, which truncates on both bridges');
     });
   }
+});
+
+// `elapsed` is the split field a real match actually drives through the danger
+// zone: its low half lands on 0xffff at 65.535s, and again every 65.536s after.
+// With 16-bit halves that packed a NUL and truncated the frame on both TVs, which
+// ~18% of four-minute matches would have hit at least once.
+test('a match crossing every elapsed boundary never packs a NUL', () => {
+  const CYCLE = 0x10000;
+  for (let cycle = 1; cycle <= 4; cycle++) {
+    // Straddle the boundary at ms resolution rather than trusting a 60Hz lattice
+    // to land on it — real frame deltas jitter, so eventually one does.
+    for (let e = cycle * CYCLE - 3; e <= cycle * CYCLE + 3; e++) {
+      const frame = { events: [], snapshot: { players: [player({})], elapsed: e }, commands: [] };
+      const packed = PartyCore.packFrame(frame);
+      assert.equal(packed.indexOf('\u0000'), -1, 'elapsed=' + e + ' packed a NUL');
+      assert.equal(PartyCore.unpackFrame(packed).snapshot.elapsed, e,
+        'elapsed=' + e + ' did not survive the round trip');
+    }
+  }
+});
+
+// The guard is the durable half of the fix: 15-bit halves keep today's fields in
+// range, and this makes a future field that outgrows it fail here rather than
+// silently corrupt a frame on a TV, where fromCharCode's mod 0x10000 would hide it.
+test('a value outside the wire range is refused, not silently wrapped', () => {
+  const frame = { events: [], snapshot: { players: [player({ level: 0x10000 })], elapsed: 0 }, commands: [] };
+  assert.throws(() => PartyCore.packFrame(frame), /outside wire range/);
+  const negative = { events: [], snapshot: { players: [player({ level: -1 })], elapsed: 0 }, commands: [] };
+  assert.throws(() => PartyCore.packFrame(negative), /outside wire range/);
 });
 
 test('packed frames are substantially smaller than JSON', () => {
@@ -197,7 +232,7 @@ function recordGolden() {
     if (i % 8 !== 0) return; // sample, so the fixture stays reviewable
     steps.push({ packed: PartyCore.packFrame(frame), frame: normalize(frame) });
   });
-  return { version: 1, steps };
+  return { version: 2, steps };
 }
 
 if (process.env.RECORD_PACKED_GOLDEN === '1') {

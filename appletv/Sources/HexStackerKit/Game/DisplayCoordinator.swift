@@ -549,6 +549,7 @@ public final class DisplayCoordinator {
         assertOwningThread()
         guard message == "Room not found" || message == "Room is full" else { return }
         engine = nil
+        discardEngineState()
         output?.stopMusic()
         setPauseOverlay(false)
         rejoinQRs.removeAll()
@@ -750,12 +751,27 @@ public final class DisplayCoordinator {
         }
         guard let pulled = try? engine.snapshotPlayer(from, inputs: batch),
               let moved = pulled.players.first,
-              prev.players.contains(where: { $0.id == moved.id }) else { return }
+              prev.players.contains(where: { $0.id == moved.id }) else {
+            // A seat the retained room predates (the input that follows a rekey names
+            // the NEW id, which the last render still calls by the old one). Fall back
+            // to the full pull rather than skip the repaint — the batch is already
+            // applied by the pull above, so this only re-reads. Matches Android.
+            if let snap = try? engine.snapshot() { render(snap) }
+            return
+        }
         render(GameSnapshot(
             players: prev.players.map { $0.id == moved.id ? moved : $0 },
             // elapsed comes from the pull: it drives the match timer, and keeping the
             // retained value would freeze the clock while a direction is held.
             elapsed: pulled.elapsed))
+    }
+
+    /// Drop the per-match engine-side state. Runs wherever the engine handle is
+    /// released: input queued for a match that just ended has nothing to apply to,
+    /// and a retained snapshot of it must not be merged into the NEXT match's boards.
+    private func discardEngineState() {
+        pendingInputs.removeAll(keepingCapacity: true)
+        lastSnapshot = nil
     }
 
     /// Drain the queued inputs for a caller that is about to cross into the engine
@@ -876,6 +892,7 @@ public final class DisplayCoordinator {
 
     private func makeEngine(order: [Int]) -> Bool {
         guard let bridge = roomCore() else { return false }
+        discardEngineState() // a fresh match starts from an empty batch and no retained boards
         var levels: [Int: Int] = [:]
         for rec in roster() { levels[rec.peerIndex] = rec.startLevel }
         let players: [(id: Int, startLevel: Int)] = order.map { (id: $0, startLevel: levels[$0] ?? 1) }
@@ -1043,6 +1060,7 @@ public final class DisplayCoordinator {
         roomDo("setResults", [enriched.map(\.payload)])
         let res = roomDo("transitionTo", ["results"])
         engine = nil
+        discardEngineState()
         output?.stopMusic()
         // Clear any pause overlay/menu BEFORE building the results menu — setPaused
         // clears the focus menu, so it must run before showResults sets the
@@ -1074,6 +1092,7 @@ public final class DisplayCoordinator {
     /// in which case `returnToLobby()`'s state guard would skip the UI entirely.
     private func returnToLobbyUI() {
         engine = nil
+        discardEngineState()
         output?.stopMusic()
         setPauseOverlay(false)
         rejoinQRs.removeAll()

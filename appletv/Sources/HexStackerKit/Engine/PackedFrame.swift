@@ -13,13 +13,17 @@ import Foundation
 ///
 /// Every value is biased +1 on the wire: both bridges hand JS strings over as C
 /// strings, so a NUL code unit would truncate the payload — and 0 is the most
-/// common raw value here (every empty grid cell). Coordinates are biased by
+/// common raw value here (every empty grid cell). That same bias is why values
+/// wider than one code unit cross as two FIFTEEN-bit halves rather than sixteen:
+/// a raw 0xffff biases to 0x10000, which the packer's `fromCharCode` wraps back
+/// to the very NUL the bias exists to avoid. Coordinates are biased by
 /// `coordBias` on top of that, because a piece still in the spawn buffer has a
 /// negative row.
 enum PackedFrame {
 
-    static let packVersion = 1
+    static let packVersion = 2
     private static let coordBias = 256
+    private static let splitShift = 15
 
     struct PackedError: Error, CustomStringConvertible {
         let reason: String
@@ -54,7 +58,7 @@ enum PackedFrame {
 
         var snapshot: GameSnapshot?
         if try next() == 1 {
-            let count = try (next() << 16) | next()
+            let count = try readSplit(next: next)
             let bodyStart = at
             snapshot = try readSnapshot(next: next, gridCache: &gridCache)
             // Landing anywhere but the tail means this reader and the packer have
@@ -76,9 +80,15 @@ enum PackedFrame {
 
     // MARK: - Body
 
+    /// Reassemble a value the packer split into two 15-bit halves, high first.
+    private static func readSplit(next: () throws -> Int) throws -> Int {
+        let hi = try next()
+        return try (hi << splitShift) | next()
+    }
+
     private static func readSnapshot(next: () throws -> Int,
                                      gridCache: inout [Int: [[Int]]]) throws -> GameSnapshot {
-        let elapsed = try Double((next() << 16) | next())
+        let elapsed = Double(try readSplit(next: next))
         let count = try next()
         var players: [PlayerSnapshot] = []
         players.reserveCapacity(count)
@@ -90,10 +100,10 @@ enum PackedFrame {
                                    gridCache: inout [Int: [[Int]]]) throws -> PlayerSnapshot {
         let id = try next()
         let level = try next()
-        let lines = try (next() << 16) | next()
+        let lines = try readSplit(next: next)
         let alive = try next() == 1
         let pendingGarbage = try next()
-        let gridVersion = try (next() << 16) | next()
+        let gridVersion = try readSplit(next: next)
 
         let playerGrid: [[Int]]
         if try next() == 1 {

@@ -188,10 +188,18 @@ PartyCore.prototype.snapshotPlayer = function(playerId) {
 // reads the live getSnapshot() refs out of the same heap — so packing there would
 // be pure added work.
 //
-// Two invariants the format depends on:
+// Three invariants the format depends on:
 //   * EVERY value is biased +1 on the way out. Both native bridges hand JS
 //     strings over as C strings, so a NUL code unit TRUNCATES the payload — and 0
 //     is the most common value here (every empty grid cell).
+//   * That bias is also why the wire range STOPS at MAX_WIRE (0xfffe), not
+//     0xffff: String.fromCharCode takes its argument mod 0x10000, so a raw 0xffff
+//     biases to 0x10000 and comes back out as the very NUL the bias exists to
+//     avoid. Values wider than one code unit are therefore split into FIFTEEN-bit
+//     halves, not sixteen — a 16-bit half is exactly the one that can land on
+//     0xffff. `elapsed` reached it 65.5s into every match (and every 65.5s after),
+//     which truncated the frame on both TVs. encodeInts asserts the range so a
+//     future field that outgrows it fails here rather than on a TV.
 //   * Coordinates go negative while a piece is still in the spawn buffer, so they
 //     are biased by COORD_BIAS before that.
 //
@@ -203,7 +211,7 @@ PartyCore.prototype.snapshotPlayer = function(playerId) {
 // Layout (values shown pre-bias):
 //   [0] PACK_VERSION
 //   [1] 1 if a snapshot follows, else 0
-//   when present: [2] count>>16, [3] count & 0xffff, then `count` values
+//   when present: [2] count>>15, [3] count & 0x7fff, then `count` values
 //   then the JSON tail, {events, commands}, as plain ASCII
 //
 // unpackFrame below is the REFERENCE decoder: the Kotlin and Swift readers are
@@ -211,10 +219,21 @@ PartyCore.prototype.snapshotPlayer = function(playerId) {
 // over the whole frame-golden corpus.
 // =====================================================================
 
-var PACK_VERSION = 1;
+var PACK_VERSION = 2;
 var COORD_BIAS = 256;
+// Widest value one code unit can carry, given the +1 bias (see above).
+var MAX_WIRE = 0xfffe;
+// Values too wide for one code unit ride as two 15-bit halves — 30 bits, which is
+// 12 days of `elapsed` in ms and far past any reachable lines/gridVersion count.
+var SPLIT_SHIFT = 15;
+var SPLIT_MASK = 0x7fff;
 var PIECE_TYPES = GameConstants.PIECE_TYPES;
 var PIECE_TYPE_TO_ID = GameConstants.PIECE_TYPE_TO_ID;
+
+// Push a value too wide for one code unit as two 15-bit halves, high first.
+function packSplit(out, v) {
+  out.push((v >> SPLIT_SHIFT) & SPLIT_MASK, v & SPLIT_MASK);
+}
 
 function packCells(out, cells) {
   out.push(cells.length);
@@ -224,9 +243,10 @@ function packCells(out, cells) {
 }
 
 function packPlayer(out, p) {
-  out.push(p.id, p.level, (p.lines >> 16) & 0xffff, p.lines & 0xffff,
-           p.alive ? 1 : 0, p.pendingGarbage,
-           (p.gridVersion >> 16) & 0xffff, p.gridVersion & 0xffff);
+  out.push(p.id, p.level);
+  packSplit(out, p.lines);
+  out.push(p.alive ? 1 : 0, p.pendingGarbage);
+  packSplit(out, p.gridVersion);
   // Absent whenever _stripUnchangedGrids dropped it; dimensions ride along so a
   // reader never has to assume the board size.
   if (p.grid) {
@@ -269,8 +289,9 @@ function packPlayer(out, p) {
 }
 
 function snapshotInts(snapshot) {
-  var e = Math.max(0, Math.floor(snapshot.elapsed));
-  var out = [(e >> 16) & 0xffff, e & 0xffff, snapshot.players.length];
+  var out = [];
+  packSplit(out, Math.max(0, Math.floor(snapshot.elapsed)));
+  out.push(snapshot.players.length);
   for (var i = 0; i < snapshot.players.length; i++) packPlayer(out, snapshot.players[i]);
   return out;
 }
@@ -280,7 +301,16 @@ function encodeInts(ints) {
   var parts = [];
   for (var i = 0; i < ints.length; i += 4096) {
     var chunk = ints.slice(i, i + 4096);
-    for (var j = 0; j < chunk.length; j++) chunk[j] = chunk[j] + 1;
+    for (var j = 0; j < chunk.length; j++) {
+      var v = chunk[j];
+      // The whole format rests on every code unit being non-NUL and lossless.
+      // fromCharCode silently takes its argument mod 0x10000, so an out-of-range
+      // value does not throw — it corrupts the frame on a TV, hours from here.
+      if (!(v >= 0 && v <= MAX_WIRE)) {
+        throw new RangeError('packFrame: value ' + v + ' outside wire range 0..' + MAX_WIRE);
+      }
+      chunk[j] = v + 1;
+    }
     parts.push(String.fromCharCode.apply(null, chunk));
   }
   return parts.join('');
@@ -293,7 +323,7 @@ function encodeInts(ints) {
 PartyCore.packFrame = function(frame) {
   var head = [PACK_VERSION, frame.snapshot ? 1 : 0];
   var body = frame.snapshot ? snapshotInts(frame.snapshot) : null;
-  if (body) head.push((body.length >> 16) & 0xffff, body.length & 0xffff);
+  if (body) packSplit(head, body.length);
   var tail = JSON.stringify({ events: frame.events, commands: frame.commands });
   return encodeInts(body ? head.concat(body) : head) + tail;
 };
@@ -306,7 +336,7 @@ PartyCore.unpackFrame = function(packed) {
   if (version !== PACK_VERSION) throw new Error('unpackFrame: version ' + version);
   var snapshot = null;
   if (next() === 1) {
-    var count = (next() << 16) | next();
+    var count = readSplit(next);
     var bodyStart = at;
     snapshot = unpackSnapshot(next);
     // The reader must land exactly on the tail; anything else is a layout bug,
@@ -319,6 +349,12 @@ PartyCore.unpackFrame = function(packed) {
   return { events: tail.events, snapshot: snapshot, commands: tail.commands };
 };
 
+/** Reassemble a value the packer split into two 15-bit halves, high first. */
+function readSplit(next) {
+  var hi = next();
+  return (hi << SPLIT_SHIFT) | next();
+}
+
 function unpackCells(next) {
   var out = [];
   for (var i = next(); i > 0; i--) out.push([next() - COORD_BIAS, next() - COORD_BIAS]);
@@ -326,7 +362,7 @@ function unpackCells(next) {
 }
 
 function unpackSnapshot(next) {
-  var elapsed = (next() << 16) | next();
+  var elapsed = readSplit(next);
   var players = [];
   for (var i = next(); i > 0; i--) players.push(unpackPlayer(next));
   return { players: players, elapsed: elapsed };
@@ -336,10 +372,10 @@ function unpackPlayer(next) {
   var p = {
     id: next(),
     level: next(),
-    lines: (next() << 16) | next(),
+    lines: readSplit(next),
     alive: next() === 1,
     pendingGarbage: next(),
-    gridVersion: (next() << 16) | next()
+    gridVersion: readSplit(next)
   };
   if (next() === 1) {
     var rows = next(), cols = next(), grid = [];
