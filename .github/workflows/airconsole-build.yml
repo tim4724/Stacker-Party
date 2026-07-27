@@ -3,11 +3,16 @@ name: AirConsole Build
 on:
   push:
     tags:
-      - '[0-9]*'
+      # Bare semver, the repo's release tag convention (matching release.yml).
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -16,7 +21,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: npm
 
       # The bundle step (scripts/build.js) requires esbuild from node_modules;

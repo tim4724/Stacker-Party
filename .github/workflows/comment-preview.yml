@@ -4,39 +4,56 @@ on:
   pull_request:
     types: [opened, reopened]
 
+permissions:
+  contents: read
+
 jobs:
   comment:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
+      contents: read
       pull-requests: write
     steps:
-      - uses: actions/github-script@v9
+      - uses: actions/checkout@v7
+
+      # The preview URLs are deterministic from the branch name, so this can post
+      # them the moment the PR opens, before any deploy has finished. Resolved by
+      # the same action the deploy workflows use, or the comment would advertise a
+      # host nothing serves (the inline copy this replaced skipped the 50-char
+      # truncation the namespace and host actually get).
+      - name: Resolve preview names
+        id: names
+        uses: ./.github/actions/branch-slug
         with:
-          script: |
-            const branch = context.payload.pull_request.head.ref;
-            const safeBranch = branch.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-            const previewUrl = `https://preview-${safeBranch}.hexstacker.com`;
-            const airConsoleUrl = `https://www.airconsole.com/#${previewUrl}`;
-            const simulatorUrl = `https://www.airconsole.com/simulator/#${previewUrl}`;
-            const galleryUrl = `${previewUrl}/gallery`;
-            const tvGalleryUrl = `${previewUrl}/gallery-tv/`;
-            const commentBody = `${previewUrl}\n\nAirConsole: ${airConsoleUrl}\n\nSimulator: ${simulatorUrl}\n\nGallery: ${galleryUrl}\n\nTV gallery: ${tvGalleryUrl}`;
+          branch: ${{ github.event.pull_request.head.ref }}
 
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
+      - name: Compose comment body
+        id: body
+        env:
+          HOST: ${{ steps.names.outputs.host }}
+        run: |
+          set -euo pipefail
+          PREVIEW="https://${HOST}"
+          {
+            echo 'body<<COMMENT_EOF'
+            echo "${PREVIEW}"
+            echo
+            echo "AirConsole: https://www.airconsole.com/#${PREVIEW}"
+            echo
+            echo "Simulator: https://www.airconsole.com/simulator/#${PREVIEW}"
+            echo
+            echo "Gallery: ${PREVIEW}/gallery"
+            echo
+            echo "TV gallery: ${PREVIEW}/gallery-tv/"
+            echo 'COMMENT_EOF'
+          } >> "$GITHUB_OUTPUT"
 
-            const existingComment = comments.find(comment => comment.body.includes(previewUrl));
-
-            if (!existingComment) {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: commentBody,
-              });
-            } else {
-              console.log('Comment already exists');
-            }
+      # Sticky rather than post-once: the old inline lookup only read page 1 of
+      # the thread, so a reopened PR with a long history got a duplicate.
+      - name: Post preview links
+        uses: ./.github/actions/sticky-comment
+        with:
+          marker: '<!-- preview-links -->'
+          body: ${{ steps.body.outputs.body }}
+          pr-number: ${{ github.event.pull_request.number }}

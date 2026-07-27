@@ -3,11 +3,21 @@ name: Tests
 on:
   push:
     branches: ['**']
+  # Fork PRs push to a repo we never see, so the push trigger above misses them
+  # entirely. Same-repo PRs are already covered by that trigger, hence the fork
+  # filter on the jobs: without it every branch with an open PR runs twice.
+  pull_request:
+  # Release tags don't match the push filter, so Production Deploy calls this
+  # workflow directly to gate the rollout on a green suite.
+  workflow_call:
   workflow_dispatch:
 
 concurrency:
   group: tests-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   unit:
@@ -15,33 +25,53 @@ jobs:
     # guards (tests/protocol-{android,swift}-parity.test.js,
     # tests/i18n-android-parity.test.js), which read the native sources under
     # android/ and appletv/, so a native-only push must still run it.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: 'npm'
       - run: npm ci
       - run: npm test
 
   e2e:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    container:
-      # Keep this tag in sync with @playwright/test in package.json, which is
-      # pinned exactly (no caret) for that reason: a floating range can resolve
-      # past the newest published image. MCR lags the npm release — check
-      # https://mcr.microsoft.com/v2/playwright/tags/list for a stable
-      # v<version>-noble tag before bumping the package.
-      image: mcr.microsoft.com/playwright:v1.61.1-noble
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: 'npm'
       - run: npm ci
+
+      # Browsers come from the npm package's own installer, keyed on the
+      # lockfile, rather than from a mcr.microsoft.com/playwright container. The
+      # container ships browsers for the version baked into its tag, so its tag
+      # and the @playwright/test version had to be hand-synced forever: when a
+      # dependency bump moved the package to 1.62.0 and left the image at
+      # 1.61.1, every e2e run died on "Executable doesn't exist" until the bump
+      # was reverted. This pairing cannot drift.
+      #
+      # Chromium only: the Firefox path in airconsole.spec.js is the live
+      # AirConsole mode, and CI always takes the mock branch.
+      - name: Cache Playwright Chromium
+        id: pw-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install Playwright Chromium
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Install Playwright system deps (cached browser)
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      # Both projects in one invocation so they share a single webServer build.
       - name: Run E2E tests
-        run: npx playwright test --project=e2e --project=e2e-airconsole
+        run: npm run test:e2e:all

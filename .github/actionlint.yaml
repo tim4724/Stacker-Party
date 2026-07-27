@@ -1,0 +1,9 @@
+# Config for actionlint (https://github.com/rhysd/actionlint), which is worth a
+# run over .github/ before pushing workflow changes: `actionlint`.
+#
+# The deploy jobs run on the k8s cluster's own runner, a label actionlint can't
+# know about; without this every one of them reports an unknown-label error and
+# buries the real findings.
+self-hosted-runner:
+  labels:
+    - k8s

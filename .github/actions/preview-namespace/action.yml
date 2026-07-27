@@ -1,0 +1,108 @@
+name: Preview namespace
+description: >
+  Create (idempotently) the per-branch preview namespace and everything every
+  preview workload needs in it: scoped deployer RBAC, default-deny network
+  policies with DNS + Traefik holes punched, and a copy of the wildcard TLS
+  secret. Both Preview Deploy and TV Gallery land in the same namespace and
+  either can get there first (a native-only branch deploys a gallery with no app
+  preview), so both apply the whole set. Kept here so the two can't drift.
+
+  Requires kubectl on PATH and KUBECONFIG already exported by the caller.
+
+inputs:
+  namespace:
+    description: Namespace to create and prepare (see the branch-slug action).
+    required: true
+  traefik-cidr:
+    description: Source CIDR allowed to reach pods in the namespace (the ingress controller).
+    required: false
+    default: 192.168.1.115/32
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        NS: ${{ inputs.namespace }}
+        TRAEFIK_CIDR: ${{ inputs.traefik-cidr }}
+      run: |
+        set -euo pipefail
+
+        kubectl get ns "$NS" >/dev/null 2>&1 || kubectl create ns "$NS"
+
+        # Grant the deployer SA permissions in this namespace (scoped RBAC).
+        cat <<'RBAC' | kubectl apply -n "$NS" -f -
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata:
+          name: stacker-deployer
+        roleRef:
+          apiGroup: rbac.authorization.k8s.io
+          kind: ClusterRole
+          name: stacker-preview-resources
+        subjects:
+        - kind: ServiceAccount
+          name: stacker-deployer
+          namespace: github-runner
+        RBAC
+
+        # Network policies: default-deny + allow DNS + allow traefik ingress.
+        cat <<NETPOL | kubectl apply -n "$NS" -f -
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        metadata:
+          name: default-deny-all
+        spec:
+          podSelector: {}
+          policyTypes:
+          - Ingress
+          - Egress
+        ---
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        metadata:
+          name: allow-dns
+        spec:
+          podSelector: {}
+          policyTypes:
+          - Egress
+          egress:
+          - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: kube-system
+            ports:
+            - protocol: UDP
+              port: 53
+            - protocol: TCP
+              port: 53
+        ---
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        metadata:
+          name: allow-ingress-from-traefik
+        spec:
+          podSelector: {}
+          policyTypes:
+          - Ingress
+          ingress:
+          - from:
+            - ipBlock:
+                cidr: ${TRAEFIK_CIDR}
+            ports:
+            - protocol: TCP
+        NETPOL
+
+        # Copy the wildcard cert in: IngressRoutes reference it per namespace.
+        TLS_CRT=$(kubectl get secret hexstacker-wildcard-tls -n default -o jsonpath='{.data.tls\.crt}')
+        TLS_KEY=$(kubectl get secret hexstacker-wildcard-tls -n default -o jsonpath='{.data.tls\.key}')
+        cat <<EOS | kubectl apply -n "$NS" -f -
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: hexstacker-wildcard-tls
+        type: kubernetes.io/tls
+        data:
+          tls.crt: ${TLS_CRT}
+          tls.key: ${TLS_KEY}
+        EOS
