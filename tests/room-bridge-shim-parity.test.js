@@ -20,6 +20,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -59,6 +60,83 @@ test('the room API exposes exactly the four entry points both shells rely on', (
     assert.ok(new RegExp(`\\b${method}:\\s*function`).test(api), `missing ${method}`);
   }
 });
+
+// Both shims are JS embedded in Swift/Kotlin string literals, so nothing on
+// either platform type-checks them: a typo only shows up when a real device
+// runs the room API. Pull each one out, run it on top of the real bundle in a
+// bare VM (no require/window/DOM/timers, like JavaScriptCore and QuickJS), and
+// drive the room through it exactly as the shells will.
+function extractShim(src, open, close) {
+  const start = src.indexOf(open);
+  assert.ok(start >= 0, `shim opening marker not found: ${open}`);
+  const from = start + open.length;
+  const end = src.indexOf(close, from);
+  assert.ok(end >= 0, 'shim closing marker not found');
+  return src.slice(from, end);
+}
+
+const SHIMS = {
+  tvOS: () => extractShim(SWIFT, 'private static let bootstrapJS = """\n', '\n    """'),
+  Android: () => {
+    // Kotlin uses trimIndent() at runtime; the leading indentation is uniform,
+    // so stripping it here reproduces what QuickJS actually evaluates.
+    const raw = extractShim(KOTLIN, 'val SHIM: String = """\n', '\n    """.trimIndent()');
+    return raw.replace(/^ {4}/gm, '');
+  },
+};
+
+for (const [platform, getShim] of Object.entries(SHIMS)) {
+  test(`the ${platform} shim's room API works against the real bundle in a bare VM`, () => {
+    const bundle = path.join(ROOT, 'dist', 'partycore.js');
+    assert.ok(fs.existsSync(bundle), 'dist/partycore.js missing — run `npm run build` first');
+
+    const ctx = vm.createContext({});
+    vm.runInContext(fs.readFileSync(bundle, 'utf8'), ctx);
+    vm.runInContext(getShim(), ctx);
+
+    const call = (js) => JSON.parse(vm.runInContext(js, ctx));
+
+    // Reading before roomInit must fail loudly rather than return an empty room:
+    // a shell that publishes a blank snapshot looks like an emptied lobby to
+    // every controller, which is worse than an error in the log.
+    assert.throws(() => vm.runInContext('Bridge.roomSnapshotJSON()', ctx), /roomInit/);
+
+    vm.runInContext('Bridge.roomInit(JSON.stringify({ rngSeed: 3 }))', ctx);
+
+    assert.deepEqual(
+      call('Bridge.roomCall("peerJoined", JSON.stringify([1, 1000]))'),
+      { added: true, colorIndex: 0, joinedLobby: true, publish: 'now' }
+    );
+    call('Bridge.roomCall("hello", JSON.stringify([1, { name: "Ann", colorIndex: 4 }, 1100]))');
+    assert.equal(
+      call('Bridge.roomCall("setLevel", JSON.stringify([1, 9]))').publish,
+      'soon',
+      'the throttle hint has to survive the bridge, or the natives publish on every tap'
+    );
+
+    const snap = call('Bridge.roomSnapshotJSON()');
+    assert.equal(snap.players['1'].name, 'Ann');
+    assert.equal(snap.players['1'].color, 4);
+    assert.equal(snap.players['1'].startLevel, 9);
+    assert.equal(call('Bridge.roomGet("host")'), 1);
+    assert.equal(call('Bridge.roomGet("state")'), 'lobby');
+
+    // A void method must marshal as null, not undefined: Android decodes the
+    // completion value and `undefined` has no JSON representation.
+    assert.equal(call('Bridge.roomCall("setResults", JSON.stringify([null]))'), null);
+
+    // A name carrying a quote, a backslash and a control character has to
+    // survive the round trip. On Android this string is spliced into evaluated
+    // SOURCE, which is what jsString() exists to make safe.
+    const nasty = 'a"b\\cd';
+    vm.runInContext(
+      `Bridge.roomCall("setName", ${JSON.stringify(JSON.stringify([1, nasty]))})`, ctx);
+    assert.equal(call('Bridge.roomSnapshotJSON()').players['1'].name, 'a"b\\cd',
+      'control char stripped, quote and backslash preserved');
+
+    assert.throws(() => vm.runInContext('Bridge.roomCall("noSuchMethod", "[]")', ctx), /no method/);
+  });
+}
 
 test('the shim reaches RoomBrain through the bundle global, which the bundle exports', () => {
   // If core-entry.js ever stops exporting RoomBrain, both shells break at
