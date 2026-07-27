@@ -21,9 +21,14 @@ enum FrameParsing {
 
     static func frameResult(_ json: Any, gridCache: inout [Int: [[Int]]]) throws -> FrameResult {
         guard let dict = json as? [String: Any] else { throw ParseError(field: "frame") }
+        // Absent `snapshot`: the frame was render-identical to the last delivered
+        // one, so PartyCore omitted it (deliverFrame). Nothing to decode, and the
+        // grid cache stays as it is — the next delivered snapshot strips against
+        // exactly what this host last saw.
+        let snap = dict["snapshot"]
         return FrameResult(
             events: try (dict["events"] as? [Any] ?? []).map { try event($0) },
-            snapshot: try gameSnapshot(dict["snapshot"] ?? [:], gridCache: &gridCache),
+            snapshot: snap == nil ? nil : try gameSnapshot(snap!, gridCache: &gridCache),
             commands: try (dict["commands"] as? [Any] ?? []).map { try command($0) })
     }
 
@@ -110,9 +115,7 @@ enum FrameParsing {
             lines: int(d["lines"]),
             blocks: try value(d["blocks"]).map { try cells($0, "command.blocks") },
             clearCells: try value(d["clearCells"]).map { try cells($0, "command.clearCells") },
-            level: int(d["level"]),
             alive: bool(d["alive"]),
-            garbageIncoming: int(d["garbageIncoming"]),
             elapsed: double(d["elapsed"]),
             results: try value(d["results"]).map { json -> [PlayerResult] in
                 guard let arr = json as? [Any] else { throw ParseError(field: "command.results") }

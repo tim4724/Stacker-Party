@@ -157,18 +157,20 @@ public struct HostCommand: Decodable, Equatable {
     public let lines: Int?         // lineClear / playerState / garbageCancelled / garbageSent
     public let blocks: [Cell]?     // pieceLock
     public let clearCells: [Cell]? // lineClear
-    public let level: Int?         // playerState (full)
     public let alive: Bool?        // playerState
-    public let garbageIncoming: Int?    // playerState (full form)
     public let elapsed: Double?         // gameEnd
     public let results: [PlayerResult]? // gameEnd (raw, pre-enrichment)
 }
 
-/// The result of one `PartyCore.frame()` pull: this frame's complete event
+/// The result of one `PartyCore.deliverFrame()` pull: this frame's complete event
 /// record, a value-copy snapshot, and the normalized host-effect commands.
+///
+/// `snapshot` is nil when the frame is render-identical to the previously
+/// delivered one (PartyCore's scene signature) — keep drawing the retained
+/// snapshot; events and commands always arrive in full.
 public struct FrameResult: Decodable {
     public let events: [GameEvent]
-    public let snapshot: GameSnapshot
+    public let snapshot: GameSnapshot?
     public let commands: [HostCommand]
 }
 

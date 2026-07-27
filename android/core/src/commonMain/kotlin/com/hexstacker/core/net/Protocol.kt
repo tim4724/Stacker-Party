@@ -256,9 +256,8 @@ object OutboundMessage {
     }
 
     fun error(message: String): JsonObject = buildJsonObject { put("type", Msg.ERROR); put("message", message) }
-    fun playerState(level: Int, lines: Int, alive: Boolean, garbageIncoming: Int): JsonObject = buildJsonObject {
-        put("type", Msg.PLAYER_STATE); put("level", level); put("lines", lines)
-        put("alive", alive); put("garbageIncoming", garbageIncoming)
+    fun playerState(lines: Int, alive: Boolean): JsonObject = buildJsonObject {
+        put("type", Msg.PLAYER_STATE); put("lines", lines); put("alive", alive)
     }
 
     fun playerDead(): JsonObject = buildJsonObject { put("type", Msg.PLAYER_STATE); put("alive", false) }

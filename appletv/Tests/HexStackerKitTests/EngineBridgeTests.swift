@@ -84,15 +84,16 @@ import Foundation
         try engine.createGame(players: [(id: 0, startLevel: 1)], seed: 7)
 
         // First frame primes the clock (deltaMs = 0): the engine does not advance.
-        let primed = try engine.frame(nowMs: 1000)
-        #expect(primed.snapshot.players.count == 1)
-        #expect(primed.snapshot.elapsed == 0)
+        let primed = try #require(try engine.frame(nowMs: 1000).snapshot)
+        #expect(primed.players.count == 1)
+        #expect(primed.elapsed == 0)
 
         // A hard drop then a frame surfaces both the raw piece_lock event and the
         // normalized pieceLock command from the same pull, carrying equal data.
         engine.processInput(playerId: 0, action: "hard_drop")
         let f = try engine.frame(nowMs: 1016)
-        #expect(f.snapshot.elapsed > 0)   // the capped delta advanced the clock
+        let moved = try #require(f.snapshot)
+        #expect(moved.elapsed > 0)   // the capped delta advanced the clock
 
         let lockEvent = try #require(f.events.first { $0.type == "piece_lock" })
         let lockCmd = try #require(f.commands.first { $0.type == "pieceLock" })
@@ -101,17 +102,33 @@ import Foundation
         #expect(lockCmd.blocks == lockEvent.blocks)
 
         // resetFrameClock re-primes: a large nowMs jump is absorbed as a 0-delta
-        // priming frame instead of a catch-up tick.
-        let elapsedBefore = f.snapshot.elapsed
+        // priming frame instead of a catch-up tick. Nothing advanced, so that
+        // frame is render-identical and arrives without a snapshot — the clock is
+        // read back through the out-of-band pull, which always returns one.
+        let elapsedBefore = moved.elapsed
         engine.resetFrameClock()
-        let reprimed = try engine.frame(nowMs: 5000)
-        #expect(reprimed.snapshot.elapsed == elapsedBefore)
+        #expect(try engine.frame(nowMs: 5000).snapshot == nil)
+        #expect(try engine.snapshot().elapsed == elapsedBefore)
     }
 
-    /// The shim strips a player's `grid` from frame()/snapshot() payloads while
-    /// its gridVersion is unchanged, and the bridge re-attaches the cached rows:
-    /// consumers must see a full, CURRENT grid on every pull regardless of how
-    /// the strip/resend cycle interleaves.
+    /// PartyCore delivers a snapshot only when the frame would look different
+    /// (`deliverFrame` / `sceneSig`), so an idle 60 Hz tick costs no serialize,
+    /// no decode and no repaint. Events and commands are never filtered.
+    @Test func renderIdenticalFrameArrivesWithoutASnapshot() throws {
+        let engine = try makeBridge()
+        try engine.createGame(players: [(id: 0, startLevel: 1)], seed: 7)
+
+        #expect(try engine.frame(nowMs: 0).snapshot != nil)   // opening scene
+        #expect(try engine.frame(nowMs: 1).snapshot == nil)   // 1ms later: nothing moved
+
+        engine.processInput(playerId: 0, action: "hard_drop")
+        #expect(try engine.frame(nowMs: 17).snapshot != nil)  // the board changed
+    }
+
+    /// PartyCore strips a player's `grid` from the delivered frame()/snapshot()
+    /// payloads while its gridVersion is unchanged, and the bridge re-attaches the
+    /// cached rows: consumers must see a full, CURRENT grid on every pull
+    /// regardless of how the strip/resend cycle interleaves.
     @Test func gridSurvivesStripAndResendCycle() throws {
         let engine = try makeBridge()
         try engine.createGame(players: [(id: 0, startLevel: 1)], seed: 7)
@@ -122,12 +139,13 @@ import Foundation
         #expect(second.grid == first.grid)
 
         engine.processInput(playerId: 0, action: "hard_drop")
-        let locked = try engine.frame(nowMs: 16).snapshot.players[0]   // version bumped: grid re-sent
+        // Version bumped, so this frame is delivered and re-sends the grid.
+        let locked = try #require(try engine.frame(nowMs: 16).snapshot).players[0]
         #expect(locked.gridVersion != first.gridVersion)
         #expect(locked.grid != first.grid, "the locked piece must land in the re-sent grid")
         #expect(!locked.grid.flatMap { $0 }.filter { $0 != 0 }.isEmpty)
 
-        let after = try engine.frame(nowMs: 32).snapshot.players[0]    // stripped again: cache is current
+        let after = try engine.snapshot().players[0]    // stripped again: cache is current
         #expect(after.grid == locked.grid)
     }
 

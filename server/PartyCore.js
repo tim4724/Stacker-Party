@@ -79,6 +79,10 @@ function PartyCore(players, seed) {
   var self = this;
   this._buf = [];
   this._prevNowMs = null;
+  // Delivery ledgers — see deliverFrame/deliverSnapshot. Per-instance, so a new
+  // match starts with both cleared and neither can leak across games.
+  this._sentGridVersions = {};
+  this._lastSceneSig = null;
   // Game pushes synchronously into our buffer; we surface it on the next drain.
   // This inverts the host-callback push into a PULL-ONLY drained array, folding
   // the SEPARATE onGameEnd terminal callback into the same ordered buffer.
@@ -118,7 +122,16 @@ PartyCore.prototype.resume = function() {
 // garbage, cooldown) from oldId to newId. The host (display) calls this when a
 // dropped player reclaims their slot under a new peer index.
 PartyCore.prototype.rekeyPlayer = function(oldId, newId) {
-  return this.game.rekeyPlayer(oldId, newId);
+  var ok = this.game.rekeyPlayer(oldId, newId);
+  if (ok) {
+    // The board moved ids, so both delivery ledgers are stale: forget the sent
+    // grid versions (the next delivery re-sends full rows under the new id) and
+    // void the scene signature (it keys on player ids).
+    delete this._sentGridVersions[oldId];
+    delete this._sentGridVersions[newId];
+    this._lastSceneSig = null;
+  }
+  return ok;
 };
 
 // Individually callable; native ticks the engine at vsync. Game.update
@@ -167,17 +180,101 @@ PartyCore.prototype.frame = function(nowMs) {
   if (deltaMs > 0) this.game.update(deltaMs);
   var events = this.drainEvents();
   var snapshot = this.snapshot();
-  var commands = PartyCore._toCommands(events, snapshot);
+  var commands = PartyCore.toCommands(events, snapshot);
   return { events: events, snapshot: snapshot, commands: commands };
 };
 
-// Normalize this frame's events + value-copy snapshot into a serializable
-// host-effect list. PURE: depends only on its args (no instance, no cross-frame
-// state). Ordering within an event mirrors the web DisplayGame handler so a host
-// replaying commands in array order reproduces today's effects. garbageIncoming is pre-resolved from the
-// snapshot (board-pending + delayed GarbageManager queue), removing the host's
-// mid-event getSnapshot.
-PartyCore._toCommands = function(events, snapshot) {
+// =====================================================================
+// Delivery filter — what a native host actually receives per frame.
+//
+// frame()/snapshot() above are the complete truth. Handing all of it across the
+// JS<->native boundary 60 times a second is mostly waste: the grid dominates the
+// serialized payload but only changes on a lock/clear/garbage insert, and most
+// frames are render-identical to the one before (pieces move in discrete cells).
+// deliverFrame/deliverSnapshot apply both filters and carry the small ledgers
+// that make them work.
+//
+// This lives HERE, not in each host's bootstrap shim, because it is the same
+// decision on every platform and it drifted once already: the Android shim grew
+// the scene-signature skip while the tvOS one kept re-serializing every frame,
+// and nothing caught it (each platform only tested its own copy). The shims are
+// now thin marshalling, gated token-identical by
+// tests/room-bridge-shim-parity.test.js.
+// =====================================================================
+
+// Signature of everything a renderer draws FROM A SNAPSHOT. Two frames with the
+// same signature paint the same picture, so the second needn't be delivered.
+// PURE (no instance state), so a host can call it on any snapshot.
+//
+// Derived values are covered by their sources: ghost and nextPieces follow the
+// current piece and gridVersion, and clearingCells only change alongside a
+// gridVersion bump. cells[0] uniquely identifies rotation for every hex piece
+// type (the same invariant the web clear-preview cache relies on). Time-driven
+// visuals (near-clear pulse, clearing glow, effects) are deliberately EXCLUDED:
+// hosts treat those as "must animate" and keep drawing without new snapshots.
+// The elapsed term repaints the match timer once per second.
+PartyCore.sceneSig = function(snapshot) {
+  var sig = '' + Math.floor(snapshot.elapsed / 1000);
+  for (var i = 0; i < snapshot.players.length; i++) {
+    var p = snapshot.players[i];
+    sig += '|' + p.id + ':' + (p.alive ? 1 : 0) + ':' + p.lines + ':' + p.level
+      + ':' + p.pendingGarbage + ':' + p.gridVersion + ':' + (p.holdPiece || '');
+    var cp = p.currentPiece;
+    if (cp) sig += ':' + cp.typeId + ':' + cp.anchorCol + ':' + cp.anchorRow
+      + ':' + cp.cells[0].q + ':' + cp.cells[0].r;
+  }
+  return sig;
+};
+
+// Drop each player's `grid` while its gridVersion is unchanged since the last
+// delivery, and remember what was delivered. Hosts re-attach the rows they
+// cached (EngineBridge on both native platforms). Safe to delete: the snapshot
+// is already a value copy, so nothing engine-side is aliased.
+PartyCore.prototype._stripUnchangedGrids = function(snapshot) {
+  for (var i = 0; i < snapshot.players.length; i++) {
+    var p = snapshot.players[i];
+    if (this._sentGridVersions[p.id] === p.gridVersion) delete p.grid;
+    else this._sentGridVersions[p.id] = p.gridVersion;
+  }
+  return snapshot;
+};
+
+// snapshot() for delivery: grid-stripped, ledger updated. Does NOT touch the
+// scene signature — an out-of-band pull is not a delivered frame, and the next
+// frame must still be judged against the last one the host actually rendered.
+PartyCore.prototype.deliverSnapshot = function() {
+  return this._stripUnchangedGrids(this.snapshot());
+};
+
+// frame() for delivery. Events and commands always ride in full; the snapshot is
+// OMITTED (the key is absent) when this frame is render-identical to the last
+// delivered one, and grid-stripped otherwise. On omission both ledgers are left
+// untouched: the host never saw this snapshot, so the next delivered one must
+// still strip against what it did see.
+PartyCore.prototype.deliverFrame = function(nowMs) {
+  var f = this.frame(nowMs);
+  var sig = PartyCore.sceneSig(f.snapshot);
+  if (sig === this._lastSceneSig) {
+    delete f.snapshot;
+  } else {
+    this._lastSceneSig = sig;
+    this._stripUnchangedGrids(f.snapshot);
+  }
+  return f;
+};
+
+// Normalize a frame's events + snapshot into a serializable host-effect list:
+// what each engine event MEANS for the room and the controllers, decided once
+// for every display. All three call it — the TVs through frame(), the web
+// directly from its rAF step (DisplayGame.stepEngine) — so a host that replays
+// commands in array order reproduces the same effects everywhere. Only the
+// effects themselves (which socket, which animation) stay per-shell.
+//
+// PURE: depends only on its args (no instance, no cross-frame state), so the web
+// can hand it the live zero-copy getSnapshot() it already renders from. The
+// snapshot is read for the post-update per-player figures a line clear reports;
+// it is sampled once by the caller rather than mid-event by each host.
+PartyCore.toCommands = function(events, snapshot) {
   var commands = [];
   for (var i = 0; i < events.length; i++) {
     var e = events[i];
@@ -201,24 +298,14 @@ PartyCore._toCommands = function(events, snapshot) {
           if (snapshot.players[j].id === e.playerId) { p = snapshot.players[j]; break; }
         }
         if (p) {
+          // Read post-update (the caller samples the snapshot once, after the
+          // engine tick), so a clear that also tops the player out reports
+          // alive:false here rather than a frame late.
           commands.push({
             type: 'playerState',
             playerId: e.playerId,
-            level: p.level,
             lines: p.lines,
-            alive: p.alive,
-            // KNOWN DIVERGENCE from the web (accepted, not a bug): garbageIncoming
-            // here reads from `snapshot`, which frame() captured AFTER
-            // game.update() returned, i.e. after Game.handleLineClear() applied
-            // this clear's defense and cancelled incoming garbage. The web
-            // (DisplayGame.js) instead samples getSnapshot() synchronously inside
-            // the line_clear onEvent, which fires at the TOP of handleLineClear
-            // (Game.js) BEFORE defense runs. So for a clear that cancels incoming
-            // garbage, native reports the reduced POST-cancellation amount while
-            // the web reports the PRE-cancellation amount. Native's value is the
-            // more accurate one; changing it would need an engine-integration hook
-            // and would break the partycore-commands golden fixture.
-            garbageIncoming: p.pendingGarbage
+            alive: p.alive
           });
         }
         break;

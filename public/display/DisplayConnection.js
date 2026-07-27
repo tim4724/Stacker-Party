@@ -528,8 +528,11 @@ var _lastPublishAt = 0;
 
 // Apply a mutator's publish hint. Keeps the three-way decision in one place so
 // call sites read as "do the thing, then honour the hint".
-// Hints, weakest first. Only used to fold a batch down to its strongest.
-var HINT_RANK = { none: 0, soon: 1, now: 2 };
+// The hint vocabulary and their strength ordering both come from the room core,
+// which is what decides which mutation earns which hint; tvOS and Android read
+// the same two things off it (statically here, via roomGet on the bridges).
+var PUBLISH = window.GameEngine.RoomCore.PUBLISH;
+var HINT_RANK = window.GameEngine.RoomCore.PUBLISH_RANK;
 // Non-null only while publishBatch's block is running: the hint the batch has
 // accumulated so far. Doubles as the "are we batching" flag.
 var _batchHint = null;
@@ -537,11 +540,17 @@ var _batchHint = null;
 function publishAs(hint) {
   if (_batchHint !== null) {
     // Inside a batch: fold instead of publishing. Strongest wins.
-    if (HINT_RANK[hint] > HINT_RANK[_batchHint]) _batchHint = hint;
+    if (hintRank(hint) > hintRank(_batchHint)) _batchHint = hint;
     return;
   }
-  if (hint === 'now') publishRoomState();
-  else if (hint === 'soon') publishRoomStateSoon();
+  if (hint === PUBLISH.NOW) publishRoomState();
+  else if (hint === PUBLISH.SOON) publishRoomStateSoon();
+}
+
+// Unknown/absent hints rank as 'none', so a mutator that returns nothing can
+// never strengthen a batch.
+function hintRank(hint) {
+  return HINT_RANK[hint] || 0;
 }
 
 // Run a group of room changes as ONE change: everything inside publishes once,
@@ -564,7 +573,7 @@ function publishAs(hint) {
 // runs from a finally, so a throw mid-block still ships what did change and can
 // never leave the fold armed. tvOS and Android carry the same wrapper verbatim.
 function publishBatch(floor, fn) {
-  if (typeof floor === 'function') { fn = floor; floor = 'none'; }
+  if (typeof floor === 'function') { fn = floor; floor = PUBLISH.NONE; }
   _batchHint = floor;
   try {
     fn();

@@ -73,6 +73,12 @@ declare class PartyCore {
    *  can't drift. Value: 50. */
   static MAX_FRAME_DELTA_MS: number;
 
+  /** Signature of everything a renderer draws from a snapshot: equal signatures
+   *  paint the same picture. Pure. `deliverFrame()` uses it to skip delivering a
+   *  render-identical frame; exposed so a host can apply the same test to a
+   *  snapshot it obtained some other way. */
+  static sceneSig(snapshot: PartyCore.Snapshot): string;
+
   /** The wrapped Game engine. Internal/white-box (tests reach into `game.boards`
    *  / `game.garbageManager`); NOT part of the native contract — drive PartyCore
    *  through the methods below. */
@@ -155,6 +161,27 @@ declare class PartyCore {
    * @param nowMs Monotonic timestamp (ms). Only deltas matter; the origin is free.
    */
   frame(nowMs: number): PartyCore.FrameResult;
+
+  // --- delivery (what a native host should actually pull) --------------------
+  /**
+   * `frame()` filtered for the JS<->native boundary, and what both TV ports call
+   * every tick. Events and commands always ride in full; the `snapshot` is
+   *
+   *   - ABSENT when this frame is render-identical to the last delivered one
+   *     (see `PartyCore.sceneSig`) — keep rendering the retained snapshot, and
+   *     skip both the decode and the repaint;
+   *   - otherwise present, with each player's `grid` OMITTED while its
+   *     `gridVersion` is unchanged since the last delivery. The host re-attaches
+   *     the rows it cached (both EngineBridge implementations do).
+   *
+   * Both filters are stateful (per instance, reset by a new game and by
+   * `rekeyPlayer`), which is exactly why they live here rather than in each
+   * host's bootstrap shim.
+   */
+  deliverFrame(nowMs: number): PartyCore.DeliveredFrame;
+  /** `snapshot()` with the same grid stripping `deliverFrame` applies. Does NOT
+   *  affect the scene signature: an out-of-band pull is not a delivered frame. */
+  deliverSnapshot(): PartyCore.DeliveredSnapshot;
 }
 
 declare namespace PartyCore {
@@ -170,6 +197,19 @@ declare namespace PartyCore {
   interface FrameResult {
     events: EngineEvent[];
     snapshot: Snapshot;
+    commands: HostCommand[];
+  }
+
+  /** A snapshot as DELIVERED: `grid` is absent on players whose rows the host
+   *  already holds (unchanged `gridVersion`). */
+  type DeliveredSnapshot = Omit<Snapshot, 'players'> & {
+    players: (Omit<PlayerSnapshot, 'grid'> & { grid?: number[][] })[];
+  };
+
+  /** `deliverFrame()`: `snapshot` absent on a render-identical frame. */
+  interface DeliveredFrame {
+    events: EngineEvent[];
+    snapshot?: DeliveredSnapshot;
     commands: HostCommand[];
   }
 
@@ -317,26 +357,22 @@ declare namespace PartyCore {
     lines: number;
   }
   /**
-   * Player HUD state. Emitted in two forms:
-   *   - after `line_clear`: the full form (level, lines, alive, garbageIncoming).
+   * The per-player facts a controller acts on the instant they change, rather
+   * than on the next retained-snapshot push. Emitted in two forms:
+   *   - after `line_clear`: `{ lines, alive }` (alive can be false, when the same
+   *     frame's clear also topped the player out).
    *   - after `player_ko`: only `{ alive: false }`.
+   *
+   * Deliberately NOT the player's whole HUD: `level` and a pre-resolved
+   * `garbageIncoming` used to ride along here and no controller ever read either,
+   * so they were dropped rather than kept "for completeness". Anything a
+   * controller needs on reconnect belongs in the room snapshot, not here.
    */
   interface PlayerStateCommand {
     type: 'playerState';
     playerId: string;
-    level?: number;
     lines?: number;
     alive?: boolean;
-    /** Pre-resolved incoming garbage (board-pending + delayed queue), from the
-     *  snapshot, saving the host a mid-event getSnapshot. Full form only.
-     *
-     *  KNOWN DIVERGENCE from the web (accepted, not a bug): this reads the
-     *  POST-frame snapshot, taken after Game.handleLineClear() applied this
-     *  clear's defense, so it reflects the reduced (post-cancellation) amount.
-     *  The web (DisplayGame.js) samples it synchronously inside the line_clear
-     *  event, which fires BEFORE defense runs, so it reports the pre-cancellation
-     *  amount. Native's value is the more accurate one; see PartyCore.js. */
-    garbageIncoming?: number;
   }
   interface PlayerKOCommand {
     type: 'playerKO';

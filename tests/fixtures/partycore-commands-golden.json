@@ -146,10 +146,8 @@
             {
               "type": "playerState",
               "playerId": "p1",
-              "level": 1,
               "lines": 1,
-              "alive": true,
-              "garbageIncoming": 0
+              "alive": true
             },
             {
               "type": "garbageCancelled",
@@ -382,10 +380,8 @@
             {
               "type": "playerState",
               "playerId": "p1",
-              "level": 1,
               "lines": 2,
-              "alive": true,
-              "garbageIncoming": 0
+              "alive": true
             },
             {
               "type": "garbageSent",

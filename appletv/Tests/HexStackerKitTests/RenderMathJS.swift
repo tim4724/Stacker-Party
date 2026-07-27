@@ -1,5 +1,6 @@
 import Foundation
 import JavaScriptCore
+import HexStackerKit
 
 /// Loads the WEB renderer's actual math (geometry, palette, color utilities,
 /// style tiers) from the canonical JS files into JavaScriptCore and exposes it
@@ -11,13 +12,17 @@ import JavaScriptCore
 /// Loads: server/constants.js (computeHexGeometry), public/shared/theme.js
 /// (PIECE_COLORS / PLAYER_COLORS / getStyleTier), public/shared/CanvasUtils.js
 /// (lightenColor / darkenColor / ghostColor).
-public final class RenderMathJS {
+///
+/// TEST TARGET ONLY, like the Android twin (jvmTest's RenderMathJs.kt): it reads
+/// JS out of the repo working tree, which no shipped app has, so it has no
+/// business compiling into the kit the app links.
+final class RenderMathJS {
 
-    public enum ParityError: Error { case load(String), eval(String) }
+    enum ParityError: Error { case load(String), eval(String) }
 
     private let ctx: JSContext
 
-    public init(serverDir: URL, sharedDir: URL) throws {
+    init(serverDir: URL, sharedDir: URL) throws {
         guard let ctx = JSContext() else { throw ParityError.load("no JSContext") }
         self.ctx = ctx
         var thrown: String?
@@ -78,9 +83,9 @@ public final class RenderMathJS {
         if let e = thrown { throw ParityError.eval(e) }
     }
 
-    public struct Geometry { public let hexSize, hexH, colW, boardWidth, boardHeight: Double }
+    struct Geometry { let hexSize, hexH, colW, boardWidth, boardHeight: Double }
 
-    public func geometry(cellSize: Double) -> Geometry {
+    func geometry(cellSize: Double) -> Geometry {
         let g = ctx.evaluateScript("__geom(\(cellSize))")!
         return Geometry(
             hexSize: g.objectForKeyedSubscript("hexSize").toDouble(),
@@ -90,12 +95,12 @@ public final class RenderMathJS {
             boardHeight: g.objectForKeyedSubscript("boardHeight").toDouble())
     }
 
-    public func hexCenter(col: Int, row: Int, cellSize: Double) -> (x: Double, y: Double) {
+    func hexCenter(col: Int, row: Int, cellSize: Double) -> (x: Double, y: Double) {
         let arr = ctx.evaluateScript("__center(\(col),\(row),\(cellSize))")!.toArray() as! [NSNumber]
         return (arr[0].doubleValue, arr[1].doubleValue)
     }
 
-    public func pieceColors() -> [Int: RGB] {
+    func pieceColors() -> [Int: RGB] {
         let json = ctx.evaluateScript("JSON.stringify(__PIECE_COLORS)")!.toString()!
         let dict = (try? JSONDecoder().decode([String: String].self, from: Data(json.utf8))) ?? [:]
         var out: [Int: RGB] = [:]
@@ -103,48 +108,48 @@ public final class RenderMathJS {
         return out
     }
 
-    public func playerColors() -> [RGB] {
+    func playerColors() -> [RGB] {
         let json = ctx.evaluateScript("JSON.stringify(__PLAYER_COLORS)")!.toString()!
         let arr = (try? JSONDecoder().decode([String].self, from: Data(json.utf8))) ?? []
         return arr.compactMap { RGB(hex: $0) }
     }
 
-    public func styleTier(level: Int) -> String {
+    func styleTier(level: Int) -> String {
         ctx.evaluateScript("__getStyleTier(\(level))")!.toString()!
     }
 
     // MARK: Engine constants (constants.js): drift guard for EngineConstants
 
     /// A numeric export of `window.GameConstants` (e.g. "MAX_PLAYERS").
-    public func numericConstant(_ name: String) -> Double {
+    func numericConstant(_ name: String) -> Double {
         ctx.evaluateScript("window.GameConstants.\(name)")!.toDouble()
     }
 
-    public func pieceTypes() -> [String] {
+    func pieceTypes() -> [String] {
         let json = ctx.evaluateScript("JSON.stringify(window.GameConstants.PIECE_TYPES)")!.toString()!
         return (try? JSONDecoder().decode([String].self, from: Data(json.utf8))) ?? []
     }
 
-    public func pieceTypeToId() -> [String: Int] {
+    func pieceTypeToId() -> [String: Int] {
         let json = ctx.evaluateScript("JSON.stringify(window.GameConstants.PIECE_TYPE_TO_ID)")!.toString()!
         return (try? JSONDecoder().decode([String: Int].self, from: Data(json.utf8))) ?? [:]
     }
 
     // MARK: Zigzag clear detection (constants.js)
 
-    public func clearable(grid: [[Int]], cols: Int, ghost: [Cell]?) -> [Cell] {
+    func clearable(grid: [[Int]], cols: Int, ghost: [Cell]?) -> [Cell] {
         let ghostJS = ghost.map { "[" + $0.map { "[\($0.col),\($0.row)]" }.joined(separator: ",") + "]" } ?? "null"
         let call = "JSON.stringify(__clearable(\(Self.gridJS(grid)),\(cols),\(ghostJS)))"
         return Self.parseCells(ctx.evaluateScript(call)!.toString()!)
     }
 
-    public func nearClear(grid: [[Int]], cols: Int) -> [Cell] {
+    func nearClear(grid: [[Int]], cols: Int) -> [Cell] {
         let call = "JSON.stringify(__nearClear(\(Self.gridJS(grid)),\(cols)))"
         return Self.parseCells(ctx.evaluateScript(call)!.toString()!)
     }
 
     /// computeHexOutlineVerts (constants.js): the board wall / well-clip ring.
-    public func outline(cellSize: Double, outset: Double) -> [(x: Double, y: Double)] {
+    func outline(cellSize: Double, outset: Double) -> [(x: Double, y: Double)] {
         let json = ctx.evaluateScript("JSON.stringify(__outline(\(cellSize),\(outset)))")!.toString()!
         guard let pairs = try? JSONDecoder().decode([[Double]].self, from: Data(json.utf8)) else { return [] }
         return pairs.compactMap { $0.count == 2 ? (x: $0[0], y: $0[1]) : nil }
@@ -160,17 +165,17 @@ public final class RenderMathJS {
         return pairs.compactMap { $0.count == 2 ? Cell(col: $0[0], row: $0[1]) : nil }
     }
 
-    public func lighten(_ hex: String, _ percent: Double) -> RGB? {
+    func lighten(_ hex: String, _ percent: Double) -> RGB? {
         Self.parseRGB(ctx.evaluateScript("__lighten('\(hex)',\(percent))")!.toString()!)
     }
 
-    public func darken(_ hex: String, _ percent: Double) -> RGB? {
+    func darken(_ hex: String, _ percent: Double) -> RGB? {
         Self.parseRGB(ctx.evaluateScript("__darken('\(hex)',\(percent))")!.toString()!)
     }
 
-    public struct Ghost { public let rgb: RGB; public let outlineAlpha: Double; public let fillAlpha: Double }
+    struct Ghost { let rgb: RGB; let outlineAlpha: Double; let fillAlpha: Double }
 
-    public func ghost(_ hex: String) -> Ghost? {
+    func ghost(_ hex: String) -> Ghost? {
         let json = ctx.evaluateScript("JSON.stringify(__ghost('\(hex)'))")!.toString()!
         guard let dict = try? JSONDecoder().decode([String: String].self, from: Data(json.utf8)),
               let outline = dict["outline"], let fill = dict["fill"],

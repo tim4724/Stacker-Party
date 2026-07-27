@@ -1,20 +1,21 @@
 'use strict';
 
-// The two native JS shims must expose an IDENTICAL room API.
+// The two native JS shims must be IDENTICAL.
 //
 // tvOS (EngineBridge.swift `bootstrapJS`) and Android TV (EngineBootstrap.kt
 // `SHIM`) each embed a hand-written JS shim that flattens `HexCore.*` into a
-// JSON-in/JSON-out method table. The engine halves of those two shims have
-// already drifted from each other in production (Android grew a scene-signature
-// fast path and read guards; tvOS grew `update`, `rekeyPlayer` and the gallery
-// accessors) and nothing caught it, because each platform only ever tests its
-// own copy.
+// JSON-in/JSON-out method table. Only the ROOM half used to be gated, and the
+// engine halves duly drifted in production: Android grew a scene-signature fast
+// path (skip delivering a render-identical frame) that tvOS never got, so one TV
+// re-serialized and re-decoded a full snapshot 60 times a second for frames that
+// painted the same picture. Nothing caught it, because each platform only ever
+// tested its own copy.
 //
-// The room half must not go the same way: it is the surface through which both
-// displays reach the single source of truth, so an accessor added to one shim
-// and forgotten in the other would silently pass every existing test and leave
-// one TV publishing a snapshot the other cannot. This gate reads both files and
-// asserts the marked blocks are token-identical.
+// The fix was twofold: that logic now lives in server/PartyCore.js
+// (deliverFrame/deliverSnapshot), where all hosts share it, and what remains
+// here is marshalling that this gate holds token-identical end to end. Methods
+// OUTSIDE the marked blocks are platform-only and must be declared in
+// PLATFORM_ONLY below, so adding one is a deliberate, reviewed act.
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -40,13 +41,25 @@ function block(src, name, label) {
 }
 
 // Strip line comments and ALL whitespace so indentation and reflowed comments
-// never trip the gate, and drop a trailing comma: the tvOS block is followed by
-// the gallery accessors and so needs one, the Android block ends the table.
+// never trip the gate, and drop a trailing comma: a block followed by more
+// entries needs one, a block that ends the table doesn't.
 function normalize(text) {
   return text.replace(/\/\/[^\n]*/g, '').replace(/\s+/g, '').replace(/,$/, '');
 }
 
-for (const name of ['ROOM-SHIM', 'ROOM-API']) {
+// Shim entries neither platform shares. Everything else must sit inside a marked
+// block, identical on both sides.
+const PLATFORM_ONLY = {
+  // `update` is the granular tick EngineBridgeTests drives; the gallery
+  // accessors feed the tvOS HEXSHOT states. Android reaches the same fixtures
+  // through its own QuickJS context in the screenshot tests, and drives the
+  // engine only through frameJSON.
+  tvOS: ['update', 'galleryRosterJSON', 'galleryJoinJSON', 'gallerySnapshotJSON',
+    'galleryResultsJSON', 'galleryAmbientJSON'],
+  Android: [],
+};
+
+for (const name of ['ENGINE-SHIM', 'ENGINE-API', 'ROOM-API']) {
   test(`${name} is identical in the tvOS and Android shims`, () => {
     assert.equal(
       normalize(block(SWIFT, name, 'EngineBridge.swift')),
@@ -56,10 +69,31 @@ for (const name of ['ROOM-SHIM', 'ROOM-API']) {
   });
 }
 
-test('the room API exposes exactly the four entry points both shells rely on', () => {
-  const api = block(SWIFT, 'ROOM-API', 'EngineBridge.swift');
+test('the shared blocks expose the entry points both shells rely on', () => {
+  const has = (src, method) => new RegExp(`\\b${method}:\\s*function`).test(src);
+  const engine = block(SWIFT, 'ENGINE-API', 'EngineBridge.swift');
+  for (const method of ['create', 'processInput', 'softDropStart', 'softDropEnd',
+    'pause', 'resume', 'resetFrameClock', 'rekeyPlayer', 'snapshotJSON',
+    'drainEventsJSON', 'frameJSON', 'isEnded']) {
+    assert.ok(has(engine, method), `missing ${method}`);
+  }
+  const room = block(SWIFT, 'ROOM-API', 'EngineBridge.swift');
   for (const method of ['roomInit', 'roomCall', 'roomGet', 'roomSnapshotJSON']) {
-    assert.ok(new RegExp(`\\b${method}:\\s*function`).test(api), `missing ${method}`);
+    assert.ok(has(room, method), `missing ${method}`);
+  }
+});
+
+test('every shim method is either shared or a declared platform-only one', () => {
+  // The table entries: `<name>: function` at the start of a line. Anything a
+  // shim exposes that isn't in a shared block is drift unless it's declared.
+  const methods = (src) => [...src.matchAll(/^\s+(\w+): function/gm)].map((m) => m[1]);
+  const shared = new Set(
+    ['ENGINE-API', 'ROOM-API'].flatMap((n) => methods(block(SWIFT, n, 'EngineBridge.swift'))));
+  for (const [platform, getShim] of Object.entries(SHIMS)) {
+    const extra = methods(getShim()).filter((m) => !shared.has(m));
+    assert.deepEqual(extra.sort(), [...PLATFORM_ONLY[platform]].sort(),
+      `${platform}: undeclared platform-only shim methods — move them into a shared `
+      + 'block, or add them to PLATFORM_ONLY with the reason they can differ');
   }
 });
 
@@ -142,6 +176,44 @@ for (const [platform, getShim] of Object.entries(SHIMS)) {
       'control char stripped, quote and backslash preserved');
 
     assert.throws(() => vm.runInContext('Bridge.roomCall("noSuchMethod", "[]")', ctx), /no method/);
+  });
+}
+
+for (const [platform, getShim] of Object.entries(SHIMS)) {
+  test(`the ${platform} shim delivers frames identically against the real bundle`, async () => {
+    const ctx = vm.createContext({});
+    vm.runInContext(await bundleCore(), ctx);
+    vm.runInContext(getShim(), ctx);
+
+    const call = (js) => JSON.parse(vm.runInContext(js, ctx));
+    const player = (snap, id) => snap.players.find((p) => p.id === id);
+
+    // A read before create() must name the ordering bug rather than surface an
+    // opaque TypeError from inside the engine.
+    assert.throws(() => vm.runInContext('Bridge.frameJSON(0)', ctx), /create\(\)/);
+
+    vm.runInContext('Bridge.create([[1,1],[2,1]], 7)', ctx);
+
+    const opening = call('Bridge.frameJSON(0)');
+    assert.equal(opening.snapshot.players.length, 2, 'the opening frame is always delivered');
+    assert.ok(player(opening.snapshot, 1).grid, 'first delivery carries full grids');
+
+    // 1 ms later nothing has moved, so the snapshot is omitted entirely — this is
+    // the fast path Android had and tvOS didn't, now shared through PartyCore.
+    assert.equal(call('Bridge.frameJSON(1)').snapshot, undefined);
+
+    // A hard drop changes one board: delivered again, with that player's grid
+    // re-sent (version bumped) and the untouched player's grid stripped.
+    vm.runInContext('Bridge.processInput(1, "hard_drop")', ctx);
+    const locked = call('Bridge.frameJSON(17)');
+    assert.ok(player(locked.snapshot, 1).grid, "the locked board's grid must ride along");
+    assert.equal(player(locked.snapshot, 2).grid, undefined, 'unchanged grid must be stripped');
+    assert.ok(locked.commands.some((c) => c.type === 'pieceLock'),
+      'commands are never filtered, whatever the snapshot does');
+
+    // An out-of-band pull always returns a snapshot (grids still stripped).
+    const pulled = call('Bridge.snapshotJSON()');
+    assert.equal(pulled.players.length, 2);
   });
 }
 

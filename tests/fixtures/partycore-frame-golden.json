@@ -3875,10 +3875,8 @@
         {
           "type": "playerState",
           "playerId": "p2",
-          "level": 1,
           "lines": 1,
-          "alive": true,
-          "garbageIncoming": 0
+          "alive": true
         }
       ],
       "boards": [
@@ -4805,10 +4803,8 @@
         {
           "type": "playerState",
           "playerId": "p1",
-          "level": 1,
           "lines": 1,
-          "alive": true,
-          "garbageIncoming": 0
+          "alive": true
         }
       ],
       "boards": [
