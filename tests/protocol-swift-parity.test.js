@@ -80,6 +80,17 @@ test('RoomState and InputAction wire values mirror protocol.js', () => {
   assert.deepStrictEqual(swiftWireEnum(swiftEnum('InputAction')), INPUT, 'InputAction wire values');
 });
 
+test('PauseReason wire values mirror the room core', () => {
+  // The reason never crosses the wire — only the boolean it projects into does —
+  // but it IS the argument to roomCall("setPause"), so a drifted spelling reaches
+  // the room core as an unknown reason, which it silently refuses. The freeze
+  // would then never be recorded and the snapshot would keep saying paused:false.
+  assert.deepStrictEqual(
+    swiftWireEnum(swiftEnum('PauseReason')),
+    { MANUAL: RoomCore.PAUSE.MANUAL, AUTO: RoomCore.PAUSE.AUTO, CONNECTION: RoomCore.PAUSE.CONNECTION }
+  );
+});
+
 test('relay endpoints and limits mirror the web', () => {
   const proto = swiftStringConsts(swiftEnum('Protocol'));
   assert.strictEqual(proto.relayURL, RELAY_URL);
@@ -131,6 +142,18 @@ test('the liveness policy handed to the room core matches the canonical constant
   assert.ok(timeout && grace, 'Swift liveness constants not found');
   assert.strictEqual(Number(timeout[1]), constants.LIVENESS_TIMEOUT_MS);
   assert.strictEqual(Number(grace[1]), constants.LATE_JOINER_GRACE_MS);
+});
+
+test('the countdown beat matches the canonical constants', () => {
+  // The SEQUENCING is deliberately per-shell (setInterval on web, a frame
+  // accumulator here): only one display ever runs in a room, so nothing has to
+  // agree at runtime. The durations are pinned anyway, because three hand-typed
+  // copies of "one second" is how a beat quietly becomes 1.2s on one platform.
+  const step = COORDINATOR.match(/static let stepMs = (\d+)/);
+  const hold = COORDINATOR.match(/static let goHoldMs = (\d+)/);
+  assert.ok(step && hold, 'Swift countdown constants not found');
+  assert.strictEqual(Number(step[1]), constants.COUNTDOWN_STEP_MS);
+  assert.strictEqual(Number(hold[1]), constants.COUNTDOWN_GO_HOLD_MS);
 });
 
 test('the controller-URL template registered on create mirrors the web shape', () => {

@@ -28,8 +28,14 @@ const GARBAGE_DELAY_MS = 2000;   // Milliseconds before garbage rises, allowing 
 
 // Room settings
 const MAX_PLAYERS = 8;
-// Countdown
+// Countdown. The sequencing stays per-shell on purpose (the web runs a repeating
+// timer, the TVs a frame accumulator) — only one display ever runs in a room, so
+// nothing has to agree with anything at runtime. These two numbers still live
+// here so the three copies of the RULE can't quietly disagree about how long a
+// beat lasts; the parity tests pin them.
 const COUNTDOWN_SECONDS = 3;
+const COUNTDOWN_STEP_MS = 1000;      // one beat per number: 3, 2, 1
+const COUNTDOWN_GO_HOLD_MS = 500;    // GO stays up this long before the game starts
 
 // Input timing
 const SOFT_DROP_TIMEOUT_MS = 300;        // Auto-end soft drop if no further soft_drop message arrives within this window
@@ -295,6 +301,8 @@ exports.GARBAGE_TABLE = GARBAGE_TABLE;
 exports.GARBAGE_DELAY_MS = GARBAGE_DELAY_MS;
 exports.MAX_PLAYERS = MAX_PLAYERS;
 exports.COUNTDOWN_SECONDS = COUNTDOWN_SECONDS;
+exports.COUNTDOWN_STEP_MS = COUNTDOWN_STEP_MS;
+exports.COUNTDOWN_GO_HOLD_MS = COUNTDOWN_GO_HOLD_MS;
 exports.SOFT_DROP_TIMEOUT_MS = SOFT_DROP_TIMEOUT_MS;
 exports.HARD_DROP_MIN_INTERVAL_MS = HARD_DROP_MIN_INTERVAL_MS;
 exports.MAX_FRAME_DELTA_MS = MAX_FRAME_DELTA_MS;

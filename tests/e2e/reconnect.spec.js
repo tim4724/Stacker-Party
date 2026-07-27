@@ -61,7 +61,7 @@ test.describe('Reconnection', () => {
 
     // Display should auto-pause
     await page.waitForFunction(() => {
-      return typeof autoPaused !== 'undefined' && autoPaused === true;
+      return typeof pauseReason !== 'undefined' && pauseReason === 'auto';
     }, null, { timeout: 10000 });
 
     const isPaused = await page.evaluate(() => paused);
@@ -74,11 +74,16 @@ test.describe('Reconnection', () => {
     await expect(page.locator('#pause-continue-btn')).toBeEnabled();
     await expect(page.locator('#pause-newgame-btn')).toBeVisible();
 
+    // Raising it published nothing: an auto-pause is never actionable, and the
+    // overlay is a pure view toggle here (tvOS/Android do the same off the remote's
+    // pause key — see pauseKeyRaisesTheOverlayWhileAutoPausedWithoutTouchingTheFreeze).
+    expect(await page.evaluate(() => pauseReason)).toBe('auto');
+
     await page.click('#pause-continue-btn');
     await expect(page.locator('#pause-overlay')).toBeHidden();
     await expect(page.locator('#game-toolbar')).toBeVisible();
     expect(await page.evaluate(() => paused)).toBe(true);
-    expect(await page.evaluate(() => autoPaused)).toBe(true);
+    expect(await page.evaluate(() => pauseReason)).toBe('auto');
     expect(await page.evaluate(() => disconnectedQRs.size)).toBe(1);
   });
 
@@ -97,7 +102,7 @@ test.describe('Reconnection', () => {
     await page.click('#pause-btn');
     await expect(page.locator('#pause-overlay')).toBeVisible();
     expect(await page.evaluate(() => paused)).toBe(true);
-    expect(await page.evaluate(() => autoPaused)).toBe(false);
+    expect(await page.evaluate(() => pauseReason)).not.toBe('auto');
 
     // Now the sole player disconnects. The manual pause must convert into a
     // silent auto-pause and the stranded overlay must hide again (Continue is
@@ -107,7 +112,7 @@ test.describe('Reconnection', () => {
 
     await expect(page.locator('#pause-overlay')).toBeHidden();
     expect(await page.evaluate(() => paused)).toBe(true);
-    expect(await page.evaluate(() => autoPaused)).toBe(true);
+    expect(await page.evaluate(() => pauseReason)).toBe('auto');
     expect(await page.evaluate(() => disconnectedQRs.size)).toBe(1);
   });
 
@@ -125,7 +130,7 @@ test.describe('Reconnection', () => {
 
     // The game silently auto-pauses the instant PLAYING begins.
     await page.waitForFunction(() => {
-      return typeof autoPaused !== 'undefined' && autoPaused === true;
+      return typeof pauseReason !== 'undefined' && pauseReason === 'auto';
     }, null, { timeout: 10000 });
 
     // Regression: the render loop must still capture a snapshot so the boards
@@ -151,7 +156,7 @@ test.describe('Reconnection', () => {
     await Promise.all([c1.close(), c2.close()]);
 
     await page.waitForFunction(() => {
-      return typeof autoPaused !== 'undefined' && autoPaused === true;
+      return typeof pauseReason !== 'undefined' && pauseReason === 'auto';
     }, null, { timeout: 10000 });
 
     // Regression: gameState must be primed so both boards render their

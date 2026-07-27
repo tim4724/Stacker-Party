@@ -71,12 +71,11 @@ function handleControllerMessage(fromId, msg) {
     // Auto-resume after processing the message, so the reconnecting controller
     // has already been sent a snapshot describing the paused game before the
     // resume publishes over the top of it.
-    if (wasDisconnected && playerOrder.indexOf(fromId) >= 0) {
-      // The reconnect already dropped flow's disconnect flag (markReconnected
-      // above), so allParticipantsDisconnected is now false and the next
-      // graceTick clears the late-joiner deadline — no explicit cancel needed.
-      if (autoPaused) checkAutoResume();
-    }
+    // The reconnect already dropped flow's disconnect flag (markReconnected
+    // above), so allParticipantsDisconnected is now false and the next
+    // graceTick clears the late-joiner deadline — no explicit cancel needed.
+    // checkAutoResume no-ops unless the freeze really was an auto-pause.
+    if (wasDisconnected && playerOrder.indexOf(fromId) >= 0) checkAutoResume();
   } catch (err) {
     console.error('[input] Error handling message from', fromId, ':', err);
   }
@@ -99,8 +98,11 @@ function onHello(fromId, msg) {
     return;
   }
 
-  if (!res.isNew || roomState === ROOM_STATE.LOBBY) updatePlayerList();
-  if (res.isNew && roomState === ROOM_STATE.LOBBY) updateStartButton();
+  // A returning player's row changes on any screen (their name/colour just
+  // settled); a brand-new one only shows up in the lobby list.
+  var inLobby = roomState === ROOM_STATE.LOBBY;
+  if (!res.isNew || inLobby) updatePlayerList();
+  if (res.isNew && inLobby) updateStartButton();
 
   // One publish settles everything a HELLO can move: this controller's own
   // identity (name, colour, level), the roster the others render, and the host,
@@ -110,7 +112,7 @@ function onHello(fromId, msg) {
   // same update. A brand-new joiner needs it too: it is how they learn who they
   // are and which screen to show.
   publishAs(res.publish);
-  if (res.claimed && autoPaused) checkAutoResume();
+  if (res.claimed) checkAutoResume();
 }
 
 function onInput(fromId, msg) {

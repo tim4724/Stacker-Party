@@ -265,6 +265,53 @@ import Foundation
         #expect(fo.renderCount > frozen, "auto-resumed: engine advancing again")
     }
 
+    @Test func pauseKeyRaisesTheOverlayWhileAutoPausedWithoutTouchingTheFreeze() {
+        // Every controller gone mid-game: the overlay is the ONLY route to New Game
+        // (nobody is left to send RETURN_TO_LOBBY), so the pause key must raise it — as
+        // a pure VIEW toggle, because relabelling the freeze `manual` would publish an
+        // actionable pause and let Continue unfreeze a match with no players in it.
+        // Web's toolbar Pause / Continue pair is the same behaviour, split in two.
+        let clock = Clock()
+        let (coord, _, fo) = makeLobby(players: 1, clock: clock)
+        coord.remoteStartMatch(); runCountdown(coord)
+        clock.ms = 10_000
+        coord.tick(deltaMs: 16)
+        #expect(coord.allParticipantsDisconnected)
+        #expect(fo.paused == false, "auto-pause takes the overlay down")
+
+        let frozen = fo.renderCount
+        coord.remoteTogglePause()
+        #expect(fo.paused == true, "the pause key raises the overlay")
+        coord.tick(deltaMs: 16); coord.tick(deltaMs: 16)
+        #expect(fo.renderCount == frozen, "...and the sim stays frozen — view only")
+
+        coord.remoteTogglePause()
+        #expect(fo.paused == false, "pressing again dismisses it")
+
+        // The escape hatch itself: New Game off that overlay still works.
+        coord.remoteReturnToLobby()
+        #expect(coord.state == .lobby)
+    }
+
+    @Test func autoResumeClosesAnOverlayTheOperatorRaised() {
+        // The overlay outlives the reason, so a reconnect must take it down explicitly
+        // or the match resumes underneath a stale pause menu.
+        let clock = Clock()
+        let (coord, ft, fo) = makeLobby(players: 1, clock: clock)
+        coord.remoteStartMatch(); runCountdown(coord)
+        clock.ms = 10_000
+        coord.tick(deltaMs: 16)
+        coord.remoteTogglePause()
+        #expect(fo.paused == true, "operator raised it during the auto-pause")
+
+        ft.onMessage?(1, ["type": "input", "action": "left"])
+        #expect(!coord.allParticipantsDisconnected)
+        #expect(fo.paused == false, "the auto-resume closed it")
+        let frozen = fo.renderCount
+        coord.tick(deltaMs: 16)
+        #expect(fo.renderCount > frozen, "and the sim is running again")
+    }
+
     @Test func manualPauseThenAllDisconnectHidesStrandedOverlay() {
         let clock = Clock()
         let (coord, ft, fo) = makeLobby(players: 2, clock: clock)

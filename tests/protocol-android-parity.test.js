@@ -20,6 +20,7 @@ const path = require('path');
 
 const { MSG, INPUT, ROOM_STATE, RELAY_URL, STUN_URL } = require('../public/shared/protocol.js');
 const constants = require('../server/constants.js');
+const { RoomCore } = require('../server/RoomCore.js');
 
 const ROOT = path.join(__dirname, '..');
 const KOTLIN = {
@@ -40,10 +41,14 @@ function kotlinConst(src, name) {
   return m[2] !== undefined ? m[2] : Number(m[1].replace(/L$/, ''));
 }
 
-/** Enum entries of the form NAME("wire") -> { NAME: 'wire' }. */
-function kotlinWireEnum(src) {
+/** Entries of the form NAME("wire") inside `enum class <name>` -> { NAME: 'wire' }.
+ *  Scoped to the named enum: Protocol.kt holds several of these, and a file-wide
+ *  sweep silently merged them into whichever one was being asserted. */
+function kotlinWireEnum(src, name) {
+  const block = src.match(new RegExp(`enum class ${name}\\([^)]*\\)\\s*\\{([\\s\\S]*?)\\n\\}`));
+  assert.ok(block, `Kotlin enum class ${name} not found`);
   const out = {};
-  for (const m of src.matchAll(/^\s*([A-Z_]+)\("([a-z_]+)"\),?;?\s*$/gm)) out[m[1]] = m[2];
+  for (const m of block[1].matchAll(/^\s*([A-Z_]+)\("([a-z_]+)"\),?;?\s*$/gm)) out[m[1]] = m[2];
   return out;
 }
 
@@ -69,8 +74,19 @@ test('the display heartbeat canary and clientId match the web display', () => {
 });
 
 test('RoomState and InputAction wire values mirror protocol.js', () => {
-  assert.deepStrictEqual(kotlinWireEnum(KOTLIN.protocol), ROOM_STATE, 'RoomState wire values');
-  assert.deepStrictEqual(kotlinWireEnum(KOTLIN.inputAction), INPUT, 'InputAction wire values');
+  assert.deepStrictEqual(kotlinWireEnum(KOTLIN.protocol, 'RoomState'), ROOM_STATE, 'RoomState wire values');
+  assert.deepStrictEqual(kotlinWireEnum(KOTLIN.inputAction, 'InputAction'), INPUT, 'InputAction wire values');
+});
+
+test('PauseReason wire values mirror the room core', () => {
+  // The reason never crosses the wire — only the boolean it projects into does —
+  // but it IS the argument to roomCall("setPause"), so a drifted spelling reaches
+  // the room core as an unknown reason, which it silently refuses. The freeze
+  // would then never be recorded and the snapshot would keep saying paused:false.
+  assert.deepStrictEqual(
+    kotlinWireEnum(KOTLIN.protocol, 'PauseReason'),
+    { MANUAL: RoomCore.PAUSE.MANUAL, AUTO: RoomCore.PAUSE.AUTO, CONNECTION: RoomCore.PAUSE.CONNECTION }
+  );
 });
 
 test('relay endpoints and limits mirror the web', () => {
@@ -109,6 +125,13 @@ test('timing constants mirror server/constants.js and PartyConnection.js', () =>
   // DisplayCoordinator hands these to the room core as its `liveness` options.
   assert.strictEqual(kotlinConst(KOTLIN.coordinator, 'LIVENESS_TIMEOUT_MS'), constants.LIVENESS_TIMEOUT_MS);
   assert.strictEqual(kotlinConst(KOTLIN.coordinator, 'LATE_JOINER_GRACE_MS'), constants.LATE_JOINER_GRACE_MS);
+
+  // The countdown SEQUENCING is deliberately per-shell (setInterval on web, a
+  // frame accumulator here): only one display ever runs in a room, so nothing
+  // has to agree at runtime. The durations are pinned anyway, because three
+  // hand-typed copies of "one second" is how a beat quietly becomes 1.2s.
+  assert.strictEqual(kotlinConst(KOTLIN.coordinator, 'STEP_MS'), constants.COUNTDOWN_STEP_MS);
+  assert.strictEqual(kotlinConst(KOTLIN.coordinator, 'GO_HOLD_MS'), constants.COUNTDOWN_GO_HOLD_MS);
 
   // The snapshot-publish throttle is NOT pinned here any more: Kotlin no longer
   // declares it. DisplayCoordinator reads RoomCore.SNAPSHOT_THROTTLE_MS out of the

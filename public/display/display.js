@@ -330,19 +330,19 @@ document.addEventListener('fullscreenchange', function() {
 });
 
 // --- Pause (display-side buttons) ---
+// While auto-paused these move the OVERLAY only, never the pause: there is nothing
+// left to pause, and resuming is the returning player's business, not the
+// operator's. Raising it is what puts New Game / Return-to-lobby within reach of a
+// mouse; the TVs bind that action to a remote button instead. Outside an
+// auto-pause both fall through to the shared state machine, which refuses anything
+// that isn't the host's to do.
 pauseBtn.addEventListener('click', function() {
-  if (autoPaused) {
-    onGamePaused();
-    return;
-  }
+  if (pauseReason === PAUSE.AUTO) { showPauseOverlay(); return; }
   pauseGame();
 });
 
 pauseContinueBtn.addEventListener('click', function() {
-  if (autoPaused && !canResumeGame()) {
-    dismissAutoPausedOverlay();
-    return;
-  }
+  if (pauseReason === PAUSE.AUTO) { hidePauseOverlay(); return; }
   resumeGame();
 });
 

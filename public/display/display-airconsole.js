@@ -55,44 +55,41 @@ var _adMutedByUs = false;
 airconsole.onPause = function() {
   if (roomState !== ROOM_STATE.PLAYING && roomState !== ROOM_STATE.COUNTDOWN) return;
   _acPaused = true;
-  if (paused) return;
-  paused = true;
-  setAutoPaused(true);
-  if (roomState === ROOM_STATE.COUNTDOWN) clearCountdownTimers();
-  if (displayGame) displayGame.pause();
-  if (music) music.pause();
+  // The platform froze us, not the host: the same display-internal category as
+  // an all-disconnected auto-pause, so it reuses that reason. Only when nothing
+  // else has us frozen, though — AUTO absorbs a manual pause (deliberately, so
+  // its stranded overlay comes down), and here that would quietly discard the
+  // host's pause when the platform resumes us again.
+  if (!paused) autoPause();
 };
 
 airconsole.onResume = function() {
   if (!_acPaused) return;
   _acPaused = false;
   if (_adPaused) return;
-  if (autoPaused) { setAutoPaused(false); resumeGame(); }
+  autoResume();   // the AC freeze rides the AUTO reason, so this is what lifts it
 };
 
 // Wire ad events — pause and mute during ads, resume after.
 airconsole.onAdShow = function() {
   if (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN) {
     _adPaused = true;
-    if (!paused) {
-      paused = true;
-      setAutoPaused(true);
-      if (roomState === ROOM_STATE.COUNTDOWN) clearCountdownTimers();
-      if (displayGame) displayGame.pause();
-    }
+    if (!paused) autoPause();   // display-internal, like onPause above
   }
   if (music && !muted) { music.pause(); _adMutedByUs = true; }
 };
 
 airconsole.onAdComplete = function() {
   var adWasMuted = _adMutedByUs;
-  if (_adMutedByUs) _adMutedByUs = false;
+  _adMutedByUs = false;
   if (!_adPaused) { if (adWasMuted && music) music.resume(); return; }
   _adPaused = false;
   if (_acPaused) return;
-  var canResume = autoPaused && !allPlayersDisconnected();
-  if (adWasMuted && (canResume || !paused)) { if (music) music.resume(); }
-  if (canResume) { setAutoPaused(false); resumeGame(); }
+  // Refused unless the ad's own freeze is what's left (a host pause or a link
+  // drop stands), and unless somebody is back to play. A successful thaw resumes
+  // the music itself; the check below covers the case where we never froze.
+  autoResume();
+  if (adWasMuted && music && !paused) music.resume();
 };
 
 // Guard checkAutoResume — don't resume while ad or platform pause is active.

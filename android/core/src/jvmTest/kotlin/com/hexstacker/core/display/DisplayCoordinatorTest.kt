@@ -267,10 +267,17 @@ class DisplayCoordinatorTest {
             assertFalse(out.pausedFlag, "overlay hides when the last player drops during a manual pause")
             assertFalse(t.lastState().paused, "and controllers are told the pause is no longer actionable")
 
+            // The pause key now RAISES the overlay again — it is the only route to New
+            // Game with every controller gone — but as a pure view toggle: the game must
+            // not resume, and controllers must still not be told of an actionable pause.
             val resumesBefore = out.musicResumes
             coord.remoteTogglePause()
-            assertFalse(out.pausedFlag, "overlay stays hidden; resume blocked while everyone is disconnected")
+            assertTrue(out.pausedFlag, "the pause key raises the overlay so New Game is reachable")
+            assertFalse(t.lastState().paused, "...without publishing an actionable pause")
             assertEquals(resumesBefore, out.musicResumes, "game stays paused (no resume) while everyone is disconnected")
+            coord.remoteTogglePause()
+            assertFalse(out.pausedFlag, "pressing again dismisses it, still without resuming")
+            assertEquals(resumesBefore, out.musicResumes)
 
             // A participant reconnecting lifts the converted auto-pause.
             t.deliver(1, simple(Msg.PING)); coord.awaitIdle()
@@ -336,6 +343,59 @@ class DisplayCoordinatorTest {
         coord.awaitIdle()
         t.deliver(peers.first(), simple(Msg.START_GAME)); coord.awaitIdle()
         coord.tick(0.0); coord.tick(1000.0); coord.tick(1000.0); coord.tick(1000.0); coord.tick(500.0)
+    }
+
+    @Test
+    fun pauseKeyRaisesTheOverlayWhileAutoPausedWithoutTouchingTheFreeze() = runBlocking {
+        // Every controller gone mid-game: the overlay is the ONLY route to New Game
+        // (nobody is left to send RETURN_TO_LOBBY), so the pause key must raise it —
+        // as a pure VIEW toggle, because relabelling the freeze `manual` would publish
+        // an actionable pause and let Continue unfreeze a match with no players in it.
+        // Web's toolbar Pause / Continue pair is the same behaviour, split in two.
+        val bridge = EngineBridge.create(bundle())
+        try {
+            val t = FakeTransport(); val out = FakeOutput()
+            val coord = DisplayCoordinator(t, out, provider(bridge), seedProvider = { 0xBADCAFEL })
+            coord.start()
+            toPlaying(coord, t, listOf(1))
+            t.peerLeft(1); coord.awaitIdle()
+            assertTrue(coord.room.paused.not(), "an auto-pause is never published as actionable")
+            assertEquals(false, out.pausedFlag, "auto-pause takes the overlay down")
+
+            coord.remoteTogglePause(); coord.awaitIdle()
+            assertEquals(true, out.pausedFlag, "the pause key raises the overlay")
+            assertTrue(coord.room.paused.not(), "...but publishes no actionable pause")
+
+            coord.remoteTogglePause(); coord.awaitIdle()
+            assertEquals(false, out.pausedFlag, "pressing again dismisses it")
+
+            // The escape hatch itself: New Game off that overlay still works.
+            coord.remoteReturnToLobby(); coord.awaitIdle()
+            assertEquals(RoomState.LOBBY, coord.state)
+            coord.stop()
+        } finally { bridge.close() }
+    }
+
+    @Test
+    fun autoResumeClosesAnOverlayTheOperatorRaised() = runBlocking {
+        // The overlay outlives the reason, so a reconnect must take it down explicitly
+        // or the match resumes underneath a stale pause menu.
+        val bridge = EngineBridge.create(bundle())
+        try {
+            val t = FakeTransport(); val out = FakeOutput()
+            val coord = DisplayCoordinator(t, out, provider(bridge), seedProvider = { 0xBADCAFEL })
+            coord.start()
+            toPlaying(coord, t, listOf(1))
+            t.peerLeft(1); coord.awaitIdle()
+            coord.remoteTogglePause(); coord.awaitIdle()
+            assertTrue(out.pausedFlag, "operator raised it during the auto-pause")
+
+            val resumesBefore = out.musicResumes
+            t.peerJoined(1); t.deliver(1, simple(Msg.PING)); coord.awaitIdle()
+            assertFalse(out.pausedFlag, "the auto-resume closed it")
+            assertTrue(out.musicResumes > resumesBefore, "and the game is running again")
+            coord.stop()
+        } finally { bridge.close() }
     }
 
     @Test

@@ -50,7 +50,7 @@ function legacyWelcomeTo(room, id) {
   };
   if (!isLateJoiner) {
     msg.alive = room.lastAliveState[id] != null ? room.lastAliveState[id] : true;
-    msg.paused = room.userVisiblePaused;
+    msg.paused = room.manuallyPaused;
   }
   if (room.roomState === 'results' && room.lastResults) msg.results = room.lastResults.results;
   return msg;
@@ -128,7 +128,7 @@ function makeRoom(over) {
   const spec = Object.assign({
     roomState: 'lobby',
     hostPeerIndex: null,
-    userVisiblePaused: false,
+    manuallyPaused: false,
     muted: false,
     playerOrder: [],
     players: new Map(),
@@ -154,7 +154,7 @@ function makeRoom(over) {
   for (const id of Object.keys(spec.lastAliveState)) {
     roomCore.setAlive(Number(id), spec.lastAliveState[id]);
   }
-  if (spec.userVisiblePaused) roomCore.setPaused(true);
+  if (spec.manuallyPaused) roomCore.pause('manual');
   if (spec.muted) roomCore.setMuted(true);
   if (spec.lastResults) roomCore.setResults(spec.lastResults.results);
 
@@ -166,7 +166,7 @@ function makeRoom(over) {
     get roomState() { return roomCore.state; },
     get playerOrder() { return roomCore.participants; },
     get muted() { return roomCore.muted; },
-    get userVisiblePaused() { return roomCore.userVisiblePaused(); },
+    get manuallyPaused() { return roomCore.pauseReason === 'manual'; },
     lastAliveState: spec.lastAliveState,
     lastResults: spec.lastResults,
   };
@@ -306,7 +306,7 @@ describe('room snapshot: controller derivation parity with the deleted WELCOME',
     ['mid-game with a KO, a manual pause and a late joiner', makeRoom({
       roomState: 'playing',
       hostPeerIndex: 1,
-      userVisiblePaused: true,
+      manuallyPaused: true,
       muted: true,
       playerOrder: [1, 3],
       players: new Map([

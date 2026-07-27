@@ -58,6 +58,8 @@ if (ROOM_STATE.LOBBY !== _coreStates.LOBBY ||
     ROOM_STATE.RESULTS !== _coreStates.RESULTS) {
   throw new Error('ROOM_STATE and RoomCore.STATES have drifted — keep the string values in sync');
 }
+// Pause reasons, from the room core so the strings are never retyped here.
+var PAUSE = window.GameEngine.RoomCore.PAUSE;
 // Roster backing store, aliased onto the room core's map so existing reads
 // (players.get/has/size/for..of) keep working; writes go through the room core
 // (peerJoined/hello/peerLeft/setColor/...). roomCore.reset() clears this same Map.
@@ -114,27 +116,21 @@ function setRoomState(newState) {
   return result.changed;
 }
 
-// Why we are paused, not just that we are. `paused` is a single composite flag,
-// so without the other two a link-drop pause would be indistinguishable from a
-// host pressing Pause, and the two mean opposite things to a controller. A
-// manual pause is the ONLY one a controller can act on (Continue); the auto- and
-// connection pauses are display-internal and resolve themselves. Reporting the
-// composite stranded controllers on an undismissable pause overlay. The room core
-// owns all three and projects userVisiblePaused() into the snapshot.
+// WHY we are paused, not just that we are: a link-drop pause and a host pressing
+// Pause mean opposite things to a controller, and only the manual one is
+// actionable (Continue). One field in the room core holds the reason;
+// `paused` is derived from it and is what the render loop and input gate read.
+// Never written here: the six pause/resume operations in DisplayGame.js are the
+// only writers, and they run the room core's state machine.
 Object.defineProperty(window, 'paused', {
   configurable: true,
   get: function () { return roomCore.paused; },
-  set: function (v) { roomCore.setPaused(v); }
+  set: function () { throw new Error('paused is read-only; use pauseGame()/resumeGame()'); }
 });
-Object.defineProperty(window, 'autoPaused', {
+Object.defineProperty(window, 'pauseReason', {
   configurable: true,
-  get: function () { return roomCore.autoPaused; },
-  set: function (v) { roomCore.setAutoPaused(v); }
-});
-Object.defineProperty(window, 'connectionPaused', {
-  configurable: true,
-  get: function () { return roomCore.connectionPaused; },
-  set: function (v) { roomCore.setConnectionPaused(v); }
+  get: function () { return roomCore.pauseReason; },
+  set: function () { throw new Error('pauseReason is read-only; use pauseGame()/resumeGame()'); }
 });
 var boardRenderers = [];
 var uiRenderers = [];
@@ -203,11 +199,11 @@ function resetRoomData() {
   countdown.remaining = 0;
   // Resets the roster (the same Map `players` aliases), host slot, joinedAt
   // sequence, participant order, presence set, alive flags, results, the pause
-  // flags, and the room state back to lobby. Mute survives (a device
+  // reason, and the room state back to lobby. Mute survives (a device
   // preference, not room state).
   roomCore.reset();
-  // Not folded into roomCore.reset(): setAutoPaused also drives toolbar chrome.
-  setAutoPaused(false);
+  // Idempotent after reset(); called for the toolbar chrome it also drives.
+  clearPause();
   gameState = null;
   boardRenderers = [];
   uiRenderers = [];

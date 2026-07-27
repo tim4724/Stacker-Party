@@ -50,6 +50,16 @@ var NAME_MAX_LEN = 16;
 var MIN_START_LEVEL = 1;
 var MAX_START_LEVEL = 15;
 
+// Why the game is frozen. Only MANUAL reaches controllers: it is the one a
+// controller can act on. AUTO (every participant disconnected) and CONNECTION
+// (the display's own link is down) are display-internal and resolve themselves,
+// and a controller handed either would sit on a pause overlay whose Continue the
+// display ignores. Last write wins; the shells decide which reason applies.
+var PAUSE_MANUAL = 'manual';
+var PAUSE_AUTO = 'auto';
+var PAUSE_CONNECTION = 'connection';
+var PAUSE_REASONS = [PAUSE_MANUAL, PAUSE_AUTO, PAUSE_CONNECTION];
+
 // ---------------------------------------------------------------------
 // Pure name helpers (module-level: no instance state, and the conformance
 // harness exercises them directly)
@@ -127,20 +137,21 @@ function RoomCore(opts) {
   this._results = null;         // last ranking, replayed in the RESULTS snapshot
   this._muted = false;
 
-  // Three flags, one composite. A manual pause is the ONLY one a controller can
-  // act on; the auto- (everyone disconnected) and connection (our own link down)
-  // pauses are display-internal and resolve themselves. Reporting the composite
-  // stranded controllers on a pause overlay whose Continue could not work.
-  this._paused = false;
-  this._autoPaused = false;
-  this._connectionPaused = false;
+  // WHY we are frozen, or null. One field rather than a composite plus two
+  // reason flags: the reasons are mutually exclusive in practice (each call site
+  // already decides which one wins), and three booleans encode four impossible
+  // states for every real one. They also drifted — the composite was a separate
+  // stored flag on web and Android but a derived OR on tvOS, and reset() cleared
+  // two of the three, so a stale connection flag could silently suppress a
+  // genuine host pause. See PAUSE_REASONS and setPause.
+  this._pauseReason = null;
 }
 
 RoomCore.SNAPSHOT_THROTTLE_MS = SNAPSHOT_THROTTLE_MS;
 RoomCore.AUTO_NAME_BLOCKLIST = AUTO_NAME_BLOCKLIST.slice();
 RoomCore.NAME_MAX_LEN = NAME_MAX_LEN;
 RoomCore.STATES = RoomFlow.STATES;
-RoomCore.cleanInboundName = cleanInboundName;
+RoomCore.PAUSE = { MANUAL: PAUSE_MANUAL, AUTO: PAUSE_AUTO, CONNECTION: PAUSE_CONNECTION };
 
 // =====================================================================
 // Read accessors
@@ -190,16 +201,14 @@ Object.defineProperty(RoomCore.prototype, 'muted', {
   get: function () { return this._muted; },
 });
 
+// Frozen for any reason at all. What the render loop and the input gate read.
 Object.defineProperty(RoomCore.prototype, 'paused', {
-  get: function () { return this._paused; },
+  get: function () { return this._pauseReason !== null; },
 });
 
-Object.defineProperty(RoomCore.prototype, 'autoPaused', {
-  get: function () { return this._autoPaused; },
-});
-
-Object.defineProperty(RoomCore.prototype, 'connectionPaused', {
-  get: function () { return this._connectionPaused; },
+// 'manual' | 'auto' | 'connection' | null. What the shells branch on.
+Object.defineProperty(RoomCore.prototype, 'pauseReason', {
+  get: function () { return this._pauseReason; },
 });
 
 RoomCore.prototype.get = function (peerIndex) { return this.flow.get(peerIndex); };
@@ -207,11 +216,68 @@ RoomCore.prototype.has = function (peerIndex) { return this.flow.has(peerIndex);
 RoomCore.prototype.list = function () { return this.flow.list(); };
 RoomCore.prototype.isHost = function (peerIndex) { return this.flow.isHost(peerIndex); };
 RoomCore.prototype.isDisconnected = function (peerIndex) { return this.flow.isDisconnected(peerIndex); };
-RoomCore.prototype.isAlive = function (peerIndex) { return this._alive[peerIndex] !== false; };
 RoomCore.prototype.isParticipant = function (peerIndex) { return this._participants.indexOf(peerIndex) >= 0; };
 
-RoomCore.prototype.userVisiblePaused = function () {
-  return this._paused && !this._autoPaused && !this._connectionPaused;
+// The pause state machine. ALL of it lives here, not in the shells, because
+// every part of it is a decision, and decisions are what drifted: the three
+// displays had three different answers for a link drop landing on a manual
+// pause, and three different guards on Continue. Three rules, and the shells now
+// keep none of them — they call these two methods and apply the answer.
+//
+// 1. A freeze takes only while the game is RUNNING (playing or countdown).
+//
+// 2. It is refused while we are already frozen — except AUTO, which ABSORBS the
+//    existing freeze: when the last participant drops, a manual pause must
+//    become an auto one or its overlay is stranded behind a Continue rule 3
+//    refuses.
+//
+// 3. resume(reason) takes only if `reason` is why we are frozen, and Continue
+//    and the auto-resume additionally need somebody left to play. Every reason
+//    is lifted by its own trigger — Continue lifts MANUAL, a returning
+//    participant lifts AUTO, the relay's created/joined lifts CONNECTION — so a
+//    link blip can no longer resume a game the host deliberately paused, and a
+//    host's Continue can no longer unfreeze a display whose link is still down.
+//    resume(null) is the room-lifecycle clear (a new match, a return to the
+//    lobby, a fresh room): it ends the freeze outright, whatever it was.
+//
+// Both return a publish hint, which is 'now' exactly when snapshot.paused flips.
+// Controllers only ever see the MANUAL pause, so that covers the case all three
+// shells used to hand-code: an absorbed manual pause must be republished, or
+// returning players are handed a Continue the display would ignore.
+RoomCore.prototype.pause = function (reason) {
+  if (PAUSE_REASONS.indexOf(reason) < 0) return this._pauseResult(false);
+  if (!this._isRunning()) return this._pauseResult(false);
+  if (this._pauseReason !== null && reason !== PAUSE_AUTO) return this._pauseResult(false);
+  return this._setPauseReason(reason);
+};
+
+RoomCore.prototype.resume = function (reason) {
+  if (reason != null && reason !== this._pauseReason) return this._pauseResult(false);
+  if ((reason === PAUSE_MANUAL || reason === PAUSE_AUTO)
+      && this.flow.allParticipantsDisconnected()) {
+    return this._pauseResult(false);
+  }
+  return this._setPauseReason(null);
+};
+
+RoomCore.prototype._isRunning = function () {
+  return this.flow.state === RoomFlow.STATES.PLAYING
+      || this.flow.state === RoomFlow.STATES.COUNTDOWN;
+};
+
+RoomCore.prototype._pauseResult = function (changed) {
+  return { changed: changed, reason: this._pauseReason, publish: 'none' };
+};
+
+RoomCore.prototype._setPauseReason = function (next) {
+  if (next === this._pauseReason) return this._pauseResult(false);
+  var wasVisible = this._pauseReason === PAUSE_MANUAL;
+  this._pauseReason = next;
+  return {
+    changed: true,
+    reason: next,
+    publish: wasVisible === (next === PAUSE_MANUAL) ? 'none' : 'now',
+  };
 };
 
 // =====================================================================
@@ -241,8 +307,8 @@ RoomCore.prototype.snapshot = function () {
   var snap = {
     roomState: this.flow.state,
     hostPeerIndex: this.flow.host,
-    // Only a host-pressed pause reaches controllers. See userVisiblePaused().
-    paused: this.userVisiblePaused(),
+    // Only a host-pressed pause reaches controllers. See PAUSE_REASONS.
+    paused: this._pauseReason === PAUSE_MANUAL,
     displayMuted: !!this._muted,
     // Who is actually in the running game. A player in the roster but absent
     // here during playing/countdown joined late and waits out the round.
@@ -648,10 +714,6 @@ RoomCore.prototype.setMuted = function (muted) {
   return { changed: true, publish: 'now' };
 };
 
-RoomCore.prototype.setPaused = function (paused) { this._paused = !!paused; };
-RoomCore.prototype.setAutoPaused = function (paused) { this._autoPaused = !!paused; };
-RoomCore.prototype.setConnectionPaused = function (paused) { this._connectionPaused = !!paused; };
-
 // =====================================================================
 // Room lifecycle
 // =====================================================================
@@ -677,8 +739,6 @@ RoomCore.prototype._removeParticipant = function (peerIndex) {
   var i = this._participants.indexOf(peerIndex);
   if (i >= 0) this._participants.splice(i, 1);
 };
-
-RoomCore.prototype.removeParticipant = function (peerIndex) { this._removeParticipant(peerIndex); };
 
 // Keep flow's host-eligibility set in step with the game's participant order.
 // Called at exactly the moments the display already did it, because in the lobby
@@ -766,15 +826,14 @@ RoomCore.prototype.enrichResults = function (ranking) {
 };
 
 // Reset to a fresh room. Mirrors the room-local half of the display's
-// resetRoomData: roster, participants, liveness, results and the pause flags.
+// resetRoomData: roster, participants, liveness, results and the pause.
 // Mute is deliberately untouched (it is a device preference, not room state).
 RoomCore.prototype.reset = function () {
   this.flow.reset();
   this._participants = [];
   this._alive = {};
   this._results = null;
-  this._paused = false;
-  this._autoPaused = false;
+  this._pauseReason = null;
 };
 
 // =====================================================================

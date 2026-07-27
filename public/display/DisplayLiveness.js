@@ -29,8 +29,7 @@ function startLivenessCheck() {
     if (displayDead) {
       if (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN) {
         // Our own socket is silently dead — same category as onClose above.
-        connectionPaused = true;
-        if (!paused) pauseGame();
+        connectionPause();
         // Cross-fade with the reconnect overlay appearing above (see onClose).
         fadeHide(pauseOverlay, 200);
       }

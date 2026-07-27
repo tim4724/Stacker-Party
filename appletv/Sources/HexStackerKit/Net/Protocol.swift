@@ -109,6 +109,24 @@ public enum RoomState: String {
     case results
 }
 
+/// Why the game is frozen. Raw values are the room core's `RoomCore.PAUSE`, and
+/// only `.manual` ever reaches a controller: the other two are display-internal,
+/// they resolve themselves, and a controller shown either would sit on a pause
+/// overlay whose Continue the display ignores. Pinned by
+/// tests/protocol-swift-parity.test.js.
+public enum PauseReason: String {
+    case manual
+    case auto
+    case connection
+
+    /// Decode the raw JSON `roomGet("pauseReason")` answers: a quoted word, or
+    /// `null` when the room is running (which no raw value matches).
+    init?(json: String) {
+        guard json.count > 2 else { return nil }
+        self.init(rawValue: String(json.dropFirst().dropLast()))
+    }
+}
+
 /// A decoded inbound controller message (the relay envelope's `data` object).
 /// Fields are heterogeneous across `type`s, so all but `type` are optional and
 /// number/string coercion mirrors the web display's lenient parsing.

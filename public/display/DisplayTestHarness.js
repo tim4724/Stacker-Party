@@ -76,8 +76,11 @@ if (urlParams.get('test') === '1' || debugCount > 0 || _adclipMode) {
       onGameEnd(results);
     },
 
+    // The frozen LOOK without the room change: gallery captures want the overlay
+    // over a stopped board, not a pause the snapshot would publish.
     injectPause: function() {
-      onGamePaused();
+      freezeGame();
+      showPauseOverlay();
     },
 
     injectKO: function(playerId) {

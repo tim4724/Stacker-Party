@@ -2,6 +2,7 @@ package com.hexstacker.core.room
 
 import com.hexstacker.core.engine.EngineBridge
 import com.hexstacker.core.model.EngineJson
+import com.hexstacker.core.net.PauseReason
 import com.hexstacker.core.net.RoomState
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
@@ -110,10 +111,16 @@ class RoomCoreClient private constructor(private val bridge: EngineBridge) {
 
     suspend fun setMuted(muted: Boolean): Changed = mutate(call("setMuted", JsonPrimitive(muted)))
 
-    suspend fun setPaused(paused: Boolean) = unitMutating(call("setPaused", JsonPrimitive(paused)))
-    suspend fun setAutoPaused(paused: Boolean) = unitMutating(call("setAutoPaused", JsonPrimitive(paused)))
-    suspend fun setConnectionPaused(paused: Boolean) =
-        unitMutating(call("setConnectionPaused", JsonPrimitive(paused)))
+    /** Freeze for [reason]. Takes effect while the room is RUNNING, except AUTO,
+     *  which absorbs an existing freeze. The rule lives in the room core so tvOS and
+     *  the web display cannot answer it differently. */
+    suspend fun pause(reason: PauseReason): Changed =
+        mutate(call("pause", JsonPrimitive(reason.wire)))
+
+    /** Lift the freeze if [reason] is why we are frozen; null ends it outright (the
+     *  room-lifecycle clear: a new match, a return to the lobby). */
+    suspend fun resume(reason: PauseReason?): Changed =
+        mutate(call("resume", reason?.let { JsonPrimitive(it.wire) } ?: JsonNull))
 
     // =====================================================================
     // Room lifecycle
@@ -246,6 +253,8 @@ class RoomCoreClient private constructor(private val bridge: EngineBridge) {
         val level: Int? = null,
         val colorIndex: Int? = null,
         val name: String? = null,
+        /** The pause reason now in force (pause/resume only); null means running. */
+        val reason: String? = null,
         val publish: String = "none",
     )
 

@@ -15,6 +15,12 @@
       "g": "host"
     },
     {
+      "m": "pause",
+      "a": [
+        "manual"
+      ]
+    },
+    {
       "m": "peerJoined",
       "a": [
         1,
@@ -258,45 +264,72 @@
       ]
     },
     {
-      "m": "setPaused",
+      "m": "pause",
       "a": [
-        true
+        "manual"
       ]
     },
     {
-      "m": "userVisiblePaused",
-      "a": []
-    },
-    {
-      "m": "setAutoPaused",
+      "m": "pause",
       "a": [
-        true
+        "connection"
       ]
     },
     {
-      "m": "userVisiblePaused",
-      "a": []
-    },
-    {
-      "m": "setAutoPaused",
+      "m": "resume",
       "a": [
-        false
+        "connection"
       ]
     },
     {
-      "m": "setConnectionPaused",
+      "g": "pauseReason"
+    },
+    {
+      "m": "pause",
       "a": [
-        true
+        "auto"
       ]
     },
     {
-      "m": "userVisiblePaused",
-      "a": []
+      "g": "paused"
     },
     {
-      "m": "setConnectionPaused",
+      "m": "resume",
       "a": [
-        false
+        "manual"
+      ]
+    },
+    {
+      "m": "resume",
+      "a": [
+        "auto"
+      ]
+    },
+    {
+      "m": "resume",
+      "a": [
+        "auto"
+      ]
+    },
+    {
+      "m": "pause",
+      "a": [
+        "bogus"
+      ]
+    },
+    {
+      "g": "pauseReason"
+    },
+    {
+      "m": "pause",
+      "a": [
+        "connection"
+      ]
+    },
+    {
+      "m": "resume",
+      "a": [
+        null
       ]
     },
     {
@@ -389,8 +422,38 @@
       ]
     },
     {
+      "m": "markDisconnected",
+      "a": [
+        3
+      ]
+    },
+    {
+      "m": "markDisconnected",
+      "a": [
+        4711
+      ]
+    },
+    {
       "m": "allParticipantsDisconnected",
       "a": []
+    },
+    {
+      "m": "pause",
+      "a": [
+        "manual"
+      ]
+    },
+    {
+      "m": "resume",
+      "a": [
+        "manual"
+      ]
+    },
+    {
+      "m": "resume",
+      "a": [
+        null
+      ]
     },
     {
       "m": "graceTick",
@@ -615,6 +678,21 @@
     },
     {
       "result": null,
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": null,
+        "paused": false,
+        "displayMuted": false,
+        "participants": [],
+        "players": {}
+      }
+    },
+    {
+      "result": {
+        "changed": false,
+        "reason": null,
+        "publish": "none"
+      },
       "snapshot": {
         "roomState": "lobby",
         "hostPeerIndex": null,
@@ -1996,11 +2074,235 @@
       }
     },
     {
-      "result": null,
+      "result": {
+        "changed": true,
+        "reason": "manual",
+        "publish": "now"
+      },
       "snapshot": {
         "roomState": "playing",
         "hostPeerIndex": 1,
         "paused": true,
+        "displayMuted": false,
+        "participants": [
+          1,
+          2,
+          3,
+          4711
+        ],
+        "players": {
+          "1": {
+            "name": "Ann",
+            "color": 5,
+            "startLevel": 9,
+            "alive": true,
+            "helloSeen": true
+          },
+          "2": {
+            "name": "HX-71",
+            "color": 3,
+            "startLevel": 1,
+            "alive": false,
+            "helloSeen": true
+          },
+          "3": {
+            "name": "HX-7",
+            "color": 0,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "5": {
+            "name": "Late",
+            "color": 2,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "changed": false,
+        "reason": "manual",
+        "publish": "none"
+      },
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": 1,
+        "paused": true,
+        "displayMuted": false,
+        "participants": [
+          1,
+          2,
+          3,
+          4711
+        ],
+        "players": {
+          "1": {
+            "name": "Ann",
+            "color": 5,
+            "startLevel": 9,
+            "alive": true,
+            "helloSeen": true
+          },
+          "2": {
+            "name": "HX-71",
+            "color": 3,
+            "startLevel": 1,
+            "alive": false,
+            "helloSeen": true
+          },
+          "3": {
+            "name": "HX-7",
+            "color": 0,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "5": {
+            "name": "Late",
+            "color": 2,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "changed": false,
+        "reason": "manual",
+        "publish": "none"
+      },
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": 1,
+        "paused": true,
+        "displayMuted": false,
+        "participants": [
+          1,
+          2,
+          3,
+          4711
+        ],
+        "players": {
+          "1": {
+            "name": "Ann",
+            "color": 5,
+            "startLevel": 9,
+            "alive": true,
+            "helloSeen": true
+          },
+          "2": {
+            "name": "HX-71",
+            "color": 3,
+            "startLevel": 1,
+            "alive": false,
+            "helloSeen": true
+          },
+          "3": {
+            "name": "HX-7",
+            "color": 0,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "5": {
+            "name": "Late",
+            "color": 2,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          }
+        }
+      }
+    },
+    {
+      "result": "manual",
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": 1,
+        "paused": true,
+        "displayMuted": false,
+        "participants": [
+          1,
+          2,
+          3,
+          4711
+        ],
+        "players": {
+          "1": {
+            "name": "Ann",
+            "color": 5,
+            "startLevel": 9,
+            "alive": true,
+            "helloSeen": true
+          },
+          "2": {
+            "name": "HX-71",
+            "color": 3,
+            "startLevel": 1,
+            "alive": false,
+            "helloSeen": true
+          },
+          "3": {
+            "name": "HX-7",
+            "color": 0,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "5": {
+            "name": "Late",
+            "color": 2,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "changed": true,
+        "reason": "auto",
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": 1,
+        "paused": false,
         "displayMuted": false,
         "participants": [
           1,
@@ -2052,7 +2354,231 @@
       "snapshot": {
         "roomState": "playing",
         "hostPeerIndex": 1,
-        "paused": true,
+        "paused": false,
+        "displayMuted": false,
+        "participants": [
+          1,
+          2,
+          3,
+          4711
+        ],
+        "players": {
+          "1": {
+            "name": "Ann",
+            "color": 5,
+            "startLevel": 9,
+            "alive": true,
+            "helloSeen": true
+          },
+          "2": {
+            "name": "HX-71",
+            "color": 3,
+            "startLevel": 1,
+            "alive": false,
+            "helloSeen": true
+          },
+          "3": {
+            "name": "HX-7",
+            "color": 0,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "5": {
+            "name": "Late",
+            "color": 2,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "changed": false,
+        "reason": "auto",
+        "publish": "none"
+      },
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": 1,
+        "paused": false,
+        "displayMuted": false,
+        "participants": [
+          1,
+          2,
+          3,
+          4711
+        ],
+        "players": {
+          "1": {
+            "name": "Ann",
+            "color": 5,
+            "startLevel": 9,
+            "alive": true,
+            "helloSeen": true
+          },
+          "2": {
+            "name": "HX-71",
+            "color": 3,
+            "startLevel": 1,
+            "alive": false,
+            "helloSeen": true
+          },
+          "3": {
+            "name": "HX-7",
+            "color": 0,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "5": {
+            "name": "Late",
+            "color": 2,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "changed": true,
+        "reason": null,
+        "publish": "none"
+      },
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": 1,
+        "paused": false,
+        "displayMuted": false,
+        "participants": [
+          1,
+          2,
+          3,
+          4711
+        ],
+        "players": {
+          "1": {
+            "name": "Ann",
+            "color": 5,
+            "startLevel": 9,
+            "alive": true,
+            "helloSeen": true
+          },
+          "2": {
+            "name": "HX-71",
+            "color": 3,
+            "startLevel": 1,
+            "alive": false,
+            "helloSeen": true
+          },
+          "3": {
+            "name": "HX-7",
+            "color": 0,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "5": {
+            "name": "Late",
+            "color": 2,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "changed": false,
+        "reason": null,
+        "publish": "none"
+      },
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": 1,
+        "paused": false,
+        "displayMuted": false,
+        "participants": [
+          1,
+          2,
+          3,
+          4711
+        ],
+        "players": {
+          "1": {
+            "name": "Ann",
+            "color": 5,
+            "startLevel": 9,
+            "alive": true,
+            "helloSeen": true
+          },
+          "2": {
+            "name": "HX-71",
+            "color": 3,
+            "startLevel": 1,
+            "alive": false,
+            "helloSeen": true
+          },
+          "3": {
+            "name": "HX-7",
+            "color": 0,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "5": {
+            "name": "Late",
+            "color": 2,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "changed": false,
+        "reason": null,
+        "publish": "none"
+      },
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": 1,
+        "paused": false,
         "displayMuted": false,
         "participants": [
           1,
@@ -2152,7 +2678,11 @@
       }
     },
     {
-      "result": false,
+      "result": {
+        "changed": true,
+        "reason": "connection",
+        "publish": "none"
+      },
       "snapshot": {
         "roomState": "playing",
         "hostPeerIndex": 1,
@@ -2204,167 +2734,15 @@
       }
     },
     {
-      "result": null,
-      "snapshot": {
-        "roomState": "playing",
-        "hostPeerIndex": 1,
-        "paused": true,
-        "displayMuted": false,
-        "participants": [
-          1,
-          2,
-          3,
-          4711
-        ],
-        "players": {
-          "1": {
-            "name": "Ann",
-            "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
-          },
-          "2": {
-            "name": "HX-71",
-            "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
-          },
-          "3": {
-            "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
-          },
-          "5": {
-            "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
-          },
-          "4711": {
-            "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
-          }
-        }
-      }
-    },
-    {
-      "result": null,
+      "result": {
+        "changed": true,
+        "reason": null,
+        "publish": "none"
+      },
       "snapshot": {
         "roomState": "playing",
         "hostPeerIndex": 1,
         "paused": false,
-        "displayMuted": false,
-        "participants": [
-          1,
-          2,
-          3,
-          4711
-        ],
-        "players": {
-          "1": {
-            "name": "Ann",
-            "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
-          },
-          "2": {
-            "name": "HX-71",
-            "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
-          },
-          "3": {
-            "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
-          },
-          "5": {
-            "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
-          },
-          "4711": {
-            "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
-          }
-        }
-      }
-    },
-    {
-      "result": false,
-      "snapshot": {
-        "roomState": "playing",
-        "hostPeerIndex": 1,
-        "paused": false,
-        "displayMuted": false,
-        "participants": [
-          1,
-          2,
-          3,
-          4711
-        ],
-        "players": {
-          "1": {
-            "name": "Ann",
-            "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
-          },
-          "2": {
-            "name": "HX-71",
-            "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
-          },
-          "3": {
-            "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
-          },
-          "5": {
-            "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
-          },
-          "4711": {
-            "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
-          }
-        }
-      }
-    },
-    {
-      "result": null,
-      "snapshot": {
-        "roomState": "playing",
-        "hostPeerIndex": 1,
-        "paused": true,
         "displayMuted": false,
         "participants": [
           1,
@@ -2419,7 +2797,7 @@
       "snapshot": {
         "roomState": "playing",
         "hostPeerIndex": 1,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           1,
@@ -2471,7 +2849,7 @@
       "snapshot": {
         "roomState": "playing",
         "hostPeerIndex": 2,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           1,
@@ -2523,7 +2901,7 @@
       "snapshot": {
         "roomState": "playing",
         "hostPeerIndex": 2,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           1,
@@ -2575,7 +2953,7 @@
       "snapshot": {
         "roomState": "playing",
         "hostPeerIndex": 2,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           1,
@@ -2627,7 +3005,7 @@
       "snapshot": {
         "roomState": "playing",
         "hostPeerIndex": 2,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           1,
@@ -2684,7 +3062,7 @@
       "snapshot": {
         "roomState": "playing",
         "hostPeerIndex": 2,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           1,
@@ -2749,7 +3127,7 @@
       "snapshot": {
         "roomState": "playing",
         "hostPeerIndex": 6,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           6,
@@ -2806,7 +3184,7 @@
       "snapshot": {
         "roomState": "playing",
         "hostPeerIndex": 6,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           6,
@@ -2858,7 +3236,7 @@
       "snapshot": {
         "roomState": "playing",
         "hostPeerIndex": 6,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           6,
@@ -2916,7 +3294,7 @@
       "snapshot": {
         "roomState": "playing",
         "hostPeerIndex": 6,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           6,
@@ -2971,7 +3349,7 @@
       "snapshot": {
         "roomState": "playing",
         "hostPeerIndex": 6,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           6,
@@ -3032,7 +3410,7 @@
       "snapshot": {
         "roomState": "playing",
         "hostPeerIndex": 6,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           6,
@@ -3084,7 +3462,7 @@
       "snapshot": {
         "roomState": "playing",
         "hostPeerIndex": 6,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           6,
@@ -3136,7 +3514,331 @@
       "snapshot": {
         "roomState": "playing",
         "hostPeerIndex": 3,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          6,
+          2,
+          3,
+          4711
+        ],
+        "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3,
+            "startLevel": 1,
+            "alive": false,
+            "helloSeen": true
+          },
+          "3": {
+            "name": "HX-7",
+            "color": 0,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "5": {
+            "name": "Late",
+            "color": 2,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "6": {
+            "name": "Ann",
+            "color": 5,
+            "startLevel": 9,
+            "alive": true,
+            "helloSeen": true
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          }
+        }
+      }
+    },
+    {
+      "result": null,
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": 4711,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          6,
+          2,
+          3,
+          4711
+        ],
+        "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3,
+            "startLevel": 1,
+            "alive": false,
+            "helloSeen": true
+          },
+          "3": {
+            "name": "HX-7",
+            "color": 0,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "5": {
+            "name": "Late",
+            "color": 2,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "6": {
+            "name": "Ann",
+            "color": 5,
+            "startLevel": 9,
+            "alive": true,
+            "helloSeen": true
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          }
+        }
+      }
+    },
+    {
+      "result": null,
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": null,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          6,
+          2,
+          3,
+          4711
+        ],
+        "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3,
+            "startLevel": 1,
+            "alive": false,
+            "helloSeen": true
+          },
+          "3": {
+            "name": "HX-7",
+            "color": 0,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "5": {
+            "name": "Late",
+            "color": 2,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "6": {
+            "name": "Ann",
+            "color": 5,
+            "startLevel": 9,
+            "alive": true,
+            "helloSeen": true
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          }
+        }
+      }
+    },
+    {
+      "result": true,
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": null,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          6,
+          2,
+          3,
+          4711
+        ],
+        "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3,
+            "startLevel": 1,
+            "alive": false,
+            "helloSeen": true
+          },
+          "3": {
+            "name": "HX-7",
+            "color": 0,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "5": {
+            "name": "Late",
+            "color": 2,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "6": {
+            "name": "Ann",
+            "color": 5,
+            "startLevel": 9,
+            "alive": true,
+            "helloSeen": true
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "changed": true,
+        "reason": "manual",
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": null,
         "paused": true,
+        "displayMuted": true,
+        "participants": [
+          6,
+          2,
+          3,
+          4711
+        ],
+        "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3,
+            "startLevel": 1,
+            "alive": false,
+            "helloSeen": true
+          },
+          "3": {
+            "name": "HX-7",
+            "color": 0,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "5": {
+            "name": "Late",
+            "color": 2,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "6": {
+            "name": "Ann",
+            "color": 5,
+            "startLevel": 9,
+            "alive": true,
+            "helloSeen": true
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "changed": false,
+        "reason": "manual",
+        "publish": "none"
+      },
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": null,
+        "paused": true,
+        "displayMuted": true,
+        "participants": [
+          6,
+          2,
+          3,
+          4711
+        ],
+        "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3,
+            "startLevel": 1,
+            "alive": false,
+            "helloSeen": true
+          },
+          "3": {
+            "name": "HX-7",
+            "color": 0,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "5": {
+            "name": "Late",
+            "color": 2,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          },
+          "6": {
+            "name": "Ann",
+            "color": 5,
+            "startLevel": 9,
+            "alive": true,
+            "helloSeen": true
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1,
+            "startLevel": 1,
+            "alive": true,
+            "helloSeen": true
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "changed": true,
+        "reason": null,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": null,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           6,
@@ -3187,8 +3889,8 @@
       "result": false,
       "snapshot": {
         "roomState": "playing",
-        "hostPeerIndex": 3,
-        "paused": true,
+        "hostPeerIndex": null,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           6,
@@ -3239,8 +3941,8 @@
       "result": false,
       "snapshot": {
         "roomState": "playing",
-        "hostPeerIndex": 3,
-        "paused": true,
+        "hostPeerIndex": null,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           6,
@@ -3288,63 +3990,11 @@
       }
     },
     {
-      "result": false,
+      "result": true,
       "snapshot": {
         "roomState": "playing",
-        "hostPeerIndex": 3,
-        "paused": true,
-        "displayMuted": true,
-        "participants": [
-          6,
-          2,
-          3,
-          4711
-        ],
-        "players": {
-          "2": {
-            "name": "Bo",
-            "color": 3,
-            "startLevel": 1,
-            "alive": false,
-            "helloSeen": true
-          },
-          "3": {
-            "name": "HX-7",
-            "color": 0,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
-          },
-          "5": {
-            "name": "Late",
-            "color": 2,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
-          },
-          "6": {
-            "name": "Ann",
-            "color": 5,
-            "startLevel": 9,
-            "alive": true,
-            "helloSeen": true
-          },
-          "4711": {
-            "name": "Sparse",
-            "color": 1,
-            "startLevel": 1,
-            "alive": true,
-            "helloSeen": true
-          }
-        }
-      }
-    },
-    {
-      "result": false,
-      "snapshot": {
-        "roomState": "playing",
-        "hostPeerIndex": 3,
-        "paused": true,
+        "hostPeerIndex": null,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           6,
@@ -3398,8 +4048,8 @@
       },
       "snapshot": {
         "roomState": "results",
-        "hostPeerIndex": 3,
-        "paused": true,
+        "hostPeerIndex": null,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           6,
@@ -3483,8 +4133,8 @@
       ],
       "snapshot": {
         "roomState": "results",
-        "hostPeerIndex": 3,
-        "paused": true,
+        "hostPeerIndex": null,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           6,
@@ -3535,8 +4185,8 @@
       "result": null,
       "snapshot": {
         "roomState": "results",
-        "hostPeerIndex": 3,
-        "paused": true,
+        "hostPeerIndex": null,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           6,
@@ -3604,8 +4254,8 @@
       },
       "snapshot": {
         "roomState": "results",
-        "hostPeerIndex": 4711,
-        "paused": true,
+        "hostPeerIndex": null,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           6,
@@ -3663,8 +4313,8 @@
       },
       "snapshot": {
         "roomState": "lobby",
-        "hostPeerIndex": 4711,
-        "paused": true,
+        "hostPeerIndex": 5,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           6,
@@ -3713,7 +4363,7 @@
       "snapshot": {
         "roomState": "lobby",
         "hostPeerIndex": null,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [],
         "players": {}
@@ -3724,7 +4374,7 @@
       "snapshot": {
         "roomState": "lobby",
         "hostPeerIndex": null,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [],
         "players": {}
@@ -3735,7 +4385,7 @@
       "snapshot": {
         "roomState": "lobby",
         "hostPeerIndex": null,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [],
         "players": {}
@@ -3746,7 +4396,7 @@
       "snapshot": {
         "roomState": "lobby",
         "hostPeerIndex": null,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [],
         "players": {}
@@ -3757,7 +4407,7 @@
       "snapshot": {
         "roomState": "lobby",
         "hostPeerIndex": null,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [],
         "players": {}
@@ -3768,7 +4418,7 @@
       "snapshot": {
         "roomState": "lobby",
         "hostPeerIndex": null,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [],
         "players": {}
@@ -3783,7 +4433,7 @@
       "snapshot": {
         "roomState": "lobby",
         "hostPeerIndex": null,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [],
         "players": {}
@@ -3798,7 +4448,7 @@
       "snapshot": {
         "roomState": "lobby",
         "hostPeerIndex": null,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [],
         "players": {}
@@ -3813,7 +4463,7 @@
       "snapshot": {
         "roomState": "lobby",
         "hostPeerIndex": null,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [],
         "players": {}
@@ -3829,7 +4479,7 @@
       "snapshot": {
         "roomState": "lobby",
         "hostPeerIndex": 10,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           10
@@ -3855,7 +4505,7 @@
       "snapshot": {
         "roomState": "lobby",
         "hostPeerIndex": 10,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           10,
@@ -3889,7 +4539,7 @@
       "snapshot": {
         "roomState": "lobby",
         "hostPeerIndex": 10,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           10,
@@ -3931,7 +4581,7 @@
       "snapshot": {
         "roomState": "lobby",
         "hostPeerIndex": 10,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           10,
@@ -3981,7 +4631,7 @@
       "snapshot": {
         "roomState": "lobby",
         "hostPeerIndex": 10,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           10,
@@ -4039,7 +4689,7 @@
       "snapshot": {
         "roomState": "lobby",
         "hostPeerIndex": 10,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           10,
@@ -4105,7 +4755,7 @@
       "snapshot": {
         "roomState": "lobby",
         "hostPeerIndex": 10,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           10,
@@ -4181,7 +4831,7 @@
       "snapshot": {
         "roomState": "lobby",
         "hostPeerIndex": 10,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           10,
@@ -4258,7 +4908,7 @@
       "snapshot": {
         "roomState": "lobby",
         "hostPeerIndex": 10,
-        "paused": true,
+        "paused": false,
         "displayMuted": true,
         "participants": [
           10,

@@ -85,10 +85,9 @@ function connectAndCreateRoom() {
     clearTimeout(disconnectedTimer);
 
     if (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN) {
-      // Mark WHY before pausing: this is our link dying, not a host decision, so
-      // it must not reach controllers as an actionable pause (see userVisiblePaused).
-      connectionPaused = true;
-      if (!paused) pauseGame();
+      // Our link dying, not a host decision, so it must not reach controllers as
+      // an actionable pause — connectionPause records that reason.
+      connectionPause();
       // Cross-fade: the pause scrim fades out under the reconnect overlay
       // fading in, instead of flashing the boards between the two.
       fadeHide(pauseOverlay, 200);
@@ -376,11 +375,10 @@ function onDisplayRejoined(partyRoomCode, peers) {
     clearTimeout(disconnectedTimer);
     party.resetReconnectCount();
     fadeHide(reconnectOverlay, 200);
-    if (paused && (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN)) {
-      // Clear any surviving countdown timers to prevent duplicates on resume
-      clearCountdownTimers();
-      resumeGame();
-    }
+    // Lifts ONLY a link-drop freeze: a blip that landed on top of a host's
+    // manual pause leaves that pause standing, which is what tvOS and Android
+    // do too now that the state machine is shared.
+    connectionResume();
   });
 
   if (roomState === ROOM_STATE.LOBBY) {

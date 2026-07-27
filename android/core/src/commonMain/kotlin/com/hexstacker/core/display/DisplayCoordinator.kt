@@ -10,6 +10,7 @@ import com.hexstacker.core.model.PlayerResult
 import com.hexstacker.core.net.ControllerMessage
 import com.hexstacker.core.net.Msg
 import com.hexstacker.core.net.OutboundMessage
+import com.hexstacker.core.net.PauseReason
 import com.hexstacker.core.net.RelayConfig
 import com.hexstacker.core.net.RelayTransport
 import com.hexstacker.core.net.RoomState
@@ -103,24 +104,129 @@ class DisplayCoordinator(
     private var roomCode: String? = null
     private var instance: String? = null
 
-    // The three pause flags. Display-owned INPUTS to the snapshot (the room core projects
-    // them into the single `paused` a controller sees), mirrored here because the
-    // frame loop reads `paused` every tick and crossing into JS for that is absurd;
-    // every write goes through the setters below, so the room core never falls behind.
-    private var paused = false
-    // Auto-pause (all game participants dropped mid-game) — distinct from a manual/remote
-    // pause so a reconnect can auto-resume. Mirrors DisplayGame.js `autoPaused`.
-    private var autoPaused = false
-    // Set while the DISPLAY's own relay link is down; pauses the running game until we
-    // reconnect (controllers are unreachable). Web pauses on link drop too.
-    private var connectionPaused = false
+    // WHY the game is frozen, or null. A display-owned INPUT to the snapshot (the room
+    // core projects only [PauseReason.MANUAL] into the single `paused` a controller
+    // sees), mirrored here because the frame loop reads [paused] every tick and
+    // crossing into JS for that is absurd. Every write goes through [applyPause], so the
+    // room core never falls behind.
+    private var pauseReason: PauseReason? = null
+    private val paused: Boolean get() = pauseReason != null
     private var muted = false
 
-    private suspend fun setPaused(value: Boolean) { paused = value; roomCore.setPaused(value) }
-    private suspend fun setAutoPaused(value: Boolean) { autoPaused = value; roomCore.setAutoPaused(value) }
-    private suspend fun setConnectionPaused(value: Boolean) {
-        connectionPaused = value
-        roomCore.setConnectionPaused(value)
+    /**
+     * Apply the room core's decision to the engine, music and countdown. Called by the
+     * two ops below, never directly: EVERY decision — whether a freeze takes at all,
+     * which reason wins, which trigger may lift which freeze — belongs to
+     * roomCore.pause/resume, which the web display and Apple TV run too. Nothing here
+     * re-checks the room state or who is still connected.
+     */
+    private suspend fun applyPause(res: RoomCoreClient.Changed) {
+        if (!res.changed) return
+        val wasPaused = paused
+        pauseReason = res.reason?.let { wire -> PauseReason.entries.firstOrNull { it.wire == wire } }
+        if (paused == wasPaused) return
+        if (paused) {
+            engine?.pause()
+            engine?.resetFrameClock() // forget the frame clock so resume re-primes with delta 0
+            output.pauseMusic()
+        } else {
+            engine?.resume()
+            if (!muted) output.resumeMusic()
+            rewindCountdownStep()
+            // Every thaw takes the overlay down, including one the operator raised by
+            // hand during an auto-pause: without this a reconnect resumes the match
+            // underneath a stale pause menu. Web's thawGame does the same.
+            setPauseOverlay(false)
+        }
+    }
+
+    private suspend fun freezePause(reason: PauseReason): RoomCoreClient.Changed =
+        roomCore.pause(reason).also { applyPause(it) }
+
+    /** `null` is the room-lifecycle clear: it ends the freeze whatever it was. */
+    private suspend fun liftPause(reason: PauseReason?): RoomCoreClient.Changed =
+        roomCore.resume(reason).also { applyPause(it) }
+
+    private val isPausableState: Boolean
+        get() = state == RoomState.PLAYING || state == RoomState.COUNTDOWN
+
+    /** Is the pause overlay on screen? Pure VIEW state, deliberately NOT [paused]:
+     *  while auto-paused the overlay is the only route to New Game (every controller is
+     *  gone, so no one can send RETURN_TO_LOBBY), and the operator can raise it without
+     *  the freeze changing. Web's toolbar Pause / Continue pair does the same. */
+    private var pauseOverlayShown = false
+
+    private fun setPauseOverlay(shown: Boolean) {
+        pauseOverlayShown = shown
+        output.setPaused(shown)
+    }
+
+    /** The host pressed Pause (their controller or the TV remote). Refused outside a
+     *  running game, and while already frozen for a display-internal reason. During
+     *  COUNTDOWN the engine isn't ticking yet, so freezing [advanceCountdown] via
+     *  [paused] is the whole freeze (web clearCountdownTimers). */
+    private suspend fun pauseGame() {
+        val res = freezePause(PauseReason.MANUAL)
+        if (!res.changed) return
+        setPauseOverlay(true)
+        publishAs(res.publish)
+    }
+
+    /** The host pressed Continue. Refused unless the freeze is theirs to lift, and while
+     *  every participant is gone (there would be nobody to play). */
+    private suspend fun resumeGame() {
+        val res = liftPause(PauseReason.MANUAL)
+        if (!res.changed) return
+        publishAs(res.publish)
+    }
+
+    /** Every participant dropped. Silent: no overlay, and the hint is PUBLISH_NOW only
+     *  when this ABSORBED a manual pause — whose overlay must come down with it, because
+     *  Continue is gated shut while everyone is gone and it could never be dismissed. */
+    private suspend fun autoPause() {
+        val res = freezePause(PauseReason.AUTO)
+        if (!res.changed) return
+        setPauseOverlay(false)
+        publishAs(res.publish)
+    }
+
+    /** A participant came back. */
+    private suspend fun autoResume() {
+        val res = liftPause(PauseReason.AUTO)
+        if (!res.changed) return
+        publishAs(res.publish)
+    }
+
+    /** Our own relay link dropped: freeze the sim so it can't run blind. Publishing is
+     *  best-effort by definition — the relay is exactly what we cannot reach. */
+    private suspend fun connectionPause() {
+        val res = freezePause(PauseReason.CONNECTION)
+        if (!res.changed) return
+        publishAs(res.publish)
+    }
+
+    /** The relay answered created/joined. Lifts ONLY a link-drop freeze, so a blip that
+     *  landed on top of a host's manual pause leaves that pause standing. */
+    private suspend fun connectionResume() {
+        val res = liftPause(PauseReason.CONNECTION)
+        if (!res.changed) return
+        publishAs(res.publish)
+    }
+
+    /** Room-lifecycle clear (new match, return to lobby, fresh room): the pause ends
+     *  outright, whatever it was, and the transition alongside it publishes. */
+    private suspend fun clearPause() {
+        liftPause(null)
+    }
+
+    /** Web resume (startCountdown(callback, remaining)): the current number stays on
+     *  screen without a re-broadcast/beep and gets its FULL second again; a shown GO
+     *  re-arms the full 500ms hold. In the accumulator model that is a rewind to the
+     *  current step's start. */
+    private fun rewindCountdownStep() {
+        if (state == RoomState.COUNTDOWN && countdownStep >= 0) {
+            countdownElapsed = countdownStep * STEP_MS
+        }
     }
 
     // True while we are IN the room, not merely holding an open socket. Gates the
@@ -178,8 +284,10 @@ class DisplayCoordinator(
     internal var clock: (() -> Double)? = null
 
     companion object {
-        private const val STEP_MS = 1000.0   // DisplayCoordinator.swift stepMs
-        private const val GO_HOLD_MS = 500.0 // goHoldMs (web GO->start setTimeout 500)
+        // Countdown beat. Pinned to server/constants.js by tests/protocol-android-parity.test.js;
+        // the SEQUENCING below is per-shell on purpose (see that test).
+        private const val STEP_MS = 1000.0
+        private const val GO_HOLD_MS = 500.0
 
         /** constants.js LIVENESS_TIMEOUT_MS — a controller silent this long is gone. */
         private const val LIVENESS_TIMEOUT_MS = 3000.0
@@ -394,17 +502,14 @@ class DisplayCoordinator(
             // lists, and those just went through onPeerLeft. Web ties its re-stamp to the same
             // reply (onDisplayRejoined).
             relayConnected = true
-            // The link-drop pause lifts here — after the roster reconcile above (so resumeGame's
-            // allParticipantsDisconnected guard sees post-reconcile truth) and inside the batch,
-            // because the snapshot reports `paused` and that is the controller's authority.
-            // Resuming after the publish made every rejoin snapshot say paused=true and then
-            // chase it with a second publish; a controller that latched the first and missed the
-            // second was stranded on a pause overlay whose Continue cannot help, since
-            // resumeGame() is gated on a manual pause and the display is no longer paused at all.
-            if (connectionPaused) {
-                setConnectionPaused(false)
-                resumeGame()
-            }
+            // The link-drop pause lifts here — after the roster reconcile above and inside
+            // the batch, because the snapshot reports `paused` and that is the controller's
+            // authority. Resuming after the publish made every rejoin snapshot say
+            // paused=true and then chase it with a second publish; a controller that latched
+            // the first and missed the second was stranded on a pause overlay whose Continue
+            // cannot help. connectionResume lifts ONLY a link-drop freeze, so a blip that
+            // landed on a host's manual pause leaves that pause standing.
+            connectionResume()
         }
     }
 
@@ -508,34 +613,15 @@ class DisplayCoordinator(
         // well as in the sweep: an event landing on/after the deadline between polls would
         // otherwise slip a full window.
         if (roomCore.graceTick(nowWallMs())) { returnToLobby(); return }
-        if (paused) {
-            // Already manually paused when the last player dropped: convert the
-            // manual pause into a silent auto-pause and hide the stranded overlay.
-            // resumeGame is gated shut while everyone is gone, so a manual pause
-            // left showing could never be dismissed. A reconnect auto-resumes.
-            if (!autoPaused) {
-                setAutoPaused(true)
-                output.setPaused(false)
-                // userVisiblePaused just flipped true -> false: returning players must not
-                // be handed a pause overlay whose Continue the display would ignore.
-                publishAs(RoomCoreClient.PUBLISH_NOW)
-            }
-            return
-        }
-        // Silent pause: the composite stays invisible to controllers (userVisiblePaused is
-        // false while autoPaused), so there is nothing to publish.
-        setPaused(true)
-        setAutoPaused(true)
-        engine?.pause()
-        engine?.resetFrameClock()
-        output.pauseMusic()
+        // autoPause absorbs whatever we were frozen for, taking a stranded manual
+        // overlay down with it; it no-ops if we are already auto-paused.
+        autoPause()
     }
 
-    /** A participant reconnected while auto-paused: resume. Port of `checkAutoResume`. */
+    /** A participant reconnected. Named for the call sites; the reason check and the
+     *  all-disconnected gate both live in [autoResume]. */
     private suspend fun checkAutoResume() {
-        if (!autoPaused) return
-        setAutoPaused(false)
-        resumeGame()
+        autoResume()
     }
 
     /**
@@ -551,16 +637,7 @@ class DisplayCoordinator(
         when (state) {
             RelayTransport.ConnectionState.RECONNECTING, RelayTransport.ConnectionState.CLOSED -> {
                 relayConnected = false
-                val active = this.state == RoomState.PLAYING || this.state == RoomState.COUNTDOWN
-                if (active && !paused) {
-                    setPaused(true)
-                    setConnectionPaused(true)
-                    if (this.state == RoomState.PLAYING) { // COUNTDOWN: the engine isn't ticking yet
-                        engine?.pause()
-                        engine?.resetFrameClock()
-                    }
-                    output.pauseMusic()
-                }
+                connectionPause()
             }
             // OPEN is deliberately NOT the point the liveness sweep resumes — see
             // [relayConnected], re-armed in handleCreated/handleJoined instead.
@@ -635,13 +712,14 @@ class DisplayCoordinator(
         if (res.claimed) checkAutoResume()
     }
 
-    /** The HELLO body the room core reads. `claim` (from the rejoin QR) and the legacy
-     *  `rejoinId` are normalized onto `rejoinToken`, which is what it looks for. */
+    /** The HELLO body the room core reads. The legacy `rejoinId` is normalized onto
+     *  `rejoinToken`, which is what it looks for. (The rejoin QR's `?claim=` param is
+     *  sent by the controller AS `rejoinToken` — web and tvOS decode the same two.) */
     private fun helloBody(msg: ControllerMessage): JsonObject = buildJsonObject {
         msg.name?.let { put("name", it) }
         msg.autoName?.let { put("autoName", it) }
         msg.colorIndex?.let { put("colorIndex", it) }
-        (msg.rejoinToken ?: msg.rejoinId ?: msg.claim)?.let { put("rejoinToken", it) }
+        (msg.rejoinToken ?: msg.rejoinId)?.let { put("rejoinToken", it) }
     }
 
     /**
@@ -746,9 +824,7 @@ class DisplayCoordinator(
         // Board-layout order (join order, first joiner leftmost), pinned as the active set.
         val order = roomCore.freezeParticipantOrder()
         pendingSeed = seedProvider()
-        setPaused(false)
-        setAutoPaused(false)
-        setConnectionPaused(false)
+        clearPause()
         countdownElapsed = 0.0
         if (!makeEngine(order)) {
             returnToLobby()
@@ -888,11 +964,9 @@ class DisplayCoordinator(
     }
 
     private suspend fun endGame(results: List<PlayerResult>) {
-        // Clear the pause flags first: the RESULTS publish below reports `paused`, and a
-        // match that ended while flagged must not hand controllers a stale pause.
-        setPaused(false)
-        setAutoPaused(false)
-        setConnectionPaused(false)
+        // Lift any pause first: the RESULTS publish below reports `paused`, and a match
+        // that ended while frozen must not hand controllers a stale pause.
+        clearPause()
         // Label the ranking with roster names/colours and append the players who sat this
         // round out (flagged newPlayer), then stash it BEFORE the transition: the transition
         // publishes, and the RESULTS snapshot is what carries the ranking to controllers.
@@ -900,7 +974,7 @@ class DisplayCoordinator(
         roomCore.setResults(enriched)
         publishAs(roomCore.transitionTo(RoomState.RESULTS).publish)
         output.stopMusic()
-        output.setPaused(false) // MUST precede showResults (clears the focus menu)
+        setPauseOverlay(false) // MUST precede showResults (clears the focus menu)
         output.showResults(decodeResults(enriched))
         output.showScreen(DisplayScreen.RESULTS)
         engine = null
@@ -908,12 +982,10 @@ class DisplayCoordinator(
 
     private suspend fun returnToLobby() {
         if (state == RoomState.LOBBY) return
-        setPaused(false)
-        setAutoPaused(false)
-        setConnectionPaused(false)
+        clearPause()   // the LOBBY transition below publishes, so the lift rides it
         engine = null
         output.stopMusic()
-        output.setPaused(false)
+        setPauseOverlay(false)
         // Remove the players who went missing, then fold in the late joiners who were
         // waiting out the round.
         flushSeen()
@@ -954,56 +1026,18 @@ class DisplayCoordinator(
         engine = null
         fastlane?.closeAll()
         output.stopMusic()
-        output.setPaused(false)
+        setPauseOverlay(false)
         roomCode = null
         instance = null
         disconnectedBoards.clear()
-        // Roster, participants, liveness, results, the pause flags and the room state, all
-        // back to a fresh room. Mute survives (a device preference, not room state).
+        // Roster, participants, liveness, results, the pause reason and the room state,
+        // all back to a fresh room. Mute survives (a device preference, not room state).
         roomCore.reset()
-        paused = false
-        autoPaused = false
-        connectionPaused = false
+        pauseReason = null   // reset() cleared the room core's copy; keep the mirror in step
+
         output.showScreen(DisplayScreen.LOBBY)
         refreshDisplayLobby()
         transport.createFresh() // handleCreated re-arms the room code + QR when `created` lands
-    }
-
-    /** Manual pause; allowed while PLAYING or mid-COUNTDOWN (web pauseGame). During
-     *  COUNTDOWN the engine isn't ticking yet, so freezing [advanceCountdown] via
-     *  [paused] is the whole freeze (web clearCountdownTimers). */
-    private suspend fun pauseGame() {
-        if (paused || (state != RoomState.PLAYING && state != RoomState.COUNTDOWN)) return
-        setPaused(true)
-        if (state == RoomState.PLAYING) {
-            engine?.pause()
-            engine?.resetFrameClock() // forget the frame clock so resume re-primes with delta 0
-        }
-        output.pauseMusic()
-        output.setPaused(true)
-        // userVisiblePaused may still be false here (a connection- or auto-pause is
-        // display-internal); publishing either way keeps the snapshot honest.
-        publishAs(RoomCoreClient.PUBLISH_NOW)
-    }
-
-    private suspend fun resumeGame() {
-        if (!paused || (state != RoomState.PLAYING && state != RoomState.COUNTDOWN)) return
-        if (roomCore.allParticipantsDisconnected()) return // web canResumeGame
-        if (autoPaused) setAutoPaused(false)
-        setConnectionPaused(false)
-        setPaused(false)
-        if (state == RoomState.COUNTDOWN) {
-            // Web resume (startCountdown(callback, remaining)): the current number stays on
-            // screen without a re-broadcast/beep and gets its FULL second again; a shown GO
-            // re-arms the full 500ms hold. In the accumulator model that is a rewind to the
-            // current step's start.
-            if (countdownStep >= 0) countdownElapsed = countdownStep * STEP_MS
-        } else {
-            engine?.resume()
-        }
-        if (!muted) output.resumeMusic()
-        output.setPaused(false)
-        publishAs(RoomCoreClient.PUBLISH_NOW)
     }
 
     // =====================================================================
@@ -1033,6 +1067,22 @@ class DisplayCoordinator(
         return if (actions.trySend(Action.Remote(RemoteKind.TOGGLE_MUTE, ack)).isSuccess) ack.await() else false
     }
 
+    /** The remote's pause key (and Back / Menu during a game). */
+    private suspend fun togglePause() {
+        if (!isPausableState) return
+        when (pauseReason) {
+            PauseReason.MANUAL -> resumeGame()
+            // Nothing left to pause — but the overlay carries New Game, and with every
+            // controller gone it is the only way out of a frozen match. Toggling the VIEW
+            // leaves the freeze alone; a returning player still auto-resumes. The web
+            // display's toolbar Pause (raise) / Continue (dismiss) pair is the same thing
+            // split across two buttons.
+            PauseReason.AUTO -> setPauseOverlay(!pauseOverlayShown)
+            // CONNECTION: the reconnect overlay owns the screen. null: a fresh pause.
+            else -> pauseGame()
+        }
+    }
+
     private suspend fun handleRemote(kind: RemoteKind): Boolean = when (kind) {
         RemoteKind.START_MATCH -> {
             if ((state == RoomState.LOBBY || state == RoomState.RESULTS) && room.size >= 1) beginCountdown()
@@ -1043,15 +1093,13 @@ class DisplayCoordinator(
             muted
         }
         RemoteKind.TOGGLE_PAUSE -> {
-            if (state == RoomState.PLAYING || state == RoomState.COUNTDOWN) {
-                if (paused) resumeGame() else pauseGame()
-            }
+            togglePause()
             paused
         }
         RemoteKind.PLAY_PAUSE -> {
             when (state) {
                 RoomState.LOBBY, RoomState.RESULTS -> if (room.size >= 1) beginCountdown()
-                RoomState.COUNTDOWN, RoomState.PLAYING -> if (paused) resumeGame() else pauseGame()
+                RoomState.COUNTDOWN, RoomState.PLAYING -> togglePause()
             }
             muted
         }

@@ -102,6 +102,18 @@ enum class RoomState(val wire: String) {
     }
 }
 
+/**
+ * Why the game is frozen. Wire values are the room core's `RoomCore.PAUSE`, and only
+ * [MANUAL] ever reaches a controller: the other two are display-internal, they resolve
+ * themselves, and a controller shown either would sit on a pause overlay whose Continue
+ * the display ignores. Pinned by tests/protocol-android-parity.test.js.
+ */
+enum class PauseReason(val wire: String) {
+    MANUAL("manual"),
+    AUTO("auto"),
+    CONNECTION("connection");
+}
+
 /** Tolerant decoder for relay frames. */
 internal val RelayJson = Json {
     ignoreUnknownKeys = true
@@ -170,7 +182,6 @@ data class ControllerMessage(
     val t: Double? = null,
     val rejoinId: Int? = null,
     val rejoinToken: Int? = null,
-    val claim: Int? = null,
 ) {
     companion object {
         fun from(obj: JsonObject): ControllerMessage? {
@@ -187,7 +198,6 @@ data class ControllerMessage(
                 t = obj.dbl("t"),
                 rejoinId = obj.int("rejoinId"),
                 rejoinToken = obj.int("rejoinToken"),
-                claim = obj.int("claim"),
             )
         }
 

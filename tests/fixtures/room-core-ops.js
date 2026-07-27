@@ -28,6 +28,7 @@ const OPS = [
   // --- an empty room ------------------------------------------------------
   { g: 'state' },
   { g: 'host' },
+  { m: 'pause', a: ['manual'] },                // REFUSED: the lobby is not a running game
 
   // --- peer_joined arrives BEFORE hello (the helloSeen placeholder window) --
   { m: 'peerJoined', a: [1, 1000] },
@@ -80,15 +81,25 @@ const OPS = [
   { m: 'peerJoined', a: [5, 2000] },
   { m: 'hello', a: [5, { name: 'Late' }, 2000] },
 
-  // --- pause semantics: only a manual pause reaches controllers -----------
-  { m: 'setPaused', a: [true] },
-  { m: 'userVisiblePaused', a: [] },
-  { m: 'setAutoPaused', a: [true] },
-  { m: 'userVisiblePaused', a: [] },            // auto-pause hides it again
-  { m: 'setAutoPaused', a: [false] },
-  { m: 'setConnectionPaused', a: [true] },
-  { m: 'userVisiblePaused', a: [] },            // link pause hides it too
-  { m: 'setConnectionPaused', a: [false] },
+  // --- the pause state machine -------------------------------------------
+  // Three rules: a freeze takes only while the room is RUNNING, it is refused
+  // while we are already frozen (except 'auto', which absorbs one), and a resume
+  // takes only if it names the current reason and somebody is left to play.
+  // Every step's {changed, reason, publish} is the assertion — publish is 'now'
+  // exactly when snapshot.paused flips, i.e. only for the manual pause.
+  { m: 'pause', a: ['manual'] },                // -> snapshot.paused true
+  { m: 'pause', a: ['connection'] },            // REFUSED: already frozen, manual stands
+  { m: 'resume', a: ['connection'] },           // REFUSED: not why we are frozen
+  { g: 'pauseReason' },                         // ...so a link blip leaves the host's pause
+  { m: 'pause', a: ['auto'] },                  // absorbs it; hint 'now' (visible flipped off)
+  { g: 'paused' },                              // ...but the room IS still frozen
+  { m: 'resume', a: ['manual'] },               // REFUSED: Continue can't lift an auto-pause
+  { m: 'resume', a: ['auto'] },                 // the returning participant can
+  { m: 'resume', a: ['auto'] },                 // idempotent: no second publish
+  { m: 'pause', a: ['bogus'] },                 // unknown reasons are refused, not stored
+  { g: 'pauseReason' },
+  { m: 'pause', a: ['connection'] },            // running -> link drop takes
+  { m: 'resume', a: [null] },                   // lifecycle clear: ends it, whatever it was
   { m: 'setMuted', a: [true] },
 
   // --- suspend and rejoin: the path a stale native cache would break -------
@@ -107,9 +118,20 @@ const OPS = [
   // --- liveness: batched tick, expiry, late-joiner grace -------------------
   { m: 'tick', a: [2700, [2, 6]] },
   { m: 'tick', a: [9000, []] },                 // everyone else expires
+  // Every participant, not just the two that were claimed/rejoined: expiry alone
+  // does not set the flag, so without 3 and 4711 the grace window below never
+  // arms and the whole section asserts nothing.
   { m: 'markDisconnected', a: [2] },
   { m: 'markDisconnected', a: [6] },
+  { m: 'markDisconnected', a: [3] },
+  { m: 'markDisconnected', a: [4711] },
   { m: 'allParticipantsDisconnected', a: [] },
+  // Nobody left to play: a freeze still takes, but neither Continue nor the
+  // auto-resume may lift it — the rule that keeps a returning player from
+  // meeting an overlay whose Continue the display would ignore.
+  { m: 'pause', a: ['manual'] },
+  { m: 'resume', a: ['manual'] },               // REFUSED: no participant is back
+  { m: 'resume', a: [null] },                   // the lifecycle clear is exempt
   { m: 'graceTick', a: [10000] },               // arms the deadline
   { m: 'graceTick', a: [10001] },               // still inside the window
   { m: 'graceTick', a: [16000] },               // fires

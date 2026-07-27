@@ -39,12 +39,11 @@ var cachedGridRows = 1;
 
 function calculateLayout() {
   if (!ctx || playerOrder.length === 0) return;
-  // Sort by join time so board positions are stable across color changes
-  // and sticky-host behavior — first joiner is leftmost, last joiner
-  // rightmost, color pick has no effect on seat.
-  playerOrder.sort(function(a, b) {
-    return (players.get(a)?.joinedAt ?? Infinity) - (players.get(b)?.joinedAt ?? Infinity);
-  });
+  // playerOrder is already join-ordered — the room core appends in join order and
+  // pins the sort at game start (freezeParticipantOrder) — so board positions are
+  // stable across colour changes and sticky-host moves without re-sorting here.
+  // Re-sorting would ALSO be a write: playerOrder aliases the room core's own
+  // participant array, and a render pass has no business mutating room state.
   clearStampCache();
   // Renderers are being rebuilt, so the last painted frame no longer matches
   // what render would produce and the identical-frame skip must not fire.
