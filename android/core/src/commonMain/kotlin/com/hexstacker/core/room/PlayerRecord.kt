@@ -1,30 +1,35 @@
 package com.hexstacker.core.room
 
-/**
- * A player slot in the room. A reference type (NOT a data class) so game-owned
- * fields can be mutated in place and seen by both [RoomFlow] and the
- * `DisplayCoordinator`, mirroring the shared-record aliasing in the canonical
- * `partyplug/RoomFlow.js` (where `players = flow.players` is the same Map).
- *
- * Kit-owned fields ([peerIndex], [joinedAt], [connected]) are only written by
- * [RoomFlow]; game-owned fields ([playerName], [colorSlot], [startLevel],
- * [lastPingTime]) are written by the coordinator.
- */
-class PlayerRecord internal constructor(
-    /** Kit-owned, immutable map key (== relay peer index). */
-    val peerIndex: Int,
-    /** Kit-owned monotonic counter (NOT wall clock); the host-election tiebreak. */
-    internal var joinedAt: Int,
-    /** Game-owned display name. */
-    var playerName: String,
-    /** Game-owned dense color slot 0..MAX_PLAYERS-1 (the JS field name is `playerIndex`). */
-    var colorSlot: Int,
-    /** Game-owned start level, 1..15. */
-    var startLevel: Int,
-) {
-    /** Kit-owned presence flag. */
-    var connected: Boolean = true
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
-    /** Game-owned wall-clock-ish ms of the last controller message (diagnostics only). */
-    var lastPingTime: Double = 0.0
-}
+/**
+ * One roster row, decoded from the room brain's `list()` (join order, oldest first).
+ *
+ * The FULL record, unlike the wire snapshot's per-player entry: it also carries
+ * [joinedAt] (the monotonic join counter the board layout and host election tie-break
+ * on) and [connected], which the snapshot deliberately does not ship. Read it where
+ * the lobby/board layout needs more than the snapshot has.
+ *
+ * Immutable: `server/RoomBrain.js` (running in QuickJS) is the only writer, and this
+ * is a decoded copy of what it holds. Nothing here may be mutated locally — a write
+ * that doesn't go through the brain is exactly the drift this refactor removed.
+ *
+ * Field names follow the JS record, except `playerIndex`, which is the dense COLOUR
+ * SLOT (0..MAX_PLAYERS-1) rather than the relay peer index; it is remapped to
+ * [colorSlot] here so that distinction survives on this side.
+ */
+@Serializable
+data class PlayerRecord(
+    val peerIndex: Int,
+    val playerName: String = "",
+    @SerialName("playerIndex") val colorSlot: Int = 0,
+    val startLevel: Int = 1,
+    /** Kit-owned monotonic join counter (NOT a wall clock); first joiner leftmost. */
+    val joinedAt: Int = 0,
+    /** Kit-owned presence flag; false while the peer sits in the disconnect window. */
+    val connected: Boolean = true,
+    /** False until this player's own HELLO lands (peer_joined registers a placeholder
+     *  row with a guessed name/colour so the palette slot is claimed immediately). */
+    val helloSeen: Boolean = true,
+)
