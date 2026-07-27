@@ -17,9 +17,11 @@ const path = require('path');
 
 const { MSG, INPUT, ROOM_STATE, RELAY_URL, STUN_URL } = require('../public/shared/protocol.js');
 const constants = require('../server/constants.js');
+const { RoomCore } = require('../server/RoomCore.js');
 
 const ROOT = path.join(__dirname, '..');
 const SWIFT = read('appletv/Sources/HexStackerKit/Net/Protocol.swift');
+const COORDINATOR = read('appletv/Sources/HexStackerKit/Game/DisplayCoordinator.swift');
 
 function read(p) {
   return fs.readFileSync(path.join(ROOT, p), 'utf8');
@@ -78,6 +80,17 @@ test('RoomState and InputAction wire values mirror protocol.js', () => {
   assert.deepStrictEqual(swiftWireEnum(swiftEnum('InputAction')), INPUT, 'InputAction wire values');
 });
 
+test('PauseReason wire values mirror the room core', () => {
+  // The reason never crosses the wire — only the boolean it projects into does —
+  // but it IS the argument to roomCall("setPause"), so a drifted spelling reaches
+  // the room core as an unknown reason, which it silently refuses. The freeze
+  // would then never be recorded and the snapshot would keep saying paused:false.
+  assert.deepStrictEqual(
+    swiftWireEnum(swiftEnum('PauseReason')),
+    { MANUAL: RoomCore.PAUSE.MANUAL, AUTO: RoomCore.PAUSE.AUTO, CONNECTION: RoomCore.PAUSE.CONNECTION }
+  );
+});
+
 test('relay endpoints and limits mirror the web', () => {
   const proto = swiftStringConsts(swiftEnum('Protocol'));
   assert.strictEqual(proto.relayURL, RELAY_URL);
@@ -92,17 +105,70 @@ test('relay endpoints and limits mirror the web', () => {
 test('the controller base URL matches the Android mirror', () => {
   // The web display derives the QR join URL from window.location, so there is
   // no canonical JS constant; the two native mirrors must at least agree with
-  // each other.
+  // each other. Both are overridable at launch (HEXHOST / --es hexHost, for
+  // testing a branch preview); what has to match is the shipped default.
   const kotlin = read('android/core/src/commonMain/kotlin/com/hexstacker/core/net/Protocol.kt');
-  const kt = kotlin.match(/const val CONTROLLER_BASE_URL = "([^"]*)"/);
-  assert.ok(kt, 'Kotlin const CONTROLLER_BASE_URL not found');
-  assert.strictEqual(swiftStringConsts(swiftEnum('Protocol')).controllerBaseURL, kt[1]);
+  const kt = kotlin.match(/const val DEFAULT_CONTROLLER_BASE_URL = "([^"]*)"/);
+  assert.ok(kt, 'Kotlin const DEFAULT_CONTROLLER_BASE_URL not found');
+  assert.strictEqual(swiftStringConsts(swiftEnum('Protocol')).defaultControllerBaseURL, kt[1]);
+});
+
+// The room LAYER is no longer mirrored — tvOS runs server/RoomCore.js itself, and
+// RoomCoreConformanceTests replays the shared golden through its bridge — so there
+// is nothing left here to pin about naming, colours, host election or the snapshot.
+// What survives is the handful of numbers the shell still has to hold in Swift,
+// because they configure or schedule the room core rather than living inside it.
+test('the snapshot throttle is READ from the room core, not mirrored in Swift', () => {
+  // The room core hands back a 'now' | 'soon' | 'none' hint per mutator; the WINDOW
+  // the 'soon' hint is throttled by has to be the room core's own. Swift reads it
+  // through roomGet at roomInit time, exactly as Kotlin does, so there is no
+  // constant here to drift. This asserts the READ still happens: a future edit
+  // that quietly reinstates a Swift literal would otherwise go unnoticed.
+  assert.match(
+    COORDINATOR,
+    /roomGet\(Double\.self, "snapshotThrottleMs"\)/,
+    'Swift no longer reads the throttle window from the room core'
+  );
+  assert.ok(
+    !/(static )?let snapshotThrottleMs = /.test(COORDINATOR),
+    'the throttle window is mirrored as a Swift constant again; read it from the room core instead'
+  );
+});
+
+test('the liveness policy handed to the room core matches the canonical constants', () => {
+  // Constructor options, so they are Swift-side by necessity; the web display passes
+  // the same two values from server/constants.js.
+  const timeout = COORDINATOR.match(/static let livenessTimeoutMs = (\d+)/);
+  const grace = COORDINATOR.match(/static let lateJoinerGraceMs = (\d+)/);
+  assert.ok(timeout && grace, 'Swift liveness constants not found');
+  assert.strictEqual(Number(timeout[1]), constants.LIVENESS_TIMEOUT_MS);
+  assert.strictEqual(Number(grace[1]), constants.LATE_JOINER_GRACE_MS);
+});
+
+test('the countdown beat matches the canonical constants', () => {
+  // The SEQUENCING is deliberately per-shell (setInterval on web, a frame
+  // accumulator here): only one display ever runs in a room, so nothing has to
+  // agree at runtime. The durations are pinned anyway, because three hand-typed
+  // copies of "one second" is how a beat quietly becomes 1.2s on one platform.
+  const step = COORDINATOR.match(/static let stepMs = (\d+)/);
+  const hold = COORDINATOR.match(/static let goHoldMs = (\d+)/);
+  assert.ok(step && hold, 'Swift countdown constants not found');
+  assert.strictEqual(Number(step[1]), constants.COUNTDOWN_STEP_MS);
+  assert.strictEqual(Number(hold[1]), constants.COUNTDOWN_GO_HOLD_MS);
 });
 
 test('the controller-URL template registered on create mirrors the web shape', () => {
   // Same guard as tests/protocol-android-parity.test.js: every display flavor
   // registers <base>/{room}#{instance} on create so a code-only join resolves
   // to the same controller page regardless of which display hosts the room.
-  const proto = swiftStringConsts(swiftEnum('Protocol'));
-  assert.strictEqual(proto.controllerURLTemplate, `${proto.controllerBaseURL}/{room}#{instance}`);
+  //
+  // Derived from the LIVE base (not the prod literal) on purpose: a debug launch
+  // pointed at a branch preview must register the preview template too, so the QR
+  // and a code-only join resolve to the same origin.
+  assert.match(
+    swiftEnum('Protocol'),
+    /controllerURLTemplate: String \{ "\\\(controllerBaseURL\)\/\{room\}#\{instance\}" \}/,
+    'Swift controllerURLTemplate no longer derives <base>/{room}#{instance} from controllerBaseURL',
+  );
+  assert.strictEqual(swiftStringConsts(swiftEnum('Protocol')).defaultControllerBaseURL, 'https://hexstacker.com');
 });

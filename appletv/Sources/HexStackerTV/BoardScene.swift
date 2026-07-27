@@ -10,7 +10,7 @@ final class BoardScene: SKScene {
 
     /// Coordinator tick pump (nil while the model is in a frozen shot mode).
     var onTick: ((Double) -> Void)?
-    /// Roster lookup for board building / garbage tinting (reads RoomFlow).
+    /// Roster lookup for board building / garbage tinting (reads the published lobby).
     var rosterLookup: ((Int) -> (colorSlot: Int, name: String)?)?
 
     // Lobby ambient = the animated falling pieces (web lobby background). The

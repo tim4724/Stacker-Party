@@ -223,8 +223,10 @@ PartyCore._toCommands = function(events, snapshot) {
         }
         break;
       case 'player_ko':
-        // playerEliminated == "this player is out" (host sends MSG.GAME_OVER to
-        // their controller); distinct from the match-end 'gameEnd' command below.
+        // playerEliminated == "this player is out"; distinct from the match-end
+        // 'gameEnd' command below. Nothing extra goes to their controller for it:
+        // the playerState command above carries alive:false, and the room
+        // snapshot's own `alive` flag is what survives a reconnect.
         commands.push({ type: 'playerKO', playerId: e.playerId });
         commands.push({ type: 'playerState', playerId: e.playerId, alive: false });
         commands.push({ type: 'playerEliminated', playerId: e.playerId });

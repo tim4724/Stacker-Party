@@ -295,7 +295,7 @@ newGameResultsBtn.addEventListener('click', function() {
 function setDisplayMuted(next) {
   next = !!next;
   if (next === muted) return;
-  muted = next;
+  var res = roomCore.setMuted(next);
   try { localStorage.setItem('stacker_muted', muted ? '1' : '0'); } catch (e) { /* iframe sandbox */ }
   muteBtn.querySelector('.sound-waves').style.display = muted ? 'none' : '';
   muteBtn.setAttribute('aria-checked', muted ? 'false' : 'true');
@@ -307,12 +307,10 @@ function setDisplayMuted(next) {
       music.masterGain.gain.linearRampToValueAtTime(muted ? 0 : Music.MASTER_VOLUME, music.ctx.currentTime + 0.05);
     }
   }
-  // Broadcast so the host controller's Game Music toggle reflects changes
-  // made via the display's own mute button (and so a new host seeing the
-  // settings popup sees the correct state without a page reload).
-  if (party && typeof party.broadcast === 'function') {
-    try { party.broadcast({ type: MSG.DISPLAY_MUTED, muted: muted }); } catch (e) { /* ignore */ }
-  }
+  // Publish so the host controller's Game Music toggle reflects changes made
+  // via the display's own mute button, and so a newly-promoted host opening
+  // the settings popup sees the correct state without a page reload.
+  publishAs(res.publish);
 }
 
 muteBtn.addEventListener('click', function() {
@@ -332,19 +330,19 @@ document.addEventListener('fullscreenchange', function() {
 });
 
 // --- Pause (display-side buttons) ---
+// While auto-paused these move the OVERLAY only, never the pause: there is nothing
+// left to pause, and resuming is the returning player's business, not the
+// operator's. Raising it is what puts New Game / Return-to-lobby within reach of a
+// mouse; the TVs bind that action to a remote button instead. Outside an
+// auto-pause both fall through to the shared state machine, which refuses anything
+// that isn't the host's to do.
 pauseBtn.addEventListener('click', function() {
-  if (autoPaused) {
-    onGamePaused();
-    return;
-  }
+  if (pauseReason === PAUSE.AUTO) { showPauseOverlay(); return; }
   pauseGame();
 });
 
 pauseContinueBtn.addEventListener('click', function() {
-  if (autoPaused && !canResumeGame()) {
-    dismissAutoPausedOverlay();
-    return;
-  }
+  if (pauseReason === PAUSE.AUTO) { hidePauseOverlay(); return; }
   resumeGame();
 });
 

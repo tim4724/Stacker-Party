@@ -135,6 +135,13 @@ public struct PlayerResult: Decodable, Equatable {
     public let lines: Int
     public let level: Int
     public let rank: Int           // 1-based, pre-sorted
+
+    /// The raw ranking as the room core's `enrichResults` expects it: the room core
+    /// labels each row with the roster's name/colour in place and appends the
+    /// players who sat the round out.
+    public var payload: [String: Any] {
+        ["playerId": playerId, "alive": alive, "lines": lines, "level": level, "rank": rank]
+    }
 }
 
 /// One normalized host-effect command from `PartyCore.frame()`. Like `GameEvent`,

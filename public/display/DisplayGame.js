@@ -2,7 +2,7 @@
 
 // =====================================================================
 // Display Game — game lifecycle, event handlers, audio
-// Depends on: DisplayState.js (globals), DisplayConnection.js (broadcastLobbyUpdate, showDisconnectQR)
+// Depends on: DisplayState.js (globals), DisplayConnection.js (publishRoomState, showDisconnectQR)
 // Called by: display.js (message handlers and UI buttons)
 // =====================================================================
 
@@ -34,43 +34,145 @@ function playAgain() {
   startNewGame();
 }
 
-function setAutoPaused(value) {
-  autoPaused = value;
-  if (pauseBtn) pauseBtn.disabled = false;
+// =====================================================================
+// Pause
+//
+// Six operations, one per (reason, direction). The DECISIONS — which reason wins
+// and which trigger may lift which freeze — belong to roomCore.pause/resume, so
+// tvOS and Android TV run this same state machine rather than three lookalikes.
+// What lives here is only the effects: engine, music, overlay, toolbar chrome.
+// =====================================================================
+
+// Toolbar chrome follows the reason: an auto-pause means nobody is at the
+// controllers, so the toolbar stops auto-hiding and the cursor comes back.
+function applyPauseChrome() {
+  var isAuto = roomCore.pauseReason === PAUSE.AUTO;
   if (gameToolbar && currentScreen === SCREEN.GAME && !document.body.classList.contains('airconsole')) {
-    document.body.classList.toggle('cursor-hidden', value === false);
-    gameToolbar.classList.toggle('toolbar-autohide', value === false);
+    document.body.classList.toggle('cursor-hidden', !isAuto);
+    gameToolbar.classList.toggle('toolbar-autohide', !isAuto);
   }
+}
+
+// Stop the world. Shared by all three pause reasons; only the overlay differs,
+// and that is the caller's business.
+function freezeGame() {
+  if (roomState === ROOM_STATE.COUNTDOWN) clearCountdownTimers();
+  if (displayGame) displayGame.pause();
+  if (music) music.pause();
+  applyPauseChrome();
+}
+
+// Start it again. During COUNTDOWN the digits own the clock, so the current
+// number gets its full second back (a shown GO re-arms its 500ms hold) instead
+// of the engine resuming.
+function thawGame() {
+  applyPauseChrome();
+  if (displayGame) displayGame.resume();
+  if (music) music.resume();
+  hidePauseOverlay();
+  countdownOverlay.classList.remove('paused');
+  // A countdown number still on screen came back with the scrim.
+  if (countdownNumber.textContent) {
+    cancelFadeHide(countdownOverlay);
+    countdownOverlay.classList.remove('hidden');
+  }
+  if (roomState !== ROOM_STATE.COUNTDOWN || !countdown.callback) return;
+  if (countdown.remaining === 0) {
+    armCountdownDismiss();
+    countdown.goTimeout = setTimeout(function() {
+      countdown.goTimeout = null;
+      countdown.callback();
+    }, GameConstants.COUNTDOWN_GO_HOLD_MS);
+  } else {
+    startCountdown(countdown.callback, countdown.remaining);
+  }
+}
+
+// The host pressed Pause (their controller, the display's own button, or a TV
+// remote). Refused outside a running game, and while already frozen for any
+// other reason: the room core keeps both decisions, so there is no state check
+// here to drift from tvOS and Android's.
+function pauseGame() {
+  var res = roomCore.pause(PAUSE.MANUAL);
+  if (!res.changed) return;
+  freezeGame();
+  showPauseOverlay();
+  publishAs(res.publish);
+}
+
+// The host pressed Continue. Refused unless the freeze is theirs to lift, and
+// while every participant is gone (there would be nobody to play). In that
+// second case the overlay deliberately stays up: it carries New Game, which is
+// what an operator staring at an emptied room actually wants.
+function resumeGame() {
+  var res = roomCore.resume(PAUSE.MANUAL);
+  if (!res.changed) return;
+  thawGame();
+  publishAs(res.publish);
+}
+
+// Every participant dropped mid-game. Silent: controllers never see this reason,
+// so the room core hints 'none' and nothing goes out — there is nobody left to
+// tell. Refused if the host had already paused by hand, which is what keeps
+// their pause (and its Continue) intact for whoever comes back.
+function autoPause() {
+  var res = roomCore.pause(PAUSE.AUTO);
+  if (!res.changed) return;
+  freezeGame();
+  publishAs(res.publish);
+}
+
+// A participant came back.
+function autoResume() {
+  var res = roomCore.resume(PAUSE.AUTO);
+  if (!res.changed) return;
+  thawGame();
+  publishAs(res.publish);
+}
+
+// Our own relay link dropped: freeze so the sim can't run blind behind the
+// reconnect overlay. Publishing is best-effort by definition — the relay is
+// exactly what we cannot reach.
+function connectionPause() {
+  var res = roomCore.pause(PAUSE.CONNECTION);
+  if (!res.changed) return;
+  freezeGame();
+  publishAs(res.publish);
+}
+
+// The relay answered created/joined: we are back IN the room, not merely holding
+// an open socket. Lifts only a link-drop freeze, so a blip during a manual pause
+// leaves that pause standing.
+function connectionResume() {
+  var res = roomCore.resume(PAUSE.CONNECTION);
+  if (!res.changed) return;
+  thawGame();
+  publishAs(res.publish);
+}
+
+// Room-lifecycle clear (new match, return to lobby, fresh room): the pause ends
+// outright, whatever it was, and the state transition alongside it publishes.
+function clearPause() {
+  roomCore.resume(null);
+  applyPauseChrome();
 }
 
 function startNewGame() {
   stopDisplayGame();
-  paused = false;
-  setAutoPaused(false);
+  clearPause();
   lastResults = null;
-  lastAliveState = {};
+  roomCore.clearAlive();
   // Drop players still flagged as disconnected from the previous game so they
-  // don't carry into the new one. flow.isDisconnected is the unified disconnect
-  // signal across relay and AirConsole modes; flow.isExpired additionally
-  // catches a relay peer that dropped right as RESULTS appeared, before
-  // peer_left or the liveness tick flagged it (mirrors returnToLobby).
+  // don't carry into the new one, including a relay peer that dropped right as
+  // RESULTS appeared, before peer_left or the liveness tick flagged it.
   // Reconnects clear the flag, so present players survive.
-  var goneIds = [];
-  for (const entry of players) {
-    if (flow.isDisconnected(entry[0]) || flow.isExpired(entry[0], Date.now())) {
-      goneIds.push(entry[0]);
-    }
-  }
-  for (var gi = 0; gi < goneIds.length; gi++) {
-    flow.removePlayer(goneIds[gi]);
-    playerOrder = playerOrder.filter(function(pid) { return pid !== goneIds[gi]; });
-  }
+  roomCore.pruneDisconnected(Date.now());
   // Clear stale disconnected-QR flags from the previous game so they don't
   // suppress host eligibility here. (onGameEnd no longer clears them — we
   // keep the disconnected state through RESULTS so the host role hands off
   // correctly; see getHostPeerIndex().)
   disconnectedQRs.clear();
-  flow.clearDisconnected(Date.now());
+  roomCore.clearDisconnected(Date.now());
   // Everyone who remained was disconnected — don't launch an empty game.
   // Both callers (startGame, playAgain) check players.size before this prune,
   // so neither catches the all-disconnected case. From RESULTS, returnToLobby()
@@ -85,21 +187,20 @@ function startNewGame() {
     }
     return;
   }
-  // Add late joiners to playerOrder (preserving existing order)
-  for (const id of players.keys()) {
-    if (playerOrder.indexOf(id) < 0) playerOrder.push(id);
-  }
+  // Fold in the late joiners who sat out the previous round.
+  roomCore.admitWaiting();
   setRoomState(ROOM_STATE.COUNTDOWN);
   acquireWakeLock();
 
   startCountdown(function() {
+    // The transition publishes; that is what moves controllers off the
+    // countdown-dimmed pad and arms their touch input.
     setRoomState(ROOM_STATE.PLAYING);
-    party.broadcast({ type: MSG.GAME_START });
     runGameLocally();
 
     // Show disconnect QR for any players that disconnected during countdown
     for (const entry of players) {
-      if (flow.isExpired(entry[0], Date.now())) {
+      if (roomCore.isExpired(entry[0], Date.now())) {
         showDisconnectQR(entry[0]);
       }
     }
@@ -107,15 +208,18 @@ function startNewGame() {
   });
 }
 
+// The countdown digits are display-only: controllers learn they are counting
+// down from snapshot.roomState (which dims their pad) and learn the game is
+// live from the COUNTDOWN -> PLAYING transition. Nothing per-second crosses
+// the wire.
 function startCountdown(onComplete, startFrom) {
   var count = startFrom || GameConstants.COUNTDOWN_SECONDS;
   countdown.callback = onComplete;
   countdown.remaining = count;
 
   // On resume (startFrom is set), the current number is already on screen —
-  // skip the redundant broadcast/beep.
+  // skip the redundant beep.
   if (!startFrom) {
-    party.broadcast({ type: MSG.COUNTDOWN, value: count });
     onCountdownDisplay(count);
   }
 
@@ -123,20 +227,18 @@ function startCountdown(onComplete, startFrom) {
     count--;
     countdown.remaining = count;
     if (count > 0) {
-      party.broadcast({ type: MSG.COUNTDOWN, value: count });
       onCountdownDisplay(count);
     } else {
       clearInterval(countdown.timer);
       countdown.timer = null;
       countdown.remaining = 0;
-      party.broadcast({ type: MSG.COUNTDOWN, value: 'GO' });
       onCountdownDisplay('GO');
       countdown.goTimeout = setTimeout(function() {
         countdown.goTimeout = null;
         onComplete();
-      }, 500);
+      }, GameConstants.COUNTDOWN_GO_HOLD_MS);
     }
-  }, 1000);
+  }, GameConstants.COUNTDOWN_STEP_MS);
 }
 
 function clearCountdownTimers() {
@@ -146,8 +248,7 @@ function clearCountdownTimers() {
 }
 
 // GO holds for 400ms, then the number and scrim fade off together; the text
-// is cleared only once hidden — onGameResumed reads it to decide whether to
-// re-show.
+// is cleared only once hidden — thawGame reads it to decide whether to re-show.
 function armCountdownDismiss() {
   countdown.overlayTimer = setTimeout(function() {
     countdown.overlayTimer = null;
@@ -155,34 +256,12 @@ function armCountdownDismiss() {
   }, 400);
 }
 
-function pauseGame() {
-  if (paused) return;
-  if (roomState !== ROOM_STATE.PLAYING && roomState !== ROOM_STATE.COUNTDOWN) return;
-  paused = true;
-  if (roomState === ROOM_STATE.COUNTDOWN) {
-    clearCountdownTimers();
-  }
-  party.broadcast({ type: MSG.GAME_PAUSED });
-  onGamePaused();
-}
-
-// Check if all game participants are disconnected — auto-pause if so. The
-// participant/presence decision lives in RoomFlow (reads flow._order +
-// flow._disconnected, kept in lockstep with disconnectedQRs); this thin
-// wrapper is kept so the call sites (canResumeGame, checkAllPlayersDisconnected,
-// DisplayLiveness, display-airconsole) don't all have to change.
-function allPlayersDisconnected() {
-  return flow.allParticipantsDisconnected();
-}
-
-function canResumeGame() {
-  return !allPlayersDisconnected();
-}
-
+// Every participant is gone: return to the lobby if the late-joiner grace has
+// elapsed, otherwise auto-pause. Called from the event path and the 1Hz sweep.
 function checkAllPlayersDisconnected() {
   // Don't auto-pause during COUNTDOWN — let it finish so disconnect QRs become visible.
   if (roomState !== ROOM_STATE.PLAYING) return;
-  if (!flow.allParticipantsDisconnected()) return;
+  if (!roomCore.allParticipantsDisconnected()) return;
 
   // Arm the late-joiner grace deadline immediately on the event path — a
   // manually-paused host who then disconnects strands late joiners the same way
@@ -192,93 +271,46 @@ function checkAllPlayersDisconnected() {
   // discarding it — otherwise return-to-lobby slips a full window. Any active
   // player reconnecting drops allParticipantsDisconnected so graceTick clears
   // the deadline (implicit cancel).
-  if (flow.graceTick(Date.now())) {
+  if (roomCore.graceTick(Date.now())) {
     returnToLobby();
     return;
   }
 
-  if (paused) {
-    // Already manually paused when the last player dropped: convert the manual
-    // pause into a silent auto-pause and hide the stranded overlay. Continue is
-    // gated shut while everyone is gone (canResumeGame is false), so a manual
-    // pause left showing could never be dismissed. A reconnect auto-resumes.
-    if (!autoPaused) dismissAutoPausedOverlay();
-    return;
-  }
-  // Silent pause — no overlay, no broadcast (all controllers are gone)
-  paused = true;
-  setAutoPaused(true);
-  if (displayGame) displayGame.pause();
-  if (music) music.pause();
+  // No-op if anything already has us frozen, a host's manual pause included:
+  // that pause is theirs to lift, and its Continue works again the moment any
+  // participant returns.
+  autoPause();
 }
 
+// A participant reconnected. A thin alias, kept because display-airconsole.js
+// wraps THIS name to hold the resume back while an ad or a platform pause is up;
+// autoResume itself is what the AC handlers call to lift their own freeze.
 function checkAutoResume() {
-  if (!autoPaused) return;
-  setAutoPaused(false);
-  resumeGame();
-}
-
-function resumeGame() {
-  if (!paused) return;
-  if (roomState !== ROOM_STATE.PLAYING && roomState !== ROOM_STATE.COUNTDOWN) return;
-  if (!canResumeGame()) return;
-  if (autoPaused) setAutoPaused(false);
-  paused = false;
-  if (roomState === ROOM_STATE.COUNTDOWN && countdown.callback) {
-    party.broadcast({ type: MSG.GAME_RESUMED });
-    onGameResumed();
-    if (countdown.remaining === 0) {
-      armCountdownDismiss();
-      countdown.goTimeout = setTimeout(function() {
-        countdown.goTimeout = null;
-        countdown.callback();
-      }, 500);
-    } else {
-      startCountdown(countdown.callback, countdown.remaining);
-    }
-    return;
-  }
-  party.broadcast({ type: MSG.GAME_RESUMED });
-  onGameResumed();
+  autoResume();
 }
 
 function returnToLobby() {
   if (roomState === ROOM_STATE.LOBBY) return;
   countdown.callback = null;
   countdown.remaining = 0;
-  paused = false;
-  setAutoPaused(false);
+  // The LOBBY transition below publishes, so the lifted pause rides that.
+  clearPause();
   releaseWakeLock();
 
   if (music) music.stop();
   stopDisplayGame(); // also calls clearCountdownTimers()
 
-  // Remove disconnected players. flow.isDisconnected catches AirConsole mode,
-  // where flow.isExpired is always false; flow.isExpired catches relay-mode
-  // peers that went silent before a QR flag was set.
-  var disconnectedIds = [];
-  for (const entry of players) {
-    if (flow.isDisconnected(entry[0]) || flow.isExpired(entry[0], Date.now())) {
-      disconnectedIds.push(entry[0]);
-    }
-  }
-
-  for (var i = 0; i < disconnectedIds.length; i++) {
-    flow.removePlayer(disconnectedIds[i]);
-    playerOrder = playerOrder.filter(function(id) { return id !== disconnectedIds[i]; });
-  }
-
-  // Add late joiners to playerOrder (preserving existing order)
-  for (const id of players.keys()) {
-    if (playerOrder.indexOf(id) < 0) playerOrder.push(id);
-  }
+  // Remove disconnected players (AirConsole mode flags them without ever
+  // expiring; relay mode can expire one before a QR flag was set), then fold in
+  // the late joiners who were waiting out the round.
+  roomCore.pruneDisconnected(Date.now());
+  roomCore.admitWaiting();
 
   lastResults = null;
-  lastAliveState = {};
+  roomCore.clearAlive();
+  // Publishes: controllers see roomState back at LOBBY and route themselves
+  // there, which is what the RETURN_TO_LOBBY broadcast used to do.
   setRoomState(ROOM_STATE.LOBBY);
-
-  broadcastLobbyUpdate();
-  party.broadcast({ type: MSG.RETURN_TO_LOBBY, playerCount: players.size });
 
   returnToLobbyUI();
 }
@@ -288,7 +320,7 @@ function returnToLobbyUI() {
   gameState = null;
   prevFrameTime = 0;
   disconnectedQRs.clear();
-  flow.clearDisconnected(Date.now());
+  roomCore.clearDisconnected(Date.now());
   garbageIndicatorEffects.clear();
   garbageDefenceEffects.clear();
   showScreen(SCREEN.LOBBY);
@@ -327,19 +359,10 @@ function runGameLocallyWithSeed(seed) {
   }
 
   var Game = window.GameEngine.Game;
-  // Sort by join time so game engine order matches the lobby's board
-  // positions (first joiner leftmost). See calculateLayout() — same rule.
-  playerOrder.sort(function(a, b) {
-    return (players.get(a)?.joinedAt ?? Infinity) - (players.get(b)?.joinedAt ?? Infinity);
-  });
-  // Snapshot playerOrder at game start — prevents mid-game layout drift
-  playerOrder = playerOrder.slice();
-  // Feed the participant order to flow so host eligibility (restricted to
-  // participants mid-game) matches the game's board layout exactly. This
-  // overrides flow's own COUNTDOWN auto-snapshot; they normally agree (the
-  // disconnect flags were cleared just before COUNTDOWN), but this makes the
-  // game's playerOrder authoritative in case the two ever diverge.
-  flow.setActiveOrder(playerOrder);
+  // Sort by join time so the engine's order matches the lobby's board positions
+  // (first joiner leftmost; see calculateLayout, same rule), snapshot the array
+  // so mid-game layout can't drift, and pin it as the host-eligibility set.
+  roomCore.freezeParticipantOrder();
   var gamePlayers = new Map();
   for (var i = 0; i < playerOrder.length; i++) {
     var pInfo = players.get(playerOrder[i]);
@@ -361,9 +384,12 @@ function runGameLocallyWithSeed(seed) {
         }
       } else if (event.type === 'player_ko') {
         onPlayerKO(event);
-        lastAliveState[event.playerId] = false;
+        roomCore.setAlive(event.playerId, false);
         party.sendTo(event.playerId, { type: MSG.PLAYER_STATE, alive: false });
-        party.sendTo(event.playerId, { type: MSG.GAME_OVER });
+        // The snapshot carries alive too, so a reconnect right after a KO
+        // still lands on the dead board. The targeted PLAYER_STATE above stays
+        // because it is what fires the KO overlay the instant it happens.
+        publishAs('now');
       } else if (event.type === 'piece_lock') {
         onPieceLock(event);
       } else if (event.type === 'garbage_cancelled') {
@@ -373,36 +399,14 @@ function runGameLocallyWithSeed(seed) {
       }
     },
     onGameEnd: function(results) {
-      // Enrich with player names
-      if (results && results.results) {
-        var played = {};
-        for (var j = 0; j < results.results.length; j++) {
-          var r = results.results[j];
-          played[r.playerId] = true;
-          var pInfo = players.get(r.playerId);
-          if (pInfo) {
-            r.playerName = pInfo.playerName;
-            r.colorIndex = pInfo.playerIndex;
-          }
-        }
-        // Append connected players who sat out this round (joined mid-game).
-        // They're not in the engine's results (built from playerIds), so flag
-        // them newPlayer and let every screen render them as "New player"
-        // instead of omitting them.
-        players.forEach(function(info, peerIndex) {
-          if (!played[peerIndex]) {
-            results.results.push({
-              playerId: peerIndex,
-              playerName: info.playerName,
-              colorIndex: info.playerIndex,
-              newPlayer: true
-            });
-          }
-        });
-      }
+      // Label the ranking with roster names/colours and append the players who
+      // sat this round out, flagged newPlayer so every screen renders them
+      // rather than omitting them.
+      if (results && results.results) roomCore.enrichResults(results.results);
+      // Stash the ranking BEFORE the transition: setRoomState publishes, and
+      // the RESULTS snapshot is what carries the results to controllers.
+      lastResults = results && results.results;
       setRoomState(ROOM_STATE.RESULTS);
-      lastResults = results;
-      party.broadcast({ type: MSG.GAME_END, elapsed: results.elapsed, results: results.results });
       onGameEnd(results);
     }
   }, seed);
@@ -555,37 +559,26 @@ function onGameEnd(msg) {
   showScreen(SCREEN.RESULTS);
 }
 
-function onGamePaused() {
-  if (displayGame) displayGame.pause();
-  if (pauseContinueBtn) pauseContinueBtn.disabled = false;
+// Pure view toggles. They move the overlay and nothing else, so the display's own
+// toolbar can raise it during an auto-pause — that overlay is how an operator with
+// only a mouse reaches New Game while every controller is gone. The TVs reach the
+// same action from a dedicated remote button, so they never need this.
+function showPauseOverlay() {
   cancelFadeHide(pauseOverlay);
   pauseOverlay.classList.remove('hidden');
   gameToolbar.classList.add('hidden');
   countdownOverlay.classList.add('paused');
-  if (music) music.pause();
 }
 
-function dismissAutoPausedOverlay() {
+// Take the pause overlay down without touching the pause itself. Used by the
+// thaw, and by the display's own Continue while auto-paused: there the overlay
+// is pure chrome the operator raised, so dismissing it must not try to resume a
+// freeze only a returning participant can lift.
+function hidePauseOverlay() {
   fadeHide(pauseOverlay, 200);
   if (currentScreen === SCREEN.GAME) {
     gameToolbar.classList.remove('hidden');
   }
-  setAutoPaused(true);
-}
-
-function onGameResumed() {
-  if (displayGame) displayGame.resume();
-  if (pauseContinueBtn) pauseContinueBtn.disabled = false;
-  fadeHide(pauseOverlay, 200);
-  countdownOverlay.classList.remove('paused');
-  if (currentScreen === SCREEN.GAME) {
-    gameToolbar.classList.remove('hidden');
-  }
-  if (countdownNumber.textContent) {
-    cancelFadeHide(countdownOverlay);
-    countdownOverlay.classList.remove('hidden');
-  }
-  if (music) music.resume();
 }
 
 // Music & Audio — see DisplayAudio.js

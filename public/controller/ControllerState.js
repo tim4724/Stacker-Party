@@ -43,7 +43,7 @@ var lastGameResults = null;
 var startLevel = 1;
 var takenColorIndices = [];   // indices currently claimed by other players (incl. self)
 // Becomes true the first time the user taps a swatch in the picker. Gates
-// persistColorIndex in onLobbyUpdate so we only persist *user-initiated*
+// persistColorIndex in applyOwnIdentity so we only persist *user-initiated*
 // color changes — display-assigned slots (initial / reconnect default)
 // must NOT clobber the previous-session preference, which reclaim still
 // needs to read from the AC server snapshot.
@@ -212,7 +212,7 @@ var colorPickerEl = document.getElementById('color-picker');
 var colorPickerOverlay = document.getElementById('color-picker-overlay');
 var identityTrigger = document.getElementById('identity-trigger');
 // Pending color pick (index) — set when the user taps a rose cell, cleared
-// when the display echoes the accepted SET_COLOR back via LOBBY_UPDATE.
+// when the display echoes the accepted SET_COLOR back in the room snapshot.
 // While non-null, the picker overlay stays open until the next render
 // confirms playerColorIndex matches.
 var pendingColorPick = null;

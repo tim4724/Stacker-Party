@@ -7,6 +7,7 @@
     "build": "node scripts/build.js && node scripts/generate-airconsole-html.js",
     "build:core": "node scripts/build.js --core",
     "build:conformance": "node scripts/build-conformance-bundle.js",
+    "build:golden": "node scripts/gen-room-core-golden.js",
     "build:native": "npm run build:core && npm run build:conformance",
     "start": "npm run build && node server/index.js",
     "dev": "node scripts/generate-airconsole-html.js && node --watch server/index.js",

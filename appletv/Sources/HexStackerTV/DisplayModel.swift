@@ -60,6 +60,13 @@ final class DisplayModel: ObservableObject {
     func start() {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
         try? AVAudioSession.sharedInstance().setActive(true)
+
+        // Debug-only QR retarget, for testing a branch preview of the controller:
+        // set HEXHOST=preview-<branch>.hexstacker.com in the Run scheme. Applied
+        // before the relay connects (the origin also rides `create` as the
+        // controller-URL template). Unset => production; env vars can't be set on
+        // a TestFlight/App Store launch, so a shipped build always is.
+        Protocol.setControllerBase(ProcessInfo.processInfo.environment["HEXHOST"])
         // Capture hook (mirrors HEXSHOT / HEXSNAP): open the licenses page straight
         // away so it can be screenshotted deterministically — the tvOS simulator has
         // no Siri-Remote CLI to navigate to it. Inert without the env var.
@@ -146,8 +153,11 @@ final class DisplayModel: ObservableObject {
                                              output: self,
                                              fastlane: fastlane)
         self.coordinator = coordinator
-        boardScene.rosterLookup = { [weak coordinator] id in
-            coordinator?.flow.player(id).map { ($0.colorSlot, $0.playerName) }
+        // Boards read the roster off the published lobby state, not the room: the
+        // seats are already snapshot-derived (updateLobby), and a lookup on the
+        // render path has no business crossing into the JS runtime.
+        boardScene.rosterLookup = { [weak self] id in
+            self?.state.lobby?.players.first { $0.peerIndex == id }.map { ($0.colorSlot, $0.name) }
         }
         guard relayBacked else { return }
 
@@ -283,7 +293,7 @@ final class DisplayModel: ObservableObject {
         // found", and visibly swap the QR mid-lobby. Forget the room and
         // reset to the waiting scaffold instead: the next foreground
         // presents like a fresh open — blank card, then the new room's QR.
-        if coordinator?.flow.list().isEmpty ?? true {
+        if state.lobby?.players.isEmpty ?? true {
             relay?.unpinRoom()
             room = nil
             joinURL = nil
@@ -478,7 +488,7 @@ final class DisplayModel: ObservableObject {
         default:
             coordinator?.renderShot(shot, playerCount: pc)
         }
-        // The fixtures seed RoomFlow directly (no roster broadcast), so fold the
+        // The fixtures seed the room roster directly (no publish), so fold the
         // seeded roster into the published lobby here or host-tinted chrome
         // (pause CONTINUE, music switch, results PLAY AGAIN) would render its
         // accent fallback in every shot.
@@ -555,8 +565,11 @@ extension DisplayModel: DisplayOutput {
     }
 
     private func buildLobby(players: [PlayerRecord]? = nil, hostPeerIndex: Int? = nil) -> LobbyData {
-        let roster = players ?? coordinator?.flow.list() ?? []
-        let host = hostPeerIndex ?? coordinator?.flow.host
+        // The fold-in paths (roomReady, the gallery shots) have no roster in hand and
+        // read it back through the room API, which is the one place `connected` and
+        // `joinedAt` are available at all — the wire snapshot carries neither.
+        let roster = players ?? coordinator?.roster() ?? []
+        let host = hostPeerIndex ?? coordinator?.hostPeerIndex
         return LobbyData(
             room: room ?? "",
             joinURL: joinURL ?? "",

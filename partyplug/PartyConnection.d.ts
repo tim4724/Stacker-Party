@@ -30,6 +30,8 @@ declare class PartyConnection {
   closeRoom(): void;
   reconnectNow(): void;
   resetReconnectCount(): void;
+  /** Count the current socket as a failed attempt and run the normal backoff/give-up path — for failures only the caller can detect (e.g. the relay never answered create/join). */
+  failAttempt(): void;
   close(): void;
 
   // Callbacks (assigned as properties).

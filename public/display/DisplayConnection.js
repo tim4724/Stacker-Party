@@ -10,8 +10,10 @@
 
 // A socket can upgrade fine but leave `create` unanswered (wedged relay shard).
 // onclose never fires, so an explicit deadline is the only canary during the
-// create window (the self-heartbeat only starts after `created`). Matches the
-// native tvOS/Android handshake timeout.
+// create window (the self-heartbeat only starts after `created`). The native
+// ports use 6s (RelayConfig.HANDSHAKE_TIMEOUT_MS) and arm it for `join` too;
+// here it guards only the fresh create, where a slow first connect is more
+// likely and a bit more slack costs nothing.
 var CREATE_TIMEOUT_MS = 8000;
 var createTimeout = null;
 
@@ -72,6 +74,9 @@ function connectAndCreateRoom() {
   party.onClose = function(attempt, maxAttempts) {
     preCreatedRoom = null;
     clearTimeout(createTimeout);
+    // We are out of the room until the relay answers the next create/join. Set
+    // before the welcome-screen early-return: the sweep must be gated in every screen.
+    joinedRoom = false;
     // Welcome-screen pre-creates keep retrying silently until the user lands
     // on the lobby. From there a failed *create* (no room yet) and a lost room
     // both drive the same overlay: RECONNECTING with the attempt counter while
@@ -80,7 +85,9 @@ function connectAndCreateRoom() {
     clearTimeout(disconnectedTimer);
 
     if (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN) {
-      if (!paused) pauseGame();
+      // Our link dying, not a host decision, so it must not reach controllers as
+      // an actionable pause — connectionPause records that reason.
+      connectionPause();
       // Cross-fade: the pause scrim fades out under the reconnect overlay
       // fading in, instead of flashing the boards between the two.
       fadeHide(pauseOverlay, 200);
@@ -118,11 +125,11 @@ function connectAndCreateRoom() {
         break;
       case 'master_changed':
         // AirConsole re-picked the master controller (e.g. premium upgrade).
-        // Fires in any room state by design: menu-gate checks query host live
-        // at message time, but controllers' isHost flags for their lobby /
-        // results banners only refresh via LOBBY_UPDATE. A mid-game onPremium
+        // Fires in any room state by design: menu-gate checks query the host
+        // live at message time, but controllers' isHost flags for their lobby /
+        // results banners only refresh from the snapshot. A mid-game onPremium
         // is intentional — we always follow what getMasterPeerIndex dictates.
-        maybeBroadcastHostChange();
+        publishAs('now');
         break;
       case 'error':
         if (!lastRoomCode) {
@@ -166,6 +173,10 @@ function connectAndCreateRoom() {
 // =====================================================================
 
 function onRoomCreated(partyRoomCode, instance) {
+  // The relay put us in a room (fresh, or the room-gone recovery path), so the
+  // liveness sweep can run again. A fresh room has an empty roster, so there is
+  // nothing to re-stamp — unlike the rejoin path below.
+  joinedRoom = true;
   // A create can succeed after earlier attempts failed, which would have put
   // the reconnect overlay up (RECONNECTING / DISCONNECTED). Clear it and reset
   // the backoff counter so a later lost room starts counting from attempt 1.
@@ -305,7 +316,6 @@ function applyRoomCreated(partyRoomCode, newJoinUrl) {
 
   // Reset local state
   resetRoomData();
-  _lastBroadcastedHostId = null;
 
   showScreen(SCREEN.LOBBY);
   updateStartButton();
@@ -326,11 +336,6 @@ function onDisplayRejoined(partyRoomCode, peers) {
   joinUrl = getBaseUrl() + '/' + roomCode + (lastInstance ? '#' + encodeURIComponent(lastInstance) : '');
   renderJoinUrl(joinUrl);
 
-  // Reset the master_changed dedup sentinel — on rejoin we re-push WELCOME
-  // to everyone below, and any subsequent LOBBY_UPDATE / master_changed
-  // should broadcast regardless of what the sentinel held pre-disconnect.
-  _lastBroadcastedHostId = null;
-
   // Reset liveness for peers still in the room; handle missing ones.
   // peers is the relay's list of other-peer indices (excludes self, i.e. 0).
   var now = Date.now();
@@ -338,61 +343,43 @@ function onDisplayRejoined(partyRoomCode, peers) {
   var disconnectedIds = [];
   for (const pEntry of players) {
     if (connectedSet.has(pEntry[0])) {
-      flow.onSeen(pEntry[0], now);
+      roomCore.onSeen(pEntry[0], now);
     } else {
       disconnectedIds.push(pEntry[0]);
     }
   }
-  for (var i = 0; i < disconnectedIds.length; i++) {
-    onPeerLeft(disconnectedIds[i]);
-  }
-
-  startLivenessCheck();
-
-  // Clear reconnect overlay — connection restored
-  clearTimeout(disconnectedTimer);
-  party.resetReconnectCount();
-  fadeHide(reconnectOverlay, 200);
-  if (paused && (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN)) {
-    // Clear any surviving countdown timers to prevent duplicates on resume
-    clearCountdownTimers();
-    resumeGame();
-  }
-
-  // Re-send WELCOME to all known players so controllers clear their reconnect overlay
-  var hostId = getHostPeerIndex();
-  var hostPlayer = hostId != null ? players.get(hostId) : null;
-  var hostName = hostPlayer ? hostPlayer.playerName : null;
-  var hostColorIndex = hostPlayer ? hostPlayer.playerIndex : null;
-  var takenColorIndices = collectTakenColorIndices();
-  for (const entry of players) {
-    const id = entry[0];
-    const info = entry[1];
-    var isLateJoiner = (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN)
-      && playerOrder.indexOf(id) < 0;
-    var welcomeMsg = {
-      type: MSG.WELCOME,
-      playerName: info.playerName,
-      colorIndex: info.playerIndex,
-      playerCount: players.size,
-      roomState: roomState,
-      startLevel: info.startLevel || 1,
-      isHost: id === hostId,
-      hostName: hostName,
-      hostColorIndex: hostColorIndex,
-      takenColorIndices: takenColorIndices,
-      displayMuted: !!muted
-    };
-    if (!isLateJoiner) {
-      welcomeMsg.alive = lastAliveState[id] != null ? lastAliveState[id] : true;
-      welcomeMsg.paused = paused;
+  // The whole reconciliation is ONE change: however many peers went missing, plus
+  // the resume, collapse into a single publish at the end. Per-mutation publishes
+  // would ship half-reconciled rosters, and — because the resume comes last — a
+  // paused=true snapshot chased by a paused=false one, which is exactly how a
+  // controller ends up stranded on a pause overlay whose Continue cannot work.
+  // Floor 'now': this publish has to reach controllers even when nothing moved at
+  // all, because it is also what clears their reconnect overlay and their
+  // display-gone bail timer, and tells them the game is running again.
+  publishBatch('now', function () {
+    for (var i = 0; i < disconnectedIds.length; i++) {
+      onPeerLeft(disconnectedIds[i]);
     }
-    // lastResults is { elapsed, results: [...] } — send the results array
-    if (roomState === ROOM_STATE.RESULTS && lastResults) {
-      welcomeMsg.results = lastResults.results;
-    }
-    party.sendTo(id, welcomeMsg);
-  }
+
+    // Only now, with the roster reconciled and the survivors re-stamped above, is
+    // the sweep safe to re-arm. Gating on the socket instead would reopen the hole
+    // this closes: the socket comes back ~1s into a drop but the relay routes
+    // nothing to us until this reply, so a slow `joined` would expire the roster
+    // (LIVENESS_TIMEOUT_MS is 3s; displayDead alone doesn't bite until 6s).
+    // Mirrors tvOS roomLinkRestored / Android handleJoined.
+    joinedRoom = true;
+
+    startLivenessCheck();
+
+    // Clear reconnect overlay — connection restored
+    clearTimeout(disconnectedTimer);
+    party.resetReconnectCount();
+    fadeHide(reconnectOverlay, 200);
+    // Lifts ONLY a link-drop freeze: a blip that landed on top of a host's
+    // manual pause leaves that pause standing, which is what tvOS and Android
+    // do too now that the state machine is shared.
+    connectionResume();
+  });
 
   if (roomState === ROOM_STATE.LOBBY) {
     showScreen(SCREEN.LOBBY);
@@ -402,35 +389,17 @@ function onDisplayRejoined(partyRoomCode, peers) {
 }
 
 function onPeerJoined(peerIndex) {
-  if (players.has(peerIndex)) return;
-  if (players.size >= GameConstants.MAX_PLAYERS) return;
+  // The room core allocates the colour slot, invents the placeholder auto-name, and
+  // decides whether this joiner is a lobby member or a late joiner waiting out
+  // the round. It refuses silently on a duplicate or a full room.
+  var res = roomCore.peerJoined(peerIndex, Date.now());
+  if (!res.added) return;
 
-  var index = nextAvailableSlot();
-  if (index < 0) return;
-
-  // flow.addPlayer assigns joinedAt + connected and makes the first joiner the
-  // sticky host. The game fields (name, color slot, level, ping) ride along on
-  // the same record; the kit never reads them.
-  flow.addPlayer(peerIndex, {
-    playerName: generateAutoPlayerName(peerIndex),
-    playerIndex: index,
-    startLevel: 1
-  });
-  flow.onSeen(peerIndex, Date.now());
-
-  // Only add to playerOrder in lobby — late joiners wait for next game.
-  // playerOrder is snapshotted at game start by runGameLocally().
-  if (roomState === ROOM_STATE.LOBBY) {
-    playerOrder.push(peerIndex);
+  if (res.joinedLobby) {
     updatePlayerList();
     updateStartButton();
-    // Notify existing controllers that a palette slot just got claimed.
-    // The subsequent HELLO from the joiner takes onHello's reconnect path
-    // (player already in the Map) and does NOT broadcast, so without this
-    // call the other pickers would keep showing the new player's color as
-    // available until the next unrelated LOBBY_UPDATE.
-    broadcastLobbyUpdate();
   }
+  publishAs(res.publish);
 }
 
 function onPeerLeft(peerIndex) {
@@ -439,85 +408,37 @@ function onPeerLeft(peerIndex) {
 
   cleanupPlayerInput(peerIndex);
 
-  // Sticky-host handoff is owned by RoomFlow: flow.removePlayer re-elects only
-  // when the player leaves in LOBBY/RESULTS. Mid-game (PLAYING/COUNTDOWN) the
-  // participant stays in the roster (flagged disconnected via showDisconnectQR
-  // -> flow.markDisconnected) so the slot stays pinned and a reconnect via
-  // claimReconnectPeer (flow.rekey) reclaims it; flow's host fallback elects a
-  // present player for any host action needed during the blip.
-  if (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN) {
-    if (playerOrder.indexOf(peerIndex) >= 0) {
-      // Active game participant — keep in Map for seamless reconnect
-      showDisconnectQR(peerIndex);
-      checkAllPlayersDisconnected();
-      // The stored host doesn't move mid-game (see comment above), but if
-      // the departing player WAS the host then getHostPeerIndex's read-only
-      // fallback now elects a present player as temp host. Re-broadcast so
-      // their controller's pause-overlay Return-to-lobby button appears.
-      // Skip when everyone is gone (nobody left to notify).
-      if (!allPlayersDisconnected()) maybeBroadcastHostChange();
-    } else {
-      // Late joiner (never in the game) — remove silently
-      flow.removePlayer(peerIndex);
-      garbageIndicatorEffects.delete(peerIndex);
-      garbageDefenceEffects.delete(peerIndex);
-    }
-  } else if (roomState === ROOM_STATE.LOBBY) {
-    removeLobbyPlayer(peerIndex);
-  } else if (roomState === ROOM_STATE.RESULTS) {
-    flow.removePlayer(peerIndex);
-    var idx = playerOrder.indexOf(peerIndex);
-    if (idx !== -1) playerOrder.splice(idx, 1);
-    flow.setActiveOrder(playerOrder);
+  // The room core owns the branch: mid-game an active participant keeps their row
+  // (so the slot stays pinned for a reconnect via claimReconnect), while a late
+  // joiner and anyone leaving in lobby/results is dropped outright, with the
+  // sticky-host handoff and the empty-results return to lobby handled inside.
+  var res = roomCore.peerLeft(peerIndex);
+  if (!res.known) return;
+
+  if (res.action === 'disconnected') {
+    showDisconnectQR(peerIndex);
+    checkAllPlayersDisconnected();
+  } else {
     garbageIndicatorEffects.delete(peerIndex);
     garbageDefenceEffects.delete(peerIndex);
-    // Return to lobby when no game participants remain (late joiners don't count)
-    var hasParticipants = false;
-    for (var i = 0; i < playerOrder.length; i++) {
-      if (players.has(playerOrder[i])) { hasParticipants = true; break; }
-    }
-    if (!hasParticipants) {
-      lastResults = null;
-      setRoomState(ROOM_STATE.LOBBY);
-      broadcastLobbyUpdate();
-      party.broadcast({ type: MSG.RETURN_TO_LOBBY, playerCount: players.size });
-      returnToLobbyUI();
-    } else if (players.size > 0) {
-      // Host may have changed — let remaining controllers refresh their
-      // "waiting for host" banner on the results screen.
-      broadcastLobbyUpdate();
+    if (roomState === ROOM_STATE.LOBBY) {
+      updatePlayerList();
+      updateStartButton();
     }
   }
-}
+  if (res.returnedToLobby) returnToLobbyUI();
 
-function removeLobbyPlayer(peerIndex) {
-  flow.removePlayer(peerIndex);
-  playerOrder = playerOrder.filter(function(id) { return id !== peerIndex; });
-  garbageIndicatorEffects.delete(peerIndex);
-  garbageDefenceEffects.delete(peerIndex);
-  updatePlayerList();
-  updateStartButton();
-  if (players.size > 0) {
-    broadcastLobbyUpdate();
-  } else if (party && typeof party.setState === 'function') {
-    // Last lobby player left. The fanout had nobody to send to here, but the
-    // retained snapshot must not keep naming a departed player (and a stale
-    // host) to the next (re)joiner. Publish the now-empty roster so the relay
-    // replays an accurate { hostPeerIndex: null, players: {} }.
-    party.setState(buildRoomSnapshot());
-  }
+  // The roster changed in every branch above: someone is gone, the host may
+  // have moved to a present player, and a mid-game departure flips that
+  // player's `alive` for the remaining boards. Publishing unconditionally also
+  // covers the last-player-leaves case, where the snapshot must stop naming a
+  // departed player (and a stale host) to the next peer that joins.
+  publishAs(res.publish);
 }
 
 // =====================================================================
 // QR Rejoin Claim Handling
 // =====================================================================
-
-function normalizePeerIndex(value) {
-  if (typeof value === 'number') return Number.isInteger(value) && value >= 0 ? value : null;
-  if (typeof value !== 'string' || value.trim() === '') return null;
-  var n = Number(value);
-  return Number.isInteger(n) && n >= 0 ? n : null;
-}
 
 function rekeyMapPreservingOrder(map, oldId, newId, mutateValue) {
   if (!map || !map.has(oldId)) return;
@@ -569,157 +490,118 @@ function transferMapEntry(map, oldId, newId) {
   map.set(newId, value);
 }
 
-function claimReconnectPeer(fromId, msg) {
-  var token = msg && msg.rejoinToken;
-  var oldId = normalizePeerIndex(token);
-  if (oldId == null && msg && msg.rejoinId != null) oldId = normalizePeerIndex(msg.rejoinId);
-  if (oldId == null || oldId === fromId) return false;
-  if (!players.has(oldId) || !disconnectedQRs.has(oldId)) return false;
-  if (playerOrder.indexOf(oldId) < 0) return false;
-  // An active participant can't claim another board: rekeying onto an id that
-  // already owns a board would silently drop one of the two in the Map rebuild.
-  // A genuine cross-device rejoin always arrives under a FRESH peer index.
-  if (playerOrder.indexOf(fromId) >= 0) return false;
-
+// Finish a cross-device rejoin the room core has already accepted: everything keyed
+// by peer index that lives OUTSIDE the room (input state, the QR canvases, the
+// garbage effect maps, the engine's boards) moves from the old index to the new
+// one. The room half (roster record, sticky host slot, participant order,
+// alive flags, cached ranking) moved inside roomCore.claimReconnect.
+function applyReconnectClaim(oldId, fromId) {
   cleanupPlayerInput(oldId);
   cleanupPlayerInput(fromId);
-
-  // flow.rekey moves the kept record from oldId to fromId (dropping the
-  // placeholder slot fromId got when it joined), and reclaims the sticky host
-  // slot, participant order, and last-seen stamp for the returning peer. The
-  // game-side arrays below (playerOrder, alive state, garbage effects, game
-  // boards) are rekeyed alongside it.
-  flow.rekey(oldId, fromId);
-  flow.onSeen(fromId, Date.now());
-
-  for (var i = 0; i < playerOrder.length; i++) {
-    if (playerOrder[i] === oldId) playerOrder[i] = fromId;
-  }
-
-  if (lastAliveState[oldId] !== undefined) {
-    lastAliveState[fromId] = lastAliveState[oldId];
-    delete lastAliveState[oldId];
-  }
-  // Remap the cached ranking too: a claim on the RESULTS screen replays
-  // lastResults in the WELCOME, and the returning controller matches its own
-  // row by playerId.
-  if (lastResults && Array.isArray(lastResults.results)) {
-    for (var li = 0; li < lastResults.results.length; li++) {
-      if (lastResults.results[li].playerId === oldId) lastResults.results[li].playerId = fromId;
-    }
-  }
   transferMapEntry(garbageIndicatorEffects, oldId, fromId);
   transferMapEntry(garbageDefenceEffects, oldId, fromId);
   disconnectedQRs.delete(oldId);
   disconnectedQRs.delete(fromId);
   rekeyDisplayGamePlayer(oldId, fromId);
   calculateLayout();
-  return true;
 }
 
 // =====================================================================
-// Lobby Update Broadcast
+// Retained Room Snapshot
 // =====================================================================
 
-var _lastBroadcastedHostId = null;
+// Rapid, self-correcting roster churn: the +/- level stepper and the colour
+// rose. Both are finger-speed controls where only the final value matters, so
+// they publish through here instead of directly. Leading + trailing: the first
+// change after a quiet period goes out immediately (the picker overlay closes
+// on the display's echo, so it must not feel laggy), and everything inside the
+// window collapses into one trailing publish that reads live state at fire
+// time, so the latest value always wins. Everything else publishes immediately.
+//
+// Which calls take which path is the room core's decision, not this file's: every
+// mutator returns a `publish` hint of 'now', 'soon' or 'none', and tvOS and
+// Android read the same hints. Only the timer is per-shell, because a timer
+// needs a real clock and the room core has none.
+var ROOM_STATE_THROTTLE_MS = window.GameEngine.RoomCore.SNAPSHOT_THROTTLE_MS;
+var _publishTimer = null;
+var _lastPublishAt = 0;
 
-// Re-broadcast LOBBY_UPDATE iff the host has changed since the last broadcast.
-// Called after events that can silently reshuffle the host (peer_left during
-// an active game, heartbeat-driven disconnect, AC master_changed). Skips when
-// there's no one to notify so we don't churn on the last-player-leaves path.
-function maybeBroadcastHostChange() {
-  if (players.size === 0) return;
-  if (getHostPeerIndex() === _lastBroadcastedHostId) return;
-  broadcastLobbyUpdate();
-}
+// Apply a mutator's publish hint. Keeps the three-way decision in one place so
+// call sites read as "do the thing, then honour the hint".
+// Hints, weakest first. Only used to fold a batch down to its strongest.
+var HINT_RANK = { none: 0, soon: 1, now: 2 };
+// Non-null only while publishBatch's block is running: the hint the batch has
+// accumulated so far. Doubles as the "are we batching" flag.
+var _batchHint = null;
 
-// doBroadcastLobbyUpdate() publishes ONE retained snapshot via party.setState()
-// (a single relay broadcast / one setCustomDeviceState), no longer a
-// per-player LOBBY_UPDATE fanout. This throttle therefore coalesces bursty
-// republishes into a single trailing snapshot rather than capping a per-player
-// message rate. Bursts to absorb: host-change re-broadcasts, color picks, and
-// the adapter-recreation join storm (peer_joined fires per controller in a
-// tight loop); reconnect paths can also broadcast twice in one tick. 400ms
-// collapses each burst to at most one leading + one trailing set_state.
-var LOBBY_BROADCAST_MIN_INTERVAL_MS = 400;
-var _lobbyBroadcastTimer = null;
-var _lastLobbyBroadcastAt = 0;
-
-// Throttled, leading + trailing: a call after a quiet period sends
-// immediately; calls inside the interval collapse into one trailing fanout
-// that reads live state at fire time, so the last state always wins.
-function broadcastLobbyUpdate() {
-  if (_lobbyBroadcastTimer) return;
-  var elapsed = Date.now() - _lastLobbyBroadcastAt;
-  if (elapsed >= LOBBY_BROADCAST_MIN_INTERVAL_MS) {
-    doBroadcastLobbyUpdate();
+function publishAs(hint) {
+  if (_batchHint !== null) {
+    // Inside a batch: fold instead of publishing. Strongest wins.
+    if (HINT_RANK[hint] > HINT_RANK[_batchHint]) _batchHint = hint;
     return;
   }
-  _lobbyBroadcastTimer = setTimeout(function() {
-    _lobbyBroadcastTimer = null;
-    doBroadcastLobbyUpdate();
-  }, LOBBY_BROADCAST_MIN_INTERVAL_MS - elapsed);
+  if (hint === 'now') publishRoomState();
+  else if (hint === 'soon') publishRoomStateSoon();
 }
 
-function doBroadcastLobbyUpdate() {
-  _lastLobbyBroadcastAt = Date.now();
-  _lastBroadcastedHostId = getHostPeerIndex();
+// Run a group of room changes as ONE change: everything inside publishes once,
+// when the block returns. Without it a rejoin dropping four peers, or an engine
+// frame that KOs three players at once, publishes the whole room once per
+// mutation — and every one but the last describes a half-finished state no
+// controller should ever render.
+//
+// This sits here rather than in RoomCore on purpose. The block is a closure, and
+// the native bridges are JSON-only (quickjs-kt has no call-with-arguments API),
+// so a room-core version would need begin/end as two separate bridge calls —
+// on Android two extra interpolated QuickJS evaluations per batch, i.e. ~120 a
+// second just to open and close mostly-empty batches around each frame. The
+// hints stay the room core's decision; only the folding is local, and publishAs
+// is already the single point every publish goes through.
+//
+// `floor` is the weakest hint the group may end on. Omit it and a group that
+// changed nothing stays silent, which is what makes wrapping the 60 Hz frame
+// drain free; pass 'now' when the publish has to happen regardless. The publish
+// runs from a finally, so a throw mid-block still ships what did change and can
+// never leave the fold armed. tvOS and Android carry the same wrapper verbatim.
+function publishBatch(floor, fn) {
+  if (typeof floor === 'function') { fn = floor; floor = 'none'; }
+  _batchHint = floor;
+  try {
+    fn();
+  } finally {
+    var hint = _batchHint;
+    _batchHint = null;
+    publishAs(hint);
+  }
+}
+
+function publishRoomStateSoon() {
+  if (_publishTimer) return;
+  var elapsed = Date.now() - _lastPublishAt;
+  if (elapsed >= ROOM_STATE_THROTTLE_MS) {
+    publishRoomState();
+    return;
+  }
+  _publishTimer = setTimeout(function() {
+    _publishTimer = null;
+    publishRoomState();
+  }, ROOM_STATE_THROTTLE_MS - elapsed);
+}
+
+// Publish now, superseding any pending throttled publish. This is the ONLY
+// thing the display tells controllers about the room: the relay pushes the
+// snapshot live to everyone connected AND replays it to a (re)joining peer
+// right after `joined`, so the live-update path and the resync-after-a-blip
+// path are the same code and cannot disagree with each other.
+function publishRoomState() {
+  if (_publishTimer) { clearTimeout(_publishTimer); _publishTimer = null; }
+  _lastPublishAt = Date.now();
   applyHostTint();
-  // Publish the retained room snapshot once instead of fanning out a
-  // per-recipient LOBBY_UPDATE to every player. The relay pushes it live to
-  // connected controllers (sender excluded) and replays it to any (re)joining
-  // peer right after `joined`, so N messages collapse to one set_state and a
-  // briefly-dropped controller catches up for free. Controllers derive
-  // playerCount, takenColorIndices, host name/color and their own color from
-  // the roster (see the controller's onState). Per-recipient startLevel still
-  // goes out targeted via sendLobbyUpdateTo on SET_LEVEL.
   if (party && typeof party.setState === 'function') {
-    party.setState(buildRoomSnapshot());
+    // The snapshot itself is built by RoomCore, byte-identically on tvOS and
+    // Android TV, which is the whole point of the module.
+    party.setState(roomCore.snapshot());
   }
-}
-
-// The retained snapshot the relay replays to (re)joining controllers and pushes
-// live on each update. Carries only globally-shared, broadcast-class state: the
-// roster keyed by peerIndex (display-facing name + color slot) and the
-// effective host. Tiny (<1 KiB for a full room), well under the relay's 16 KiB
-// cap. Per-recipient fields (startLevel, alive, results, paused) are NOT here;
-// they stay on the targeted WELCOME / LOBBY_UPDATE paths.
-function buildRoomSnapshot() {
-  var roster = {};
-  for (const entry of players) {
-    var p = entry[1];
-    roster[entry[0]] = { name: p.playerName, color: p.playerIndex };
-  }
-  return { hostPeerIndex: getHostPeerIndex(), players: roster };
-}
-
-// Single-recipient LOBBY_UPDATE — same payload the fanout sends. Used directly
-// for changes that only affect the sender's own per-recipient fields (e.g.
-// SET_LEVEL), where a full fanout would re-send unchanged data to everyone.
-function sendLobbyUpdateTo(id) {
-  var player = players.get(id);
-  if (!player) return;
-  var hostId = getHostPeerIndex();
-  var hostPlayer = hostId != null ? players.get(hostId) : null;
-  party.sendTo(id, {
-    type: MSG.LOBBY_UPDATE,
-    playerCount: players.size,
-    startLevel: player.startLevel || 1,
-    isHost: id === hostId,
-    hostName: hostPlayer ? hostPlayer.playerName : null,
-    hostColorIndex: hostPlayer ? hostPlayer.playerIndex : null,
-    colorIndex: player.playerIndex,
-    takenColorIndices: collectTakenColorIndices()
-  });
-}
-
-// Sorted list of playerIndex values currently claimed by any player in the
-// room. Controllers use it to gray out swatches in the color picker.
-function collectTakenColorIndices() {
-  var out = [];
-  for (const entry of players) out.push(entry[1].playerIndex);
-  out.sort(function(a, b) { return a - b; });
-  return out;
 }
 
 // =====================================================================
@@ -787,7 +669,7 @@ function showDisconnectQR(peerIndex) {
   // disconnect must touch BOTH — markDisconnected/markReconnected/clearDisconnected
   // here, and rekey() clears flow's flag on a cross-device claim. If they drift,
   // host election (which reads flow) skips a present player.
-  flow.markDisconnected(peerIndex);
+  roomCore.markDisconnected(peerIndex);
   if (!joinUrl) return;
   // Splice the claim in before the fragment so the instance hash stays intact.
   var hashIdx = joinUrl.indexOf('#');

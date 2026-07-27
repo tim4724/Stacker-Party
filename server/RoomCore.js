@@ -1,0 +1,897 @@
+'use strict';
+
+// UMD: works in Node.js (require), the browser (window.GameEngine.RoomCore),
+// and JavaScriptCore/QuickJS on native (tvOS / Android TV). Pure: no wall clock,
+// no timers, no DOM, no I/O. Time is injected via nowMs, randomness via opts.rng.
+//
+// RoomCore is HexStacker's room core: the single source of truth for
+// everything a controller renders. It COMPOSES the generic partyplug RoomFlow
+// (roster, presence, host election, the state machine, liveness predicates) and
+// adds the game-flavoured layer RoomFlow deliberately refuses to know about:
+// auto-naming, name sanitizing, colour-slot allocation, the pause/mute/results
+// facts a display owns, and the projection of all of it into the retained room
+// snapshot that controllers derive their whole UI from.
+//
+// Why this exists: web, tvOS and Android TV each used to implement that layer
+// themselves. They drifted (three different auto-name algorithms, three
+// different name sanitizers, one platform missing the blocklist entirely) and a
+// regex-over-source parity guard could not see it, because the divergence was in
+// the decisions rather than in the constants. All three now load this module out
+// of dist/partycore.js and call it, so the divergence is structurally impossible
+// and the parity tests only have to prove the bridge marshals correctly.
+//
+// The shells keep transport, timers, rendering and audio. Every mutator here
+// returns a `publish` hint ('now' | 'soon' | 'none') so the 500ms level/colour
+// throttle policy is single-sourced too; the throttle TIMER stays in each shell,
+// because a timer needs a real clock.
+(function(exports) {
+
+var RoomFlow = ((typeof require !== 'undefined') ? require('../partyplug/RoomFlow.js') : window.RoomFlow);
+var GameConstants = ((typeof require !== 'undefined') ? require('./constants.js') : window.GameConstants);
+
+// Rapid, self-correcting roster churn: the +/- level stepper and the colour
+// rose. Both are finger-speed controls where only the final value matters, so
+// they publish on the 'soon' hint. Leading + trailing at the shell: the first
+// change after a quiet period goes out immediately (the picker overlay closes on
+// the display's echo, so it must not feel laggy), and everything inside the
+// window collapses into one trailing publish that reads live state at fire time,
+// so the latest value always wins.
+var SNAPSHOT_THROTTLE_MS = 500;
+
+// Auto names are room-unique, language-neutral, and survive lobby compaction
+// (unlike the legacy P1-P8 slot names, which renumbered when someone left).
+var AUTO_NAME_RE = /^HX-([1-9][0-9]?)$/i;
+var LEGACY_SLOT_NAME_RE = /^P[1-8]$/i;
+// Culturally unlucky numbers and one obvious content-adjacent number.
+var AUTO_NAME_BLOCKLIST = [4, 13, 17, 69];
+var AUTO_NAME_MAX = 99;
+
+var NAME_MAX_LEN = 16;
+var MIN_START_LEVEL = 1;
+var MAX_START_LEVEL = 15;
+
+// Why the game is frozen. Only MANUAL reaches controllers: it is the one a
+// controller can act on. AUTO (every participant disconnected) and CONNECTION
+// (the display's own link is down) are display-internal and resolve themselves,
+// and a controller handed either would sit on a pause overlay whose Continue the
+// display ignores. Last write wins; the shells decide which reason applies.
+var PAUSE_MANUAL = 'manual';
+var PAUSE_AUTO = 'auto';
+var PAUSE_CONNECTION = 'connection';
+var PAUSE_REASONS = [PAUSE_MANUAL, PAUSE_AUTO, PAUSE_CONNECTION];
+
+// ---------------------------------------------------------------------
+// Pure name helpers (module-level: no instance state, and the conformance
+// harness exercises them directly)
+// ---------------------------------------------------------------------
+
+// Strip control characters (incl. \x00), trim, cap length. Defensive against
+// names that would render weirdly in textContent or confuse downstream
+// serialization: the controller's host banner uses \x00 as a template-split
+// sentinel, so a \x00 surviving into a player name would reach that split.
+// Every inbound name (HELLO + SET_NAME) passes through here. Single chokepoint.
+function cleanInboundName(raw) {
+  return typeof raw === 'string'
+    ? raw.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, NAME_MAX_LEN)
+    : '';
+}
+
+function autoNameNumber(name) {
+  var match = typeof name === 'string' ? AUTO_NAME_RE.exec(name) : null;
+  return match ? parseInt(match[1], 10) : null;
+}
+
+function isAllowedAutoNameNumber(num) {
+  return num >= 1 && num <= AUTO_NAME_MAX && AUTO_NAME_BLOCKLIST.indexOf(num) < 0;
+}
+
+// ---------------------------------------------------------------------
+
+function RoomCore(opts) {
+  opts = opts || {};
+
+  this.maxPlayers = opts.maxPlayers != null ? opts.maxPlayers : GameConstants.MAX_PLAYERS;
+
+  // Auto-name picks are deliberately random: sequential picks made every room
+  // read HX-1, HX-2, HX-3, which looks assigned rather than chosen. Randomness
+  // is also the one thing a cross-platform golden test cannot diff, so it is
+  // injectable two ways. `rng` takes a function (in-process callers). `rngSeed`
+  // takes a NUMBER, which is what the conformance harness uses, because the
+  // native bridges are JSON-only and cannot pass a function across. Production
+  // supplies neither and gets Math.random on all three platforms.
+  if (opts.rngSeed != null) {
+    // mulberry32: tiny, deterministic, and identical wherever the bundle runs.
+    var seed = opts.rngSeed >>> 0;
+    this._rng = function () {
+      seed = (seed + 0x6D2B79F5) | 0;
+      var t = seed;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  } else {
+    this._rng = typeof opts.rng === 'function' ? opts.rng : Math.random;
+  }
+
+  this.flow = new RoomFlow({
+    masterProvider: opts.masterProvider,
+    liveness: opts.liveness,
+  });
+
+  // Roster backing store, aliased onto flow's map so in-process consumers (the
+  // web display's renderers) keep their cheap reads. Writes always go through
+  // this core. Native shells cannot alias a JS Map and read the snapshot
+  // instead, which is the same data by construction.
+  // peerIndex -> { playerName, playerIndex (colour slot), startLevel, helloSeen,
+  //                joinedAt, connected, peerIndex }
+  this.players = this.flow.players;
+
+  // Active participants, in board-layout order. Deliberately NOT the same thing
+  // as flow's internal _order: in the lobby this list holds everyone who has
+  // joined while flow's is empty (host eligibility is unrestricted there). The
+  // two are reconciled explicitly via setActiveOrder(), at exactly the moments
+  // the display already did it.
+  this._participants = [];
+
+  this._alive = {};             // peerIndex -> false once KO'd; absent means alive
+  this._results = null;         // last ranking, replayed in the RESULTS snapshot
+  this._muted = false;
+
+  // WHY we are frozen, or null. One field rather than a composite plus two
+  // reason flags: the reasons ARE mutually exclusive (rule 2 below: the first
+  // freeze wins and holds until its own trigger lifts it), and three booleans
+  // encode four impossible states for every real one. They also drifted — the
+  // composite was a separate stored flag on web and Android but a derived OR on
+  // tvOS, and reset() cleared two of the three, so a stale connection flag could
+  // silently suppress a genuine host pause. See PAUSE_REASONS and pause().
+  this._pauseReason = null;
+}
+
+RoomCore.SNAPSHOT_THROTTLE_MS = SNAPSHOT_THROTTLE_MS;
+RoomCore.AUTO_NAME_BLOCKLIST = AUTO_NAME_BLOCKLIST.slice();
+RoomCore.NAME_MAX_LEN = NAME_MAX_LEN;
+RoomCore.STATES = RoomFlow.STATES;
+RoomCore.PAUSE = { MANUAL: PAUSE_MANUAL, AUTO: PAUSE_AUTO, CONNECTION: PAUSE_CONNECTION };
+
+// =====================================================================
+// Read accessors
+// =====================================================================
+
+// Also an INSTANCE property, not just the static below. The native bridges
+// expose `roomGet(prop)`, which is an instance lookup, so a static on the
+// constructor is unreachable from tvOS and Android; without this each of them
+// has to hand-mirror the number, which is exactly the drift the module exists
+// to stop.
+Object.defineProperty(RoomCore.prototype, 'snapshotThrottleMs', {
+  get: function () { return SNAPSHOT_THROTTLE_MS; },
+});
+
+Object.defineProperty(RoomCore.prototype, 'state', {
+  get: function () { return this.flow.state; },
+});
+
+// The RAW sticky host slot. Use `host` for the effective (fallback-resolved)
+// one: the two differ during a mid-game blip, when the sticky holder is
+// disconnected but their slot stays pinned for their return.
+Object.defineProperty(RoomCore.prototype, 'stickyHost', {
+  get: function () { return this.flow.hostPeerIndex; },
+});
+
+Object.defineProperty(RoomCore.prototype, 'host', {
+  get: function () { return this.flow.host; },
+});
+
+Object.defineProperty(RoomCore.prototype, 'participants', {
+  get: function () { return this._participants; },
+});
+
+Object.defineProperty(RoomCore.prototype, 'size', {
+  get: function () { return this.flow.size; },
+});
+
+Object.defineProperty(RoomCore.prototype, 'connectedCount', {
+  get: function () { return this.flow.connectedCount; },
+});
+
+Object.defineProperty(RoomCore.prototype, 'results', {
+  get: function () { return this._results; },
+});
+
+Object.defineProperty(RoomCore.prototype, 'muted', {
+  get: function () { return this._muted; },
+});
+
+// Frozen for any reason at all. What the render loop and the input gate read.
+Object.defineProperty(RoomCore.prototype, 'paused', {
+  get: function () { return this._pauseReason !== null; },
+});
+
+// 'manual' | 'auto' | 'connection' | null. What the shells branch on.
+Object.defineProperty(RoomCore.prototype, 'pauseReason', {
+  get: function () { return this._pauseReason; },
+});
+
+RoomCore.prototype.get = function (peerIndex) { return this.flow.get(peerIndex); };
+RoomCore.prototype.has = function (peerIndex) { return this.flow.has(peerIndex); };
+RoomCore.prototype.list = function () { return this.flow.list(); };
+RoomCore.prototype.isHost = function (peerIndex) { return this.flow.isHost(peerIndex); };
+RoomCore.prototype.isDisconnected = function (peerIndex) { return this.flow.isDisconnected(peerIndex); };
+RoomCore.prototype.isParticipant = function (peerIndex) { return this._participants.indexOf(peerIndex) >= 0; };
+
+// The pause state machine. ALL of it lives here, not in the shells, because
+// every part of it is a decision, and decisions are what drifted: the three
+// displays had three different answers for a link drop landing on a manual
+// pause, and three different guards on Continue. Three rules, and the shells now
+// keep none of them — they call these two methods and apply the answer.
+//
+// 1. A freeze takes only while the game is RUNNING (playing or countdown).
+//
+// 2. FIRST FREEZE WINS: a reason is refused while we are already frozen for a
+//    different one. No reason absorbs another, and in particular a
+//    display-internal freeze can never overwrite a host's deliberate pause —
+//    doing so would hand that pause to a trigger that lifts itself, and the
+//    match would silently restart with nobody having pressed Continue (the last
+//    participant drops, then one of them reconnects; or, in AirConsole, the
+//    platform backgrounds the game and hands it back).
+//
+// 3. resume(reason) takes only if `reason` is why we are frozen, and Continue
+//    and the auto-resume additionally need somebody left to play. Every reason
+//    is lifted by its own trigger — Continue lifts MANUAL, a returning
+//    participant lifts AUTO, the relay's created/joined lifts CONNECTION — so a
+//    link blip can no longer resume a game the host deliberately paused, and a
+//    host's Continue can no longer unfreeze a display whose link is still down.
+//    resume(null) is the room-lifecycle clear (a new match, a return to the
+//    lobby, a fresh room): it ends the freeze outright, whatever it was.
+//
+// Rules 2 and 3 together mean a manual pause standing when the room empties is
+// kept rather than converted away. Its Continue goes inert for as long as the
+// room is empty, which is correct — there is nobody to play with, and the
+// overlay it sits on is already showing New Game, the thing an operator in that
+// situation actually wants — and it works again the moment any participant
+// returns. Nothing times out here: an all-disconnected room stays frozen
+// indefinitely so a locked phone or a wifi blip cannot discard a match in
+// progress. The only automatic return to the lobby is RoomFlow's late-joiner
+// grace, which arms only while somebody IS waiting to play (see graceTick).
+//
+// Both return a publish hint, which is 'now' exactly when snapshot.paused flips.
+// Controllers only ever see the MANUAL pause, so AUTO and CONNECTION move
+// nothing on the wire and always hint 'none'.
+RoomCore.prototype.pause = function (reason) {
+  if (PAUSE_REASONS.indexOf(reason) < 0) return this._pauseResult(false);
+  if (!this._isRunning()) return this._pauseResult(false);
+  if (this._pauseReason !== null) return this._pauseResult(false);
+  return this._setPauseReason(reason);
+};
+
+RoomCore.prototype.resume = function (reason) {
+  if (reason != null && reason !== this._pauseReason) return this._pauseResult(false);
+  if ((reason === PAUSE_MANUAL || reason === PAUSE_AUTO)
+      && this.flow.allParticipantsDisconnected()) {
+    return this._pauseResult(false);
+  }
+  return this._setPauseReason(null);
+};
+
+RoomCore.prototype._isRunning = function () {
+  return this.flow.state === RoomFlow.STATES.PLAYING
+      || this.flow.state === RoomFlow.STATES.COUNTDOWN;
+};
+
+RoomCore.prototype._pauseResult = function (changed) {
+  return { changed: changed, reason: this._pauseReason, publish: 'none' };
+};
+
+RoomCore.prototype._setPauseReason = function (next) {
+  if (next === this._pauseReason) return this._pauseResult(false);
+  var wasVisible = this._pauseReason === PAUSE_MANUAL;
+  this._pauseReason = next;
+  return {
+    changed: true,
+    reason: next,
+    publish: wasVisible === (next === PAUSE_MANUAL) ? 'none' : 'now',
+  };
+};
+
+// =====================================================================
+// The retained room snapshot
+// =====================================================================
+
+// Everything a controller renders, in one object: identity, roster, host, room
+// state, pause, liveness and the final ranking. Controllers derive their whole
+// UI from this, screen routing included, so there is no second message left that
+// could drift out of sync with it.
+//
+// ABSENT MEANS DEFAULT for the three per-player flags below (startLevel 1, alive
+// true, helloSeen true). They are the only fields multiplied by the roster, and
+// at 8 players carrying them explicitly costs ~360 bytes of a snapshot that is
+// otherwise ~450 in the lobby, i.e. most of it, to say "nothing unusual here".
+// Every decoder already defaults them: the web controller tests `=== false` /
+// `!== false`, and Kotlin's RoomPlayer declares the same defaults (tvOS never
+// decodes the roster, it forwards the JSON verbatim). Do not extend this to the
+// top-level scalars — `displayMuted` in particular must stay present, because
+// its absence would be indistinguishable from an unmute a controller must apply.
+RoomCore.prototype.snapshot = function () {
+  var roster = {};
+  for (var entry of this.players) {
+    var p = entry[1];
+    var row = { name: p.playerName, color: p.playerIndex };
+    if ((p.startLevel || 1) !== 1) row.startLevel = p.startLevel;
+    if (this._alive[entry[0]] === false) row.alive = false;
+    // Absent until this player's HELLO lands (see peerJoined). Their own
+    // controller waits for it before rendering itself; everyone else reads the
+    // row regardless, so the palette slot is claimed immediately.
+    if (p.helloSeen === false) row.helloSeen = false;
+    roster[entry[0]] = row;
+  }
+  var snap = {
+    roomState: this.flow.state,
+    hostPeerIndex: this.flow.host,
+    // Only a host-pressed pause reaches controllers. See PAUSE_REASONS.
+    paused: this._pauseReason === PAUSE_MANUAL,
+    displayMuted: !!this._muted,
+    // Who is actually in the running game. A player in the roster but absent
+    // here during playing/countdown joined late and waits out the round.
+    participants: this._participants.slice(),
+    players: roster,
+  };
+  if (this.flow.state === RoomFlow.STATES.RESULTS && this._results) {
+    snap.results = this._results;
+  }
+  return snap;
+};
+
+// Native shells cross the bridge with JSON strings, so hand them one directly
+// rather than making every platform re-serialize an object it just decoded.
+RoomCore.prototype.snapshotJSON = function () {
+  return JSON.stringify(this.snapshot());
+};
+
+// =====================================================================
+// Naming
+// =====================================================================
+
+RoomCore.prototype._takenAutoNameNumbers = function (exceptPeerIndex) {
+  var taken = [];
+  for (var entry of this.players) {
+    if (entry[0] === exceptPeerIndex) continue;
+    var num = autoNameNumber(entry[1].playerName);
+    if (num != null) taken.push(num);
+  }
+  return taken;
+};
+
+// A room-unique HX name. Honours a preferred number (so a returning player keeps
+// the name they had) when it is allowed and free, otherwise picks at random from
+// what is left.
+RoomCore.prototype.generateAutoName = function (exceptPeerIndex, preferredName) {
+  var taken = this._takenAutoNameNumbers(exceptPeerIndex);
+  var preferredNum = autoNameNumber(preferredName);
+  if (preferredNum != null
+      && isAllowedAutoNameNumber(preferredNum)
+      && taken.indexOf(preferredNum) < 0) {
+    return 'HX-' + preferredNum;
+  }
+
+  var available = [];
+  for (var i = 1; i <= AUTO_NAME_MAX; i++) {
+    if (isAllowedAutoNameNumber(i) && taken.indexOf(i) < 0) available.push(i);
+  }
+
+  // maxPlayers is 8, so this fallback only matters if a test harness
+  // deliberately fills every normal candidate.
+  if (available.length === 0) {
+    for (var j = 1; j <= AUTO_NAME_MAX; j++) {
+      if (taken.indexOf(j) < 0) available.push(j);
+    }
+  }
+
+  if (available.length === 0) return 'HX-1';
+  return 'HX-' + available[Math.floor(this._rng() * available.length)];
+};
+
+// Resolve a submitted name. Empty submissions and legacy P1-P8 fallbacks become
+// room-unique HX names; custom names stay as entered.
+RoomCore.prototype.resolveName = function (name, peerIndex, requestedAutoName) {
+  if (requestedAutoName || !name || LEGACY_SLOT_NAME_RE.test(name)) {
+    return this.generateAutoName(peerIndex, name);
+  }
+  return name;
+};
+
+// =====================================================================
+// Colour slots
+// =====================================================================
+
+// Lowest free colour slot. Slots are dense (0..maxPlayers-1) and game-owned;
+// peerIndex is NOT a slot (it can be a sparse AirConsole device_id), so we
+// allocate from the slots in use via the kit's sparse-safe helper.
+RoomCore.prototype.nextAvailableColorSlot = function () {
+  var used = [];
+  for (var entry of this.players) used.push(entry[1].playerIndex);
+  return RoomFlow.lowestFreeSlot(used, this.maxPlayers);
+};
+
+// The preferred colour carried on HELLO (the controller's persisted favourite):
+// a valid, un-taken slot index, or null. Mirrors setColor's validation, silently
+// skipping collisions because the snapshot carries the truth either way.
+// Honouring it at HELLO time (instead of waiting for the controller's follow-up
+// SET_COLOR reclaim) removes a full round trip during which both the display and
+// the controller showed the default slot colour.
+RoomCore.prototype.preferredColor = function (peerIndex, rawColorIndex) {
+  var idx = parseInt(rawColorIndex, 10);
+  if (isNaN(idx) || idx < 0 || idx >= this.maxPlayers) return null;
+  for (var entry of this.players) {
+    if (entry[0] !== peerIndex && entry[1].playerIndex === idx) return null;
+  }
+  return idx;
+};
+
+// =====================================================================
+// Roster lifecycle
+// =====================================================================
+
+// The relay announced a peer. Registers a PLACEHOLDER row: the relay hands us
+// peer_joined before the controller's HELLO, so the name and colour here are our
+// guesses, not the player's. Other controllers still need the row (it claims a
+// palette slot), but the joiner's own controller must not render a guessed
+// identity and then visibly correct itself a round trip later, which is what
+// helloSeen:false gates.
+RoomCore.prototype.peerJoined = function (peerIndex, nowMs) {
+  if (this.players.has(peerIndex)) return { added: false, publish: 'none' };
+  if (this.players.size >= this.maxPlayers) return { added: false, publish: 'none' };
+
+  var index = this.nextAvailableColorSlot();
+  if (index < 0) return { added: false, publish: 'none' };
+
+  this.flow.addPlayer(peerIndex, {
+    playerName: this.generateAutoName(peerIndex),
+    playerIndex: index,
+    startLevel: 1,
+    helloSeen: false,
+  });
+  this.flow.onSeen(peerIndex, nowMs);
+
+  // Only join the participant list in the lobby; late joiners wait out the round.
+  var joinedLobby = this.flow.state === RoomFlow.STATES.LOBBY;
+  if (joinedLobby) this._participants.push(peerIndex);
+
+  // The roster changed: a palette slot is claimed and (in an empty room) the
+  // host moved. The joiner's own HELLO republishes a moment later, but the other
+  // controllers' pickers must not wait for it.
+  return { added: true, colorIndex: index, joinedLobby: joinedLobby, publish: 'now' };
+};
+
+// A controller introduced itself. Returns what the shell needs to finish the
+// job: whether a cross-device reconnect claim was honoured (and which peer index
+// it came from, so the shell can remap its own game structures), and whether the
+// room was full.
+//
+// `msg` is the raw HELLO: { name, autoName, colorIndex, rejoinToken, rejoinId }.
+RoomCore.prototype.hello = function (peerIndex, msg, nowMs) {
+  msg = msg || {};
+  var name = cleanInboundName(msg.name);
+  var claim = this.claimReconnect(peerIndex, msg, nowMs);
+
+  var existing = this.players.get(peerIndex);
+  if (existing) {
+    // Their identity is authoritative from here on, not what peer_joined
+    // guessed. Their own controller renders itself once it sees this.
+    existing.helloSeen = true;
+
+    if (name || (msg.autoName === true && !claim.claimed)) {
+      // For the peer_joined-before-HELLO path, preserve the HX name already
+      // assigned to this row while excluding that row from collision checks.
+      var requestedName = name || existing.playerName;
+      existing.playerName = this.resolveName(requestedName, peerIndex, msg.autoName === true);
+    }
+
+    var preferred = this.preferredColor(peerIndex, msg.colorIndex);
+    if (preferred != null && existing.playerIndex !== preferred) {
+      existing.playerIndex = preferred;
+    }
+
+    // One publish settles everything a HELLO can move: this controller's own
+    // identity (name, colour, level), the roster the others render, and the
+    // host, since a reconnecting ex-host reclaims the role their pinned slot
+    // held through the disconnect.
+    return {
+      accepted: true,
+      isNew: false,
+      claimed: claim.claimed,
+      oldPeerIndex: claim.oldPeerIndex,
+      publish: 'now',
+    };
+  }
+
+  // New player. Their preferred colour wins over the default slot when it is
+  // free; a free colour implies a free slot, so the room-full check only guards
+  // the fallback.
+  var index = this.preferredColor(peerIndex, msg.colorIndex);
+  if (index == null) index = this.nextAvailableColorSlot();
+  if (index < 0) {
+    return { accepted: false, roomFull: true, isNew: true, claimed: false, oldPeerIndex: null, publish: 'none' };
+  }
+
+  this.flow.addPlayer(peerIndex, {
+    playerName: this.resolveName(name, peerIndex, msg.autoName === true),
+    playerIndex: index,
+    startLevel: 1,
+    helloSeen: true,
+  });
+  this.flow.onSeen(peerIndex, nowMs);
+  if (this.flow.state === RoomFlow.STATES.LOBBY) this._participants.push(peerIndex);
+
+  // Publishes in every room state: the joiner needs the snapshot to learn who
+  // they are and which screen to show, and a new low-slot player can take over
+  // as host, which moves the other controllers' "Waiting for {name}" banners.
+  return {
+    accepted: true,
+    isNew: true,
+    colorIndex: index,
+    claimed: claim.claimed,
+    oldPeerIndex: claim.oldPeerIndex,
+    publish: 'now',
+  };
+};
+
+// Register a roster row verbatim, bypassing slot allocation and auto-naming.
+// This is the FIXTURE path: gallery scenarios and screenshot harnesses need a
+// deterministic, possibly non-contiguous roster (three players plus player 7)
+// that the join sequence would never produce. Real joins go through peerJoined
+// and hello, which is where the allocation policy lives.
+RoomCore.prototype.addPlayer = function (peerIndex, fields) {
+  return this.flow.addPlayer(peerIndex, fields);
+};
+
+// A peer vanished. The action tells the shell what its own structures must do:
+//   'disconnected' - keep the row, raise a rejoin QR, they may come back
+//   'removed'      - the row is gone, drop their effects/boards
+//   'none'         - we never knew them
+RoomCore.prototype.peerLeft = function (peerIndex) {
+  if (!this.players.has(peerIndex)) return { known: false, action: 'none', publish: 'none' };
+
+  var state = this.flow.state;
+  var action = 'removed';
+  var returnedToLobby = false;
+
+  if (state === RoomFlow.STATES.PLAYING || state === RoomFlow.STATES.COUNTDOWN) {
+    if (this.isParticipant(peerIndex)) {
+      // An active participant stays in the roster so the slot stays pinned and a
+      // reconnect can reclaim it. The shell marks them disconnected when it
+      // raises the rejoin QR, which keeps that pair of writes in one place.
+      action = 'disconnected';
+    } else {
+      // A late joiner who was never in the game: remove silently.
+      this.flow.removePlayer(peerIndex);
+    }
+  } else if (state === RoomFlow.STATES.LOBBY) {
+    this.flow.removePlayer(peerIndex);
+    this._removeParticipant(peerIndex);
+  } else if (state === RoomFlow.STATES.RESULTS) {
+    this.flow.removePlayer(peerIndex);
+    this._removeParticipant(peerIndex);
+    this.flow.setActiveOrder(this._participants);
+    // Return to the lobby once no game participants remain; late joiners, who
+    // are not in the participant list, do not count.
+    var hasParticipants = false;
+    for (var i = 0; i < this._participants.length; i++) {
+      if (this.players.has(this._participants[i])) { hasParticipants = true; break; }
+    }
+    if (!hasParticipants) {
+      this._results = null;
+      this.flow.transitionTo(RoomFlow.STATES.LOBBY);
+      returnedToLobby = true;
+    }
+  }
+
+  // The roster changed in every branch: someone is gone, the host may have moved
+  // to a present player, and a mid-game departure flips that player's `alive` for
+  // the remaining boards. Publishing unconditionally also covers the
+  // last-player-leaves case, where the snapshot must stop naming a departed
+  // player (and a stale host) to the next peer that joins.
+  return { known: true, action: action, returnedToLobby: returnedToLobby, publish: 'now' };
+};
+
+// =====================================================================
+// Cross-device reconnect claim
+// =====================================================================
+
+function normalizePeerIndex(value) {
+  if (typeof value === 'number') return Number.isInteger(value) && value >= 0 ? value : null;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  var n = Number(value);
+  return Number.isInteger(n) && n >= 0 ? n : null;
+}
+
+// Can `peerIndex` claim the dropped seat named by the HELLO's rejoin token?
+// Returns the old peer index, or null. Reads flow's presence set rather than the
+// display's QR map, so the decision cannot drift from the roster it is about.
+RoomCore.prototype.claimablePeerIndex = function (peerIndex, msg) {
+  var oldId = normalizePeerIndex(msg && msg.rejoinToken);
+  if (oldId == null && msg && msg.rejoinId != null) oldId = normalizePeerIndex(msg.rejoinId);
+  if (oldId == null || oldId === peerIndex) return null;
+  if (!this.players.has(oldId) || !this.flow.isDisconnected(oldId)) return null;
+  if (!this.isParticipant(oldId)) return null;
+  // An active participant cannot claim another board: rekeying onto an id that
+  // already owns one would silently drop one of the two. A genuine cross-device
+  // rejoin always arrives under a FRESH peer index.
+  if (this.isParticipant(peerIndex)) return null;
+  return oldId;
+};
+
+// Honour the claim if it is valid: move the kept record (and everything keyed by
+// peer index that this core owns) from the old index to the new one. The shell
+// remaps its own structures using the returned oldPeerIndex.
+RoomCore.prototype.claimReconnect = function (peerIndex, msg, nowMs) {
+  var oldId = this.claimablePeerIndex(peerIndex, msg);
+  if (oldId == null) return { claimed: false, oldPeerIndex: null };
+
+  // flow.rekey moves the kept record from oldId to peerIndex (dropping the
+  // placeholder row peerIndex got when it joined), and reclaims the sticky host
+  // slot and last-seen stamp for the returning peer.
+  this.flow.rekey(oldId, peerIndex);
+  this.flow.onSeen(peerIndex, nowMs);
+
+  for (var i = 0; i < this._participants.length; i++) {
+    if (this._participants[i] === oldId) this._participants[i] = peerIndex;
+  }
+
+  if (this._alive[oldId] !== undefined) {
+    this._alive[peerIndex] = this._alive[oldId];
+    delete this._alive[oldId];
+  }
+
+  // Remap the cached ranking too: a claim on the results screen replays it in
+  // the snapshot, and the returning controller matches its own row by playerId.
+  if (Array.isArray(this._results)) {
+    for (var li = 0; li < this._results.length; li++) {
+      if (this._results[li].playerId === oldId) this._results[li].playerId = peerIndex;
+    }
+  }
+
+  return { claimed: true, oldPeerIndex: oldId };
+};
+
+// =====================================================================
+// Controller settings
+// =====================================================================
+
+RoomCore.prototype.setLevel = function (peerIndex, rawLevel) {
+  var player = this.players.get(peerIndex);
+  if (!player) return { changed: false, publish: 'none' };
+  var level = parseInt(rawLevel, 10);
+  if (isNaN(level) || level < MIN_START_LEVEL || level > MAX_START_LEVEL) {
+    return { changed: false, publish: 'none' };
+  }
+  player.startLevel = level;
+  // Held-finger control: the throttle collapses a burst of +/- taps into at most
+  // ~2 publishes per second no matter how fast they come, and the trailing one
+  // always carries the final level. Outside the lobby the stepper is
+  // unreachable, so the value is recorded but nothing needs to hear about it.
+  var inLobby = this.flow.state === RoomFlow.STATES.LOBBY;
+  return { changed: true, level: level, publish: inLobby ? 'soon' : 'none' };
+};
+
+// Re-claim a palette slot. Silently rejects collisions so concurrent picks do
+// not spam the sender with errors; the next snapshot carries the truth. Not
+// state-gated: the controller's colour picker is reachable only in the lobby, so
+// a mid-game pick cannot occur in practice.
+RoomCore.prototype.setColor = function (peerIndex, rawColorIndex) {
+  var player = this.players.get(peerIndex);
+  if (!player) return { changed: false, publish: 'none' };
+  var idx = parseInt(rawColorIndex, 10);
+  if (isNaN(idx) || idx < 0 || idx >= this.maxPlayers) return { changed: false, publish: 'none' };
+  if (player.playerIndex === idx) return { changed: false, publish: 'none' };
+
+  for (var entry of this.players) {
+    if (entry[0] !== peerIndex && entry[1].playerIndex === idx) {
+      return { changed: false, publish: 'none' };
+    }
+  }
+
+  player.playerIndex = idx;
+  // Throttled like the level stepper: the picker overlay closes on the echoed
+  // colour, so the leading edge keeps a deliberate pick feeling instant while a
+  // flurry of picks still collapses to the last one.
+  return { changed: true, colorIndex: idx, publish: 'soon' };
+};
+
+// Live rename from an already-registered controller (e.g. an AirConsole profile
+// edit). Unlike setColor this is allowed in every state, including mid-game,
+// because it only relabels the player and never touches game state.
+RoomCore.prototype.setName = function (peerIndex, rawName) {
+  var player = this.players.get(peerIndex);
+  if (!player) return { changed: false, publish: 'none' };
+  var prevName = player.playerName;
+  // requestedAutoName is hardcoded false: SET_NAME always means "I have a real
+  // name now". Honouring autoName:true here would discard the name and hand back
+  // an HX fallback, the opposite of a rename. Empty and legacy names still
+  // resolve to an HX name via resolveName's !name branch.
+  player.playerName = this.resolveName(cleanInboundName(rawName), peerIndex, false);
+  if (player.playerName === prevName) return { changed: false, publish: 'none' };
+  return { changed: true, name: player.playerName, publish: 'now' };
+};
+
+// =====================================================================
+// Snapshot inputs the display owns
+// =====================================================================
+
+RoomCore.prototype.setAlive = function (peerIndex, alive) {
+  if (alive === false) this._alive[peerIndex] = false;
+  else delete this._alive[peerIndex];
+  return { changed: true, publish: 'now' };
+};
+
+RoomCore.prototype.clearAlive = function () { this._alive = {}; };
+
+RoomCore.prototype.setResults = function (results) {
+  this._results = results || null;
+};
+
+RoomCore.prototype.setMuted = function (muted) {
+  this._muted = !!muted;
+  return { changed: true, publish: 'now' };
+};
+
+// =====================================================================
+// Room lifecycle
+// =====================================================================
+
+// Validated state transition. Every transition is a publish point: controllers
+// route their screens purely off snapshot.roomState, so one guaranteed publish
+// per transition is what let the GAME_START / COUNTDOWN / GAME_END /
+// RETURN_TO_LOBBY broadcasts go. Immediate, ahead of the level/colour throttle.
+RoomCore.prototype.transitionTo = function (to) {
+  var applied = this.flow.transitionTo(to);
+  return { changed: applied, publish: 'now' };
+};
+
+RoomCore.prototype.setParticipants = function (peerIndices) {
+  this._participants = (peerIndices || []).slice();
+};
+
+RoomCore.prototype.addParticipant = function (peerIndex) {
+  if (this._participants.indexOf(peerIndex) < 0) this._participants.push(peerIndex);
+};
+
+RoomCore.prototype._removeParticipant = function (peerIndex) {
+  var i = this._participants.indexOf(peerIndex);
+  if (i >= 0) this._participants.splice(i, 1);
+};
+
+// Keep flow's host-eligibility set in step with the game's participant order.
+// Called at exactly the moments the display already did it, because in the lobby
+// the two deliberately differ (flow's is empty; eligibility is unrestricted).
+RoomCore.prototype.setActiveOrder = function (peerIndices) {
+  this.flow.setActiveOrder(peerIndices || this._participants);
+};
+
+// Sort participants into board-layout order (join order, first joiner leftmost)
+// and pin the result as the active set for the round about to start. Overrides
+// flow's own COUNTDOWN auto-snapshot: the two normally agree, but this makes the
+// game's order authoritative if they ever diverge. A row that vanished mid-sort
+// sinks to the end rather than jumping to the front.
+RoomCore.prototype.freezeParticipantOrder = function () {
+  var self = this;
+  this._participants.sort(function (a, b) {
+    var pa = self.players.get(a);
+    var pb = self.players.get(b);
+    return (pa && pa.joinedAt != null ? pa.joinedAt : Infinity)
+         - (pb && pb.joinedAt != null ? pb.joinedAt : Infinity);
+  });
+  // Snapshot the array so mid-game layout can't drift under later roster edits.
+  this._participants = this._participants.slice();
+  this.flow.setActiveOrder(this._participants);
+  return this._participants.slice();
+};
+
+// Drop everyone who went missing while we were away. isDisconnected catches
+// AirConsole mode (where isExpired is always false); isExpired catches a
+// relay-mode peer that dropped without peer_left or a liveness tick ever
+// flagging it. Reconnects clear the flag, so present players survive.
+RoomCore.prototype.pruneDisconnected = function (nowMs) {
+  var gone = [];
+  for (var entry of this.players) {
+    if (this.flow.isDisconnected(entry[0]) || this.flow.isExpired(entry[0], nowMs)) {
+      gone.push(entry[0]);
+    }
+  }
+  for (var i = 0; i < gone.length; i++) {
+    this.flow.removePlayer(gone[i]);
+    this._removeParticipant(gone[i]);
+  }
+  return gone;
+};
+
+// Fold everyone still waiting (late joiners from the round that just ended) into
+// the participant list, preserving the existing order.
+RoomCore.prototype.admitWaiting = function () {
+  var admitted = [];
+  for (var id of this.players.keys()) {
+    if (this._participants.indexOf(id) < 0) { this._participants.push(id); admitted.push(id); }
+  }
+  return admitted;
+};
+
+// Label a finished ranking with the roster's names and colours, then append the
+// connected players who sat this round out. Late joiners are absent from the
+// engine's results (which are built from the participant list), so they are
+// flagged newPlayer and every screen renders them as such instead of dropping
+// them. Mutates and returns the array, which is also what the RESULTS snapshot
+// then carries.
+//
+// A sit-out who is DISCONNECTED is skipped: they are still in the roster (only a
+// hard peer_left removes a late joiner, so one the liveness sweep merely flagged
+// stays), and listing an absent player as "joining the next round" on the
+// results screen states something we have no reason to believe. Participants are
+// unaffected either way — they are already in the ranking, disconnected or not,
+// because the engine builds it from the participant list.
+RoomCore.prototype.enrichResults = function (ranking) {
+  if (!Array.isArray(ranking)) return ranking;
+  var played = {};
+  for (var i = 0; i < ranking.length; i++) {
+    var r = ranking[i];
+    played[r.playerId] = true;
+    var info = this.players.get(r.playerId);
+    if (info) {
+      r.playerName = info.playerName;
+      r.colorIndex = info.playerIndex;
+    }
+  }
+  for (var entry of this.players) {
+    if (!played[entry[0]] && !this.flow.isDisconnected(entry[0])) {
+      ranking.push({
+        playerId: entry[0],
+        playerName: entry[1].playerName,
+        colorIndex: entry[1].playerIndex,
+        newPlayer: true,
+      });
+    }
+  }
+  return ranking;
+};
+
+// Reset to a fresh room. Mirrors the room-local half of the display's
+// resetRoomData: roster, participants, liveness, results and the pause.
+// Mute is deliberately untouched (it is a device preference, not room state).
+RoomCore.prototype.reset = function () {
+  this.flow.reset();
+  this._participants = [];
+  this._alive = {};
+  this._results = null;
+  this._pauseReason = null;
+};
+
+// =====================================================================
+// Liveness passthrough (the predicates live in RoomFlow; the effects live in
+// the shell, which owns the QR canvases, the pause and the lobby return)
+// =====================================================================
+
+RoomCore.prototype.onSeen = function (peerIndex, nowMs) { this.flow.onSeen(peerIndex, nowMs); };
+RoomCore.prototype.isExpired = function (peerIndex, nowMs) { return this.flow.isExpired(peerIndex, nowMs); };
+RoomCore.prototype.expiredPeers = function (nowMs) { return this.flow.expiredPeers(nowMs); };
+RoomCore.prototype.markDisconnected = function (peerIndex) { this.flow.markDisconnected(peerIndex); };
+RoomCore.prototype.markReconnected = function (peerIndex) { this.flow.markReconnected(peerIndex); };
+RoomCore.prototype.clearDisconnected = function (nowMs) { this.flow.clearDisconnected(nowMs); };
+RoomCore.prototype.allParticipantsDisconnected = function () { return this.flow.allParticipantsDisconnected(); };
+RoomCore.prototype.hasLateJoiners = function () { return this.flow.hasLateJoiners(); };
+RoomCore.prototype.graceTick = function (nowMs) { return this.flow.graceTick(nowMs); };
+
+// One batched liveness pull. Native shells call this once per frame rather than
+// crossing the bridge on every inbound controller packet: `seen` is the set of
+// peers heard from since the last tick. Returns the decisions, never the
+// effects. Empty `expired` when the shell is not currently in the room, which
+// the caller signals by simply not calling it.
+RoomCore.prototype.tick = function (nowMs, seen) {
+  if (seen) {
+    for (var i = 0; i < seen.length; i++) this.flow.onSeen(seen[i], nowMs);
+  }
+  return {
+    expired: this.flow.expiredPeers(nowMs),
+    graceFired: this.flow.graceTick(nowMs),
+  };
+};
+
+exports.RoomCore = RoomCore;
+
+})(typeof module !== 'undefined' ? module.exports : (window.GameEngine = window.GameEngine || {}));

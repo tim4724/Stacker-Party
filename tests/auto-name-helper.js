@@ -1,47 +1,47 @@
 'use strict';
 
-const AUTO_PLAYER_NAME_RE = /^HX-([1-9][0-9]?)$/i;
-// Keep in sync with DisplayState.js.
-const AUTO_PLAYER_NAME_BLOCKLIST = [4, 13, 17, 69];
+// Test-side adapter over the REAL naming logic.
+//
+// This file used to be a fourth hand-written copy of the auto-name algorithm,
+// carrying "Keep in sync with DisplayState.js" and a deliberate divergence
+// ("Deterministic test helper: production picks randomly from this pool"). So
+// four implementations existed (web, tvOS, Android, here) and the one the tests
+// asserted against was knowingly not the one that shipped.
+//
+// It now delegates to server/RoomCore.js, the single implementation, seeded so
+// the random pick stays reproducible. The old signatures are kept because
+// several test files build their rosters through them.
 
-function getAutoPlayerNameNumber(name) {
-  const match = typeof name === 'string' ? AUTO_PLAYER_NAME_RE.exec(name) : null;
-  return match ? parseInt(match[1], 10) : null;
+const { RoomCore } = require('../server/RoomCore.js');
+
+// Any fixed seed will do; it only has to be stable across runs so a test that
+// asserts an exact fallback name stays reproducible.
+const SEED = 20260727;
+
+/** A throwaway room core seeded with `players` (a Map of peerIndex -> {playerName}). */
+function brainWith(players) {
+  const roomCore = new RoomCore({ rngSeed: SEED });
+  if (players) {
+    for (const entry of players) roomCore.addPlayer(entry[0], Object.assign({}, entry[1]));
+  }
+  return roomCore;
 }
 
 function generateAutoPlayerName(players, exceptPeerIndex, preferredName) {
-  const taken = [];
-  for (const entry of players) {
-    if (entry[0] === exceptPeerIndex) continue;
-    const num = getAutoPlayerNameNumber(entry[1].playerName);
-    if (num != null) taken.push(num);
-  }
+  return brainWith(players).generateAutoName(exceptPeerIndex, preferredName);
+}
 
-  const preferredNum = getAutoPlayerNameNumber(preferredName);
-  if (preferredNum != null
-      && AUTO_PLAYER_NAME_BLOCKLIST.indexOf(preferredNum) < 0
-      && taken.indexOf(preferredNum) < 0) {
-    return 'HX-' + preferredNum;
-  }
-
-  // Deterministic test helper: production picks randomly from this pool.
-  for (let i = 1; i <= 99; i++) {
-    if (AUTO_PLAYER_NAME_BLOCKLIST.indexOf(i) < 0 && taken.indexOf(i) < 0) {
-      return 'HX-' + i;
-    }
-  }
-  return 'HX-1';
+function getAutoPlayerNameNumber(name) {
+  const match = typeof name === 'string' ? /^HX-([1-9][0-9]?)$/i.exec(name) : null;
+  return match ? parseInt(match[1], 10) : null;
 }
 
 function sanitizePlayerName(name, players = new Map(), peerIndex, requestedAutoName) {
-  if (requestedAutoName || !name || /^P[1-8]$/i.test(name)) {
-    return generateAutoPlayerName(players, peerIndex, name);
-  }
-  return name;
+  return brainWith(players).resolveName(name, peerIndex, requestedAutoName);
 }
 
 module.exports = {
-  AUTO_PLAYER_NAME_BLOCKLIST,
+  AUTO_PLAYER_NAME_BLOCKLIST: RoomCore.AUTO_NAME_BLOCKLIST,
   generateAutoPlayerName,
   getAutoPlayerNameNumber,
   sanitizePlayerName

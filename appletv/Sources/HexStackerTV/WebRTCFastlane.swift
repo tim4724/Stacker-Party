@@ -106,8 +106,20 @@ final class WebRTCFastlane: NSObject, InputFastlane {
         return true
     }
 
-    func closePeer(_ index: Int) { netcode.closePeer(index) }
-    func closeAll() { netcode.closeAll() }
+    // The netcode only knows peers whose DataChannel actually OPENED, so routing the
+    // close through it alone would strand a connection still in offer/ICE (leaking an
+    // RTCPeerConnection until ICE gives up ~30 s later, and handing a re-offer from the
+    // same index that stale `pc`). Reap the transport map directly too; removePeerConn
+    // is idempotent, so the netcode's own closeTransport callback double-firing is fine.
+    func closePeer(_ index: Int) {
+        netcode.closePeer(index)
+        removePeerConn(index)
+    }
+
+    func closeAll() {
+        netcode.closeAll()
+        for idx in Array(peers.keys) { removePeerConn(idx) }
+    }
 
     // MARK: Signaling
 
@@ -190,14 +202,27 @@ final class WebRTCFastlane: NSObject, InputFastlane {
     }
 
     fileprivate func onDataChannel(_ peerIdx: Int, _ channel: LKRTCDataChannel) {
-        peers[peerIdx]?.channel = channel
-        channel.delegate = peers[peerIdx]?.observer
+        guard let conn = peers[peerIdx] else { return }
+        // Detach the channel we're replacing so its own state transitions stop routing
+        // here. Don't close() it: an orphan from a rolled-back offer shares the SCTP
+        // stream id, and closing would tear down the adopted channel remotely (the
+        // same reason PartyFastlane._wireChannel only nulls the handlers).
+        if let previous = conn.channel, previous !== channel { previous.delegate = nil }
+        conn.channel = channel
+        channel.delegate = conn.observer
         // If the controller's channel is already open by the time we adopt it,
         // prime the netcode immediately (didChangeState may have already fired).
         if channel.readyState == .open { netcode.peerChannelOpened(peerIdx) }
     }
 
-    fileprivate func onChannelState(_ peerIdx: Int, _ state: LKRTCDataChannelState) {
+    /// `channel` identifies WHICH channel transitioned: a detached orphan can still
+    /// deliver a queued callback, and acting on it would tear down the adopted channel
+    /// (on `.closed`) or rebuild the netcode peer mid-session, resetting `lastAppliedEs`
+    /// so every subsequent input is deduped away (on `.open`). PartyFastlane guards the
+    /// same way (`if (peer.channel !== channel) return`), as does the Android port.
+    fileprivate func onChannelState(_ peerIdx: Int, _ channel: LKRTCDataChannel,
+                                    _ state: LKRTCDataChannelState) {
+        guard peers[peerIdx]?.channel === channel else { return }
         switch state {
         case .open:   netcode.peerChannelOpened(peerIdx)
         case .closed: netcode.peerChannelClosed(peerIdx); removePeerConn(peerIdx)
@@ -242,7 +267,13 @@ private final class PeerObserver: NSObject, LKRTCPeerConnectionDelegate, LKRTCDa
 
     func dataChannelDidChangeState(_ dataChannel: LKRTCDataChannel) {
         let idx = peerIdx
-        DispatchQueue.main.async { [weak self] in self?.owner?.onChannelState(idx, dataChannel.readyState) }
+        // Read the state here and carry the channel across the hop: by the time this
+        // runs on main, readyState may have moved on and the channel may have been
+        // replaced (see onChannelState's identity guard).
+        let state = dataChannel.readyState
+        DispatchQueue.main.async { [weak self] in
+            self?.owner?.onChannelState(idx, dataChannel, state)
+        }
     }
     func dataChannel(_ dataChannel: LKRTCDataChannel, didReceiveMessageWith buffer: LKRTCDataBuffer) {
         let idx = peerIdx

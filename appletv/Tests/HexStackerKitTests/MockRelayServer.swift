@@ -30,14 +30,23 @@ final class MockRelayServer {
     /// Peers reported in a `joined` reply (the reconnect roster the test asserts).
     var peersOnJoin: [Int] = []
 
-    init() throws {
+    /// `port` pins the listener instead of taking an ephemeral one, so a test can
+    /// stop the server (an outage) and bring a fresh one back up at the SAME
+    /// endpoint the client is still retrying — which is what "the network came
+    /// back" looks like from the client's side. `allowLocalEndpointReuse` makes
+    /// the immediate re-bind work.
+    init(port: UInt16? = nil) throws {
         let params = NWParameters.tcp
         params.allowLocalEndpointReuse = true
         params.requiredInterfaceType = .loopback
         let ws = NWProtocolWebSocket.Options()
         ws.autoReplyPing = true
         params.defaultProtocolStack.applicationProtocols.insert(ws, at: 0)
-        listener = try NWListener(using: params)
+        if let port, let p = NWEndpoint.Port(rawValue: port) {
+            listener = try NWListener(using: params, on: p)
+        } else {
+            listener = try NWListener(using: params)
+        }
         listener.newConnectionHandler = { [weak self] conn in self?.accept(conn) }
     }
 

@@ -75,6 +75,16 @@ class PartyConnection {
       if (this.ws !== ws) return; // stale
       var msg;
       try { msg = JSON.parse(event.data); } catch (_) { return; }
+      // A frame that PARSES but is not an object is still not a relay frame. The
+      // catch above only covers malformed JSON, so before this guard `null` threw
+      // a TypeError straight out of onmessage, and `7` / `"x"` / `[1,2]` fell
+      // through to onProtocol with an undefined type — a scalar treated as
+      // protocol traffic. Drop them — which is what the native ports already did
+      // implicitly, leaving the web the only transport that could route a scalar:
+      // Kotlin's `parseToJsonElement(text).jsonObject` throws inside runCatching
+      // (RelayClient.kt), and Swift's `as? [String: Any]` fails its guard
+      // (RelayClient.swift).
+      if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return;
 
       if (msg.type === 'message') {
         if (this.onMessage) this.onMessage(msg.from, msg.data);

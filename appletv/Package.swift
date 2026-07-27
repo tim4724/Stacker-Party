@@ -4,7 +4,9 @@ import PackageDescription
 // HexStackerKit is the platform-agnostic core of the Apple TV port:
 //  - EngineBridge: runs the canonical server/*.js game engine in JavaScriptCore
 //  - Snapshot model: Codable structs mirroring Game.getSnapshot()
-//  - RelayClient / RoomFlow: the Party-Server display peer over WebSocket
+//  - RelayClient: the Party-Server display peer over WebSocket
+//  - DisplayCoordinator: the display brain, with room state owned by the shared
+//    server/RoomCore.js running inside the same JavaScriptCore context
 //
 // It depends only on system frameworks (JavaScriptCore, Foundation), so it
 // builds and unit-tests on macOS via `swift test` WITHOUT full Xcode or the

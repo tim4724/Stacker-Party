@@ -23,8 +23,18 @@ object RelayConfig {
     /** Slot 0 (display) + MAX_PLAYERS(8) controllers. */
     const val MAX_CLIENTS = 9
 
-    /** Where phones load the controller (QR target). Join URL = "<base>/<room>#<instance>". */
-    const val CONTROLLER_BASE_URL = "https://hexstacker.com"
+    /** Where phones load the controller (QR target) in a shipped build. Join URL = "<base>/<room>#<instance>". */
+    const val DEFAULT_CONTROLLER_BASE_URL = "https://hexstacker.com"
+
+    /**
+     * The origin the QR / join URL actually points at. The web display reads this off
+     * `window.location` for free, so a preview deploy retargets its own QR automatically;
+     * a TV app has no origin to read, which is why the knob is explicit. Production
+     * unless a debug launch calls [setControllerBase] (`--es hexHost`, see MainActivity),
+     * which nothing in a shipped build does.
+     */
+    var controllerBaseUrl: String = DEFAULT_CONTROLLER_BASE_URL
+        private set
 
     /**
      * Controller-URL template sent with `create`. The relay fills {room}/{instance}
@@ -32,7 +42,34 @@ object RelayConfig {
      * `GET /room/:code`). Same shape as the QR join URL the web display registers
      * (controllerUrlTemplate in DisplayConnection.js).
      */
-    const val CONTROLLER_URL_TEMPLATE = "https://hexstacker.com/{room}#{instance}"
+    val controllerUrlTemplate: String get() = "$controllerBaseUrl/{room}#{instance}"
+
+    /**
+     * Point the QR / join URL at another origin, e.g. a branch preview. Call before the
+     * relay connects: the origin also rides the `create` frame as the controller-URL
+     * template. A null/blank/unusable value leaves production in place, so the caller can
+     * hand the raw launch value straight through. Mirrored by Protocol.setControllerBase (Swift).
+     */
+    fun setControllerBase(raw: String?): String {
+        normalizedBase(raw)?.let { controllerBaseUrl = it }
+        return controllerBaseUrl
+    }
+
+    /**
+     * [raw] as a bare origin: trimmed, scheme defaulted to https, any path or trailing
+     * slash dropped ("preview-x.hexstacker.com" -> "https://preview-x.hexstacker.com").
+     * null when it names no host or carries a scheme a phone can't open.
+     */
+    fun normalizedBase(raw: String?): String? {
+        var s = raw?.trim().orEmpty()
+        if (s.isEmpty()) return null
+        if (!s.contains("://")) s = "https://$s"
+        val scheme = s.substringBefore("://").lowercase()
+        if (scheme != "http" && scheme != "https") return null
+        val authority = s.substringAfter("://").takeWhile { it != '/' && it != '?' && it != '#' }
+        if (authority.isEmpty()) return null
+        return "$scheme://$authority"
+    }
 
     const val MAX_RECONNECT_ATTEMPTS = 5
     const val RECONNECT_BASE_MS = 1000L
@@ -78,19 +115,10 @@ object Msg {
     const val PING = "ping"
 
     // Display -> specific controller
-    const val WELCOME = "welcome"
-    const val GAME_OVER = "game_over"
-    const val LOBBY_UPDATE = "lobby_update"
     const val PONG = "pong"
     const val PLAYER_STATE = "player_state"
 
     // Display -> all controllers (broadcast)
-    const val COUNTDOWN = "countdown"
-    const val DISPLAY_MUTED = "display_muted"
-    const val GAME_START = "game_start"
-    const val GAME_END = "game_end"
-    const val GAME_PAUSED = "game_paused"
-    const val GAME_RESUMED = "game_resumed"
     const val ERROR = "error"
 
     /** Internal display self-liveness canary (echoed via relay slot 0); not in protocol.js MSG. */
@@ -102,7 +130,25 @@ enum class RoomState(val wire: String) {
     LOBBY("lobby"),
     COUNTDOWN("countdown"),
     PLAYING("playing"),
-    RESULTS("results"),
+    RESULTS("results");
+
+    companion object {
+        /** Decode the room core's `roomState`. An unknown value can only mean the
+         *  bundle moved ahead of this mirror, and a lobby is the safe reading. */
+        fun fromWire(wire: String?): RoomState = entries.firstOrNull { it.wire == wire } ?: LOBBY
+    }
+}
+
+/**
+ * Why the game is frozen. Wire values are the room core's `RoomCore.PAUSE`, and only
+ * [MANUAL] ever reaches a controller: the other two are display-internal, they resolve
+ * themselves, and a controller shown either would sit on a pause overlay whose Continue
+ * the display ignores. Pinned by tests/protocol-android-parity.test.js.
+ */
+enum class PauseReason(val wire: String) {
+    MANUAL("manual"),
+    AUTO("auto"),
+    CONNECTION("connection");
 }
 
 /** Tolerant decoder for relay frames. */
@@ -173,7 +219,6 @@ data class ControllerMessage(
     val t: Double? = null,
     val rejoinId: Int? = null,
     val rejoinToken: Int? = null,
-    val claim: Int? = null,
 ) {
     companion object {
         fun from(obj: JsonObject): ControllerMessage? {
@@ -190,7 +235,6 @@ data class ControllerMessage(
                 t = obj.dbl("t"),
                 rejoinId = obj.int("rejoinId"),
                 rejoinToken = obj.int("rejoinToken"),
-                claim = obj.int("claim"),
             )
         }
 
@@ -211,16 +255,6 @@ object OutboundMessage {
         put("type", Msg.PONG); if (t != null) put("t", t)
     }
 
-    fun countdown(value: Int): JsonObject = buildJsonObject { put("type", Msg.COUNTDOWN); put("value", value) }
-    fun countdownGo(): JsonObject = buildJsonObject { put("type", Msg.COUNTDOWN); put("value", "GO") }
-    fun gameStart(): JsonObject = buildJsonObject { put("type", Msg.GAME_START) }
-    fun gamePaused(): JsonObject = buildJsonObject { put("type", Msg.GAME_PAUSED) }
-    fun gameResumed(): JsonObject = buildJsonObject { put("type", Msg.GAME_RESUMED) }
-    fun gameOver(): JsonObject = buildJsonObject { put("type", Msg.GAME_OVER) }
-    fun displayMuted(muted: Boolean): JsonObject = buildJsonObject { put("type", Msg.DISPLAY_MUTED); put("muted", muted) }
-    fun returnToLobby(playerCount: Int): JsonObject =
-        buildJsonObject { put("type", Msg.RETURN_TO_LOBBY); put("playerCount", playerCount) }
-
     fun error(message: String): JsonObject = buildJsonObject { put("type", Msg.ERROR); put("message", message) }
     fun playerState(level: Int, lines: Int, alive: Boolean, garbageIncoming: Int): JsonObject = buildJsonObject {
         put("type", Msg.PLAYER_STATE); put("level", level); put("lines", lines)
@@ -228,9 +262,6 @@ object OutboundMessage {
     }
 
     fun playerDead(): JsonObject = buildJsonObject { put("type", Msg.PLAYER_STATE); put("alive", false) }
-    fun gameEnd(elapsed: Double, results: JsonArray): JsonObject = buildJsonObject {
-        put("type", Msg.GAME_END); put("elapsed", elapsed); put("results", results)
-    }
 }
 
 /** The relay transport the DisplayCoordinator drives (mirror Protocol.swift RelayTransport). */

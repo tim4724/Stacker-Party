@@ -106,6 +106,18 @@ class RelayClient(
         emitState(RelayTransport.ConnectionState.CLOSED)
     }
 
+    /**
+     * Forget the pinned room WITHOUT touching the socket: the next (re)connect
+     * handshake sends `create` instead of `join`. Used when the display suspends with
+     * an EMPTY lobby — a memberless room dies with our socket at the relay anyway, so
+     * resuming it would only bounce a join off "Room not found" before recreating,
+     * visibly swapping the room code mid-lobby. Mirrors appletv RelayClient.unpinRoom.
+     */
+    fun unpinRoom() = ops.executeSafe {
+        lastRoom = null
+        lastInstance = null
+    }
+
     override fun sendTo(index: Int, data: JsonObject) =
         ops.executeSafe { sendEnvelope(RelayJson.encodeToString(SendFrame(data = data, to = index))) }
 
@@ -190,7 +202,7 @@ class RelayClient(
                     CreateFrame(
                         clientId = clientId,
                         maxClients = maxClients,
-                        url = RelayConfig.CONTROLLER_URL_TEMPLATE,
+                        url = RelayConfig.controllerUrlTemplate,
                     ),
                 ),
             )
@@ -267,11 +279,13 @@ class RelayClient(
         webSocket = null
         old?.cancel()
         // This immediate retry is unnumbered (web reconnectNow parity): the overlay
-        // shows heading-only until it fails, and that failure's handleDrop numbers
-        // attempt 1. Force RECONNECTING despite the counter being 0 — CONNECTING
-        // would neither pause the game (DisplayCoordinator.onLinkState) nor show
-        // the overlay, letting the sim run blind for the whole reconnect window.
-        reconnectAttempt = 0
+        // shows heading-only until it fails, and that failure's handleDrop numbers the
+        // next attempt. Force RECONNECTING even when the counter is still 0 —
+        // CONNECTING would neither pause the game (DisplayCoordinator.onLinkState) nor
+        // show the overlay, letting the sim run blind for the whole reconnect window.
+        // The counter is NOT reset: web's reconnectNow() and appletv's forceReconnect()
+        // both keep it, so a flapping link still exhausts its 5-attempt budget instead
+        // of retrying forever.
         connectLocked(reconnecting = true)
     }
 

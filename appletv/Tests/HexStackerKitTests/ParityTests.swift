@@ -142,4 +142,24 @@ import Foundation
         #expect(js.nearClear(grid: gD, cols: cols)
                 == Zigzag.nearClear(cols: cols, totalRows: rows, isFilled: filled(gD)))
     }
+
+    // Kept to `normalizedBase` (pure) rather than `setControllerBase`: the live base
+    // is process-global, and a test that moved it would leak into every other test's
+    // join URLs (Swift Testing runs these in parallel). Mirrored by
+    // ProtocolCodecTest.normalizesTheControllerBaseOverride (Kotlin): the two TV apps
+    // must accept the same launch value.
+    @Test func controllerBaseOverrideNormalizes() {
+        #expect(Protocol.normalizedBase("preview-x.hexstacker.com") == "https://preview-x.hexstacker.com")
+        #expect(Protocol.normalizedBase("  preview-x.hexstacker.com/  ") == "https://preview-x.hexstacker.com")
+        #expect(Protocol.normalizedBase("https://preview-x.hexstacker.com") == "https://preview-x.hexstacker.com")
+        // A pasted join URL keeps only the origin (the room code is appended per room).
+        #expect(Protocol.normalizedBase("https://preview-x.hexstacker.com/ABCD#eu") == "https://preview-x.hexstacker.com")
+        // LAN dev server: explicit http and a port survive.
+        #expect(Protocol.normalizedBase("http://192.168.1.20:4000") == "http://192.168.1.20:4000")
+        // Nothing usable -> nil, so the caller keeps production.
+        #expect(Protocol.normalizedBase(nil) == nil)
+        #expect(Protocol.normalizedBase("   ") == nil)
+        #expect(Protocol.normalizedBase("https://") == nil)
+        #expect(Protocol.normalizedBase("ftp://example.com") == nil)
+    }
 }

@@ -20,12 +20,13 @@ const path = require('path');
 
 const { MSG, INPUT, ROOM_STATE, RELAY_URL, STUN_URL } = require('../public/shared/protocol.js');
 const constants = require('../server/constants.js');
+const { RoomCore } = require('../server/RoomCore.js');
 
 const ROOT = path.join(__dirname, '..');
 const KOTLIN = {
   protocol: read('android/core/src/commonMain/kotlin/com/hexstacker/core/net/Protocol.kt'),
   inputAction: read('android/core/src/commonMain/kotlin/com/hexstacker/core/engine/InputAction.kt'),
-  roomFlow: read('android/core/src/commonMain/kotlin/com/hexstacker/core/room/RoomFlow.kt'),
+  engineConstants: read('android/core/src/commonMain/kotlin/com/hexstacker/core/model/EngineConstants.kt'),
   coordinator: read('android/core/src/commonMain/kotlin/com/hexstacker/core/display/DisplayCoordinator.kt'),
 };
 
@@ -40,10 +41,14 @@ function kotlinConst(src, name) {
   return m[2] !== undefined ? m[2] : Number(m[1].replace(/L$/, ''));
 }
 
-/** Enum entries of the form NAME("wire") -> { NAME: 'wire' }. */
-function kotlinWireEnum(src) {
+/** Entries of the form NAME("wire") inside `enum class <name>` -> { NAME: 'wire' }.
+ *  Scoped to the named enum: Protocol.kt holds several of these, and a file-wide
+ *  sweep silently merged them into whichever one was being asserted. */
+function kotlinWireEnum(src, name) {
+  const block = src.match(new RegExp(`enum class ${name}\\([^)]*\\)\\s*\\{([\\s\\S]*?)\\n\\}`));
+  assert.ok(block, `Kotlin enum class ${name} not found`);
   const out = {};
-  for (const m of src.matchAll(/^\s*([A-Z_]+)\("([a-z_]+)"\),?;?\s*$/gm)) out[m[1]] = m[2];
+  for (const m of block[1].matchAll(/^\s*([A-Z_]+)\("([a-z_]+)"\),?;?\s*$/gm)) out[m[1]] = m[2];
   return out;
 }
 
@@ -69,14 +74,25 @@ test('the display heartbeat canary and clientId match the web display', () => {
 });
 
 test('RoomState and InputAction wire values mirror protocol.js', () => {
-  assert.deepStrictEqual(kotlinWireEnum(KOTLIN.protocol), ROOM_STATE, 'RoomState wire values');
-  assert.deepStrictEqual(kotlinWireEnum(KOTLIN.inputAction), INPUT, 'InputAction wire values');
+  assert.deepStrictEqual(kotlinWireEnum(KOTLIN.protocol, 'RoomState'), ROOM_STATE, 'RoomState wire values');
+  assert.deepStrictEqual(kotlinWireEnum(KOTLIN.inputAction, 'InputAction'), INPUT, 'InputAction wire values');
+});
+
+test('PauseReason wire values mirror the room core', () => {
+  // The reason never crosses the wire — only the boolean it projects into does —
+  // but it IS the argument to roomCall("setPause"), so a drifted spelling reaches
+  // the room core as an unknown reason, which it silently refuses. The freeze
+  // would then never be recorded and the snapshot would keep saying paused:false.
+  assert.deepStrictEqual(
+    kotlinWireEnum(KOTLIN.protocol, 'PauseReason'),
+    { MANUAL: RoomCore.PAUSE.MANUAL, AUTO: RoomCore.PAUSE.AUTO, CONNECTION: RoomCore.PAUSE.CONNECTION }
+  );
 });
 
 test('relay endpoints and limits mirror the web', () => {
   assert.strictEqual(kotlinConst(KOTLIN.protocol, 'RELAY_URL'), RELAY_URL);
   assert.strictEqual(kotlinConst(KOTLIN.protocol, 'STUN_URL'), STUN_URL);
-  assert.strictEqual(kotlinConst(KOTLIN.roomFlow, 'MAX_PLAYERS'), constants.MAX_PLAYERS);
+  assert.strictEqual(kotlinConst(KOTLIN.engineConstants, 'MAX_PLAYERS'), constants.MAX_PLAYERS);
   // Display slot 0 + MAX_PLAYERS controllers; the web hardcodes the same figure
   // in its create call.
   assert.strictEqual(kotlinConst(KOTLIN.protocol, 'MAX_CLIENTS'), constants.MAX_PLAYERS + 1);
@@ -88,15 +104,20 @@ test('relay endpoints and limits mirror the web', () => {
 
 test('the controller-URL template registered on create mirrors the web shape', () => {
   // The web display derives the template from its origin at runtime
-  // (controllerUrlTemplate in DisplayConnection.js); the native mirror
-  // hardcodes the prod origin. Both must register the same
-  // <base>/{room}#{instance} shape or a code-only join resolves to
-  // different pages depending on which display hosts the room.
-  const base = kotlinConst(KOTLIN.protocol, 'CONTROLLER_BASE_URL');
-  assert.strictEqual(
-    kotlinConst(KOTLIN.protocol, 'CONTROLLER_URL_TEMPLATE'),
-    `${base}/{room}#{instance}`,
+  // (controllerUrlTemplate in DisplayConnection.js); the native mirror defaults
+  // to the prod origin. Both must register the same <base>/{room}#{instance}
+  // shape or a code-only join resolves to different pages depending on which
+  // display hosts the room.
+  //
+  // Derived from the LIVE base (not the prod literal) on purpose: a debug launch
+  // pointed at a branch preview must register the preview template too, so the QR
+  // and a code-only join resolve to the same origin.
+  assert.match(
+    KOTLIN.protocol,
+    /val controllerUrlTemplate: String get\(\) = "\$controllerBaseUrl\/\{room\}#\{instance\}"/,
+    'Kotlin controllerUrlTemplate no longer derives <base>/{room}#{instance} from controllerBaseUrl',
   );
+  assert.strictEqual(kotlinConst(KOTLIN.protocol, 'DEFAULT_CONTROLLER_BASE_URL'), 'https://hexstacker.com');
   assert.ok(
     read('public/display/DisplayConnection.js').includes("'/{room}#{instance}'"),
     'web display no longer builds the /{room}#{instance} template',
@@ -106,15 +127,22 @@ test('the controller-URL template registered on create mirrors the web shape', (
 test('timing constants mirror server/constants.js and PartyConnection.js', () => {
   assert.strictEqual(kotlinConst(KOTLIN.protocol, 'SELF_HEARTBEAT_DEAD_MS'), constants.SELF_HEARTBEAT_DEAD_MS);
 
-  // DisplayCoordinator wires RoomFlow with literals mirroring constants.js.
-  const liveness = KOTLIN.coordinator.match(/livenessTimeoutMs = ([\d.]+)/);
-  const grace = KOTLIN.coordinator.match(/graceMs = ([\d.]+)/);
-  assert.strictEqual(Number(liveness[1]), constants.LIVENESS_TIMEOUT_MS);
-  assert.strictEqual(Number(grace[1]), constants.LATE_JOINER_GRACE_MS);
+  // DisplayCoordinator hands these to the room core as its `liveness` options.
+  assert.strictEqual(kotlinConst(KOTLIN.coordinator, 'LIVENESS_TIMEOUT_MS'), constants.LIVENESS_TIMEOUT_MS);
+  assert.strictEqual(kotlinConst(KOTLIN.coordinator, 'LATE_JOINER_GRACE_MS'), constants.LATE_JOINER_GRACE_MS);
 
-  // Snapshot-publish throttle (web DisplayConnection LOBBY_BROADCAST_MIN_INTERVAL_MS).
-  const webThrottle = read('public/display/DisplayConnection.js').match(/LOBBY_BROADCAST_MIN_INTERVAL_MS = (\d+)/);
-  assert.strictEqual(kotlinConst(KOTLIN.coordinator, 'LOBBY_BROADCAST_MIN_INTERVAL_MS'), Number(webThrottle[1]));
+  // The countdown SEQUENCING is deliberately per-shell (setInterval on web, a
+  // frame accumulator here): only one display ever runs in a room, so nothing
+  // has to agree at runtime. The durations are pinned anyway, because three
+  // hand-typed copies of "one second" is how a beat quietly becomes 1.2s.
+  assert.strictEqual(kotlinConst(KOTLIN.coordinator, 'STEP_MS'), constants.COUNTDOWN_STEP_MS);
+  assert.strictEqual(kotlinConst(KOTLIN.coordinator, 'GO_HOLD_MS'), constants.COUNTDOWN_GO_HOLD_MS);
+
+  // The snapshot-publish throttle is NOT pinned here any more: Kotlin no longer
+  // declares it. DisplayCoordinator reads RoomCore.SNAPSHOT_THROTTLE_MS out of the
+  // bundle at start-up (RoomCoreClient.snapshotThrottleMs), so there is no second
+  // copy of the value to keep in step — which is a stronger guarantee than this
+  // file could give. The read itself is covered by the Kotlin conformance test.
 
   // Reconnect backoff (web PartyConnection: `|| 5` default attempts and
   // `Math.min(1000 * Math.pow(1.5, attempt - 1), 5000)`).

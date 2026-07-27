@@ -28,7 +28,8 @@ function startLivenessCheck() {
 
     if (displayDead) {
       if (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN) {
-        if (!paused) pauseGame();
+        // Our own socket is silently dead — same category as onClose above.
+        connectionPause();
         // Cross-fade with the reconnect overlay appearing above (see onClose).
         fadeHide(pauseOverlay, 200);
       }
@@ -55,31 +56,39 @@ function startLivenessCheck() {
       return;
     }
 
-    // Check individual controller liveness. flow.expiredPeers already applies
+    // Our link dropped and the rejoin hasn't landed: the relay routes nothing to
+    // us, so every controller looks silent through no fault of its own. The
+    // displayDead check above is NOT sufficient cover — it needs
+    // SELF_HEARTBEAT_DEAD_MS (6s) of self-echo silence while a controller expires
+    // after LIVENESS_TIMEOUT_MS (3s), leaving a window that flagged the whole
+    // roster, raised rejoin QRs, and (via checkAllPlayersDisconnected, with a
+    // late joiner waiting) could grace-return a live match to the lobby.
+    // Restored by 'created'/'joined' — see joinedRoom. The heartbeat above still
+    // runs, so the display's own reconnect detection is unaffected.
+    if (!joinedRoom) return;
+
+    // Check individual controller liveness. roomCore.expiredPeers already applies
     // the state!==LOBBY + not-already-disconnected gates and the AirConsole
     // no-op (its enabledProvider closure), so the SDK's onDisconnect
     // (→ peer_left → onPeerLeft) becomes the only disconnect trigger there.
     var newDisconnect = false;
-    var expired = flow.expiredPeers(now);
+    var expired = roomCore.expiredPeers(now);
     for (const id of expired) {
       showDisconnectQR(id);
       newDisconnect = true;
     }
     if (newDisconnect) {
       checkAllPlayersDisconnected();
-      // A silent heartbeat timeout can take out the host — refresh isHost
-      // flags so the handoff reaches the remaining controllers. Skip when
-      // everyone is gone: getHostPeerIndex() would return null and the
-      // broadcast would reach no one. No-op when the lost player wasn't
-      // the host.
-      if (!allPlayersDisconnected()) maybeBroadcastHostChange();
+      // A silent heartbeat timeout can take out the host — republish so the
+      // handoff reaches the remaining controllers' isHost flags.
+      publishAs('now');
     }
     // Poll the flow-owned late-joiner grace deadline (armed by
     // checkAllPlayersDisconnected on the event path). Replaces the old
     // setTimeout: fires within one tick of the 5s window elapsing, and
     // graceTick re-checks all-disconnected so a reconnect can't strand us. A
     // no-op if the event path already fired between ticks (deadline cleared).
-    if (flow.graceTick(now)) returnToLobby();
+    if (roomCore.graceTick(now)) returnToLobby();
   }, 1000);
 }
 

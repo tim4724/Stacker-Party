@@ -8,6 +8,7 @@ const assert = require('node:assert/strict');
 global.AirConsole = { SCREEN: 0 };
 
 const AirConsoleAdapter = require('../AirConsoleAdapter');
+const PartyConnection = require('../PartyConnection');
 
 function makeFakeAirConsole(overrides) {
   return Object.assign({
@@ -24,7 +25,7 @@ function makeFakeAirConsole(overrides) {
 }
 
 describe('AirConsoleAdapter PartyConnection interface', () => {
-  it('implements the lifecycle no-ops (create/join/pinInstance/reconnectNow) without throwing', () => {
+  it('implements the lifecycle no-ops (create/join/pinInstance/reconnectNow/closeRoom/failAttempt) without throwing', () => {
     const ac = makeFakeAirConsole();
     const adapter = new AirConsoleAdapter(ac, { role: 'display' });
     // The SDK owns the connection lifecycle; these must exist as safe no-ops so
@@ -36,7 +37,24 @@ describe('AirConsoleAdapter PartyConnection interface', () => {
       adapter.join();
       adapter.pinInstance('wss://x', 'ROOM', 'inst');
       adapter.reconnectNow();
+      adapter.closeRoom();
+      adapter.failAttempt();
     });
+  });
+
+  // Drift guard: the adapter documents itself as PartyConnection-shaped, and
+  // call sites (DisplayConnection / ControllerConnection) are written against
+  // that surface with no transport branching. A method added to PartyConnection
+  // and not mirrored here is a TypeError waiting on the AirConsole build.
+  it('covers the whole public PartyConnection method surface', () => {
+    const publicMethods = Object.getOwnPropertyNames(PartyConnection.prototype)
+      .filter((k) => k !== 'constructor' && !k.startsWith('_'))
+      .filter((k) => typeof Object.getOwnPropertyDescriptor(PartyConnection.prototype, k).value === 'function');
+    const adapter = new AirConsoleAdapter(makeFakeAirConsole(), { role: 'display' });
+    const missing = publicMethods.filter((k) => typeof adapter[k] !== 'function');
+    assert.deepEqual(missing, [], `AirConsoleAdapter is missing: ${missing.join(', ')}`);
+    // `connected` is a getter on both, so it falls outside the method sweep.
+    assert.equal(typeof adapter.connected, 'boolean');
   });
 
   it('synthesizes created for display after connect and AirConsole ready', () => {

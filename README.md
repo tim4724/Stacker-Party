@@ -122,6 +122,26 @@ Renderer differences between the three platforms are caught by the cross-platfor
 screen gallery (`scripts/gallery/`), not by the engine, which is byte-exact across
 all three per the frame-golden conformance tests.
 
+### Pointing a TV app at a branch preview
+
+The web display derives its QR/join origin from `window.location`, so a preview
+deploy retargets itself; the TV apps have no origin to read and default to
+`https://hexstacker.com`. Both take a debug-only override at launch. The relay is
+untouched, so the preview phone and the TV still meet in the same room:
+
+```bash
+# Apple TV: Edit Scheme > Run > Environment Variables
+HEXHOST=preview-<branch>.hexstacker.com
+
+# Android TV (debuggable builds only; a launcher start is always production)
+adb shell am start -n com.hexstacker.tv/.MainActivity \
+  --es hexHost preview-<branch>.hexstacker.com
+```
+
+A bare host, a full origin, or a pasted join URL all work (the origin is kept, the
+rest dropped). The lobby shows the host next to the room code, so which build the
+phones are about to load is visible on screen.
+
 ## Configuration
 
 The display and controllers connect to a [Party-Sockets](https://github.com/tim4724/Party-Sockets) WebSocket relay for message forwarding. The relay URL is set in `public/shared/protocol.js`. If you run your own relay, update this value and the CSP `connect-src` directive in `server/index.js`.

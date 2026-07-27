@@ -1,5 +1,6 @@
 package com.hexstacker.tv
 
+import android.content.pm.ApplicationInfo
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -94,19 +95,19 @@ class MainActivity : ComponentActivity() {
     private lateinit var coordinator: DisplayCoordinator
     private lateinit var ui: TvDisplayOutput
 
-    // One QuickJS engine for the whole app, reused across matches (Bridge.create
-    // re-inits the game without re-parsing the bundle). Warmed up in the background
-    // during lobby idle (see onCreate) so the first START doesn't wait on the asset
-    // read + bundle compile; engineFactory awaits the SAME deferred, so a START that
-    // beats the warm-up just joins it instead of racing a second engine into being.
+    // One QuickJS runtime for the whole app: the session-lived room core plus a game
+    // re-inited per match (Bridge.create, no bundle re-parse). Started as soon as the
+    // coordinator's consumer asks for it, because the room core has to exist before the
+    // first relay room event is handled; everyone awaits the SAME deferred, so a START
+    // that beats the bootstrap just joins it instead of racing a second runtime into being.
     private var engineDeferred: Deferred<EngineBridge>? = null
 
     // The system "Remove animations" accessibility state, feeding LocalReduceMotion.
     // Compose state so a toggle picked up on resume recomposes the chrome.
     private var reduceMotion by mutableStateOf(false)
 
-    /** Get-or-start the engine creation. Main-thread only (no lock needed: the
-     *  warm-up launcher and the coordinator's engineFactory both run on Main). */
+    /** Get-or-start the runtime creation. Main-thread only (no lock needed: the
+     *  warm-up launcher and the coordinator's bridgeProvider both run on Main). */
     private fun engineAsync(): Deferred<EngineBridge> =
         engineDeferred ?: lifecycleScope.async(Dispatchers.IO) {
             val bundle = assets.open("partycore.js").bufferedReader().use { it.readText() }
@@ -115,6 +116,18 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Debug-only QR retarget, for testing a branch preview of the controller:
+        //   adb shell am start -n com.hexstacker.tv/.MainActivity \
+        //     --es hexHost preview-<branch>.hexstacker.com
+        // Must happen before the relay connects (the origin also rides `create` as the
+        // controller-URL template). Unset => production, so a launcher start is always
+        // production. Debuggable builds only: any app on the device can send an extra,
+        // and a release build must never let one repoint the QR.
+        if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+            val base = RelayConfig.setControllerBase(intent?.getStringExtra("hexHost"))
+            if (base != RelayConfig.DEFAULT_CONTROLLER_BASE_URL) Log.i("MainActivity", "controller base: $base")
+        }
 
         board = BoardSurfaceView(this)
         // The board must NOT grab D-pad focus, or the Compose lobby/results buttons
@@ -152,11 +165,11 @@ class MainActivity : ComponentActivity() {
         coordinator = DisplayCoordinator(
             transport = relay,
             output = ui,
-            engineFactory = { specs, seed ->
-                val b = engineAsync().await()
-                b.createGame(specs, seed)
-                b
-            },
+            // ONE runtime for the session: the room core lives in it from
+            // coordinator.start() onwards and each match's game is created in the same
+            // context. Awaiting it is also what orders the bootstrap — room events can
+            // arrive before the bundle has finished compiling, and they queue behind this.
+            bridgeProvider = { engineAsync().await() },
             fastlane = fastlane,
             // Surface boundary errors the coordinator swallows to keep its loop alive
             // (engine/parse failures would otherwise vanish without a trace).
@@ -215,15 +228,14 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Warm the heavy lazies during lobby idle, once the entrance animation has
-        // played out (~950ms): the QuickJS engine (asset read + bundle compile, so the
-        // first START is instant) and ExoPlayer + beep PCM (so the countdown/GO have
-        // nothing left to build). Both are safe to lose to lifecycle cancellation —
-        // first use re-creates them on demand.
+        // Warm ExoPlayer + the beep PCM during lobby idle, once the entrance animation
+        // has played out (~950ms), so the countdown/GO have nothing left to build. Safe
+        // to lose to lifecycle cancellation: first use re-creates it on demand. The
+        // QuickJS runtime is no longer warmed here — coordinator.start() above already
+        // asked for it, because the room core runs inside it.
         lifecycleScope.launch {
             awaitFrame()
             delay(WARMUP_DELAY_MS)
-            engineAsync()
             music.warmUp()
         }
 
@@ -286,6 +298,14 @@ class MainActivity : ComponentActivity() {
             fastlane.closeAll() // controllers re-offer their P2P channels on rejoin
             relay.suspendSocket()
             suspendedForBackground = true
+            // Graceful resume exists for rooms with PLAYERS. An empty lobby's room dies
+            // with our socket at the relay (rooms live on members), so reopening would
+            // rejoin a dead room, bounce off "Room not found", and visibly swap the QR
+            // mid-lobby. Forget it and reset the card instead.
+            if (ui.lobbyIsEmpty()) {
+                relay.unpinRoom()
+                ui.clearRoom()
+            }
         }
     }
 
@@ -516,6 +536,22 @@ class TvDisplayOutput(
         _state.value = _state.value.copy(qrPending = pending)
     }
 
+    /** No players seated: the relay room is memberless and dies with our socket. */
+    fun lobbyIsEmpty(): Boolean = roster.isEmpty()
+
+    /** Drop the room card so the next foreground presents like a fresh open — blank
+     *  card, then the new room's QR — instead of a dimmed stale code that swaps once
+     *  the rejoin bounces. Paired with RelayClient.unpinRoom (see MainActivity.onStop);
+     *  mirrors appletv DisplayModel.appDidEnterBackground. */
+    fun clearRoom() {
+        room = ""
+        joinUrl = ""
+        roster = emptyList()
+        hostSlot = null
+        // Blank card, not a dimmed stale one.
+        _state.value = _state.value.copy(lobby = buildLobby(), qrPending = false)
+    }
+
     fun setConnectionState(state: RelayTransport.ConnectionState, reconnectAttempt: Int = 0) {
         // Any non-CLOSED transition (a fresh/re-established link) clears a stale terminal
         // "replaced" flag. onReplaced sets it right after this posts CLOSED, so a CLOSED
@@ -547,12 +583,12 @@ class TvDisplayOutput(
 
     private fun buildLobby(): LobbyData {
         val host = joinUrl.substringAfter("://", "").substringBefore("/").ifEmpty {
-            RelayConfig.CONTROLLER_BASE_URL.substringAfter("://")
+            RelayConfig.controllerBaseUrl.substringAfter("://")
         }
         return LobbyData(
             joinHost = "$host/",
             joinCode = room,
-            joinUrl = joinUrl.ifEmpty { RelayConfig.CONTROLLER_BASE_URL },
+            joinUrl = joinUrl.ifEmpty { RelayConfig.controllerBaseUrl },
             players = roster.map { LobbyPlayer(it.peerIndex, it.playerName, it.colorSlot, it.startLevel) },
             hostColorIndex = hostSlot,
         )

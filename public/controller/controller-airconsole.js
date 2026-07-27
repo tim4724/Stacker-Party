@@ -92,7 +92,7 @@ connect = function() {
     // SDK can fire onReady synchronously (cached state), at which point
     // adapter.connect() already ran fireReady and our wrap can't
     // intercept. Color reclaim is instead retried from the onLoad
-    // callback below, which fires reliably whether or not WELCOME
+    // callback below, which fires reliably whether or not the snapshot
     // already arrived.
     _adapterOnReady.call(airconsole, code);
     _acStorage.requestLoad();
@@ -101,11 +101,11 @@ connect = function() {
   // wrap was installed, run wrapped now. No-op otherwise.
   replayEarlyReady();
   // Re-apply persisted Settings and re-attempt color reclaim once the
-  // shim's cache has hydrated. Either onWelcome already fired (HELLO
-  // raced ahead) and reclaim was a no-op there because localStorage
-  // returned null — recapturing here and reclaiming again catches up. Or
-  // onWelcome hasn't fired yet, in which case its own reclaim call will
-  // see the hydrated value and fire SET_COLOR.
+  // shim's cache has hydrated. Either the first snapshot already landed
+  // (HELLO raced ahead) and reclaim was a no-op there because localStorage
+  // returned null — recapturing here and reclaiming again catches up. Or it
+  // hasn't landed yet, in which case onState's own reclaim call will see the
+  // hydrated value and fire SET_COLOR.
   _acStorage.onLoad(function() {
     ControllerSettings.reload();
     captureSessionColorIndex();

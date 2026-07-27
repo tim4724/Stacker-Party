@@ -112,7 +112,13 @@ function renderLoop(timestamp) {
     var deltaMs = prevFrameTime ? Math.min(timestamp - prevFrameTime, MAX_FRAME_DELTA_MS) : 0;
     try {
       if (deltaMs > 0) {
-        displayGame.update(deltaMs);
+        // One frame is one change. The engine emits its events synchronously
+        // from update(), so a tick that KOs three players at once (a garbage
+        // cascade, a simultaneous top-out) would otherwise publish the whole
+        // room three times before anyone sees the first. No floor: a frame that
+        // moved nothing publishes nothing, which is what keeps this free at
+        // 60 Hz. Mirrors the natives batching dispatchCommands().
+        publishBatch(function () { displayGame.update(deltaMs); });
       }
       if (!displayGame) return; // game ended during update
       gameState = displayGame.getSnapshot();
@@ -124,9 +130,13 @@ function renderLoop(timestamp) {
       displayGame = null;
       prevFrameTime = 0;
       if (results) {
+        // Stash the ranking BEFORE the transition: setRoomState publishes, and
+        // the RESULTS snapshot is what carries the results to controllers.
+        // Enriched like the normal end-of-game path, or the salvaged ranking
+        // would reach the controllers with no names or colours on it.
+        if (results.results) roomCore.enrichResults(results.results);
+        lastResults = results.results;
         setRoomState(ROOM_STATE.RESULTS);
-        lastResults = results;
-        party.broadcast({ type: MSG.GAME_END, elapsed: results.elapsed, results: results.results });
         onGameEnd(results);
       }
       return;

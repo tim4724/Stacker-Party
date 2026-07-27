@@ -536,6 +536,48 @@ test.describe.serial('AirConsole Integration', () => {
     expect(await s.screenFrame.evaluate(() => roomState)).toBe('playing');
   });
 
+  // Regression: an AirConsole platform pause rides the display-internal AUTO
+  // reason, so without RoomCore's first-freeze-wins rule it would take over a
+  // host's manual pause and then lift it on resume — backgrounding the game and
+  // coming back would silently restart a match the host stopped, with no one
+  // having pressed Continue. Same rule for an ad break. The all-disconnected
+  // auto-pause is the same shape and is pinned in the golden op log instead.
+  test('a host pause survives an AirConsole platform pause and an ad', async ({ page, context }) => {
+    if (!USE_MOCK) {
+      test.skip(true, 'Pause test only in mock mode');
+      return;
+    }
+    const s = await createSession(context, page);
+
+    await s.screenFrame.waitForFunction(() => players.size >= 1, null, { timeout: 15000 });
+    await s.ctrlFrame.waitForFunction(() => currentScreen === 'lobby' && playerColor !== null, null, { timeout: 15000 });
+
+    // Start level 1: the round has to outlive the whole sequence below.
+    await s.ctrlFrame.locator('#start-btn').click();
+    await s.screenFrame.waitForFunction(() => roomState === 'playing', null, { timeout: 20000 });
+
+    await s.screenFrame.evaluate(() => pauseGame());
+    await s.screenFrame.waitForFunction(() => pauseReason === 'manual', null, { timeout: 5000 });
+
+    for (const [freeze, thaw] of [['triggerPause', 'triggerResume'], ['triggerAdShow', 'triggerAdComplete']]) {
+      await s.screenPage.evaluate((m) => window.airconsole[m](), freeze);
+      await s.screenPage.evaluate((m) => window.airconsole[m](), thaw);
+      // Still the host's freeze, still frozen, and the controller still sees a
+      // pause it can act on.
+      expect(await s.screenFrame.evaluate(() => pauseReason)).toBe('manual');
+      expect(await s.screenFrame.evaluate(() => paused)).toBe(true);
+    }
+    await s.ctrlFrame.waitForFunction(
+      () => !document.getElementById('pause-overlay').classList.contains('hidden'),
+      null, { timeout: 5000 });
+
+    // Continue still works: the pause was never handed to a reason that would
+    // refuse it.
+    await s.screenFrame.evaluate(() => resumeGame());
+    await s.screenFrame.waitForFunction(() => paused === false, null, { timeout: 5000 });
+    expect(await s.screenFrame.evaluate(() => roomState)).toBe('playing');
+  });
+
   test('ad pause/resume during gameplay', async ({ page, context }) => {
     if (!USE_MOCK) {
       test.skip(true, 'Ad test only in mock mode');

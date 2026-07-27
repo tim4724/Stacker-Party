@@ -56,7 +56,8 @@ class WebRtcFastlane(context: Context, private val iceUrls: List<String>) : Fast
 
     private inner class Peer(val pc: PeerConnection) {
         var channel: DataChannel? = null
-        val receiver = FastlaneReceiver()
+        // Replaced whenever a new DataChannel is adopted — see onDataChannel.
+        var receiver = FastlaneReceiver()
         val pending = ArrayList<IceCandidate>()
         var remoteSet = false
         var watchdog: ScheduledFuture<*>? = null
@@ -206,6 +207,11 @@ class WebRtcFastlane(context: Context, private val iceUrls: List<String>) : Fast
         val peer = peers.remove(from) ?: return
         Log.i(TAG, "peer $from: teardown (had channel=${peer.channel != null}, inputs=${peer.inputCount})")
         peer.watchdog?.cancel(false)
+        // dispose() only releases the DataChannel ref — it does NOT free the observer
+        // registered in onDataChannel, so skipping this leaks the native observer plus
+        // the Kotlin object graph it pins (the anonymous Observer captures this fastlane)
+        // on every controller reconnect.
+        runCatching { peer.channel?.unregisterObserver() }
         runCatching { peer.channel?.dispose() }
         runCatching { peer.pc.dispose() }
     }
@@ -246,10 +252,39 @@ class WebRtcFastlane(context: Context, private val iceUrls: List<String>) : Fast
                     val text = bytes.decodeToString()
                     post { onChannelMessage(from, text) }
                 }
-                override fun onStateChange() {}
+
+                // A closed channel tears the peer down, so a controller that re-offers
+                // gets a FRESH peer (and a fresh receiver) instead of racing the 3 s
+                // watchdog. Web does this via `channel.onclose -> _teardownPeer`;
+                // appletv via onChannelState(.closed). Read the state here (valid on
+                // the WebRTC thread), act on the serial executor.
+                override fun onStateChange() {
+                    val state = runCatching { dc.state() }.getOrNull()
+                    if (state != DataChannel.State.CLOSED) return
+                    post {
+                        val peer = peers[from] ?: return@post
+                        // Ignore an orphan channel that was already replaced.
+                        if (peer.channel != null && peer.channel !== dc) return@post
+                        Log.i(TAG, "peer $from: data channel closed")
+                        teardown(from)
+                    }
+                }
+
                 override fun onBufferedAmountChange(previousAmount: Long) {}
             })
-            post { peers[from]?.let { it.channel = dc; resetWatchdog(from, it) } }
+            post {
+                peers[from]?.let {
+                    it.channel = dc
+                    // Fresh channel means a fresh sender: the controller's event seq
+                    // restarts at 1, so a carried-over lastAppliedEs would dedupe every
+                    // new input away AND ack it as applied, silently killing P2P input
+                    // for the rest of the session. Mirrors appletv's peerChannelOpened,
+                    // which rebuilds the whole per-peer netcode state.
+                    it.receiver = FastlaneReceiver()
+                    it.inputCount = 0
+                    resetWatchdog(from, it)
+                }
+            }
         }
 
         override fun onConnectionChange(newState: PeerConnection.PeerConnectionState) {

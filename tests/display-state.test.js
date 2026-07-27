@@ -2,7 +2,7 @@
 
 const { describe, it, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
-const { sanitizePlayerName } = require('./auto-name-helper');
+const { sanitizePlayerName, AUTO_PLAYER_NAME_BLOCKLIST } = require('./auto-name-helper');
 
 // Load protocol for ROOM_STATE
 const { ROOM_STATE, MSG, INPUT } = require('../public/shared/protocol');
@@ -65,24 +65,43 @@ describe('nextAvailableSlot', () => {
 // =========================================================================
 
 describe('sanitizePlayerName', () => {
-  it('returns HX fallback for empty name', () => {
-    assert.equal(sanitizePlayerName(''), 'HX-1');
-    assert.equal(sanitizePlayerName(null), 'HX-1');
+  // The fallback NUMBER is picked at random from what is free (a sequential
+  // pick would read HX-1, HX-2, HX-3 in every room, which looks assigned
+  // rather than chosen). So the assertions below are on the properties that
+  // matter, not on a particular draw; the exact-value cases are the ones the
+  // algorithm really does pin.
+  const AUTO = /^HX-([1-9][0-9]?)$/;
+
+  it('returns an HX fallback for an empty name', () => {
+    assert.match(sanitizePlayerName(''), AUTO);
+    assert.match(sanitizePlayerName(null), AUTO);
   });
 
-  it('skips blocked fallback numbers', () => {
+  it('never draws a blocked fallback number', () => {
+    for (let i = 0; i < 200; i++) {
+      const n = Number(sanitizePlayerName('').slice(3));
+      assert.ok(!AUTO_PLAYER_NAME_BLOCKLIST.includes(n), `drew a blocked HX-${n}`);
+    }
+  });
+
+  it('never draws a fallback number already in the room', () => {
     const players = new Map([
       ['a', { playerName: 'HX-1' }],
       ['b', { playerName: 'HX-2' }],
       ['c', { playerName: 'HX-3' }]
     ]);
-    assert.equal(sanitizePlayerName('', players), 'HX-5');
+    const taken = ['HX-1', 'HX-2', 'HX-3'];
+    for (let i = 0; i < 200; i++) {
+      const name = sanitizePlayerName('', players);
+      assert.match(name, AUTO);
+      assert.ok(!taken.includes(name), `collided on ${name}`);
+    }
   });
 
   it('treats default P1-P8 names as legacy fallbacks', () => {
-    assert.equal(sanitizePlayerName('P1'), 'HX-1');
-    assert.equal(sanitizePlayerName('P4'), 'HX-1');
-    assert.equal(sanitizePlayerName('p3'), 'HX-1'); // case insensitive
+    assert.match(sanitizePlayerName('P1'), AUTO);
+    assert.match(sanitizePlayerName('P4'), AUTO);
+    assert.match(sanitizePlayerName('p3'), AUTO); // case insensitive
   });
 
   it('preserves custom names', () => {
@@ -103,7 +122,17 @@ describe('sanitizePlayerName', () => {
 
   it('reassigns requested HX fallback when it is already taken', () => {
     const players = new Map([['a', { playerName: 'HX-8' }]]);
-    assert.equal(sanitizePlayerName('HX-8', players, 'b', true), 'HX-1');
+    const name = sanitizePlayerName('HX-8', players, 'b', true);
+    assert.match(name, AUTO);
+    assert.notEqual(name, 'HX-8');
+  });
+
+  it('never returns a blocked number even when it is the one requested', () => {
+    // A returning player's remembered name is honoured only if it is allowed:
+    // tvOS used to have no blocklist at all, so it would have handed HX-4 back.
+    for (const blocked of AUTO_PLAYER_NAME_BLOCKLIST) {
+      assert.notEqual(sanitizePlayerName(`HX-${blocked}`, new Map(), 'b', true), `HX-${blocked}`);
+    }
   });
 });
 

@@ -1,146 +1,110 @@
-'use strict';
-
 const { test, describe, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
-const { MSG, ROOM_STATE } = require('../public/shared/protocol');
+const { ROOM_STATE } = require('../public/shared/protocol');
 const { PLAYER_COLORS } = require('../public/shared/theme');
-const { generateAutoPlayerName } = require('./auto-name-helper');
+const { RoomCore } = require('../server/RoomCore.js');
 
 // =====================================================================
-// Tests for the lobby color-picker protocol (MSG.SET_COLOR).
-//
-// onSetColor mirrors the production handler in public/display/DisplayInput.js:
+// The lobby colour-picker protocol (MSG.SET_COLOR), driven against the REAL
+// handler in server/RoomCore.js rather than a mirror of it. The rules:
 //   - Reject invalid indices (non-integer, out-of-range).
 //   - Reject if another player already claims the target index.
 //   - No-op if the sender already holds the target index.
-//   - Not state-gated: accepted in every roomState. The controller's color
-//     picker is reachable only in the lobby, so a mid-game pick can't occur in
-//     practice — the handler itself imposes no lock.
+//   - Not state-gated: accepted in every roomState. The controller's colour
+//     picker is reachable only in the lobby, so a mid-game pick cannot occur
+//     in practice, but the handler itself imposes no lock.
 //
-// broadcastLobbyUpdate mirrors the production broadcaster: its outgoing
-// takenColorIndices payload should reflect the post-swap state.
+// The display publishes ONE retained snapshot, not a per-recipient fanout, so
+// the assertions read the roster back out of what was published.
 // =====================================================================
 
 const PALETTE_SIZE = PLAYER_COLORS.length;
 
-function collectTakenColorIndices(players) {
-  var out = [];
-  for (const entry of players) out.push(entry[1].playerIndex);
-  out.sort(function(a, b) { return a - b; });
-  return out;
+// The colour slots claimed in a published snapshot, sorted: what a controller
+// derives as takenColorIndices.
+function takenIn(snap) {
+  return Object.keys(snap.players)
+    .map(function(id) { return snap.players[id].color; })
+    .sort(function(a, b) { return a - b; });
 }
 
-function broadcastLobbyUpdate(players, playerOrder, roomState, party) {
-  var takenColorIndices = collectTakenColorIndices(players);
-  for (const entry of players) {
-    party.sendTo(entry[0], {
-      type: MSG.LOBBY_UPDATE,
-      playerCount: players.size,
-      colorIndex: entry[1].playerIndex,
-      takenColorIndices: takenColorIndices
-    });
-  }
+// The thin shell around the room core: honour the publish hint, exactly as
+// DisplayInput.js#onSetColor and DisplayConnection.js#onPeerJoined do.
+function publishAs(room, hint) {
+  if (hint === 'now' || hint === 'soon') room.party.setState(room.roomCore.snapshot());
 }
 
-function nextAvailableSlot(players) {
-  var used = new Set();
-  for (const entry of players) used.add(entry[1].playerIndex);
-  for (var i = 0; i < PALETTE_SIZE; i++) { if (!used.has(i)) return i; }
-  return -1;
+function onSetColor(room, fromId, msg) {
+  publishAs(room, room.roomCore.setColor(fromId, msg.colorIndex).publish);
 }
 
-// Mirrors DisplayConnection.js#onPeerJoined — the display-side handler that
-// fires on the relay's peer_joined event (before the joiner's HELLO).
-// Claims the next free palette slot and, in LOBBY, broadcasts so existing
-// controllers can grey out the newly-taken swatch immediately.
-function onPeerJoined(players, playerOrder, roomState, party, clientId) {
-  if (players.has(clientId)) return;
-  var index = nextAvailableSlot(players);
-  if (index < 0) return;
-  players.set(clientId, {
-    playerName: generateAutoPlayerName(players, clientId),
-    playerIndex: index,
-    startLevel: 1,
-    lastPingTime: Date.now()
-  });
-  if (roomState === ROOM_STATE.LOBBY) {
-    playerOrder.push(clientId);
-    broadcastLobbyUpdate(players, playerOrder, roomState, party);
-  }
-}
-
-// Mirrors DisplayInput.js#onSetColor.
-function onSetColor(players, playerOrder, roomState, party, fromId, msg) {
-  if (!players.has(fromId)) return;
-  var idx = parseInt(msg.colorIndex, 10);
-  if (isNaN(idx) || idx < 0 || idx >= PALETTE_SIZE) return;
-
-  var player = players.get(fromId);
-  if (player.playerIndex === idx) return;
-
-  for (const entry of players) {
-    if (entry[0] !== fromId && entry[1].playerIndex === idx) return;
-  }
-
-  player.playerIndex = idx;
-  broadcastLobbyUpdate(players, playerOrder, roomState, party);
-}
-
-function seedPlayer(players, id, playerIndex) {
-  players.set(id, { playerName: id, playerIndex: playerIndex, startLevel: 1 });
+function onPeerJoined(room, peerIndex) {
+  publishAs(room, room.roomCore.peerJoined(peerIndex, 1000).publish);
 }
 
 describe('Display: onSetColor', () => {
-  let players, playerOrder, roomState, sent, party;
+  let room, players, sent;
 
   beforeEach(() => {
-    players = new Map();
-    playerOrder = [];
-    roomState = ROOM_STATE.LOBBY;
     sent = [];
-    party = { sendTo: (to, msg) => { sent.push({ to, msg }); } };
+    room = {
+      roomCore: new RoomCore({ rngSeed: 7 }),
+      party: { setState: (snap) => { sent.push(snap); } },
+    };
+    players = room.roomCore.players;
   });
 
-  test('accepts an unclaimed color in LOBBY', () => {
-    seedPlayer(players, 'a', 0);
-    playerOrder.push('a');
+  // Seat a player directly in a chosen slot (the fixture path: a real join
+  // allocates the lowest free one).
+  function seedPlayer(id, playerIndex) {
+    room.roomCore.addPlayer(id, { playerName: id, playerIndex: playerIndex, startLevel: 1 });
+    room.roomCore.addParticipant(id);
+  }
 
-    onSetColor(players, playerOrder, roomState, party, 'a', { colorIndex: 4 });
+  // Drive the room into a non-lobby state through the real transition table.
+  function enter(state) {
+    for (const step of { countdown: ['countdown'], playing: ['countdown', 'playing'],
+                         results: ['countdown', 'playing', 'results'] }[state] || []) {
+      room.roomCore.transitionTo(step);
+    }
+    sent.length = 0;
+  }
+
+  test('accepts an unclaimed color in LOBBY', () => {
+    seedPlayer('a', 0);
+
+    onSetColor(room, 'a', { colorIndex: 4 });
     assert.strictEqual(players.get('a').playerIndex, 4);
-    // One LOBBY_UPDATE fanout, taken reflects the new slot.
-    const lobbyMsgs = sent.filter(s => s.msg.type === MSG.LOBBY_UPDATE);
-    assert.ok(lobbyMsgs.length >= 1);
-    assert.deepStrictEqual(lobbyMsgs[0].msg.takenColorIndices, [4]);
+    // One publish, and its roster reflects the new slot.
+    assert.strictEqual(sent.length, 1);
+    assert.deepStrictEqual(takenIn(sent[0]), [4]);
   });
 
   test('rejects collision with another player', () => {
-    seedPlayer(players, 'a', 0);
-    seedPlayer(players, 'b', 3);
-    playerOrder.push('a', 'b');
+    seedPlayer('a', 0);
+    seedPlayer('b', 3);
 
-    onSetColor(players, playerOrder, roomState, party, 'a', { colorIndex: 3 });
+    onSetColor(room, 'a', { colorIndex: 3 });
     assert.strictEqual(players.get('a').playerIndex, 0, 'should not change on collision');
-    assert.strictEqual(sent.length, 0, 'no broadcast on rejection');
+    assert.strictEqual(sent.length, 0, 'no publish on rejection');
   });
 
   test('no-op if requesting the same color already held', () => {
-    seedPlayer(players, 'a', 2);
-    playerOrder.push('a');
+    seedPlayer('a', 2);
 
-    onSetColor(players, playerOrder, roomState, party, 'a', { colorIndex: 2 });
+    onSetColor(room, 'a', { colorIndex: 2 });
     assert.strictEqual(players.get('a').playerIndex, 2);
     assert.strictEqual(sent.length, 0);
   });
 
   test('rejects invalid indices', () => {
-    seedPlayer(players, 'a', 0);
-    playerOrder.push('a');
+    seedPlayer('a', 0);
 
-    onSetColor(players, playerOrder, roomState, party, 'a', { colorIndex: -1 });
-    onSetColor(players, playerOrder, roomState, party, 'a', { colorIndex: PALETTE_SIZE });
-    onSetColor(players, playerOrder, roomState, party, 'a', { colorIndex: 99 });
-    onSetColor(players, playerOrder, roomState, party, 'a', { colorIndex: 'red' });
-    onSetColor(players, playerOrder, roomState, party, 'a', {});
+    onSetColor(room, 'a', { colorIndex: -1 });
+    onSetColor(room, 'a', { colorIndex: PALETTE_SIZE });
+    onSetColor(room, 'a', { colorIndex: 99 });
+    onSetColor(room, 'a', { colorIndex: 'red' });
+    onSetColor(room, 'a', {});
 
     assert.strictEqual(players.get('a').playerIndex, 0);
     assert.strictEqual(sent.length, 0);
@@ -151,77 +115,68 @@ describe('Display: onSetColor', () => {
   // handler imposes no lock — covered across PLAYING/COUNTDOWN/RESULTS so a
   // re-added guard fails here.
   test('accepts a color change during PLAYING', () => {
-    seedPlayer(players, 'a', 0);
-    playerOrder.push('a');
-    roomState = ROOM_STATE.PLAYING;
+    seedPlayer('a', 0);
+    enter('playing');
 
-    onSetColor(players, playerOrder, roomState, party, 'a', { colorIndex: 5 });
+    onSetColor(room, 'a', { colorIndex: 5 });
     assert.strictEqual(players.get('a').playerIndex, 5);
-    assert.ok(sent.some(s => s.msg.type === MSG.LOBBY_UPDATE), 'broadcasts the swap');
+    assert.deepStrictEqual(takenIn(sent[0]), [5], 'publishes the swap');
   });
 
   test('accepts a color change during COUNTDOWN', () => {
-    seedPlayer(players, 'a', 0);
-    playerOrder.push('a');
-    roomState = ROOM_STATE.COUNTDOWN;
+    seedPlayer('a', 0);
+    enter('countdown');
 
-    onSetColor(players, playerOrder, roomState, party, 'a', { colorIndex: 5 });
+    onSetColor(room, 'a', { colorIndex: 5 });
     assert.strictEqual(players.get('a').playerIndex, 5);
   });
 
   test('accepts a color change during RESULTS', () => {
-    seedPlayer(players, 'a', 0);
-    playerOrder.push('a');
-    roomState = ROOM_STATE.RESULTS;
+    seedPlayer('a', 0);
+    enter('results');
 
-    onSetColor(players, playerOrder, roomState, party, 'a', { colorIndex: 5 });
+    onSetColor(room, 'a', { colorIndex: 5 });
     assert.strictEqual(players.get('a').playerIndex, 5);
   });
 
   test('collision rejection still applies mid-game', () => {
-    seedPlayer(players, 'a', 0);
-    seedPlayer(players, 'b', 6);
-    playerOrder.push('a', 'b');
-    roomState = ROOM_STATE.PLAYING;
+    seedPlayer('a', 0);
+    seedPlayer('b', 6);
+    enter('playing');
 
-    onSetColor(players, playerOrder, roomState, party, 'a', { colorIndex: 6 });
+    onSetColor(room, 'a', { colorIndex: 6 });
     assert.strictEqual(players.get('a').playerIndex, 0, 'taken slot is still refused');
     assert.strictEqual(sent.length, 0);
   });
 
   test('ignores unknown sender', () => {
-    onSetColor(players, playerOrder, roomState, party, 'ghost', { colorIndex: 0 });
+    onSetColor(room, 'ghost', { colorIndex: 0 });
     assert.strictEqual(sent.length, 0);
   });
 
-  test('onPeerJoined broadcasts so existing controllers see the new slot as taken', () => {
-    // Regression: onPeerJoined used to claim the slot silently. The
-    // subsequent HELLO from the joiner takes onHello's reconnect branch
-    // (player already in Map) and does NOT broadcast, so Alice's picker
-    // would keep showing Bob's color as available until some unrelated
-    // LOBBY_UPDATE (e.g. a level change) finally refreshed it.
-    seedPlayer(players, 'alice', 0);
-    playerOrder.push('alice');
+  test('onPeerJoined publishes so existing controllers see the new slot as taken', () => {
+    // Regression: onPeerJoined used to claim the slot silently, so Alice's
+    // picker kept showing Bob's colour as available until some unrelated
+    // update (e.g. a level change) finally refreshed it.
+    seedPlayer('alice', 0);
     sent.length = 0;
 
-    onPeerJoined(players, playerOrder, roomState, party, 'bob');
+    onPeerJoined(room, 'bob');
 
     assert.strictEqual(players.get('bob').playerIndex, 1, 'bob claims the next free slot');
-
-    const aliceUpdate = sent.find(s => s.to === 'alice' && s.msg.type === MSG.LOBBY_UPDATE);
-    assert.ok(aliceUpdate, 'alice receives a LOBBY_UPDATE when bob joins');
-    assert.deepStrictEqual(aliceUpdate.msg.takenColorIndices, [0, 1]);
+    assert.strictEqual(sent.length, 1, 'the join republishes');
+    assert.deepStrictEqual(takenIn(sent[0]), [0, 1]);
   });
 
-  test('LOBBY_UPDATE fanout tags each recipient with their own colorIndex', () => {
-    seedPlayer(players, 'a', 0);
-    seedPlayer(players, 'b', 1);
-    playerOrder.push('a', 'b');
+  test('one snapshot serves every controller: each finds its own colour by peerIndex', () => {
+    seedPlayer('a', 0);
+    seedPlayer('b', 1);
 
-    onSetColor(players, playerOrder, roomState, party, 'a', { colorIndex: 7 });
-    const byRecipient = new Map();
-    for (const s of sent) if (s.msg.type === MSG.LOBBY_UPDATE) byRecipient.set(s.to, s.msg.colorIndex);
-    assert.strictEqual(byRecipient.get('a'), 7);
-    assert.strictEqual(byRecipient.get('b'), 1);
+    onSetColor(room, 'a', { colorIndex: 7 });
+    // The old fanout sent one tagged message per recipient; the snapshot is a
+    // single object each controller indexes with its own peerIndex.
+    assert.strictEqual(sent.length, 1);
+    assert.strictEqual(sent[0].players['a'].color, 7);
+    assert.strictEqual(sent[0].players['b'].color, 1);
   });
 });

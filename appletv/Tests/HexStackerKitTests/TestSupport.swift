@@ -37,6 +37,11 @@ enum EngineFixture {
     /// The committed V8-recorded golden the conformance test byte-compares against.
     static let frameGolden = repoRoot.appendingPathComponent("tests/fixtures/partycore-frame-golden.json")
 
+    /// The cross-platform RoomCore golden: constructor options, the canonical op
+    /// log, and the expected return value + snapshot after every step. Self-contained
+    /// on purpose — this leg can't `require` the JS fixture the Node leg reads.
+    static let roomCoreGolden = repoRoot.appendingPathComponent("tests/fixtures/room-core-golden.json")
+
     private static func run(_ arguments: [String]) {
         let proc = Process()
         proc.currentDirectoryURL = repoRoot
@@ -69,10 +74,12 @@ final class FakeTransport: RelayTransport {
     var recreatedRoomCount = 0
     var sent: [(to: Int, data: [String: Any])] = []
     var broadcasts: [[String: Any]] = []
+    var states: [[String: Any]] = []   // retained set_state snapshots
     func connect() { connected = true }
     func recreateRoom() { recreatedRoomCount += 1 }
     func sendTo(_ index: Int, _ data: [String: Any]) { sent.append((index, data)) }
     func broadcast(_ data: [String: Any]) { broadcasts.append(data) }
+    func setState(_ data: [String: Any]) { states.append(data) }
     func didBroadcast(_ type: String) -> Bool { broadcasts.contains { ($0["type"] as? String) == type } }
     func didSend(_ type: String, to: Int) -> Bool {
         sent.contains { $0.to == to && ($0.data["type"] as? String) == type }
@@ -106,7 +113,12 @@ final class FakeOutput: DisplayOutput {
     func roomReady(room: String, joinURL: String, qrText: String) {
         self.room = room; self.joinURL = joinURL; self.qrText = qrText
     }
-    func updateLobby(players: [PlayerRecord], hostPeerIndex: Int?) {}
+    var lobbyPlayers: [PlayerRecord] = []   // last roster handed to the display lobby
+    var lobbyHost: Int?
+    func updateLobby(players: [PlayerRecord], hostPeerIndex: Int?) {
+        lobbyPlayers = players
+        lobbyHost = hostPeerIndex
+    }
     func showCountdown(_ v: CountdownValue) { countdowns.append(v) }
     func renderSnapshot(_ s: GameSnapshot) { renderCount += 1; lastSnapshot = s }
     func showResults(_ r: [MatchResult]) { results = r; calls.append("showResults") }

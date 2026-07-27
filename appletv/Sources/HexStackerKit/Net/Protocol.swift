@@ -14,15 +14,48 @@ public enum Protocol {
     /// Slot 0 (display) + up to 8 players (MAX_PLAYERS).
     public static let maxClients = 9
 
-    /// Where phone controllers load the web controller (the QR target). The
-    /// join URL is `<base>/<room>#<instance>`, matching the web display.
-    public static let controllerBaseURL = "https://hexstacker.com"
+    /// Where phone controllers load the web controller (the QR target) in a
+    /// shipped build. The join URL is `<base>/<room>#<instance>`, matching the
+    /// web display.
+    public static let defaultControllerBaseURL = "https://hexstacker.com"
+
+    /// The origin the QR / join URL actually points at. The web display reads
+    /// this off `window.location` for free, so a preview deploy retargets its own
+    /// QR automatically; a TV app has no origin to read, which is why the knob is
+    /// explicit. Production unless a debug launch calls `setControllerBase`
+    /// (HEXHOST, see DisplayModel.start), which nothing in a shipped build does.
+    public static private(set) var controllerBaseURL = defaultControllerBaseURL
 
     /// Controller-URL template sent with `create`. The relay fills
     /// {room}/{instance} and hands the result to clients that hold only the
     /// room code (`joined`, `GET /room/:code`). Same shape as the QR join URL
     /// the web display registers (controllerUrlTemplate in DisplayConnection.js).
-    public static let controllerURLTemplate = "https://hexstacker.com/{room}#{instance}"
+    public static var controllerURLTemplate: String { "\(controllerBaseURL)/{room}#{instance}" }
+
+    /// Point the QR / join URL at another origin, e.g. a branch preview. Call
+    /// before the relay connects: the origin also rides the `create` frame as the
+    /// controller-URL template. A nil/blank/unusable value leaves production in
+    /// place, so the caller can hand the raw launch value straight through.
+    /// Mirrored by RelayConfig.setControllerBase (Kotlin).
+    @discardableResult
+    public static func setControllerBase(_ raw: String?) -> String {
+        if let base = normalizedBase(raw) { controllerBaseURL = base }
+        return controllerBaseURL
+    }
+
+    /// `raw` as a bare origin: trimmed, scheme defaulted to https, any path or
+    /// trailing slash dropped ("preview-x.hexstacker.com" -> "https://preview-x.hexstacker.com").
+    /// nil when it names no host or carries a scheme a phone can't open.
+    public static func normalizedBase(_ raw: String?) -> String? {
+        guard var s = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty else { return nil }
+        if !s.contains("://") { s = "https://" + s }
+        guard let sep = s.range(of: "://") else { return nil }
+        let scheme = String(s[s.startIndex..<sep.lowerBound]).lowercased()
+        guard scheme == "http" || scheme == "https" else { return nil }
+        let authority = s[sep.upperBound...].prefix { $0 != "/" && $0 != "?" && $0 != "#" }
+        guard !authority.isEmpty else { return nil }
+        return "\(scheme)://\(authority)"
+    }
 }
 
 /// Transport abstraction the coordinator drives. `RelayClient` is the live
@@ -31,6 +64,14 @@ public protocol RelayTransport: AnyObject {
     func connect()
     func sendTo(_ index: Int, _ data: [String: Any])
     func broadcast(_ data: [String: Any])
+
+    /// Publish a retained state snapshot (host/slot-0 only; the relay rejects it from
+    /// anyone else). The relay keeps the latest blob on the room, pushes it live to
+    /// current peers (sender excluded), and replays it to any client right after
+    /// `joined` on (re)join. Costs exactly one broadcast. `data` must be
+    /// JSON-serializable and <= 16 KiB serialized.
+    func setState(_ data: [String: Any])
+
     /// Forget the current room and open a fresh one (the socket's next handshake
     /// sends `create`, not `join`). Used to recover when the relay reports the
     /// room is gone/full on a reconnect (web resetToWelcome).
@@ -64,20 +105,19 @@ public enum MSG {
     public static let ping = "ping"
 
     // Display -> specific controller
-    public static let welcome = "welcome"
-    public static let gameOver = "game_over"
-    public static let lobbyUpdate = "lobby_update"
     public static let pong = "pong"
     public static let playerState = "player_state"
 
     // Display -> all controllers (broadcast)
-    public static let countdown = "countdown"
-    public static let displayMuted = "display_muted"
-    public static let gameStart = "game_start"
-    public static let gameEnd = "game_end"
-    public static let gamePaused = "game_paused"
-    public static let gameResumed = "game_resumed"
     public static let error = "error"
+
+    // welcome / lobby_update / game_start / countdown / game_end / game_over /
+    // game_paused / game_resumed / display_muted are GONE. The retained room
+    // snapshot (server/RoomCore.js) is the single source of truth controllers
+    // derive their whole UI from, screen routing included, so there is no second
+    // channel left that could disagree with it. DisplayCoordinatorTests
+    // .retiredMessageTypesAreNeverSent walks a whole session asserting none of
+    // those strings reaches the wire.
 
     // Internal: display self-liveness canary (echoed via relay slot 0).
     public static let heartbeat = "_heartbeat"
@@ -92,12 +132,32 @@ public enum InputAction: String, CaseIterable {
     case hold
 }
 
-/// Room states, from `ROOM_STATE`. Kept identical to RoomFlow's states.
+/// Room states, from `ROOM_STATE`. Kept identical to the room core's states
+/// (server/RoomCore.js -> partyplug/RoomFlow.js), which the snapshot reports as
+/// `roomState` and controllers route their screens off.
 public enum RoomState: String {
     case lobby
     case countdown
     case playing
     case results
+}
+
+/// Why the game is frozen. Raw values are the room core's `RoomCore.PAUSE`, and
+/// only `.manual` ever reaches a controller: the other two are display-internal,
+/// they resolve themselves, and a controller shown either would sit on a pause
+/// overlay whose Continue the display ignores. Pinned by
+/// tests/protocol-swift-parity.test.js.
+public enum PauseReason: String {
+    case manual
+    case auto
+    case connection
+
+    /// Decode the raw JSON `roomGet("pauseReason")` answers: a quoted word, or
+    /// `null` when the room is running (which no raw value matches).
+    init?(json: String) {
+        guard json.count > 2 else { return nil }
+        self.init(rawValue: String(json.dropFirst().dropLast()))
+    }
 }
 
 /// A decoded inbound controller message (the relay envelope's `data` object).
@@ -163,21 +223,6 @@ public enum OutboundMessage {
         return m
     }
 
-    public static func countdown(value: Any) -> [String: Any] {
-        // value is a number (3/2/1) or the string "GO".
-        ["type": MSG.countdown, "value": value]
-    }
-
-    public static func gameStart() -> [String: Any] { ["type": MSG.gameStart] }
-    public static func gamePaused() -> [String: Any] { ["type": MSG.gamePaused] }
-    public static func gameResumed() -> [String: Any] { ["type": MSG.gameResumed] }
-    public static func gameOver() -> [String: Any] { ["type": MSG.gameOver] }
-    public static func displayMuted(_ muted: Bool) -> [String: Any] {
-        ["type": MSG.displayMuted, "muted": muted]
-    }
-    public static func returnToLobby(playerCount: Int) -> [String: Any] {
-        ["type": MSG.returnToLobby, "playerCount": playerCount]
-    }
     public static func error(message: String) -> [String: Any] {
         ["type": MSG.error, "message": message]
     }
@@ -187,9 +232,5 @@ public enum OutboundMessage {
     }
     public static func playerDead() -> [String: Any] {
         ["type": MSG.playerState, "alive": false]
-    }
-
-    public static func gameEnd(elapsed: Double, results: [[String: Any]]) -> [String: Any] {
-        ["type": MSG.gameEnd, "elapsed": elapsed, "results": results]
     }
 }

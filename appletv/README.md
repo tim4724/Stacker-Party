@@ -105,6 +105,28 @@ screenshot gallery that the `TV Gallery` workflow assembles.
 | `HEXLICENSES=1` | Opens straight to the licenses page (the Simulator has no Siri-Remote CLI to navigate there) |
 | `HEXGALLERY=1` | All gallery states in one launch, Play/Pause advances (drives `ScreenshotTests`) |
 | `HEXFPS=1` | Debug FPS/node overlay |
+| `HEXHOST=<origin>` | Point the QR / join URL at another origin, e.g. `preview-<branch>.hexstacker.com` (see below) |
+
+### Testing against a branch preview
+
+The web display gets its QR origin from `window.location`, so a preview deploy
+retargets its own QR for free. The TV app has no origin to read, so it carries an
+explicit knob: set `HEXHOST` in the Run scheme (Product > Scheme > Edit Scheme >
+Run > Arguments > Environment Variables) to
+
+```
+HEXHOST = preview-<branch>.hexstacker.com     # bare host, https:// and a full join URL also work
+```
+
+and relaunch. The lobby then shows the preview host next to the room code, so
+you can see which build the phones are about to load. Scheme env vars don't exist
+on a TestFlight/App Store launch, so a shipped build is always production.
+
+Only the controller page moves: both ends still meet on the production relay
+(`RELAY_URL` is the same constant in the preview bundle), which is what makes a
+preview phone and a prod-relay TV land in the same room. To test a *relay*
+change, point `Protocol.relayURL` at it as well; nothing reads that from the
+environment yet.
 
 The web/tvOS/Android screenshot gallery lives at the repo root in
 `scripts/gallery/` (`capture-tvos.sh` locally; the `HEXGALLERY` carousel in CI).
