@@ -184,6 +184,11 @@ test('a value outside the wire range is refused, not silently wrapped', () => {
   assert.throws(() => PartyCore.packFrame(frame), /outside wire range/);
   const negative = { events: [], snapshot: { players: [player({ level: -1 })], elapsed: 0 }, commands: [] };
   assert.throws(() => PartyCore.packFrame(negative), /outside wire range/);
+  // A split field is checked before it is masked: masking an oversized value would
+  // produce two legal-looking halves that sail past the range guard above and decode
+  // as a different number.
+  const wide = { events: [], snapshot: { players: [player({ lines: 2 ** 30 })], elapsed: 0 }, commands: [] };
+  assert.throws(() => PartyCore.packFrame(wide), /outside split range/);
 });
 
 test('packed frames are substantially smaller than JSON', () => {

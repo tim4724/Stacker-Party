@@ -231,7 +231,14 @@ var PIECE_TYPES = GameConstants.PIECE_TYPES;
 var PIECE_TYPE_TO_ID = GameConstants.PIECE_TYPE_TO_ID;
 
 // Push a value too wide for one code unit as two 15-bit halves, high first.
+// Checked here rather than left to encodeInts: the masks below would fold an
+// oversized value into two perfectly legal-looking halves, so it would sail past
+// the range guard and come back out as a different number.
+var MAX_SPLIT = (1 << (SPLIT_SHIFT * 2)) - 1;
 function packSplit(out, v) {
+  if (!(v >= 0 && v <= MAX_SPLIT)) {
+    throw new RangeError('packFrame: value ' + v + ' outside split range 0..' + MAX_SPLIT);
+  }
   out.push((v >> SPLIT_SHIFT) & SPLIT_MASK, v & SPLIT_MASK);
 }
 
