@@ -94,6 +94,33 @@ class EngineBridge private constructor(
         eval("processInput", "Bridge.processInput($playerId, '${action.wire}')")
     }
 
+    /**
+     * Apply a batch of inputs, in order, in ONE evaluate. Every call into QuickJS is
+     * a source string this binding re-parses (~0.65ms floor on TV hardware, dwarfing
+     * the input itself), so a full party's frame of input is worth collapsing: 8
+     * separate calls measure 5.9ms against 1.1ms batched. Empty batch = no call.
+     */
+    suspend fun processInputs(batch: List<Pair<Int, InputAction>>) {
+        if (batch.isEmpty()) return
+        lock.withLock { eval("processInputs", "Bridge.processInputs(${inputsJs(batch)})") }
+    }
+
+    /**
+     * Value-copy snapshot of ONE seat, with `players` holding just that player.
+     * The render-on-input path: an input moves one board, and pulling all eight
+     * costs ~9ms against ~2.7ms for one. Null when the id owns no board.
+     */
+    suspend fun snapshotPlayer(
+        playerId: Int,
+        inputs: List<Pair<Int, InputAction>> = emptyList(),
+    ): GameSnapshot? = lock.withLock {
+        val packed = evalTyped<String?>(
+            "snapshotPlayerPacked",
+            "Bridge.snapshotPlayerPacked($playerId, ${inputsJs(inputs)})",
+        ) ?: return@withLock null
+        reattachGrids(decodePacked("snapshotPlayerPacked", packed).snapshot!!)
+    }
+
     suspend fun softDropStart(playerId: Int, speed: Int? = null): Unit = lock.withLock {
         val call = if (speed == null) "Bridge.softDropStart($playerId)"
         else "Bridge.softDropStart($playerId, $speed)"
@@ -137,7 +164,8 @@ class EngineBridge private constructor(
     // --- reads ---------------------------------------------------------------
 
     suspend fun snapshot(): GameSnapshot = lock.withLock {
-        reattachGrids(decode("snapshotJSON", "Bridge.snapshotJSON()"))
+        val packed = evalTyped<String>("snapshotPacked", "Bridge.snapshotPacked()")
+        reattachGrids(decodePacked("snapshotPacked", packed).snapshot!!)
     }
 
     suspend fun drainEvents(): List<GameEvent> = lock.withLock {
@@ -155,10 +183,19 @@ class EngineBridge private constructor(
      *
      * @param nowMs monotonic ms; only deltas matter, origin is free.
      */
-    suspend fun frame(nowMs: Double): FrameResult = lock.withLock {
-        val frame = decode<FrameResult>("frameJSON", "Bridge.frameJSON(${jsNum(nowMs)})")
-        frame.snapshot?.let { frame.copy(snapshot = reattachGrids(it)) } ?: frame
-    }
+    suspend fun frame(nowMs: Double, inputs: List<Pair<Int, InputAction>> = emptyList()): FrameResult =
+        lock.withLock {
+            // [inputs] ride along rather than going over in their own call: each call
+            // is a source string QuickJS re-parses (~0.65ms floor on TV hardware), so
+            // fusing them halves a tick's boundary crossings. They are applied before
+            // the tick, exactly as a separate processInputs call would have been.
+            val packed = evalTyped<String>(
+                "framePacked",
+                "Bridge.framePacked(${jsNum(nowMs)}, ${inputsJs(inputs)})",
+            )
+            val frame = decodePacked("framePacked", packed)
+            frame.snapshot?.let { frame.copy(snapshot = reattachGrids(it)) } ?: frame
+        }
 
     // --- Room core ----------------------------------------------------------
     //
@@ -249,6 +286,21 @@ class EngineBridge private constructor(
             throw EngineException.wrap(label, e)
         }
 
+    /**
+     * Decode a packed frame. Deliberately NOT hopped to another dispatcher: it runs
+     * on the engine dispatcher the caller is already on. The JSON decode this
+     * replaced cost ~3ms and was worth moving off the caller's thread; the packed
+     * decode is ~0.16ms at eight seats, which is less than the ~0.5-0.7ms a
+     * dispatcher round trip costs on this hardware — the hop was more expensive
+     * than the work it was protecting the caller from.
+     */
+    private fun decodePacked(label: String, packed: String): FrameResult =
+        try {
+            PackedFrame.decode(packed)
+        } catch (e: Throwable) {
+            throw EngineException.decode(label, e)
+        }
+
     private suspend inline fun <reified T> decode(label: String, code: String): T {
         val json = try {
             withContext(dispatcher) { qjs.evaluate<String>(code) } // run QuickJS off the caller (Main) thread
@@ -264,6 +316,12 @@ class EngineBridge private constructor(
             throw EngineException.decode(label, e)
         }
     }
+
+    /** `[[id,'action'],…]`, or `null` for an empty batch so the shim can skip the
+     *  loop entirely. Actions come from a fixed enum, so no escaping is needed. */
+    private fun inputsJs(batch: List<Pair<Int, InputAction>>): String =
+        if (batch.isEmpty()) "null"
+        else batch.joinToString(",", "[", "]") { "[${it.first},'${it.second.wire}']" }
 
     data class PlayerSpec(val id: Int, val startLevel: Int = 1)
 }

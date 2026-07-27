@@ -61,6 +61,9 @@ tasks.withType<Test>().configureEach {
     // Cross-platform room conformance: the op log + expected snapshots the SAME
     // RoomCore module produces in Node and in JavaScriptCore on tvOS.
     systemProperty("hexcore.roomcore.golden", repoRoot.file("tests/fixtures/room-core-golden.json").asFile.absolutePath)
+    // Packed native wire format: the payloads + expected frames recorded by the JS
+    // reference decoder, which PackedFrameTest replays through the Kotlin port.
+    systemProperty("hexcore.packed.golden", repoRoot.file("tests/fixtures/partycore-packed-golden.json").asFile.absolutePath)
     // Render-math parity: the canonical web JS the Kotlin ports must match byte-for-byte.
     systemProperty("hexcore.web.constants", repoRoot.file("server/constants.js").asFile.absolutePath)
     systemProperty("hexcore.web.theme", repoRoot.file("public/shared/theme.js").asFile.absolutePath)

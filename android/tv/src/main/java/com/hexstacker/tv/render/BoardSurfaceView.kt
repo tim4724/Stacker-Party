@@ -22,6 +22,9 @@ import com.hexstacker.tv.R
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
@@ -144,11 +147,29 @@ class BoardSurfaceView @JvmOverloads constructor(
     // thread (the coordinator runs on the main dispatcher), so `++` doesn't race.
     @Volatile private var contentVersion = 0L
 
+    // What the idle render thread parks on. It used to poll with sleep(8), which put up
+    // to 8ms (mean 4) between a snapshot arriving and the repaint starting — and the idle
+    // path is the COMMON one mid-game, since `animating` is only true while a pulse or
+    // effect is live. Signalling it instead makes that wake immediate.
+    private val contentLock = ReentrantLock()
+    private val contentChanged = contentLock.newCondition()
+
     init {
         holder.addCallback(this)
     }
 
     // ── Ingress (game thread) ─────────────────────────────────────────────────
+
+    /** Mark the visible content changed and wake the render thread if it is parked.
+     *  Every ingress method below ends with this; nothing else may touch
+     *  [contentVersion], or a submit could land without a wake and wait out the
+     *  park timeout instead of drawing now. */
+    private fun bumpContent() {
+        contentLock.withLock {
+            contentVersion++
+            contentChanged.signalAll()
+        }
+    }
 
     /** Set/replace the viewport + seats → rebuild renderers via LayoutEngine. */
     fun setViewport(widthPx: Int, heightPx: Int, playerCount: Int, seats: List<SeatMeta>) {
@@ -157,25 +178,25 @@ class BoardSurfaceView @JvmOverloads constructor(
         this.playerCount = playerCount
         this.seats = seats
         this.layoutDirty = true
-        contentVersion++
+        bumpContent()
     }
 
     /** Newest engine snapshot (volatile reference swap; render thread reads latest). */
     fun submitSnapshot(snapshot: GameSnapshot) {
         latestSnapshot = snapshot
-        contentVersion++
+        bumpContent()
     }
 
     /** One PartyCore.frame() event → drives the animation layer. */
     fun onGameEvent(event: GameEvent) {
         eventQueue.add(event)
-        contentVersion++
+        bumpContent()
     }
 
     /** Per-board disconnect/rejoin overlay; null clears it. */
     fun setDisconnected(playerId: Int, joinUrl: String?) {
         if (joinUrl == null) disconnects.remove(playerId) else disconnects[playerId] = joinUrl
-        contentVersion++
+        bumpContent()
     }
 
     /** Clear snapshot/animations/disconnects (game end, return to lobby). */
@@ -183,7 +204,7 @@ class BoardSurfaceView @JvmOverloads constructor(
         latestSnapshot = null
         disconnects.clear()
         eventQueue.clear()
-        contentVersion++
+        bumpContent()
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -200,7 +221,7 @@ class BoardSurfaceView @JvmOverloads constructor(
         super.onConfigurationChanged(newConfig)
         animations.setPopupLabels(context.getString(R.string.double_clear), context.getString(R.string.triple_clear))
         layoutDirty = true
-        contentVersion++
+        bumpContent()
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
@@ -212,7 +233,7 @@ class BoardSurfaceView @JvmOverloads constructor(
         surfaceW = width
         surfaceH = height
         layoutDirty = true
-        contentVersion++
+        bumpContent()
     }
 
     /**
@@ -232,6 +253,9 @@ class BoardSurfaceView @JvmOverloads constructor(
      */
     fun stopRenderThread() {
         running = false
+        // Wake a parked thread so the join below is bounded by its in-flight frame
+        // rather than by the park timeout.
+        contentLock.withLock { contentChanged.signalAll() }
         renderThread?.let { t ->
             var joined = false
             while (!joined) {
@@ -273,12 +297,18 @@ class BoardSurfaceView @JvmOverloads constructor(
             var lastDrawnVersion = -1L
             var animating = true
             while (running) {
-                // Idle skip: nothing pushed since the last draw and no wall-clock
-                // animation/pulse running — the frame would be identical, so sleep
-                // instead of burning GPU on it (countdown, pause, and results screens
-                // spend nearly all their time here).
+                // Idle park: nothing pushed since the last draw and no wall-clock
+                // animation/pulse running — the frame would be identical, so wait to be
+                // woken instead of burning GPU on it (countdown, pause, and results
+                // screens spend nearly all their time here, and so does ordinary
+                // gameplay between grid steps).
+                //
+                // Re-checked INSIDE the monitor: a bumpContent() landing between the
+                // test and the lock would otherwise not be seen, and the thread would
+                // sit out the whole timeout with a fresh snapshot already waiting. The
+                // timeout is a belt-and-braces bound, not the wake mechanism.
                 if (contentVersion == lastDrawnVersion && !animating) {
-                    sleep(8)
+                    parkUntilContentChanges(lastDrawnVersion)
                     continue
                 }
                 var canvas: Canvas? = null
@@ -301,6 +331,21 @@ class BoardSurfaceView @JvmOverloads constructor(
                     if (canvas != null) runCatching { h.unlockCanvasAndPost(canvas) }
                 }
             }
+        }
+    }
+
+    /**
+     * Park the render thread until an ingress method signals new content (or the app
+     * stops). [lastDrawnVersion] is re-tested inside the lock because a `bumpContent()`
+     * between the caller's test and this one would otherwise go unseen and leave a
+     * fresh snapshot waiting out the whole timeout.
+     */
+    private fun parkUntilContentChanges(lastDrawnVersion: Long) {
+        contentLock.withLock {
+            if (!running || contentVersion != lastDrawnVersion) return
+            // An interrupt here means teardown; `running` is already false by then, so
+            // returning simply lets the loop re-test and exit.
+            runCatching { contentChanged.await(IDLE_PARK_MS, TimeUnit.MILLISECONDS) }
         }
     }
 
@@ -591,6 +636,10 @@ class BoardSurfaceView @JvmOverloads constructor(
 
     private companion object {
         private const val TAG = "BoardSurfaceView"
+
+        /** Upper bound on an idle park. A bumpContent() signal is what actually wakes the
+         *  thread; this only bounds the wait if a wake is ever missed. */
+        private const val IDLE_PARK_MS = 50L
         private const val VIS_ROWS = EngineConstants.VISIBLE_ROWS // 15
         private val EMPTY_GRID: List<List<Int>> =
             List(EngineConstants.VISIBLE_ROWS) { List(EngineConstants.COLS) { 0 } }

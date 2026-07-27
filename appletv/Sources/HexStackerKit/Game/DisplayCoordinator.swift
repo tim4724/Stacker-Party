@@ -235,6 +235,17 @@ public final class DisplayCoordinator {
     // since the last tick(), so message bursts cost at most one pull per frame.
     private var renderedInputSinceTick = false
 
+    /// Inputs accepted but not yet handed to the engine. Every crossing costs, so a
+    /// frame's worth goes over as ONE batch, carried by whatever read follows.
+    /// Drained by `takeInputs()`, which MUST run before anything else touches the
+    /// engine — it is one mutable board set, and a soft-drop or a frame that ran
+    /// ahead of queued input would act on a board the controller already moved past.
+    private var pendingInputs: [(playerId: Int, action: String)] = []
+
+    /// The last snapshot handed to the output, so a per-seat pull can be merged into
+    /// the room already on screen instead of pulling every board back out.
+    private var lastSnapshot: GameSnapshot?
+
     // Countdown driven by accumulated frame time (deterministic, testable).
     private var countdownElapsed = 0.0
     private var countdownStep = -1   // last emitted step: 0->3,1->2,2->1,3->GO,4->start
@@ -629,10 +640,11 @@ public final class DisplayCoordinator {
             // Guard the Double->Int conversion: a malformed `speed` (e.g. 1e308)
             // would trap in Int.init and abort the display; ignore it instead.
             if state == .playing, !paused {
+                flushInputs() // a soft-drop must not overtake queued left/right
                 engine?.softDropStart(playerId: from, speed: msg.speed.flatMap { $0.isFinite && abs($0) < 9.0e15 ? Int($0) : nil })
             }
         case MSG.softDropEnd:
-            if state == .playing { engine?.softDropEnd(playerId: from) }
+            if state == .playing { flushInputs(); engine?.softDropEnd(playerId: from) }
         case MSG.startGame:
             if state == .lobby, playerCount >= 1 { beginCountdown() }
         case MSG.playAgain:
@@ -702,6 +714,7 @@ public final class DisplayCoordinator {
     private func applyReconnectClaim(oldId: Int, from: Int) {
         engine?.softDropEnd(playerId: oldId)
         engine?.softDropEnd(playerId: from)
+        flushInputs() // queued input belongs to the board as it stands BEFORE the rekey
         if let engine, !engine.rekeyPlayer(oldId: oldId, newId: from) {
             FileHandle.standardError.write(Data("[engine] rekeyPlayer \(oldId) -> \(from) refused\n".utf8))
         }
@@ -712,17 +725,58 @@ public final class DisplayCoordinator {
     private func handleInput(from: Int, msg: ControllerMessage) {
         guard state == .playing, !paused, let action = msg.action,
               InputAction(rawValue: action) != nil else { return }
-        engine?.processInput(playerId: from, action: action)
+        guard engine != nil else { return }
+        pendingInputs.append((playerId: from, action: action))
         // Render-on-input: reflect the applied input on the very next display frame
-        // instead of waiting for the next tick(). snapshot() is a pure read (value-copy,
-        // no time advance), so it only front-runs the VISUAL; this frame's events/commands
-        // (lock flash, garbage, sends) still flow on the next tick(). Mirrors the Android path.
-        // Coalesced to one pull per frame: each snapshot() is a full serialize + decode,
-        // and an 8-player input burst can land several messages inside one 16 ms window.
-        // Later inputs still show on the tick's own snapshot, at most one frame later.
-        guard !renderedInputSinceTick, let engine, let snap = try? engine.snapshot() else { return }
+        // instead of waiting for the next tick(). The pull is a pure read (no time
+        // advance), so it only front-runs the VISUAL; this frame's events/commands
+        // (lock flash, garbage, sends) still flow on the next tick().
+        // Coalesced to one pull per frame: an 8-player input burst can land several
+        // messages inside one 16 ms window. Later inputs still show on the tick's own
+        // snapshot — they are applied by then, because the drain below takes
+        // everything pending, not just this message.
+        guard !renderedInputSinceTick, let engine else { return }
         renderedInputSinceTick = true
-        output?.renderSnapshot(snap)
+        let batch = takeInputs()
+        // ONE seat, merged into the room already on screen: an input can only have
+        // moved this board, so deep-copying the other seven is waste. The batch rides
+        // into the pull, so this is a single crossing.
+        guard let prev = lastSnapshot else {
+            // Nothing retained to merge into yet (first input of a match): apply the
+            // batch and fall back to the full pull rather than skip the repaint.
+            engine.processInputs(batch)
+            if let snap = try? engine.snapshot() { render(snap) }
+            return
+        }
+        guard let pulled = try? engine.snapshotPlayer(from, inputs: batch),
+              let moved = pulled.players.first,
+              prev.players.contains(where: { $0.id == moved.id }) else { return }
+        render(GameSnapshot(
+            players: prev.players.map { $0.id == moved.id ? moved : $0 },
+            // elapsed comes from the pull: it drives the match timer, and keeping the
+            // retained value would freeze the clock while a direction is held.
+            elapsed: pulled.elapsed))
+    }
+
+    /// Drain the queued inputs for a caller that is about to cross into the engine
+    /// anyway and can carry them along.
+    private func takeInputs() -> [(playerId: Int, action: String)] {
+        defer { pendingInputs.removeAll(keepingCapacity: true) }
+        return pendingInputs
+    }
+
+    /// Apply anything queued without a read to fuse it into.
+    private func flushInputs() {
+        let batch = takeInputs()
+        guard !batch.isEmpty else { return }
+        engine?.processInputs(batch)
+    }
+
+    /// The one place a snapshot reaches the output, so the retained copy the per-seat
+    /// merge builds on can never fall out of step with what is drawn.
+    private func render(_ snapshot: GameSnapshot) {
+        lastSnapshot = snapshot
+        output?.renderSnapshot(snapshot)
     }
 
     private func handleSetLevel(from: Int, msg: ControllerMessage) {
@@ -876,7 +930,7 @@ public final class DisplayCoordinator {
             // monotonic clock PartyCore turns into a capped per-frame delta.
             frameClockMs += deltaMs
             let frame: FrameResult
-            do { frame = try engine.frame(nowMs: frameClockMs) }
+            do { frame = try engine.frame(nowMs: frameClockMs, inputs: takeInputs()) }
             catch {
                 // Dropping one frame is fine; a PERSISTENT failure freezes the game,
                 // so it must at least be visible in the log (decode errors don't
@@ -1040,6 +1094,7 @@ public final class DisplayCoordinator {
     private func applyPauseEffects(_ res: RoomResult, wasPaused: Bool) {
         guard res.changed == true, paused != wasPaused else { return }
         if paused {
+            flushInputs() // anything the players got in before the freeze still counts
             engine?.pause()
             engine?.resetFrameClock()
             output?.pauseMusic()

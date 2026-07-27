@@ -5,6 +5,7 @@ import com.hexstacker.core.engine.EngineBootstrap
 import com.hexstacker.core.engine.EngineBridge
 import com.hexstacker.core.engine.EngineBridge.PlayerSpec
 import com.hexstacker.core.engine.InputAction
+import com.hexstacker.core.engine.PackedFrame
 import com.hexstacker.core.model.EngineConstants
 import com.hexstacker.core.model.GameEvent
 import com.hexstacker.core.model.GameSnapshot
@@ -93,18 +94,28 @@ class EngineBridgeTest {
             evaluate<Any?>(bundle())
             evaluate<Any?>(EngineBootstrap.SHIM + "\nvoid 0;")
             evaluate<Any?>("Bridge.create([[0,1],[1,1]], 7)")
-            val first = evaluate<String>("Bridge.frameJSON(0)")
+            // Frames cross packed, so assert on the DECODED payload rather than on
+            // substrings of JSON: a stripped grid arrives as an empty list, and
+            // re-attaching cached rows is EngineBridge's job, not the reader's.
+            val first = PackedFrame.decode(evaluate<String>("Bridge.framePacked(0)"))
             // HOLD changes the scene (so the snapshot is delivered at all — see the
             // scene-signature omission) without touching any grid: the delivered
             // snapshot strips every player's unchanged grid.
             evaluate<Any?>("Bridge.processInput(0, 'hold')")
-            val second = evaluate<String>("Bridge.frameJSON(16)")
-            assertTrue("\"grid\":" in first, "first pull carries full grids")
-            assertFalse("\"grid\":" in second, "unchanged grids are stripped from later pulls")
-            assertTrue("\"gridVersion\":" in second, "gridVersion stays on the wire")
+            val second = PackedFrame.decode(evaluate<String>("Bridge.framePacked(16)"))
+            assertTrue(
+                assertNotNull(first.snapshot).players.all { it.grid.isNotEmpty() },
+                "first pull carries full grids",
+            )
+            val secondPlayers = assertNotNull(second.snapshot, "hold re-delivers the snapshot").players
+            assertTrue(secondPlayers.all { it.grid.isEmpty() }, "unchanged grids are stripped from later pulls")
+            assertTrue(secondPlayers.all { it.gridVersion >= 0 }, "gridVersion stays on the wire")
             evaluate<Any?>("Bridge.processInput(0, 'hard_drop')") // lock bumps p0's gridVersion
-            val third = evaluate<String>("Bridge.snapshotJSON()")
-            assertTrue("\"grid\":" in third, "a lock re-sends the changed grid")
+            val third = PackedFrame.decode(evaluate<String>("Bridge.snapshotPacked()"))
+            assertTrue(
+                assertNotNull(third.snapshot).players.any { it.grid.isNotEmpty() },
+                "a lock re-sends the changed grid",
+            )
         }
         Unit
     }
@@ -118,16 +129,16 @@ class EngineBridgeTest {
             evaluate<Any?>(bundle())
             evaluate<Any?>(EngineBootstrap.SHIM + "\nvoid 0;")
             evaluate<Any?>("Bridge.create([[0,1],[1,1]], 7)")
-            val first = evaluate<String>("Bridge.frameJSON(0)")
-            assertTrue("\"snapshot\":" in first, "first pull delivers the snapshot")
+            val first = PackedFrame.decode(evaluate<String>("Bridge.framePacked(0)"))
+            assertNotNull(first.snapshot, "first pull delivers the snapshot")
             // 16ms later: no input, no gravity step, same timer second — omitted.
-            val second = evaluate<String>("Bridge.frameJSON(16)")
-            assertFalse("\"snapshot\":" in second, "a render-identical frame omits the snapshot")
-            assertTrue("\"events\":" in second, "events stay on the wire")
-            assertTrue("\"commands\":" in second, "commands stay on the wire")
+            val second = PackedFrame.decode(evaluate<String>("Bridge.framePacked(16)"))
+            assertEquals(null, second.snapshot, "a render-identical frame omits the snapshot")
+            assertNotNull(second.events, "events stay on the wire")
+            assertNotNull(second.commands, "commands stay on the wire")
             evaluate<Any?>("Bridge.processInput(0, 'left')") // moves p0's piece
-            val third = evaluate<String>("Bridge.frameJSON(33)")
-            assertTrue("\"snapshot\":" in third, "a scene change re-delivers the snapshot")
+            val third = PackedFrame.decode(evaluate<String>("Bridge.framePacked(33)"))
+            assertNotNull(third.snapshot, "a scene change re-delivers the snapshot")
         }
         Unit
     }

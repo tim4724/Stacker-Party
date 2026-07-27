@@ -6,6 +6,7 @@ import com.hexstacker.core.net.Fastlane
 import com.hexstacker.core.model.Command
 import com.hexstacker.core.model.CommandType
 import com.hexstacker.core.model.EngineJson
+import com.hexstacker.core.model.GameSnapshot
 import com.hexstacker.core.model.PlayerResult
 import com.hexstacker.core.net.ControllerMessage
 import com.hexstacker.core.net.Msg
@@ -123,6 +124,9 @@ class DisplayCoordinator(
     private suspend fun applyPause(res: RoomCoreClient.Changed, wasPaused: Boolean) {
         if (!res.changed || paused == wasPaused) return
         if (paused) {
+            // Anything the players got in before the freeze still counts; dropping it
+            // would silently eat the last input of every pause.
+            flushInputs()
             engine?.pause()
             engine?.resetFrameClock() // forget the frame clock so resume re-primes with delta 0
             output.pauseMusic()
@@ -276,6 +280,19 @@ class DisplayCoordinator(
     // since the last tick(), so a message burst costs at most one full
     // serialize + decode + render per frame (see handleInput).
     private var renderedInputSinceTick = false
+
+    // Inputs accepted but not yet handed to the engine. Every call into QuickJS is a
+    // source string the binding re-parses (~0.65ms floor on TV hardware, an order of
+    // magnitude more than the input itself), so a frame's worth of input goes over as
+    // ONE batch instead of one call each. Drained by [flushInputs], which MUST run
+    // before anything else touches the engine, or a soft-drop / frame / snapshot would
+    // observe the board before inputs that arrived earlier. Order is preserved.
+    private val pendingInputs = ArrayList<Pair<Int, InputAction>>()
+
+    // The last snapshot handed to the output. Kept so a per-seat render-on-input pull
+    // can be merged into the room the renderer is already showing instead of pulling
+    // all eight boards back out of the engine.
+    private var lastSnapshot: GameSnapshot? = null
 
     // Monotonic source for liveness/grace timing (commonMain-safe).
     private val epoch = TimeSource.Monotonic.markNow()
@@ -663,8 +680,16 @@ class DisplayCoordinator(
         when (msg.type) {
             Msg.HELLO -> handleHello(from, msg)
             Msg.INPUT -> handleInput(from, msg)
-            Msg.SOFT_DROP -> if (state == RoomState.PLAYING && !paused) engine?.softDropStart(from, msg.speed?.toInt())
-            Msg.SOFT_DROP_END -> if (state == RoomState.PLAYING) engine?.softDropEnd(from)
+            // flushInputs first: a soft-drop applied ahead of a queued left/right would
+            // drop the piece down the column the controller had already moved off.
+            Msg.SOFT_DROP -> if (state == RoomState.PLAYING && !paused) {
+                flushInputs()
+                engine?.softDropStart(from, msg.speed?.toInt())
+            }
+            Msg.SOFT_DROP_END -> if (state == RoomState.PLAYING) {
+                flushInputs()
+                engine?.softDropEnd(from)
+            }
             Msg.START_GAME -> if (state == RoomState.LOBBY && room.size >= 1) beginCountdown()
             Msg.PLAY_AGAIN -> if (state == RoomState.RESULTS && room.size >= 1) beginCountdown()
             Msg.RETURN_TO_LOBBY -> returnToLobby()
@@ -725,6 +750,7 @@ class DisplayCoordinator(
      */
     private suspend fun applyReconnectClaim(oldId: Int, newId: Int) {
         fastlane?.close(oldId) // drop the dropped device's P2P link; the returning device re-offers
+        flushInputs() // queued input belongs to the board as it stands BEFORE the rekey
         engine?.let { runCatching { it.rekey(oldId, newId) } } // no engine in RESULTS (roster-only claim)
         disconnectedBoards.remove(oldId)
         disconnectedBoards.remove(newId)
@@ -736,19 +762,89 @@ class DisplayCoordinator(
         if (state != RoomState.PLAYING || paused) return
         val action = msg.action ?: return
         val input = InputAction.fromWire(action) ?: return
-        val e = engine ?: return
-        e.processInput(from, input)
+        if (engine == null) return
+        pendingInputs.add(from to input)
         // Render-on-input: reflect the applied input on the very next vsync instead of
-        // waiting for the next frame() tick. snapshot() is a pure read (getSnapshot deep-copy,
-        // no time advance), so this only front-runs the VISUAL; this frame's events/commands
-        // (lock flash, garbage, sends) still flow on the next frame(). Guarded to PLAYING above.
-        // Coalesced to one pull per frame (tvOS parity): each snapshot() is a full
-        // serialize + decode, and an 8-player input burst can land several messages
-        // inside one 16 ms window. Later inputs ride the tick's own snapshot.
+        // waiting for the next frame() tick. The pull is a pure read (no time advance),
+        // so this only front-runs the VISUAL; this frame's events/commands (lock flash,
+        // garbage, sends) still flow on the next frame(). Guarded to PLAYING above.
+        // Coalesced to one pull per frame: an 8-player input burst can land several
+        // messages inside one 16 ms window, and later inputs ride the tick's own
+        // snapshot — they are already applied by then, because the flush below drains
+        // everything pending, not just this message.
         if (renderedInputSinceTick) return
-        val snap = try { e.snapshot() } catch (t: Throwable) { onError("inputSnapshot", t); return }
         renderedInputSinceTick = true
-        output.renderSnapshot(snap)
+        val snap = try {
+            val e = engine ?: return
+            // ONE seat, merged into the room already on screen. Pulling all eight costs
+            // ~9ms on an 8-player TV against ~2.7ms for one, and an input can only have
+            // moved this board. The queued input rides INTO the pull rather than going
+            // over in its own call — one boundary crossing instead of two.
+            val batch = takeInputs()
+            val prev = lastSnapshot
+            val pulled = if (prev == null) null else e.snapshotPlayer(from, batch)
+            if (prev == null) e.processInputs(batch) // no retained room: apply, then pull below
+            val moved = pulled?.players?.firstOrNull()
+            if (moved != null && prev!!.players.any { it.id == moved.id }) {
+                // `elapsed` comes from the pull, not from `prev`: it drives the match
+                // timer, and a merge that kept the retained value would freeze the clock
+                // for as long as somebody held a direction down.
+                prev.copy(
+                    players = prev.players.map { if (it.id == moved.id) moved else it },
+                    elapsed = pulled.elapsed,
+                )
+            } else {
+                // Nothing retained to merge into (the first input of a match, before the
+                // first frame() has delivered one), or a seat that snapshot predates.
+                // Fall back to the full pull rather than skip the repaint.
+                e.snapshot()
+            }
+        } catch (t: Throwable) {
+            onError("inputSnapshot", t)
+            return
+        }
+        renderSnapshot(snap)
+    }
+
+    /**
+     * Hand every accepted-but-unsent input to the engine, in arrival order, as one
+     * batch. MUST precede any other engine call: the engine is a single mutable
+     * board set, so a soft-drop, a frame() or a snapshot that ran ahead of a queued
+     * left/right would observe — and act on — a board the controller had already
+     * moved past.
+     */
+    private suspend fun flushInputs() {
+        val batch = takeInputs()
+        if (batch.isEmpty()) return
+        engine?.processInputs(batch)
+    }
+
+    /**
+     * Drain the queue and hand it back, for a caller that is about to cross into the
+     * engine anyway and can carry the inputs with it (the tick, the render-on-input
+     * pull). Same ordering guarantee as [flushInputs] — the callee applies them
+     * before it reads — for one boundary crossing instead of two.
+     */
+    private fun takeInputs(): List<Pair<Int, InputAction>> {
+        if (pendingInputs.isEmpty()) return emptyList()
+        val batch = pendingInputs.toList()
+        pendingInputs.clear()
+        return batch
+    }
+
+    /** The one place a snapshot reaches the output, so the retained copy the
+     *  per-seat merge builds on can never fall out of step with what is drawn. */
+    private fun renderSnapshot(snapshot: GameSnapshot) {
+        lastSnapshot = snapshot
+        output.renderSnapshot(snapshot)
+    }
+
+    /** Drop the per-match engine-side state. Runs wherever the engine handle is
+     *  released: an input queued for a match that just ended has nothing to apply to,
+     *  and a retained snapshot of it must not be merged into the NEXT match's boards. */
+    private fun discardEngineState() {
+        pendingInputs.clear()
+        lastSnapshot = null
     }
 
     private suspend fun handleSetLevel(from: Int, msg: ControllerMessage) {
@@ -836,6 +932,7 @@ class DisplayCoordinator(
 
     private suspend fun makeEngine(order: List<Int>): Boolean {
         val specs = order.map { EngineBridge.PlayerSpec(it, room.player(it)?.startLevel ?: 1) }
+        discardEngineState() // a fresh match starts from an empty batch and no retained boards
         return try {
             engine = bridgeProvider().also { it.createGame(specs, pendingSeed) }
             true
@@ -874,7 +971,12 @@ class DisplayCoordinator(
                 val e = engine ?: return
                 frameClockMs += deltaMs
                 val frame = try {
-                    e.frame(frameClockMs)
+                    // Inputs that landed after this frame's render-on-input pull (or all
+                    // of them, if none did) ride into the tick, so they are simulated in
+                    // the frame they arrived in — same as the web applying each input
+                    // synchronously ahead of the next rAF update — for one crossing
+                    // rather than two.
+                    e.frame(frameClockMs, takeInputs())
                 } catch (t: Throwable) {
                     onError("frame", t)
                     return
@@ -883,7 +985,7 @@ class DisplayCoordinator(
                 // Omitted (null) when the frame is render-identical to the last
                 // delivered one (shim scene signature): keep the retained snapshot
                 // instead of re-rendering a pixel-identical full screen.
-                frame.snapshot?.let { output.renderSnapshot(it) }
+                frame.snapshot?.let { renderSnapshot(it) }
                 // One frame is one change: a tick that KOs several players at once (a
                 // garbage cascade, a simultaneous top-out) would otherwise publish the
                 // whole room once per KO before anyone sees the first. No floor, so a
@@ -973,12 +1075,14 @@ class DisplayCoordinator(
         output.showResults(decodeResults(enriched))
         output.showScreen(DisplayScreen.RESULTS)
         engine = null
+        discardEngineState()
     }
 
     private suspend fun returnToLobby() {
         if (state == RoomState.LOBBY) return
         clearPause()   // the LOBBY transition below publishes, so the lift rides it
         engine = null
+        discardEngineState()
         output.stopMusic()
         setPauseOverlay(false)
         // Remove the players who went missing, then fold in the late joiners who were
@@ -1019,6 +1123,7 @@ class DisplayCoordinator(
     /** Full session reset + a fresh room (web resetToWelcome -> connectAndCreateRoom). */
     private suspend fun resetSession() {
         engine = null
+        discardEngineState()
         fastlane?.closeAll()
         output.stopMusic()
         setPauseOverlay(false)

@@ -73,8 +73,9 @@ test('the shared blocks expose the entry points both shells rely on', () => {
   const has = (src, method) => new RegExp(`\\b${method}:\\s*function`).test(src);
   const engine = block(SWIFT, 'ENGINE-API', 'EngineBridge.swift');
   for (const method of ['create', 'processInput', 'softDropStart', 'softDropEnd',
-    'pause', 'resume', 'resetFrameClock', 'rekeyPlayer', 'snapshotJSON',
-    'drainEventsJSON', 'frameJSON', 'isEnded']) {
+    'pause', 'resume', 'resetFrameClock', 'rekeyPlayer', 'snapshotPacked',
+    'processInputs', 'snapshotPlayerPacked', 'drainEventsJSON', 'framePacked',
+    'isEnded']) {
     assert.ok(has(engine, method), `missing ${method}`);
   }
   const room = block(SWIFT, 'ROOM-API', 'EngineBridge.swift');
@@ -185,35 +186,53 @@ for (const [platform, getShim] of Object.entries(SHIMS)) {
     vm.runInContext(await bundleCore(), ctx);
     vm.runInContext(getShim(), ctx);
 
+    // Frames cross PACKED now, so unpack them with the bundle's own reference
+    // decoder — which also proves packer and unpacker agree inside the very
+    // bundle the natives load, not just in the module tests.
+    const unpack = (js) =>
+      vm.runInContext(`HexCore.PartyCore.unpackFrame(${js})`, ctx);
     const call = (js) => JSON.parse(vm.runInContext(js, ctx));
     const player = (snap, id) => snap.players.find((p) => p.id === id);
 
     // A read before create() must name the ordering bug rather than surface an
     // opaque TypeError from inside the engine.
-    assert.throws(() => vm.runInContext('Bridge.frameJSON(0)', ctx), /create\(\)/);
+    assert.throws(() => vm.runInContext('Bridge.framePacked(0)', ctx), /create\(\)/);
 
     vm.runInContext('Bridge.create([[1,1],[2,1]], 7)', ctx);
 
-    const opening = call('Bridge.frameJSON(0)');
+    const opening = unpack('Bridge.framePacked(0)');
     assert.equal(opening.snapshot.players.length, 2, 'the opening frame is always delivered');
     assert.ok(player(opening.snapshot, 1).grid, 'first delivery carries full grids');
 
     // 1 ms later nothing has moved, so the snapshot is omitted entirely — this is
     // the fast path Android had and tvOS didn't, now shared through PartyCore.
-    assert.equal(call('Bridge.frameJSON(1)').snapshot, undefined);
+    assert.equal(unpack('Bridge.framePacked(1)').snapshot, null);
 
     // A hard drop changes one board: delivered again, with that player's grid
     // re-sent (version bumped) and the untouched player's grid stripped.
     vm.runInContext('Bridge.processInput(1, "hard_drop")', ctx);
-    const locked = call('Bridge.frameJSON(17)');
+    const locked = unpack('Bridge.framePacked(17)');
     assert.ok(player(locked.snapshot, 1).grid, "the locked board's grid must ride along");
     assert.equal(player(locked.snapshot, 2).grid, undefined, 'unchanged grid must be stripped');
     assert.ok(locked.commands.some((c) => c.type === 'pieceLock'),
       'commands are never filtered, whatever the snapshot does');
 
     // An out-of-band pull always returns a snapshot (grids still stripped).
-    const pulled = call('Bridge.snapshotJSON()');
+    const pulled = unpack('Bridge.snapshotPacked()').snapshot;
     assert.equal(pulled.players.length, 2);
+
+    // A single seat, the render-on-input path: only that board rides.
+    const one = unpack('Bridge.snapshotPlayerPacked(2)').snapshot;
+    assert.equal(one.players.length, 1, 'a per-seat pull must carry exactly one board');
+    assert.equal(one.players[0].id, 2);
+    assert.equal(vm.runInContext('Bridge.snapshotPlayerPacked(99)', ctx), null,
+      'an id with no board must answer null, not an empty room');
+
+    // Batched input has to land in order and be indistinguishable from
+    // one-at-a-time calls; it is the path every controller input takes.
+    vm.runInContext('Bridge.processInputs([[1,"left"],[1,"left"],[2,"rotate_cw"]])', ctx);
+    const afterBatch = unpack('Bridge.snapshotPacked()').snapshot;
+    assert.ok(player(afterBatch, 1).currentPiece, 'batched input must not lose the piece');
   });
 }
 

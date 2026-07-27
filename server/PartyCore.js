@@ -158,6 +158,249 @@ PartyCore.prototype.snapshot = function() {
   };
 };
 
+// Value-copy snapshot of ONE seat, same shape as snapshot() with `players`
+// narrowed to that player. A controller input moves exactly one board, so a host
+// reflecting it does not need the whole room deep-copied: on an 8-player TV that
+// pull is ~9ms (copy + stringify + native decode) against ~2.7ms for one seat,
+// which at 60Hz is the difference between fitting in the frame and not.
+// Returns null when the id owns no board (a spectator, or a stale peer index).
+PartyCore.prototype.snapshotPlayer = function(playerId) {
+  var snap = this.game.getSnapshot();
+  for (var i = 0; i < snap.players.length; i++) {
+    if (snap.players[i].id === playerId) {
+      return { players: [copyPlayer(snap.players[i])], elapsed: snap.elapsed };
+    }
+  }
+  return null;
+};
+
+// =====================================================================
+// Packed snapshot wire format — the JS<->native boundary only.
+//
+// The boundary, not the simulation, is what costs a frame: at eight boards the
+// physics is ~0.5ms while JSON.stringify plus the native decode is ~11ms, and
+// ~8ms of that is the decode rebuilding grids and per-cell objects the renderer
+// immediately flattens again. Every field in a snapshot is a small integer, so
+// the boundary can carry one integer per UTF-16 code unit instead. Measured on a
+// Google TV Streamer, eight boards: decode 8.4ms -> 0.06ms, payload 5490 -> 1211.
+//
+// Web never uses this and must not: it has no boundary at all — its renderer
+// reads the live getSnapshot() refs out of the same heap — so packing there would
+// be pure added work.
+//
+// Two invariants the format depends on:
+//   * EVERY value is biased +1 on the way out. Both native bridges hand JS
+//     strings over as C strings, so a NUL code unit TRUNCATES the payload — and 0
+//     is the most common value here (every empty grid cell).
+//   * Coordinates go negative while a piece is still in the spawn buffer, so they
+//     are biased by COORD_BIAS before that.
+//
+// Lossy in exactly one place, on purpose: `elapsed` is delivered at whole-ms
+// precision. Its only consumers floor it to seconds (the match timer, and
+// sceneSig), so the fraction has no reader — and spending two more code units per
+// frame to carry it would be pure overhead.
+//
+// Layout (values shown pre-bias):
+//   [0] PACK_VERSION
+//   [1] 1 if a snapshot follows, else 0
+//   when present: [2] count>>16, [3] count & 0xffff, then `count` values
+//   then the JSON tail, {events, commands}, as plain ASCII
+//
+// unpackFrame below is the REFERENCE decoder: the Kotlin and Swift readers are
+// ports of it, and tests/partycore-packed.test.js gates pack->unpack round trips
+// over the whole frame-golden corpus.
+// =====================================================================
+
+var PACK_VERSION = 1;
+var COORD_BIAS = 256;
+var PIECE_TYPES = GameConstants.PIECE_TYPES;
+var PIECE_TYPE_TO_ID = GameConstants.PIECE_TYPE_TO_ID;
+
+function packCells(out, cells) {
+  out.push(cells.length);
+  for (var i = 0; i < cells.length; i++) {
+    out.push(cells[i][0] + COORD_BIAS, cells[i][1] + COORD_BIAS);
+  }
+}
+
+function packPlayer(out, p) {
+  out.push(p.id, p.level, (p.lines >> 16) & 0xffff, p.lines & 0xffff,
+           p.alive ? 1 : 0, p.pendingGarbage,
+           (p.gridVersion >> 16) & 0xffff, p.gridVersion & 0xffff);
+  // Absent whenever _stripUnchangedGrids dropped it; dimensions ride along so a
+  // reader never has to assume the board size.
+  if (p.grid) {
+    out.push(1, p.grid.length, p.grid.length ? p.grid[0].length : 0);
+    for (var r = 0; r < p.grid.length; r++) {
+      var row = p.grid[r];
+      for (var c = 0; c < row.length; c++) out.push(row[c]);
+    }
+  } else {
+    out.push(0);
+  }
+  var cp = p.currentPiece;
+  if (cp) {
+    out.push(1, cp.typeId, cp.anchorCol + COORD_BIAS, cp.anchorRow + COORD_BIAS);
+    out.push(cp.cells.length);
+    for (var i = 0; i < cp.cells.length; i++) {
+      out.push(cp.cells[i].q + COORD_BIAS, cp.cells[i].r + COORD_BIAS);
+    }
+    packCells(out, cp.blocks);
+  } else {
+    out.push(0);
+  }
+  var g = p.ghost;
+  if (g) {
+    out.push(1, g.typeId == null ? 0 : g.typeId,
+             g.anchorCol + COORD_BIAS, g.anchorRow + COORD_BIAS);
+    packCells(out, g.blocks);
+  } else {
+    out.push(0);
+  }
+  out.push(p.holdPiece ? PIECE_TYPE_TO_ID[p.holdPiece] : 0);
+  out.push(p.nextPieces.length);
+  for (var n = 0; n < p.nextPieces.length; n++) out.push(PIECE_TYPE_TO_ID[p.nextPieces[n]]);
+  if (p.clearingCells) {
+    out.push(1);
+    packCells(out, p.clearingCells);
+  } else {
+    out.push(0);
+  }
+}
+
+function snapshotInts(snapshot) {
+  var e = Math.max(0, Math.floor(snapshot.elapsed));
+  var out = [(e >> 16) & 0xffff, e & 0xffff, snapshot.players.length];
+  for (var i = 0; i < snapshot.players.length; i++) packPlayer(out, snapshot.players[i]);
+  return out;
+}
+
+// Chunked: String.fromCharCode.apply blows its argument limit on a full frame.
+function encodeInts(ints) {
+  var parts = [];
+  for (var i = 0; i < ints.length; i += 4096) {
+    var chunk = ints.slice(i, i + 4096);
+    for (var j = 0; j < chunk.length; j++) chunk[j] = chunk[j] + 1;
+    parts.push(String.fromCharCode.apply(null, chunk));
+  }
+  return parts.join('');
+}
+
+/**
+ * Pack a `{ events, snapshot, commands }` frame for the native boundary.
+ * `snapshot` may be absent (render-identical frame): then only the tail rides.
+ */
+PartyCore.packFrame = function(frame) {
+  var head = [PACK_VERSION, frame.snapshot ? 1 : 0];
+  var body = frame.snapshot ? snapshotInts(frame.snapshot) : null;
+  if (body) head.push((body.length >> 16) & 0xffff, body.length & 0xffff);
+  var tail = JSON.stringify({ events: frame.events, commands: frame.commands });
+  return encodeInts(body ? head.concat(body) : head) + tail;
+};
+
+/** Reference decoder — the contract the Kotlin and Swift readers reproduce. */
+PartyCore.unpackFrame = function(packed) {
+  var at = 0;
+  function next() { return packed.charCodeAt(at++) - 1; }
+  var version = next();
+  if (version !== PACK_VERSION) throw new Error('unpackFrame: version ' + version);
+  var snapshot = null;
+  if (next() === 1) {
+    var count = (next() << 16) | next();
+    var bodyStart = at;
+    snapshot = unpackSnapshot(next);
+    // The reader must land exactly on the tail; anything else is a layout bug,
+    // and silently trusting `count` would hide it behind a JSON parse error.
+    if (at !== bodyStart + count) {
+      throw new Error('unpackFrame: read ' + (at - bodyStart) + ' of ' + count);
+    }
+  }
+  var tail = JSON.parse(packed.slice(at));
+  return { events: tail.events, snapshot: snapshot, commands: tail.commands };
+};
+
+function unpackCells(next) {
+  var out = [];
+  for (var i = next(); i > 0; i--) out.push([next() - COORD_BIAS, next() - COORD_BIAS]);
+  return out;
+}
+
+function unpackSnapshot(next) {
+  var elapsed = (next() << 16) | next();
+  var players = [];
+  for (var i = next(); i > 0; i--) players.push(unpackPlayer(next));
+  return { players: players, elapsed: elapsed };
+}
+
+function unpackPlayer(next) {
+  var p = {
+    id: next(),
+    level: next(),
+    lines: (next() << 16) | next(),
+    alive: next() === 1,
+    pendingGarbage: next(),
+    gridVersion: (next() << 16) | next()
+  };
+  if (next() === 1) {
+    var rows = next(), cols = next(), grid = [];
+    for (var r = 0; r < rows; r++) {
+      var row = [];
+      for (var c = 0; c < cols; c++) row.push(next());
+      grid.push(row);
+    }
+    p.grid = grid;
+  }
+  if (next() === 1) {
+    var typeId = next();
+    var cp = {
+      type: PIECE_TYPES[typeId - 1],
+      typeId: typeId,
+      anchorCol: next() - COORD_BIAS,
+      anchorRow: next() - COORD_BIAS,
+      cells: []
+    };
+    for (var ci = next(); ci > 0; ci--) cp.cells.push({ q: next() - COORD_BIAS, r: next() - COORD_BIAS });
+    cp.blocks = unpackCells(next);
+    p.currentPiece = cp;
+  } else {
+    p.currentPiece = null;
+  }
+  if (next() === 1) {
+    var gt = next();
+    p.ghost = {
+      typeId: gt === 0 ? null : gt,
+      anchorCol: next() - COORD_BIAS,
+      anchorRow: next() - COORD_BIAS,
+      blocks: unpackCells(next)
+    };
+  } else {
+    p.ghost = null;
+  }
+  var hold = next();
+  p.holdPiece = hold === 0 ? null : PIECE_TYPES[hold - 1];
+  p.nextPieces = [];
+  for (var ni = next(); ni > 0; ni--) p.nextPieces.push(PIECE_TYPES[next() - 1]);
+  p.clearingCells = next() === 1 ? unpackCells(next) : null;
+  return p;
+}
+
+/** deliverFrame, packed. Identical filtering; only the boundary payload differs. */
+PartyCore.prototype.deliverFramePacked = function(nowMs) {
+  return PartyCore.packFrame(this.deliverFrame(nowMs));
+};
+
+/** deliverSnapshot, packed (the out-of-band full pull). */
+PartyCore.prototype.deliverSnapshotPacked = function() {
+  return PartyCore.packFrame({ events: [], snapshot: this.deliverSnapshot(), commands: [] });
+};
+
+/** One seat, packed — the render-on-input path. null when the id owns no board. */
+PartyCore.prototype.deliverSnapshotPlayerPacked = function(playerId) {
+  var snap = this.snapshotPlayer(playerId);
+  if (!snap) return null;
+  return PartyCore.packFrame({ events: [], snapshot: this._stripUnchangedGrids(snap), commands: [] });
+};
+
 // Mirror DisplayRender prevFrameTime=0 on pause/results entry: the next frame()
 // re-establishes the clock with a 0 delta instead of a huge resume jump.
 PartyCore.prototype.resetFrameClock = function() {

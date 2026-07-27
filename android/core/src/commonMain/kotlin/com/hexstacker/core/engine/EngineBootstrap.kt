@@ -31,6 +31,13 @@ internal object EngineBootstrap {
         if (!room) throw new Error('room: roomInit() not called');
         return room;
       }
+      // Inputs always land before whatever read follows them in the same call:
+      // the engine is one mutable board set, so a frame or a snapshot that ran
+      // ahead of queued input would act on a board the controller already moved.
+      function applyInputs(batch) {
+        if (!core || !batch) return;
+        for (var i = 0; i < batch.length; i++) core.processInput(batch[i][0], batch[i][1]);
+      }
       function gameOrThrow() {
         if (!core) throw new Error('no game: create() not called');
         return core;
@@ -47,6 +54,13 @@ internal object EngineBootstrap {
           core.init();
         },
         processInput: function (pid, action) { if (core) core.processInput(pid, action); },
+        // A whole frame's queued input in ONE call. Neither bridge can pass
+        // arguments without building a call expression, and on Android that
+        // expression is re-parsed per call (~0.65ms floor, more than the input
+        // itself costs): eight separate calls measured 5.9ms against 1.1ms batched.
+        // The reads below take the same batch, so a tick or a render-on-input pull
+        // costs ONE evaluate rather than two — applyInputs is the shared prelude.
+        processInputs: function (batch) { applyInputs(batch); },
         softDropStart: function (pid, speed) {
           if (core) core.handleSoftDropStart(pid, (speed === undefined ? null : speed));
         },
@@ -55,17 +69,31 @@ internal object EngineBootstrap {
         resume: function () { if (core) core.resume(); },
         resetFrameClock: function () { if (core) core.resetFrameClock(); },
         rekeyPlayer: function (oldId, newId) { return !!(core && core.rekeyPlayer(oldId, newId)); },
-        // Reads can't no-op like the writes above (they must return JSON), so a
-        // read-before-create fails loud with a message that names the ordering
+        // Reads can't no-op like the writes above (they must return a payload), so
+        // a read-before-create fails loud with a message that names the ordering
         // bug instead of an opaque TypeError on `core.snapshot`.
         //
-        // deliverSnapshot/deliverFrame are frame() and snapshot() filtered for
-        // this boundary: unchanged grids stripped, and a render-identical frame
-        // delivered without its snapshot at all. Both ledgers live in PartyCore
-        // (server/PartyCore.js), so the two platforms cannot drift on them.
-        snapshotJSON: function () { return JSON.stringify(gameOrThrow().deliverSnapshot()); },
+        // The frame payloads are PACKED, not JSON: one integer per UTF-16 code
+        // unit, with events/commands as a JSON tail (PartyCore.packFrame). The
+        // boundary, not the simulation, is what costs a frame — decoding eight
+        // boards measured 8.4ms as JSON against 0.06ms packed. Both delivery
+        // filters still apply inside PartyCore: unchanged grids are stripped and a
+        // render-identical frame carries no snapshot at all.
+        snapshotPacked: function () { return gameOrThrow().deliverSnapshotPacked(); },
+        // One seat, for reflecting a single controller input: an input can only
+        // move one board, and deep-copying the other seven was the most expensive
+        // thing this bridge did per input. null when the id owns no board.
+        snapshotPlayerPacked: function (pid, batch) {
+          var c = gameOrThrow();
+          applyInputs(batch);
+          return c.deliverSnapshotPlayerPacked(pid);
+        },
         drainEventsJSON: function () { return JSON.stringify(gameOrThrow().drainEvents()); },
-        frameJSON: function (now) { return JSON.stringify(gameOrThrow().deliverFrame(now)); },
+        framePacked: function (now, batch) {
+          var c = gameOrThrow();
+          applyInputs(batch);
+          return c.deliverFramePacked(now);
+        },
         isEnded: function () { return !!(core && core.game && core.game.ended); },
         // ENGINE-API-END
         // ROOM-API-BEGIN

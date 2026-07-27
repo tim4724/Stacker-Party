@@ -124,6 +124,10 @@ declare class PartyCore {
    *  render; native calls this (or relies on `frame()`'s) only on gridVersion
    *  change. */
   snapshot(): PartyCore.Snapshot;
+  /** VALUE-COPY snapshot of ONE seat (same shape, `players` narrowed to that
+   *  player), for reflecting a single controller input without deep-copying the
+   *  whole room. `null` when the id owns no board. */
+  snapshotPlayer(playerId: string): PartyCore.Snapshot | null;
   /** Return the events accumulated since the last drain (emission order) and
    *  reset the buffer. `frame()` drains internally — don't also drain in the same
    *  tick or you'll split the frame's events. */
