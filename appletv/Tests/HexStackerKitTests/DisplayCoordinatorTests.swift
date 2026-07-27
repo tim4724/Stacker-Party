@@ -546,6 +546,44 @@ import Foundation
         #expect(fo.renderCount > frozen, "rejoin resumes the simulation")
     }
 
+    /// A rejoin reconciliation is ONE change, however many peers went missing while we
+    /// were away. Publishing per departure put N-1 half-reconciled rosters on the wire
+    /// ahead of the real one — and, since the resume comes last, a paused=true snapshot
+    /// ahead of the resumed one. Web onDisplayRejoined and Android handleJoined batch the
+    /// same span; the fold itself lives in publishAs on all three.
+    @Test func rejoinWithSeveralPeersGonePublishesOnce() {
+        let clock = Clock()
+        let (coord, ft, _) = makeLobby(players: 3, clock: clock)
+        coord.remoteStartMatch(); runCountdown(coord)
+        #expect(coord.state == .playing)
+
+        coord.setRelayConnected(false)
+        coord.tick(deltaMs: 16)
+        ft.states.removeAll()
+
+        // The relay lists nobody: all three went while our link was down.
+        coord.setRelayConnected(true)
+        ft.onJoined?("ROOM42", [])
+
+        #expect(ft.states.count == 1,
+                "three departures plus the resume are one change, not four publishes")
+    }
+
+    /// ...and the frame drain carries no floor, so an ordinary tick that moves nothing in
+    /// the room publishes nothing. Without that, batching the per-frame command drain
+    /// would turn every frame into a set_state.
+    @Test func ordinaryFramesPublishNothing() {
+        let clock = Clock()
+        let (coord, ft, _) = makeLobby(players: 1, clock: clock)
+        coord.remoteStartMatch(); runCountdown(coord)
+        #expect(coord.state == .playing)
+        ft.states.removeAll()
+
+        for _ in 0..<30 { coord.tick(deltaMs: 16) }
+
+        #expect(ft.states.isEmpty, "a frame that changed nothing in the room must be silent")
+    }
+
     /// The rejoin snapshot is the controller's authority on pause state, so it must
     /// report the state the display will actually be in — not a stale paused=true
     /// chased by a resumed one. A controller that latched the first and missed the

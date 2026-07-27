@@ -105,7 +105,12 @@ function setRoomState(newState) {
   // transition publishes here, immediately, ahead of the level/colour throttle.
   // Routing them from one guaranteed publish per transition is what let the
   // GAME_START / COUNTDOWN / GAME_END / RETURN_TO_LOBBY broadcasts go.
-  publishRoomState();
+  //
+  // Through the hint rather than publishing directly, so a transition inside a
+  // batch (the engine frame that ends a match) folds into that batch's single
+  // publish instead of firing its own mid-drain. Outside a batch the hint is
+  // always 'now', so this is unchanged.
+  publishAs(result.publish);
   return result.changed;
 }
 

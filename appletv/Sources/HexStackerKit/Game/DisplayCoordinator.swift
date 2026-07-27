@@ -204,6 +204,10 @@ public final class DisplayCoordinator {
     // timer, because a timer needs a real clock and the room core has none.
     private var lastSnapshotAt = -1e12
     private var snapshotPending = false
+    /// Non-nil only while a publishBatch block is running: the hint accumulated so
+    /// far. Doubles as the "are we batching" flag.
+    private var batchHint: String?
+
     /// RoomCore.snapshotThrottleMs, read out of the bundle once the room core is up
     /// (see `roomCore()`), so the window is not mirrored in Swift at all. The
     /// fallback only covers the window before the first successful roomInit, and
@@ -500,20 +504,21 @@ public final class DisplayCoordinator {
                 clearRejoinQR(p.peerIndex)
             }
         }
-        for id in goneIds { onPeerLeft(id) }
-        // BEFORE the republish, not after: the roster is reconciled (so the
-        // all-disconnected guard sees post-reconcile truth) but the snapshot reports
-        // `paused`, and that field is the controller's authority. Publishing first and
-        // resuming afterwards would send a paused=true snapshot and chase it with a
-        // resumed one — a controller that latched the first and missed the second is
-        // stranded on a pause overlay whose Continue cannot help, because resumeGame()
-        // is gated on the manual pause and the display is no longer paused at all.
-        // Web onDisplayRejoined resumes before its publish for the same reason.
-        roomLinkRestored()
-        // Republish so every controller sees a fresh snapshot: it is what clears
-        // their reconnect overlay and their display-gone bail timer, and (after the
-        // resume above) what tells them the game is running again.
-        publishAs("now")
+        // The whole reconciliation is ONE change: however many peers went missing, plus
+        // the resume, collapse into a single publish at the end. Per-departure publishes
+        // would ship half-reconciled rosters, and — because the resume comes last — a
+        // paused=true snapshot chased by a paused=false one, which is exactly how a
+        // controller ends up stranded on a pause overlay whose Continue cannot help
+        // (resumeGame is gated on the manual pause, and the display is no longer paused
+        // at all). Floor "now": this publish has to reach controllers even when nothing
+        // moved, because it also clears their reconnect overlay and display-gone bail
+        // timer and tells them the game is running again. Web onDisplayRejoined and
+        // Android handleJoined batch the same span.
+        publishBatch(floor: "now") {
+            for id in goneIds { onPeerLeft(id) }
+            // Inside the batch, so the resume lands before the one snapshot goes out.
+            roomLinkRestored()
+        }
     }
 
     /// A relay-level `error`. A fatal room error on (re)connect — the relay lost
@@ -877,7 +882,12 @@ public final class DisplayCoordinator {
             output?.renderSnapshot(frame.snapshot)
             // Commands normalize the host effects (controller sends, match end),
             // single-sourced from PartyCore so they can't drift from the web.
-            dispatchCommands(frame.commands)
+            // One frame is one change: a tick that KOs several players at once (a
+            // garbage cascade, a simultaneous top-out) would otherwise publish the
+            // whole room once per KO before anyone sees the first. No floor, so a
+            // frame that moved nothing publishes nothing — which is what keeps this
+            // free at 60 Hz. Web batches displayGame.update() for the same reason.
+            publishBatch { dispatchCommands(frame.commands) }
         case .results:
             // Run presence so the results screen returns to the lobby once every
             // controller has dropped (web RESULTS auto-return).
@@ -1260,9 +1270,48 @@ public final class DisplayCoordinator {
     /// exactly these edges too (updatePlayerList sits beside every publishAs call
     /// site there).
     private func publishAs(_ hint: String?) {
+        if let batch = batchHint {
+            // Inside a batch: fold instead of publishing. Strongest wins.
+            if Self.hintRank(hint) > Self.hintRank(batch) { batchHint = hint ?? "none" }
+            return
+        }
         guard hint == "now" || hint == "soon" else { return }
         refreshDisplayLobby()
         if hint == "now" { publishRoomSnapshot() } else { publishRoomSnapshotSoon() }
+    }
+
+    private static func hintRank(_ hint: String?) -> Int {
+        switch hint {
+        case "now":  return 2
+        case "soon": return 1
+        default:     return 0
+        }
+    }
+
+    /// Run a group of room changes as ONE change: everything inside publishes once,
+    /// when the block returns. Without it a rejoin dropping four peers, or an engine
+    /// frame that KOs three players at once, publishes the whole room once per
+    /// mutation — and every one but the last describes a half-finished state no
+    /// controller should ever render.
+    ///
+    /// Local rather than a RoomCore method because the block is a closure and the
+    /// bridge is JSON-only: a room-core version would need begin/end as two extra
+    /// bridge calls per batch, around a frame drain that runs every tick. The hints
+    /// stay the room core's decision; only the folding is here, and publishAs is
+    /// already the single point every publish goes through.
+    ///
+    /// `floor` is the weakest hint the group may end on: omit it and a group that
+    /// changed nothing stays silent (what makes wrapping the frame drain free), pass
+    /// "now" when the publish has to happen regardless. `defer` closes the fold, so a
+    /// throw mid-block still ships what did change. Web and Android carry this verbatim.
+    private func publishBatch(floor: String = "none", _ body: () -> Void) {
+        batchHint = floor
+        defer {
+            let hint = batchHint
+            batchHint = nil
+            publishAs(hint)
+        }
+        body()
     }
 
     /// Publish now, superseding any pending throttled publish. This is the ONLY thing

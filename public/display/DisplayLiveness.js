@@ -82,7 +82,7 @@ function startLivenessCheck() {
       checkAllPlayersDisconnected();
       // A silent heartbeat timeout can take out the host — republish so the
       // handoff reaches the remaining controllers' isHost flags.
-      publishRoomState();
+      publishAs('now');
     }
     // Poll the flow-owned late-joiner grace deadline (armed by
     // checkAllPlayersDisconnected on the event path). Replaces the old

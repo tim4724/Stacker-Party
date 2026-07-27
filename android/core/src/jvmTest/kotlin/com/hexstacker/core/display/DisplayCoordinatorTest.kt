@@ -448,6 +448,57 @@ class DisplayCoordinatorTest {
         } finally { bridge.close() }
     }
 
+    /** A rejoin reconciliation is ONE change, however many peers went missing while we
+     *  were away. Publishing per departure put N-1 half-reconciled rosters on the wire
+     *  ahead of the real one — and, since the resume comes last, a paused=true snapshot
+     *  ahead of the resumed one. Web onDisplayRejoined and tvOS onJoined batch the same
+     *  span; the fold itself lives in publishAs on all three. */
+    @Test
+    fun rejoinWithSeveralPeersGonePublishesOnce() = runBlocking {
+        val bridge = EngineBridge.create(bundle())
+        try {
+            val t = FakeTransport(); val out = FakeOutput()
+            val coord = DisplayCoordinator(t, out, provider(bridge), seedProvider = { 0xBADCAFEL })
+            coord.start()
+            toPlaying(coord, t, listOf(1, 2, 3))
+
+            coord.onLinkStateChanged(RelayTransport.ConnectionState.RECONNECTING); coord.awaitIdle()
+            t.states.clear()
+
+            // The relay lists nobody: all three went while our link was down.
+            coord.onLinkStateChanged(RelayTransport.ConnectionState.OPEN); coord.awaitIdle()
+            t.joined("R", emptyList()); coord.awaitIdle()
+
+            assertEquals(
+                1, t.states.size,
+                "three departures plus the resume are one change, not four publishes",
+            )
+            coord.stop()
+        } finally { bridge.close() }
+    }
+
+    /** ...and the frame drain carries no floor, so an ordinary tick that moves nothing in
+     *  the room publishes nothing. Without that, batching the 60 Hz drain would turn every
+     *  frame into a set_state. */
+    @Test
+    fun ordinaryFramesPublishNothing() = runBlocking {
+        val bridge = EngineBridge.create(bundle())
+        try {
+            val t = FakeTransport(); val out = FakeOutput()
+            val coord = DisplayCoordinator(t, out, provider(bridge), seedProvider = { 0xBADCAFEL })
+            coord.start()
+            toPlaying(coord, t, listOf(1))
+            assertEquals(RoomState.PLAYING, coord.state)
+            t.states.clear()
+
+            repeat(30) { coord.tick(16.0) }
+            coord.awaitIdle()
+
+            assertEquals(0, t.states.size, "a frame that changed nothing in the room must be silent")
+            coord.stop()
+        } finally { bridge.close() }
+    }
+
     /** The display's OWN link being down is not the controllers' fault: their silence
      *  must not expire them (and, with a late joiner waiting, grace-return the match). */
     @Test

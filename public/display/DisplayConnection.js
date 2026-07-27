@@ -130,7 +130,7 @@ function connectAndCreateRoom() {
         // live at message time, but controllers' isHost flags for their lobby /
         // results banners only refresh from the snapshot. A mid-game onPremium
         // is intentional — we always follow what getMasterPeerIndex dictates.
-        publishRoomState();
+        publishAs('now');
         break;
       case 'error':
         if (!lastRoomCode) {
@@ -349,34 +349,39 @@ function onDisplayRejoined(partyRoomCode, peers) {
       disconnectedIds.push(pEntry[0]);
     }
   }
-  for (var i = 0; i < disconnectedIds.length; i++) {
-    onPeerLeft(disconnectedIds[i]);
-  }
+  // The whole reconciliation is ONE change: however many peers went missing, plus
+  // the resume, collapse into a single publish at the end. Per-mutation publishes
+  // would ship half-reconciled rosters, and — because the resume comes last — a
+  // paused=true snapshot chased by a paused=false one, which is exactly how a
+  // controller ends up stranded on a pause overlay whose Continue cannot work.
+  // Floor 'now': this publish has to reach controllers even when nothing moved at
+  // all, because it is also what clears their reconnect overlay and their
+  // display-gone bail timer, and tells them the game is running again.
+  publishBatch('now', function () {
+    for (var i = 0; i < disconnectedIds.length; i++) {
+      onPeerLeft(disconnectedIds[i]);
+    }
 
-  // Only now, with the roster reconciled and the survivors re-stamped above, is
-  // the sweep safe to re-arm. Gating on the socket instead would reopen the hole
-  // this closes: the socket comes back ~1s into a drop but the relay routes
-  // nothing to us until this reply, so a slow `joined` would expire the roster
-  // (LIVENESS_TIMEOUT_MS is 3s; displayDead alone doesn't bite until 6s).
-  // Mirrors tvOS roomLinkRestored / Android handleJoined.
-  joinedRoom = true;
+    // Only now, with the roster reconciled and the survivors re-stamped above, is
+    // the sweep safe to re-arm. Gating on the socket instead would reopen the hole
+    // this closes: the socket comes back ~1s into a drop but the relay routes
+    // nothing to us until this reply, so a slow `joined` would expire the roster
+    // (LIVENESS_TIMEOUT_MS is 3s; displayDead alone doesn't bite until 6s).
+    // Mirrors tvOS roomLinkRestored / Android handleJoined.
+    joinedRoom = true;
 
-  startLivenessCheck();
+    startLivenessCheck();
 
-  // Clear reconnect overlay — connection restored
-  clearTimeout(disconnectedTimer);
-  party.resetReconnectCount();
-  fadeHide(reconnectOverlay, 200);
-  if (paused && (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN)) {
-    // Clear any surviving countdown timers to prevent duplicates on resume
-    clearCountdownTimers();
-    resumeGame();
-  }
-
-  // Republish so every controller sees a fresh snapshot: it is what clears
-  // their reconnect overlay and their display-gone bail timer, and (after the
-  // resume above) what tells them the game is running again.
-  publishRoomState();
+    // Clear reconnect overlay — connection restored
+    clearTimeout(disconnectedTimer);
+    party.resetReconnectCount();
+    fadeHide(reconnectOverlay, 200);
+    if (paused && (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN)) {
+      // Clear any surviving countdown timers to prevent duplicates on resume
+      clearCountdownTimers();
+      resumeGame();
+    }
+  });
 
   if (roomState === ROOM_STATE.LOBBY) {
     showScreen(SCREEN.LOBBY);
@@ -525,9 +530,51 @@ var _lastPublishAt = 0;
 
 // Apply a mutator's publish hint. Keeps the three-way decision in one place so
 // call sites read as "do the thing, then honour the hint".
+// Hints, weakest first. Only used to fold a batch down to its strongest.
+var HINT_RANK = { none: 0, soon: 1, now: 2 };
+// Non-null only while publishBatch's block is running: the hint the batch has
+// accumulated so far. Doubles as the "are we batching" flag.
+var _batchHint = null;
+
 function publishAs(hint) {
+  if (_batchHint !== null) {
+    // Inside a batch: fold instead of publishing. Strongest wins.
+    if (HINT_RANK[hint] > HINT_RANK[_batchHint]) _batchHint = hint;
+    return;
+  }
   if (hint === 'now') publishRoomState();
   else if (hint === 'soon') publishRoomStateSoon();
+}
+
+// Run a group of room changes as ONE change: everything inside publishes once,
+// when the block returns. Without it a rejoin dropping four peers, or an engine
+// frame that KOs three players at once, publishes the whole room once per
+// mutation — and every one but the last describes a half-finished state no
+// controller should ever render.
+//
+// This sits here rather than in RoomCore on purpose. The block is a closure, and
+// the native bridges are JSON-only (quickjs-kt has no call-with-arguments API),
+// so a room-core version would need begin/end as two separate bridge calls —
+// on Android two extra interpolated QuickJS evaluations per batch, i.e. ~120 a
+// second just to open and close mostly-empty batches around each frame. The
+// hints stay the room core's decision; only the folding is local, and publishAs
+// is already the single point every publish goes through.
+//
+// `floor` is the weakest hint the group may end on. Omit it and a group that
+// changed nothing stays silent, which is what makes wrapping the 60 Hz frame
+// drain free; pass 'now' when the publish has to happen regardless. The publish
+// runs from a finally, so a throw mid-block still ships what did change and can
+// never leave the fold armed. tvOS and Android carry the same wrapper verbatim.
+function publishBatch(floor, fn) {
+  if (typeof floor === 'function') { fn = floor; floor = 'none'; }
+  _batchHint = floor;
+  try {
+    fn();
+  } finally {
+    var hint = _batchHint;
+    _batchHint = null;
+    publishAs(hint);
+  }
 }
 
 function publishRoomStateSoon() {

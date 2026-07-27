@@ -164,7 +164,7 @@ function pauseGame() {
   }
   // userVisiblePaused() may still be false here (a connection- or auto-pause
   // is display-internal); publishing either way keeps the snapshot honest.
-  publishRoomState();
+  publishAs('now');
   onGamePaused();
 }
 
@@ -228,7 +228,7 @@ function resumeGame() {
   connectionPaused = false;
   paused = false;
   if (roomState === ROOM_STATE.COUNTDOWN && countdown.callback) {
-    publishRoomState();
+    publishAs('now');
     onGameResumed();
     if (countdown.remaining === 0) {
       armCountdownDismiss();
@@ -241,7 +241,7 @@ function resumeGame() {
     }
     return;
   }
-  publishRoomState();
+  publishAs('now');
   onGameResumed();
 }
 
@@ -346,7 +346,7 @@ function runGameLocallyWithSeed(seed) {
         // The snapshot carries alive too, so a reconnect right after a KO
         // still lands on the dead board. The targeted PLAYER_STATE above stays
         // because it is what fires the KO overlay the instant it happens.
-        publishRoomState();
+        publishAs('now');
       } else if (event.type === 'piece_lock') {
         onPieceLock(event);
       } else if (event.type === 'garbage_cancelled') {
@@ -535,7 +535,7 @@ function dismissAutoPausedOverlay() {
   // A manual pause just became an auto-pause: userVisiblePaused() flips true
   // -> false, so returning players must not be handed a pause overlay whose
   // Continue button the display would ignore.
-  publishRoomState();
+  publishAs('now');
 }
 
 function onGameResumed() {

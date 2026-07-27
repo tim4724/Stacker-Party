@@ -147,6 +147,11 @@ class DisplayCoordinator(
     // crossing is an interpolated eval plus a JSON parse.
     private val seenSinceTick = HashSet<Int>()
 
+    // Non-null only while a publishBatch block is running: the hint accumulated so far.
+    // Doubles as the "are we batching" flag. Safe as a plain field: every room mutation
+    // runs on the single action-channel consumer, so two batches can never interleave.
+    private var batchHint: String? = null
+
     // Retained-snapshot throttle (leading + trailing). Window comes from the room core
     // (RoomCore.SNAPSHOT_THROTTLE_MS) so the policy is single-sourced with the web.
     private var snapshotThrottleMs = 500.0
@@ -370,31 +375,37 @@ class DisplayCoordinator(
         for (id in room.players.keys) {
             if (id in peers) roomCore.onSeen(id, now) else gone.add(id)
         }
-        for (id in gone) onPeerLeft(id)
-        // Only NOW is the sweep safe to re-arm: until this reply the relay dropped
-        // everything addressed to us, so every lastSeen was stale through no fault of the
-        // controllers. Gating on socket-OPEN instead left a hole — the re-stamp there buys
-        // exactly LIVENESS_TIMEOUT_MS, but the handshake deadline is twice that, so a slow
-        // `joined` expired the whole roster. The loop above re-stamped the survivors, which
-        // is strictly better than a blanket prime: it skips the peers the relay no longer
-        // lists, and those just went through onPeerLeft. Web ties its re-stamp to the same
-        // reply (onDisplayRejoined).
-        relayConnected = true
-        // The link-drop pause lifts here — after the roster reconcile above (so resumeGame's
-        // allParticipantsDisconnected guard sees post-reconcile truth) and BEFORE the
-        // publish below, because the snapshot reports `paused` and that is the controller's
-        // authority. Resuming afterwards made every rejoin snapshot say paused=true and then
-        // chase it with a second publish; a controller that latched the first and missed the
-        // second was stranded on a pause overlay whose Continue cannot help, since
-        // resumeGame() is gated on a manual pause and the display is no longer paused at all.
-        if (connectionPaused) {
-            setConnectionPaused(false)
-            resumeGame()
+        // The whole reconciliation is ONE change: however many peers went missing, plus
+        // the resume below, collapse into a single publish at the end. Per-departure
+        // publishes would ship half-reconciled rosters, and — because the resume comes
+        // last — a paused=true snapshot chased by a paused=false one, which is exactly how
+        // a controller ends up stranded on a pause overlay whose Continue cannot help.
+        // Floor `now`: this publish has to reach controllers even when nothing moved,
+        // because it also clears their reconnect overlay and display-gone bail timer.
+        // Web onDisplayRejoined and tvOS onJoined batch the same span.
+        publishBatch(floor = RoomCoreClient.PUBLISH_NOW) {
+            for (id in gone) onPeerLeft(id)
+            // Only NOW is the sweep safe to re-arm: until this reply the relay dropped
+            // everything addressed to us, so every lastSeen was stale through no fault of the
+            // controllers. Gating on socket-OPEN instead left a hole — the re-stamp there buys
+            // exactly LIVENESS_TIMEOUT_MS, but the handshake deadline is twice that, so a slow
+            // `joined` expired the whole roster. The loop above re-stamped the survivors, which
+            // is strictly better than a blanket prime: it skips the peers the relay no longer
+            // lists, and those just went through onPeerLeft. Web ties its re-stamp to the same
+            // reply (onDisplayRejoined).
+            relayConnected = true
+            // The link-drop pause lifts here — after the roster reconcile above (so resumeGame's
+            // allParticipantsDisconnected guard sees post-reconcile truth) and inside the batch,
+            // because the snapshot reports `paused` and that is the controller's authority.
+            // Resuming after the publish made every rejoin snapshot say paused=true and then
+            // chase it with a second publish; a controller that latched the first and missed the
+            // second was stranded on a pause overlay whose Continue cannot help, since
+            // resumeGame() is gated on a manual pause and the display is no longer paused at all.
+            if (connectionPaused) {
+                setConnectionPaused(false)
+                resumeGame()
+            }
         }
-        // One publish replaces the per-survivor re-welcome fanout: the relay replays the
-        // retained snapshot to every peer that (re)joins anyway, so this is what clears
-        // their reconnect overlay and their display-gone bail timer.
-        publishRoomSnapshot()
     }
 
     private suspend fun onPeerJoined(index: Int) {
@@ -457,7 +468,7 @@ class DisplayCoordinator(
             checkAllParticipantsDisconnected() // no-ops outside PLAYING; arms grace / auto-pauses
             // A silent heartbeat timeout can take out the host — republish so the handoff
             // reaches the remaining controllers.
-            publishRoomSnapshot()
+            publishAs(RoomCoreClient.PUBLISH_NOW)
         }
         // The late-joiner grace deadline (armed on the event path by
         // checkAllParticipantsDisconnected) fired: return to the lobby for them.
@@ -507,7 +518,7 @@ class DisplayCoordinator(
                 output.setPaused(false)
                 // userVisiblePaused just flipped true -> false: returning players must not
                 // be handed a pause overlay whose Continue the display would ignore.
-                publishRoomSnapshot()
+                publishAs(RoomCoreClient.PUBLISH_NOW)
             }
             return
         }
@@ -721,7 +732,7 @@ class DisplayCoordinator(
         // Everyone who remained was disconnected: don't build a zero-player engine.
         if (room.size == 0) {
             // The prune changed the roster controllers render, so publish either way.
-            if (state == RoomState.RESULTS) returnToLobby() else publishRoomSnapshot()
+            if (state == RoomState.RESULTS) returnToLobby() else publishAs(RoomCoreClient.PUBLISH_NOW)
             return
         }
         // Fold in the late joiners who sat out the previous round.
@@ -802,7 +813,12 @@ class DisplayCoordinator(
                 // delivered one (shim scene signature): keep the retained snapshot
                 // instead of re-rendering a pixel-identical full screen.
                 frame.snapshot?.let { output.renderSnapshot(it) }
-                dispatchCommands(frame.commands) // host effects -> sends + match end
+                // One frame is one change: a tick that KOs several players at once (a
+                // garbage cascade, a simultaneous top-out) would otherwise publish the
+                // whole room once per KO before anyone sees the first. No floor, so a
+                // frame that moved nothing publishes nothing — which is what keeps this
+                // free at 60 Hz. Web batches displayGame.update() for the same reason.
+                publishBatch { dispatchCommands(frame.commands) } // host effects -> sends + match end
             }
             RoomState.LOBBY, RoomState.RESULTS -> {}
         }
@@ -967,7 +983,7 @@ class DisplayCoordinator(
         output.setPaused(true)
         // userVisiblePaused may still be false here (a connection- or auto-pause is
         // display-internal); publishing either way keeps the snapshot honest.
-        publishRoomSnapshot()
+        publishAs(RoomCoreClient.PUBLISH_NOW)
     }
 
     private suspend fun resumeGame() {
@@ -987,7 +1003,7 @@ class DisplayCoordinator(
         }
         if (!muted) output.resumeMusic()
         output.setPaused(false)
-        publishRoomSnapshot()
+        publishAs(RoomCoreClient.PUBLISH_NOW)
     }
 
     // =====================================================================
@@ -1060,9 +1076,53 @@ class DisplayCoordinator(
      * clock and the room core has none.
      */
     private suspend fun publishAs(hint: String) {
+        batchHint?.let { batch ->
+            // Inside a batch: fold instead of publishing. Strongest wins.
+            if (hintRank(hint) > hintRank(batch)) batchHint = hint
+            return
+        }
         when (hint) {
             RoomCoreClient.PUBLISH_NOW -> publishRoomSnapshot()
             RoomCoreClient.PUBLISH_SOON -> publishRoomSnapshotSoon()
+        }
+    }
+
+    private fun hintRank(hint: String): Int = when (hint) {
+        RoomCoreClient.PUBLISH_NOW -> 2
+        RoomCoreClient.PUBLISH_SOON -> 1
+        else -> 0
+    }
+
+    /**
+     * Run a group of room changes as ONE change: everything inside publishes once, when
+     * the block returns. Without it a rejoin dropping four peers, or an engine frame that
+     * KOs three players at once, publishes the whole room once per mutation — and every
+     * one but the last describes a half-finished state no controller should ever render.
+     *
+     * Local rather than a RoomCore method because the block is a closure and the bridge is
+     * JSON-only (quickjs-kt has no call-with-arguments API), so a room-core version would
+     * need begin/end as two extra interpolated `evaluate` calls per batch, around a frame
+     * drain that runs every tick. The hints stay the room core's decision; only the
+     * folding is here, and [publishAs] is already the one point every publish goes through.
+     *
+     * [floor] is the weakest hint the group may end on: leave it default and a group that
+     * changed nothing stays silent (what makes wrapping the frame drain free), pass `now`
+     * when the publish has to happen regardless. `finally` closes the fold, so a throw
+     * mid-block still ships what did change. Web and tvOS carry this verbatim.
+     *
+     * `inline` so [body] can call suspend functions in the caller's context.
+     */
+    private suspend inline fun publishBatch(
+        floor: String = "none",
+        body: () -> Unit,
+    ) {
+        batchHint = floor
+        try {
+            body()
+        } finally {
+            val hint = batchHint ?: floor
+            batchHint = null
+            publishAs(hint)
         }
     }
 

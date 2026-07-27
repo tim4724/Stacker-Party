@@ -310,7 +310,7 @@ function setDisplayMuted(next) {
   // Publish so the host controller's Game Music toggle reflects changes made
   // via the display's own mute button, and so a newly-promoted host opening
   // the settings popup sees the correct state without a page reload.
-  publishRoomState();
+  publishAs('now');
 }
 
 muteBtn.addEventListener('click', function() {
