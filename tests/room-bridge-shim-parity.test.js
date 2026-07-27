@@ -21,6 +21,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const esbuild = require('esbuild');
+const { coreOptions } = require('../scripts/build.js');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -85,13 +87,18 @@ const SHIMS = {
   },
 };
 
-for (const [platform, getShim] of Object.entries(SHIMS)) {
-  test(`the ${platform} shim's room API works against the real bundle in a bare VM`, () => {
-    const bundle = path.join(ROOT, 'dist', 'partycore.js');
-    assert.ok(fs.existsSync(bundle), 'dist/partycore.js missing — run `npm run build` first');
+// Bundle in memory with the SAME options build.js ships, so this gate needs no
+// prior `npm run build` (dist/ is gitignored and CI's unit job does not build)
+// and can never drift from the artifact the TVs actually load.
+async function bundleCore() {
+  const result = await esbuild.build(coreOptions({ write: false }));
+  return result.outputFiles[0].text;
+}
 
+for (const [platform, getShim] of Object.entries(SHIMS)) {
+  test(`the ${platform} shim's room API works against the real bundle in a bare VM`, async () => {
     const ctx = vm.createContext({});
-    vm.runInContext(fs.readFileSync(bundle, 'utf8'), ctx);
+    vm.runInContext(await bundleCore(), ctx);
     vm.runInContext(getShim(), ctx);
 
     const call = (js) => JSON.parse(vm.runInContext(js, ctx));
