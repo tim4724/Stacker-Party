@@ -14,7 +14,7 @@ import kotlinx.serialization.json.jsonObject
 /**
  * The room's single source of truth, reached from Kotlin.
  *
- * `server/RoomBrain.js` — the SAME module the web display and Apple TV run, shipped
+ * `server/RoomCore.js` — the SAME module the web display and Apple TV run, shipped
  * inside `dist/partycore.js` — owns the roster, auto-naming, name sanitizing, colour
  * slots, host election, the pause/mute/results facts a display owns, and the retained
  * snapshot controllers derive their whole UI from. This class is a typed Kotlin
@@ -35,14 +35,14 @@ import kotlinx.serialization.json.jsonObject
  * SESSION-lived, unlike the per-match engine: created once at coordinator start and
  * surviving across matches, so it must exist before the first room event is handled.
  */
-class RoomBrainClient private constructor(private val bridge: EngineBridge) {
+class RoomCoreClient private constructor(private val bridge: EngineBridge) {
 
-    /** The last snapshot the brain produced, decoded. */
+    /** The last snapshot the room core produced, decoded. */
     var snapshot: RoomSnapshot = RoomSnapshot.EMPTY
         private set
 
     /** The same snapshot as parsed JSON, published verbatim via `set_state` so the
-     *  bytes on the wire are the brain's, not a Kotlin re-encoding of them. */
+     *  bytes on the wire are the room core's, not a Kotlin re-encoding of them. */
     var snapshotJson: JsonObject = JsonObject(emptyMap())
         private set
 
@@ -53,17 +53,17 @@ class RoomBrainClient private constructor(private val bridge: EngineBridge) {
 
     companion object {
         /** Publish hints. Every mutator returns one; the shells own the timer, because
-         *  a throttle timer needs a real clock and the brain has none. */
+         *  a throttle timer needs a real clock and the room core has none. */
         const val PUBLISH_NOW = "now"
         const val PUBLISH_SOON = "soon"
 
         /**
-         * Construct the brain inside [bridge]'s JS context and read its first snapshot.
-         * [options] is the RoomBrain constructor object (`liveness`, `maxPlayers`, ...).
+         * Construct the room core inside [bridge]'s JS context and read its first snapshot.
+         * [options] is the RoomCore constructor object (`liveness`, `maxPlayers`, ...).
          */
-        suspend fun create(bridge: EngineBridge, options: JsonObject): RoomBrainClient {
+        suspend fun create(bridge: EngineBridge, options: JsonObject): RoomCoreClient {
             bridge.roomInit(options.toString())
-            return RoomBrainClient(bridge).also { it.refresh() }
+            return RoomCoreClient(bridge).also { it.refresh() }
         }
     }
 
@@ -138,7 +138,7 @@ class RoomBrainClient private constructor(private val bridge: EngineBridge) {
     suspend fun reset() = unitMutating(call("reset"))
 
     // =====================================================================
-    // Liveness (predicates in the brain, effects in the shell)
+    // Liveness (predicates in the room core, effects in the shell)
     // =====================================================================
 
     suspend fun onSeen(peerIndex: Int, nowMs: Double) = unit(call("onSeen", num(peerIndex), num(nowMs)))
@@ -162,7 +162,7 @@ class RoomBrainClient private constructor(private val bridge: EngineBridge) {
     suspend fun graceTick(nowMs: Double): Boolean = decode(call("graceTick", num(nowMs)))
     suspend fun connectedCount(): Int = decode(bridge.roomGetJson("connectedCount"))
 
-    /** The publish-throttle window (RoomBrain.SNAPSHOT_THROTTLE_MS, exposed on the
+    /** The publish-throttle window (RoomCore.SNAPSHOT_THROTTLE_MS, exposed on the
      *  prototype for exactly this read), so the policy is single-sourced with the web
      *  instead of hand-mirrored into a Kotlin constant that then drifts. */
     suspend fun snapshotThrottleMs(): Double = decode(bridge.roomGetJson("snapshotThrottleMs"))
@@ -175,7 +175,7 @@ class RoomBrainClient private constructor(private val bridge: EngineBridge) {
         bridge.roomCallJson(method, JsonArray(args.toList()).toString())
 
     /** Re-read the published snapshot. Runs after every call that can move it, so a
-     *  publish always ships what the brain holds right now. */
+     *  publish always ships what the room core holds right now. */
     private suspend fun refresh() {
         val js = bridge.roomSnapshotJson()
         snapshotJson = EngineJson.json.parseToJsonElement(js).jsonObject
@@ -207,7 +207,7 @@ class RoomBrainClient private constructor(private val bridge: EngineBridge) {
     private fun num(value: Double): JsonElement = JsonPrimitive(value)
     private fun str(value: String?): JsonElement = if (value == null) JsonNull else JsonPrimitive(value)
 
-    // ---- returned decisions (the brain's own result shapes) ----
+    // ---- returned decisions (the room core's own result shapes) ----
 
     @Serializable
     data class PeerJoined(

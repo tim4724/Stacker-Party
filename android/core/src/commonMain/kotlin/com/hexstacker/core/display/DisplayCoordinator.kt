@@ -13,7 +13,7 @@ import com.hexstacker.core.net.OutboundMessage
 import com.hexstacker.core.net.RelayConfig
 import com.hexstacker.core.net.RelayTransport
 import com.hexstacker.core.net.RoomState
-import com.hexstacker.core.room.RoomBrainClient
+import com.hexstacker.core.room.RoomCoreClient
 import com.hexstacker.core.room.RoomSnapshot
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -41,7 +41,7 @@ import kotlin.time.TimeSource
  * half of the protocol (lobby -> countdown -> playing -> results). Everything that
  * IS the room — roster, auto-naming, colour slots, host election, the pause/mute/
  * results facts and the retained snapshot controllers render from — belongs to
- * [RoomBrainClient], i.e. to `server/RoomBrain.js` running in the session's QuickJS
+ * [RoomCoreClient], i.e. to `server/RoomCore.js` running in the session's QuickJS
  * runtime, the same module the web display and Apple TV run. This class keeps the
  * transport, timers, rendering and audio, and nothing else.
  *
@@ -54,7 +54,7 @@ import kotlin.time.TimeSource
  * Threading (the Kotlin analogue of Swift's "everything on .main"): every inbound
  * relay callback, every remote-control action, and every [tick] is funnelled
  * through ONE [Channel] consumed by a single coroutine on [scope]'s
- * single-thread dispatcher. The consumer is the only thing that mutates the brain,
+ * single-thread dispatcher. The consumer is the only thing that mutates the room core,
  * the pause flags, the countdown counters and the engine handle, so there is no
  * shared-state race and engine calls can suspend without interleaving.
  * [tick] / [awaitIdle] enqueue and await an ack, so callers observe a settled state
@@ -68,7 +68,7 @@ class DisplayCoordinator(
     private val transport: RelayTransport,
     private val output: DisplayOutput,
     /**
-     * The session's ONE QuickJS runtime, awaited lazily. The room brain and each
+     * The session's ONE QuickJS runtime, awaited lazily. The room core and each
      * match's game live in the SAME context (the JS shim's `Bridge` holds both), so
      * this is deliberately a single provider rather than a separate engine factory:
      * two runtimes would mean two `Bridge` objects and a room nobody publishes.
@@ -83,11 +83,11 @@ class DisplayCoordinator(
     private val onError: (label: String, error: Throwable) -> Unit = { _, _ -> },
     dispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
 ) {
-    private var brainOrNull: RoomBrainClient? = null
+    private var brainOrNull: RoomCoreClient? = null
 
-    /** The room brain. Available from the consumer's first action onwards; see [consume]. */
-    internal val brain: RoomBrainClient
-        get() = brainOrNull ?: error("room brain not initialized yet")
+    /** The room core. Available from the consumer's first action onwards; see [consume]. */
+    internal val roomCore: RoomCoreClient
+        get() = brainOrNull ?: error("room core not initialized yet")
 
     /** The retained room snapshot: the display's read model AND what controllers get. */
     val room: RoomSnapshot get() = brainOrNull?.snapshot ?: RoomSnapshot.EMPTY
@@ -103,10 +103,10 @@ class DisplayCoordinator(
     private var roomCode: String? = null
     private var instance: String? = null
 
-    // The three pause flags. Display-owned INPUTS to the snapshot (the brain projects
+    // The three pause flags. Display-owned INPUTS to the snapshot (the room core projects
     // them into the single `paused` a controller sees), mirrored here because the
     // frame loop reads `paused` every tick and crossing into JS for that is absurd;
-    // every write goes through the setters below, so the brain never falls behind.
+    // every write goes through the setters below, so the room core never falls behind.
     private var paused = false
     // Auto-pause (all game participants dropped mid-game) — distinct from a manual/remote
     // pause so a reconnect can auto-resume. Mirrors DisplayGame.js `autoPaused`.
@@ -116,11 +116,11 @@ class DisplayCoordinator(
     private var connectionPaused = false
     private var muted = false
 
-    private suspend fun setPaused(value: Boolean) { paused = value; brain.setPaused(value) }
-    private suspend fun setAutoPaused(value: Boolean) { autoPaused = value; brain.setAutoPaused(value) }
+    private suspend fun setPaused(value: Boolean) { paused = value; roomCore.setPaused(value) }
+    private suspend fun setAutoPaused(value: Boolean) { autoPaused = value; roomCore.setAutoPaused(value) }
     private suspend fun setConnectionPaused(value: Boolean) {
         connectionPaused = value
-        brain.setConnectionPaused(value)
+        roomCore.setConnectionPaused(value)
     }
 
     // True while we are IN the room, not merely holding an open socket. Gates the
@@ -136,19 +136,19 @@ class DisplayCoordinator(
 
     // Which boards currently show a rejoin overlay. The display's own rendering state,
     // and the cheap "was this peer gone?" test on the inbound path (web disconnectedQRs).
-    // INVARIANT: this set and the brain's presence set move together — every site that
+    // INVARIANT: this set and the room core's presence set move together — every site that
     // raises or clears a disconnect must touch BOTH, or host election (which reads the
-    // brain) skips a present player.
+    // roomCore) skips a present player.
     private val disconnectedBoards = HashSet<Int>()
 
     // Peers heard from since the last liveness tick. Liveness is pulled in one batched
-    // brain.tick() per second instead of an onSeen crossing per inbound packet: at eight
+    // roomCore.tick() per second instead of an onSeen crossing per inbound packet: at eight
     // controllers the input path is the hottest thing this coordinator does, and each
     // crossing is an interpolated eval plus a JSON parse.
     private val seenSinceTick = HashSet<Int>()
 
-    // Retained-snapshot throttle (leading + trailing). Window comes from the brain
-    // (RoomBrain.SNAPSHOT_THROTTLE_MS) so the policy is single-sourced with the web.
+    // Retained-snapshot throttle (leading + trailing). Window comes from the room core
+    // (RoomCore.SNAPSHOT_THROTTLE_MS) so the policy is single-sourced with the web.
     private var snapshotThrottleMs = 500.0
     private var lastSnapshotAt = -1e12
     private var snapshotPending = false
@@ -250,18 +250,18 @@ class DisplayCoordinator(
     private suspend fun consume() {
         // Room state exists before the JS runtime does: the relay's created/joined and
         // peer_joined land while the bundle is still being read and compiled. Since the
-        // brain lives in that runtime, build it FIRST and let the actions queue in the
+        // roomCore lives in that runtime, build it FIRST and let the actions queue in the
         // (unlimited) channel behind it — a queued room event is correct, a room event
-        // handled without a brain is not. Unlike the per-match engine this happens once
-        // per session; the brain then survives every match.
+        // handled without a room core is not. Unlike the per-match engine this happens once
+        // per session; the room core then survives every match.
         try {
             val bridge = bridgeProvider()
-            brainOrNull = RoomBrainClient.create(bridge, roomOptions())
-            snapshotThrottleMs = brain.snapshotThrottleMs()
+            brainOrNull = RoomCoreClient.create(bridge, roomOptions())
+            snapshotThrottleMs = roomCore.snapshotThrottleMs()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
-            // Without a brain there is no room and nothing this display can usefully do.
+            // Without a room core there is no room and nothing this display can usefully do.
             // Report it, then keep DRAINING: tick() and the remote actions wait on an ack,
             // so a consumer that simply stopped would freeze the render loop instead of
             // failing visibly. Draining keeps the app responsive on a dead room.
@@ -313,7 +313,7 @@ class DisplayCoordinator(
         }
     }
 
-    /** RoomBrain constructor options. maxPlayers is deliberately omitted: the brain
+    /** RoomCore constructor options. maxPlayers is deliberately omitted: the room core
      *  defaults it from the bundle's own constants.js, so the room cap is not mirrored
      *  here at all. Liveness is injected because the shell owns no timing policy. */
     private fun roomOptions(): JsonObject = buildJsonObject {
@@ -368,7 +368,7 @@ class DisplayCoordinator(
         val now = nowWallMs()
         val gone = mutableListOf<Int>()
         for (id in room.players.keys) {
-            if (id in peers) brain.onSeen(id, now) else gone.add(id)
+            if (id in peers) roomCore.onSeen(id, now) else gone.add(id)
         }
         for (id in gone) onPeerLeft(id)
         // Only NOW is the sweep safe to re-arm: until this reply the relay dropped
@@ -398,25 +398,25 @@ class DisplayCoordinator(
     }
 
     private suspend fun onPeerJoined(index: Int) {
-        // The brain allocates the colour slot, invents the placeholder auto-name (with
+        // The room core allocates the colour slot, invents the placeholder auto-name (with
         // helloSeen=false, so the joiner's own controller waits for its HELLO instead of
         // rendering a guessed identity), and decides whether this is a lobby member or a
         // late joiner waiting out the round. It refuses silently on a duplicate — an
         // in-session reconnect lands on the SAME relay slot, so the relay re-emits
         // peer_joined for a peer we already know, and re-registering would overwrite the
         // kept name/colour and, in a full room, bounce a legitimately returning player.
-        val res = brain.peerJoined(index, nowWallMs())
+        val res = roomCore.peerJoined(index, nowWallMs())
         if (!res.added) return
         publishAs(res.publish)
     }
 
     private suspend fun onPeerLeft(index: Int) {
         fastlane?.close(index) // the P2P link died with the controller; it re-offers on reconnect
-        // The brain owns the branch: mid-game an active participant keeps their row (so the
+        // The room core owns the branch: mid-game an active participant keeps their row (so the
         // slot stays pinned for a cross-device reclaim), while a late joiner and anyone
         // leaving in lobby/results is dropped outright, with the sticky-host handoff and the
         // empty-results return to lobby decided inside.
-        val res = brain.peerLeft(index)
+        val res = roomCore.peerLeft(index)
         if (!res.known) return
         if (res.action == "disconnected") {
             showDisconnectBoard(index) // keeps the slot pinned for a seamless reconnect
@@ -437,7 +437,7 @@ class DisplayCoordinator(
      * 1 Hz liveness sweep: a controller silent past LIVENESS_TIMEOUT_MS is only marked
      * disconnected and shown a per-board rejoin QR, NOT removed from the roster. Mirrors
      * DisplayLiveness.js; the heavier roster-removal path (onPeerLeft) is reserved for a
-     * real relay peer_left. The brain gates out the LOBBY and already-disconnected peers;
+     * real relay peer_left. The room core gates out the LOBBY and already-disconnected peers;
      * a controller that pings again is reconnected in [onMessage].
      */
     private suspend fun checkLiveness() {
@@ -450,7 +450,7 @@ class DisplayCoordinator(
             seenSinceTick.clear()
             return
         }
-        val res = brain.tick(nowWallMs(), seenSinceTick.toList())
+        val res = roomCore.tick(nowWallMs(), seenSinceTick.toList())
         seenSinceTick.clear()
         if (res.expired.isNotEmpty()) {
             for (id in res.expired) showDisconnectBoard(id)
@@ -472,16 +472,16 @@ class DisplayCoordinator(
     private suspend fun flushSeen() {
         if (seenSinceTick.isEmpty()) return
         val now = nowWallMs()
-        for (id in seenSinceTick) brain.onSeen(id, now)
+        for (id in seenSinceTick) roomCore.onSeen(id, now)
         seenSinceTick.clear()
     }
 
     /** Raise a per-board rejoin overlay and flag the peer absent. The overlay set and the
-     *  brain's presence set MUST move together; this is the only place that raises both. */
+     *  room core's presence set MUST move together; this is the only place that raises both. */
     private suspend fun showDisconnectBoard(peerIndex: Int) {
         fastlane?.close(peerIndex) // the P2P link died with the controller; it re-offers
         disconnectedBoards.add(peerIndex)
-        brain.markDisconnected(peerIndex)
+        roomCore.markDisconnected(peerIndex)
         output.setDisconnected(peerIndex, rejoinUrl(peerIndex))
     }
 
@@ -492,11 +492,11 @@ class DisplayCoordinator(
      */
     private suspend fun checkAllParticipantsDisconnected() {
         if (state != RoomState.PLAYING) return // don't auto-pause during COUNTDOWN
-        if (!brain.allParticipantsDisconnected()) return
+        if (!roomCore.allParticipantsDisconnected()) return
         // graceTick both arms and (once the window elapses) fires. Honour a fire here as
         // well as in the sweep: an event landing on/after the deadline between polls would
         // otherwise slip a full window.
-        if (brain.graceTick(nowWallMs())) { returnToLobby(); return }
+        if (roomCore.graceTick(nowWallMs())) { returnToLobby(); return }
         if (paused) {
             // Already manually paused when the last player dropped: convert the
             // manual pause into a silent auto-pause and hide the stranded overlay.
@@ -570,11 +570,11 @@ class DisplayCoordinator(
         }
         val msg = ControllerMessage.from(data) ?: return
         // Any message proves the sender is alive. Batched: the 1 Hz sweep folds this set
-        // into brain.tick(), which stamps presence before it decides who expired.
+        // into roomCore.tick(), which stamps presence before it decides who expired.
         seenSinceTick.add(from)
         val wasDisconnected = disconnectedBoards.remove(from)
         if (wasDisconnected) {
-            brain.markReconnected(from)
+            roomCore.markReconnected(from)
             output.setDisconnected(from, null) // clear the rejoin overlay
         }
         when (msg.type) {
@@ -603,13 +603,13 @@ class DisplayCoordinator(
     }
 
     private suspend fun handleHello(from: Int, msg: ControllerMessage) {
-        // Everything a HELLO decides lives in the brain: the sanitized name (empty and
+        // Everything a HELLO decides lives in the room core: the sanitized name (empty and
         // legacy P1-P8 submissions resolving to room-unique HX names), the preferred colour
         // (honoured right away, so the snapshot below already names the colour the
         // controller will keep), whether a cross-device rejoin claim is valid, and whether
         // the room is full.
-        val res = brain.hello(from, helloBody(msg), nowWallMs())
-        // The room half of a claim moved inside the brain; the game half is ours.
+        val res = roomCore.hello(from, helloBody(msg), nowWallMs())
+        // The room half of a claim moved inside the room core; the game half is ours.
         if (res.claimed) res.oldPeerIndex?.let { applyReconnectClaim(it, from) }
         if (!res.accepted) {
             if (res.roomFull) transport.sendTo(from, OutboundMessage.error("Room is full"))
@@ -624,7 +624,7 @@ class DisplayCoordinator(
         if (res.claimed) checkAutoResume()
     }
 
-    /** The HELLO body the brain reads. `claim` (from the rejoin QR) and the legacy
+    /** The HELLO body the room core reads. `claim` (from the rejoin QR) and the legacy
      *  `rejoinId` are normalized onto `rejoinToken`, which is what it looks for. */
     private fun helloBody(msg: ControllerMessage): JsonObject = buildJsonObject {
         msg.name?.let { put("name", it) }
@@ -634,10 +634,10 @@ class DisplayCoordinator(
     }
 
     /**
-     * Finish a cross-device rejoin the brain has already accepted: everything keyed by peer
+     * Finish a cross-device rejoin the room core has already accepted: everything keyed by peer
      * index that lives OUTSIDE the room (the P2P link, the rejoin overlays, the engine's
      * boards) moves from the old index to the new one. The room half (roster record, sticky
-     * host slot, participant order, alive flags, cached ranking) moved inside the brain.
+     * host slot, participant order, alive flags, cached ranking) moved inside the room core.
      */
     private suspend fun applyReconnectClaim(oldId: Int, newId: Int) {
         fastlane?.close(oldId) // drop the dropped device's P2P link; the returning device re-offers
@@ -668,19 +668,19 @@ class DisplayCoordinator(
     }
 
     private suspend fun handleSetLevel(from: Int, msg: ControllerMessage) {
-        val res = brain.setLevel(from, msg.level)
+        val res = roomCore.setLevel(from, msg.level)
         if (!res.changed) return
         if (state == RoomState.LOBBY) refreshDisplayLobby()
-        // Held-finger control: the brain's 'soon' hint routes this through the throttle, so
+        // Held-finger control: the room core's 'soon' hint routes this through the throttle, so
         // a burst of +/- taps collapses to ~2 publishes per second with the trailing one
         // carrying the final level. Outside the lobby the stepper is unreachable ('none').
         publishAs(res.publish)
     }
 
     private suspend fun handleSetColor(from: Int, msg: ControllerMessage) {
-        // The brain silently rejects collisions so concurrent picks don't spam the sender
+        // The room core silently rejects collisions so concurrent picks don't spam the sender
         // with errors; the next snapshot carries the truth.
-        val res = brain.setColor(from, msg.colorIndex)
+        val res = roomCore.setColor(from, msg.colorIndex)
         if (!res.changed) return
         refreshDisplayLobby()
         publishAs(res.publish)
@@ -689,7 +689,7 @@ class DisplayCoordinator(
     private suspend fun handleSetName(from: Int, msg: ControllerMessage) {
         // Allowed in every state, including mid-game (web onSetName): it only relabels the
         // player and never touches game state.
-        val res = brain.setName(from, msg.name)
+        val res = roomCore.setName(from, msg.name)
         if (!res.changed) return
         refreshDisplayLobby()
         publishAs(res.publish)
@@ -698,7 +698,7 @@ class DisplayCoordinator(
     private suspend fun handleSetMute(from: Int, msg: ControllerMessage) {
         if (from != room.hostPeerIndex) return // host-only: the display's music is shared
         muted = (msg.muted == true)
-        val res = brain.setMuted(muted)
+        val res = roomCore.setMuted(muted)
         output.setMuted(muted) // actually silence/restore the TV music
         publishAs(res.publish)
     }
@@ -714,10 +714,10 @@ class DisplayCoordinator(
         // clear the overlays, then re-stamp presence on this "everyone present" transition
         // so a controller that went quiet just before the match isn't instantly flagged.
         flushSeen()
-        brain.clearAlive()
-        brain.pruneDisconnected(nowWallMs())
+        roomCore.clearAlive()
+        roomCore.pruneDisconnected(nowWallMs())
         disconnectedBoards.clear()
-        brain.clearDisconnected(nowWallMs())
+        roomCore.clearDisconnected(nowWallMs())
         // Everyone who remained was disconnected: don't build a zero-player engine.
         if (room.size == 0) {
             // The prune changed the roster controllers render, so publish either way.
@@ -725,15 +725,15 @@ class DisplayCoordinator(
             return
         }
         // Fold in the late joiners who sat out the previous round.
-        brain.admitWaiting()
-        val transition = brain.transitionTo(RoomState.COUNTDOWN)
+        roomCore.admitWaiting()
+        val transition = roomCore.transitionTo(RoomState.COUNTDOWN)
         if (!transition.changed) return
         // Publishes, and that is the whole countdown protocol now: controllers learn they
         // are counting down from snapshot.roomState (which dims their pad) and learn the
         // game is live from the COUNTDOWN -> PLAYING transition. The digits stay local.
         publishAs(transition.publish)
         // Board-layout order (join order, first joiner leftmost), pinned as the active set.
-        val order = brain.freezeParticipantOrder()
+        val order = roomCore.freezeParticipantOrder()
         pendingSeed = seedProvider()
         setPaused(false)
         setAutoPaused(false)
@@ -766,7 +766,7 @@ class DisplayCoordinator(
     private suspend fun startPlaying() {
         // Publishes: this is what moves controllers off the countdown-dimmed pad and arms
         // their touch input.
-        publishAs(brain.transitionTo(RoomState.PLAYING).publish)
+        publishAs(roomCore.transitionTo(RoomState.PLAYING).publish)
         // If everyone dropped during COUNTDOWN the match must pause (or return to lobby via
         // the grace window) instead of starting unpaused and playing itself out.
         checkAllParticipantsDisconnected()
@@ -860,7 +860,7 @@ class DisplayCoordinator(
                     // The snapshot's per-player `alive` is what a controller reconnecting
                     // right after a KO reads, so it lands on the dead board; that plus the
                     // targeted player_state above is why the game_over unicast could go.
-                    publishAs(brain.setAlive(it, false).publish)
+                    publishAs(roomCore.setAlive(it, false).publish)
                 }
                 CommandType.GAME_END -> endGame(c.results ?: emptyList())
                 else -> {
@@ -880,9 +880,9 @@ class DisplayCoordinator(
         // Label the ranking with roster names/colours and append the players who sat this
         // round out (flagged newPlayer), then stash it BEFORE the transition: the transition
         // publishes, and the RESULTS snapshot is what carries the ranking to controllers.
-        val enriched = brain.enrichResults(rankingJson(results))
-        brain.setResults(enriched)
-        publishAs(brain.transitionTo(RoomState.RESULTS).publish)
+        val enriched = roomCore.enrichResults(rankingJson(results))
+        roomCore.setResults(enriched)
+        publishAs(roomCore.transitionTo(RoomState.RESULTS).publish)
         output.stopMusic()
         output.setPaused(false) // MUST precede showResults (clears the focus menu)
         output.showResults(decodeResults(enriched))
@@ -901,22 +901,22 @@ class DisplayCoordinator(
         // Remove the players who went missing, then fold in the late joiners who were
         // waiting out the round.
         flushSeen()
-        brain.pruneDisconnected(nowWallMs())
-        brain.admitWaiting()
-        brain.clearAlive()
-        brain.setResults(null)
+        roomCore.pruneDisconnected(nowWallMs())
+        roomCore.admitWaiting()
+        roomCore.clearAlive()
+        roomCore.setResults(null)
         // Publishes: controllers see roomState back at LOBBY and route themselves there,
         // which is what the RETURN_TO_LOBBY broadcast used to do.
-        val res = brain.transitionTo(RoomState.LOBBY)
+        val res = roomCore.transitionTo(RoomState.LOBBY)
         returnToLobbyUi()
         publishAs(res.publish)
     }
 
-    /** The display-side half of a lobby return (also used when the brain returns to the
+    /** The display-side half of a lobby return (also used when the room core returns to the
      *  lobby by itself, on the last participant leaving RESULTS). */
     private suspend fun returnToLobbyUi() {
         disconnectedBoards.clear()
-        brain.clearDisconnected(nowWallMs())
+        roomCore.clearDisconnected(nowWallMs())
         output.showScreen(DisplayScreen.LOBBY)
     }
 
@@ -944,7 +944,7 @@ class DisplayCoordinator(
         disconnectedBoards.clear()
         // Roster, participants, liveness, results, the pause flags and the room state, all
         // back to a fresh room. Mute survives (a device preference, not room state).
-        brain.reset()
+        roomCore.reset()
         paused = false
         autoPaused = false
         connectionPaused = false
@@ -972,7 +972,7 @@ class DisplayCoordinator(
 
     private suspend fun resumeGame() {
         if (!paused || (state != RoomState.PLAYING && state != RoomState.COUNTDOWN)) return
-        if (brain.allParticipantsDisconnected()) return // web canResumeGame
+        if (roomCore.allParticipantsDisconnected()) return // web canResumeGame
         if (autoPaused) setAutoPaused(false)
         setConnectionPaused(false)
         setPaused(false)
@@ -1041,7 +1041,7 @@ class DisplayCoordinator(
         }
         RemoteKind.TOGGLE_MUTE -> {
             muted = !muted
-            val res = brain.setMuted(muted)
+            val res = roomCore.setMuted(muted)
             output.setMuted(muted)
             publishAs(res.publish)
             muted
@@ -1054,15 +1054,15 @@ class DisplayCoordinator(
 
     /**
      * Apply a mutator's publish hint, so call sites read as "do the thing, then honour
-     * the hint". WHICH call takes which path is the brain's decision, not this file's:
+     * the hint". WHICH call takes which path is the room core's decision, not this file's:
      * every mutator returns 'now', 'soon' or 'none', and the web display and Apple TV
      * read the same hints. Only the timer is per-shell, because a timer needs a real
-     * clock and the brain has none.
+     * clock and the room core has none.
      */
     private suspend fun publishAs(hint: String) {
         when (hint) {
-            RoomBrainClient.PUBLISH_NOW -> publishRoomSnapshot()
-            RoomBrainClient.PUBLISH_SOON -> publishRoomSnapshotSoon()
+            RoomCoreClient.PUBLISH_NOW -> publishRoomSnapshot()
+            RoomCoreClient.PUBLISH_SOON -> publishRoomSnapshotSoon()
         }
     }
 
@@ -1093,8 +1093,8 @@ class DisplayCoordinator(
         // host tint the results/pause overlays read. Mirrors the web publishRoomState
         // calling applyHostTint before it hands the snapshot to the relay.
         refreshDisplayLobby()
-        // Built by RoomBrain, byte-identically on the web and Apple TV: that is the point.
-        transport.setState(brain.snapshotJson)
+        // Built by RoomCore, byte-identically on the web and Apple TV: that is the point.
+        transport.setState(roomCore.snapshotJson)
     }
 
     /** Fire a pending trailing snapshot once the throttle window has elapsed. */
@@ -1104,18 +1104,18 @@ class DisplayCoordinator(
         publishRoomSnapshot()
     }
 
-    /** Rebuild the display's own lobby UI. The roster comes from the brain's `list()`
+    /** Rebuild the display's own lobby UI. The roster comes from the room core's `list()`
      *  rather than the snapshot: the lobby sorts by join order and the snapshot, keyed by
      *  peer index, deliberately carries neither joinedAt nor connected. */
     private suspend fun refreshDisplayLobby() {
-        output.updateLobby(brain.list(), room.hostPeerIndex)
+        output.updateLobby(roomCore.list(), room.hostPeerIndex)
     }
 
     // =====================================================================
     // Results marshalling
     // =====================================================================
 
-    /** The raw ranking as the brain's enrichResults expects it (the engine's own fields;
+    /** The raw ranking as the room core's enrichResults expects it (the engine's own fields;
      *  playerName/colorIndex/newPlayer are what it adds). */
     private fun rankingJson(results: List<PlayerResult>): JsonArray = buildJsonArray {
         for (r in results) {

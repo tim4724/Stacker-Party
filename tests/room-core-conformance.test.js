@@ -1,11 +1,11 @@
 'use strict';
 
-// RoomBrain conformance: Node leg.
+// RoomCore conformance: Node leg.
 //
 // The same op log runs three times against the same module — here in Node, in
-// JavaScriptCore on tvOS (RoomBrainConformanceTests.swift), and in QuickJS on
-// Android TV (RoomBrainConformanceTest.kt) — and every step's return value and
-// resulting snapshot must match tests/fixtures/room-brain-golden.json exactly.
+// JavaScriptCore on tvOS (RoomCoreConformanceTests.swift), and in QuickJS on
+// Android TV (RoomCoreConformanceTest.kt) — and every step's return value and
+// resulting snapshot must match tests/fixtures/room-core-golden.json exactly.
 //
 // This leg has two jobs. It proves the golden still describes the module (so a
 // behaviour change has to be an explicit regeneration, reviewed in the diff),
@@ -16,17 +16,17 @@ const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { RoomBrain } = require('../server/RoomBrain.js');
-const { INIT, OPS } = require('./fixtures/room-brain-ops.js');
-const { replay } = require('../scripts/gen-room-brain-golden.js');
+const { RoomCore } = require('../server/RoomCore.js');
+const { INIT, OPS } = require('./fixtures/room-core-ops.js');
+const { replay } = require('../scripts/gen-room-core-golden.js');
 
-const GOLDEN_PATH = path.join(__dirname, 'fixtures', 'room-brain-golden.json');
+const GOLDEN_PATH = path.join(__dirname, 'fixtures', 'room-core-golden.json');
 
-describe('RoomBrain conformance', () => {
+describe('RoomCore conformance', () => {
   test('the checked-in golden is present and matches the op log', () => {
     assert.ok(
       fs.existsSync(GOLDEN_PATH),
-      'tests/fixtures/room-brain-golden.json is missing — run `npm run build:golden`'
+      'tests/fixtures/room-core-golden.json is missing — run `npm run build:golden`'
     );
     const golden = JSON.parse(fs.readFileSync(GOLDEN_PATH, 'utf8'));
     assert.deepEqual(golden.init, INIT, 'golden init options are stale');
@@ -51,7 +51,7 @@ describe('RoomBrain conformance', () => {
     // had silently diverged across the three platforms. It has to be IN the
     // conformance log, so it has to be seedable across a JSON-only bridge.
     const names = () => {
-      const b = new RoomBrain(INIT);
+      const b = new RoomCore(INIT);
       b.peerJoined(1, 0); b.peerJoined(2, 0); b.peerJoined(3, 0);
       return [1, 2, 3].map((i) => b.get(i).playerName);
     };
@@ -64,12 +64,12 @@ describe('RoomBrain conformance', () => {
     // tvOS used to name players "HX-(slot + 1)" with no blocklist at all, so a
     // real Apple TV room could seat HX-4 and HX-13. The whole point of a shared
     // module is that this cannot be true on one platform and false on another.
-    assert.deepEqual(RoomBrain.AUTO_NAME_BLOCKLIST, [4, 13, 17, 69]);
-    const b = new RoomBrain({ rngSeed: 1 });
+    assert.deepEqual(RoomCore.AUTO_NAME_BLOCKLIST, [4, 13, 17, 69]);
+    const b = new RoomCore({ rngSeed: 1 });
     for (let i = 0; i < 200; i++) {
       const name = b.generateAutoName(null);
       const num = Number(name.slice(3));
-      assert.ok(!RoomBrain.AUTO_NAME_BLOCKLIST.includes(num), `generated a blocklisted ${name}`);
+      assert.ok(!RoomCore.AUTO_NAME_BLOCKLIST.includes(num), `generated a blocklisted ${name}`);
     }
   });
 });

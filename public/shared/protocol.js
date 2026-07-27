@@ -33,7 +33,7 @@ var MSG = {
   // (identity, roster, host, room state, countdown, pause, mute, results, and
   // which screen to show) now rides one retained snapshot published with
   // set_state, so there is no second channel left that could disagree with it.
-  // See server/RoomBrain.js, which builds that snapshot for all three displays.
+  // See server/RoomCore.js, which builds that snapshot for all three displays.
   //
   // Retired with the snapshot, and deliberately NOT kept as reserved names:
   // welcome, lobby_update, game_start, countdown, game_end, game_over,

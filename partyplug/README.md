@@ -22,7 +22,7 @@ nothing.
 - **Transport is pluggable.** Talk to the Party Sockets relay
   (`PartyConnection`) or run on AirConsole (`AirConsoleAdapter`) behind one
   interface, with an optional P2P low-latency input path (`PartyFastlane`).
-- **`RoomFlow` is the brain** — who is in the room, who is host, what state we
+- **`RoomFlow` is the room core** — who is in the room, who is host, what state we
   are in. It is headless: it emits events, your view renders.
 - **The kit knows nothing about your game.** No DOM, no rendering, no colors,
   names, scores, or rounds. Those are yours.
@@ -96,7 +96,7 @@ The kit deliberately does **not** define the snapshot's shape, because the shape
 is entirely game-specific. What it gives you is the transport guarantee and the
 `RoomFlow` half of the content (room state, roster, host, presence).
 
-The worked example is HexStacker's `server/RoomBrain.js`: it *composes*
+The worked example is HexStacker's `server/RoomCore.js`: it *composes*
 `RoomFlow`, adds the game-flavoured layer (naming, colour slots, per-player
 game facts), and projects the whole thing into one snapshot. Notes worth
 copying if you write your own:

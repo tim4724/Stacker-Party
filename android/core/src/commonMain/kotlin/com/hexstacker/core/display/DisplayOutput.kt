@@ -15,7 +15,7 @@ sealed interface CountdownValue {
 }
 
 /**
- * The enriched per-player results row, decoded from what `RoomBrain.enrichResults`
+ * The enriched per-player results row, decoded from what `RoomCore.enrichResults`
  * hands back: the engine's ranking labelled with roster names/colours, plus the
  * players who sat the round out (flagged [newPlayer]). The RESULTS snapshot carries
  * the identical array to controllers, so the TV and the phones render one ranking

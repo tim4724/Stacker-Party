@@ -16,7 +16,7 @@ import kotlin.test.assertEquals
 /**
  * [jsString] is load-bearing: quickjs-kt has no call-with-arguments API, so every
  * call into the engine context is a source string Kotlin interpolates. Until the
- * room brain landed, everything spliced in was an Int or a fixed enum constant.
+ * room core landed, everything spliced in was an Int or a fixed enum constant.
  * Room payloads carry PLAYER NAMES — arbitrary user text — so a raw splice would
  * break on a quote or a backslash, and a crafted name could close the literal and
  * append a statement that runs inside the engine's own runtime.
@@ -72,7 +72,7 @@ class JsStringTest {
     }
 
     /** End to end: a hostile name crossing the real room API survives verbatim (bar the
-     *  control characters the brain itself strips) and runs nothing. */
+     *  control characters the room core itself strips) and runs nothing. */
     @Test
     fun hostileNamesSurviveTheRoomBridgeIntact() = runBlocking {
         val bundle = File(System.getProperty("hexcore.bundle") ?: error("hexcore.bundle not set")).readText()

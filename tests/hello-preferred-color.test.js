@@ -4,11 +4,11 @@ const { test, describe, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { MSG } = require('../public/shared/protocol');
 const { PLAYER_COLORS } = require('../public/shared/theme');
-const { RoomBrain } = require('../server/RoomBrain.js');
+const { RoomCore } = require('../server/RoomCore.js');
 
 // =====================================================================
 // The preferred colour riding on HELLO, driven against the REAL handlers in
-// server/RoomBrain.js rather than a mirror of them.
+// server/RoomCore.js rather than a mirror of them.
 //
 // Production flow (web controller):
 //   1. relay peer_joined -> peerJoined registers the player with an HX
@@ -33,18 +33,18 @@ function lastPublished(room) {
   return room.published[room.published.length - 1];
 }
 
-// The thin shell around the brain: honour the publish hint, and send the
-// room-full error the brain reports rather than deciding it here.
+// The thin shell around the room core: honour the publish hint, and send the
+// room-full error the room core reports rather than deciding it here.
 function publishAs(room, hint) {
-  if (hint === 'now' || hint === 'soon') room.published.push(room.brain.snapshot().players);
+  if (hint === 'now' || hint === 'soon') room.published.push(room.roomCore.snapshot().players);
 }
 
 function onPeerJoined(room, peerIndex) {
-  publishAs(room, room.brain.peerJoined(peerIndex, 1000).publish);
+  publishAs(room, room.roomCore.peerJoined(peerIndex, 1000).publish);
 }
 
 function onHello(room, fromId, msg) {
-  const res = room.brain.hello(fromId, msg, 1100);
+  const res = room.roomCore.hello(fromId, msg, 1100);
   if (!res.accepted && res.roomFull) {
     room.errors.push({ to: fromId, message: 'Room is full' });
     return;
@@ -56,8 +56,8 @@ describe('Display: preferred color on HELLO', () => {
   let room;
 
   beforeEach(() => {
-    const brain = new RoomBrain({ rngSeed: 11 });
-    room = { brain, players: brain.players, published: [], errors: [] };
+    const roomCore = new RoomCore({ rngSeed: 11 });
+    room = { roomCore, players: roomCore.players, published: [], errors: [] };
   });
 
   test('preferred color replaces the default slot for a peer_joined-registered player', () => {
@@ -77,7 +77,7 @@ describe('Display: preferred color on HELLO', () => {
   });
 
   test('taken preferred color keeps the assigned slot', () => {
-    room.brain.addPlayer('a', { playerName: 'A', playerIndex: 5, startLevel: 1 });
+    room.roomCore.addPlayer('a', { playerName: 'A', playerIndex: 5, startLevel: 1 });
     onPeerJoined(room, 'b');
     room.published = [];
 
@@ -117,7 +117,7 @@ describe('Display: preferred color on HELLO', () => {
   });
 
   test('honored color is published so existing controllers grey out the swatch', () => {
-    room.brain.addPlayer('a', { playerName: 'A', playerIndex: 1, startLevel: 1 });
+    room.roomCore.addPlayer('a', { playerName: 'A', playerIndex: 1, startLevel: 1 });
     onPeerJoined(room, 'b');
     room.published = [];
 

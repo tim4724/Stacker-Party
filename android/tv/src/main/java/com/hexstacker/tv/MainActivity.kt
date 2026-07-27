@@ -94,9 +94,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var coordinator: DisplayCoordinator
     private lateinit var ui: TvDisplayOutput
 
-    // One QuickJS runtime for the whole app: the session-lived room brain plus a game
+    // One QuickJS runtime for the whole app: the session-lived room core plus a game
     // re-inited per match (Bridge.create, no bundle re-parse). Started as soon as the
-    // coordinator's consumer asks for it, because the room brain has to exist before the
+    // coordinator's consumer asks for it, because the room core has to exist before the
     // first relay room event is handled; everyone awaits the SAME deferred, so a START
     // that beats the bootstrap just joins it instead of racing a second runtime into being.
     private var engineDeferred: Deferred<EngineBridge>? = null
@@ -152,7 +152,7 @@ class MainActivity : ComponentActivity() {
         coordinator = DisplayCoordinator(
             transport = relay,
             output = ui,
-            // ONE runtime for the session: the room brain lives in it from
+            // ONE runtime for the session: the room core lives in it from
             // coordinator.start() onwards and each match's game is created in the same
             // context. Awaiting it is also what orders the bootstrap — room events can
             // arrive before the bundle has finished compiling, and they queue behind this.
@@ -219,7 +219,7 @@ class MainActivity : ComponentActivity() {
         // has played out (~950ms), so the countdown/GO have nothing left to build. Safe
         // to lose to lifecycle cancellation: first use re-creates it on demand. The
         // QuickJS runtime is no longer warmed here — coordinator.start() above already
-        // asked for it, because the room brain runs inside it.
+        // asked for it, because the room core runs inside it.
         lifecycleScope.launch {
             awaitFrame()
             delay(WARMUP_DELAY_MS)

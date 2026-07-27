@@ -344,7 +344,7 @@ function onDisplayRejoined(partyRoomCode, peers) {
   var disconnectedIds = [];
   for (const pEntry of players) {
     if (connectedSet.has(pEntry[0])) {
-      brain.onSeen(pEntry[0], now);
+      roomCore.onSeen(pEntry[0], now);
     } else {
       disconnectedIds.push(pEntry[0]);
     }
@@ -386,10 +386,10 @@ function onDisplayRejoined(partyRoomCode, peers) {
 }
 
 function onPeerJoined(peerIndex) {
-  // The brain allocates the colour slot, invents the placeholder auto-name, and
+  // The room core allocates the colour slot, invents the placeholder auto-name, and
   // decides whether this joiner is a lobby member or a late joiner waiting out
   // the round. It refuses silently on a duplicate or a full room.
-  var res = brain.peerJoined(peerIndex, Date.now());
+  var res = roomCore.peerJoined(peerIndex, Date.now());
   if (!res.added) return;
 
   if (res.joinedLobby) {
@@ -405,11 +405,11 @@ function onPeerLeft(peerIndex) {
 
   cleanupPlayerInput(peerIndex);
 
-  // The brain owns the branch: mid-game an active participant keeps their row
+  // The room core owns the branch: mid-game an active participant keeps their row
   // (so the slot stays pinned for a reconnect via claimReconnect), while a late
   // joiner and anyone leaving in lobby/results is dropped outright, with the
   // sticky-host handoff and the empty-results return to lobby handled inside.
-  var res = brain.peerLeft(peerIndex);
+  var res = roomCore.peerLeft(peerIndex);
   if (!res.known) return;
 
   if (res.action === 'disconnected') {
@@ -487,11 +487,11 @@ function transferMapEntry(map, oldId, newId) {
   map.set(newId, value);
 }
 
-// Finish a cross-device rejoin the brain has already accepted: everything keyed
+// Finish a cross-device rejoin the room core has already accepted: everything keyed
 // by peer index that lives OUTSIDE the room (input state, the QR canvases, the
 // garbage effect maps, the engine's boards) moves from the old index to the new
 // one. The room half (roster record, sticky host slot, participant order,
-// alive flags, cached ranking) moved inside brain.claimReconnect.
+// alive flags, cached ranking) moved inside roomCore.claimReconnect.
 function applyReconnectClaim(oldId, fromId) {
   cleanupPlayerInput(oldId);
   cleanupPlayerInput(fromId);
@@ -515,11 +515,11 @@ function applyReconnectClaim(oldId, fromId) {
 // window collapses into one trailing publish that reads live state at fire
 // time, so the latest value always wins. Everything else publishes immediately.
 //
-// Which calls take which path is the brain's decision, not this file's: every
+// Which calls take which path is the room core's decision, not this file's: every
 // mutator returns a `publish` hint of 'now', 'soon' or 'none', and tvOS and
 // Android read the same hints. Only the timer is per-shell, because a timer
-// needs a real clock and the brain has none.
-var ROOM_STATE_THROTTLE_MS = window.GameEngine.RoomBrain.SNAPSHOT_THROTTLE_MS;
+// needs a real clock and the room core has none.
+var ROOM_STATE_THROTTLE_MS = window.GameEngine.RoomCore.SNAPSHOT_THROTTLE_MS;
 var _publishTimer = null;
 var _lastPublishAt = 0;
 
@@ -553,9 +553,9 @@ function publishRoomState() {
   _lastPublishAt = Date.now();
   applyHostTint();
   if (party && typeof party.setState === 'function') {
-    // The snapshot itself is built by RoomBrain, byte-identically on tvOS and
+    // The snapshot itself is built by RoomCore, byte-identically on tvOS and
     // Android TV, which is the whole point of the module.
-    party.setState(brain.snapshot());
+    party.setState(roomCore.snapshot());
   }
 }
 
@@ -624,7 +624,7 @@ function showDisconnectQR(peerIndex) {
   // disconnect must touch BOTH — markDisconnected/markReconnected/clearDisconnected
   // here, and rekey() clears flow's flag on a cross-device claim. If they drift,
   // host election (which reads flow) skips a present player.
-  brain.markDisconnected(peerIndex);
+  roomCore.markDisconnected(peerIndex);
   if (!joinUrl) return;
   // Splice the claim in before the fragment so the instance hash stays intact.
   var hashIdx = joinUrl.indexOf('#');

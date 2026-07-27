@@ -30,7 +30,7 @@ import kotlin.test.assertTrue
  * [RelayTransport] (records sent frames + retained snapshots) + a fake
  * [DisplayOutput] (records side-effects) + a REAL [EngineBridge] driven from the
  * QuickJS bundle (the `hexcore.bundle` system property, as the engine tests do).
- * The bridge is not optional any more, even for lobby-only cases: the room brain
+ * The bridge is not optional any more, even for lobby-only cases: the room core
  * lives in that same JS runtime.
  *
  * Drives the lifecycle: connect -> lobby -> hello -> start_game -> countdown
@@ -48,7 +48,7 @@ class DisplayCoordinatorTest {
         return File(p).readText()
     }
 
-    /** The room brain and each match's game share ONE runtime, so the provider hands
+    /** The room core and each match's game share ONE runtime, so the provider hands
      *  back the same bridge every time (as :tv's engineAsync() does). */
     private fun provider(bridge: EngineBridge): suspend () -> EngineBridge = { bridge }
 
@@ -263,7 +263,7 @@ class DisplayCoordinatorTest {
             t.deliver(1, simple(Msg.PAUSE_GAME)); coord.awaitIdle()
             assertTrue(out.pausedFlag, "manual pause shows the overlay")
             t.peerLeft(1); t.peerLeft(2); coord.awaitIdle()
-            assertEquals(0, coord.brain.connectedCount())
+            assertEquals(0, coord.roomCore.connectedCount())
             assertFalse(out.pausedFlag, "overlay hides when the last player drops during a manual pause")
             assertFalse(t.lastState().paused, "and controllers are told the pause is no longer actionable")
 
@@ -350,7 +350,7 @@ class DisplayCoordinatorTest {
 
             val pausesBefore = out.musicPauses
             t.peerLeft(1); t.peerLeft(2); coord.awaitIdle()
-            assertTrue(coord.brain.allParticipantsDisconnected())
+            assertTrue(coord.roomCore.allParticipantsDisconnected())
             assertTrue(out.musicPauses > pausesBefore, "music paused on all-disconnect")
             assertFalse(t.lastState().paused, "an auto-pause is display-internal, never published as actionable")
             assertFalse(out.pausedFlag, "no pause overlay for a silent auto-pause")
@@ -375,7 +375,7 @@ class DisplayCoordinatorTest {
             coord.start()
             toPlaying(coord, t, listOf(1, 2))
             t.deliver(3, hello("Zoe")); coord.awaitIdle() // late joiner (waiting for next game)
-            assertTrue(coord.brain.hasLateJoiners())
+            assertTrue(coord.roomCore.hasLateJoiners())
 
             now = 1000.0
             t.peerLeft(1); t.peerLeft(2); coord.awaitIdle() // arms the 5s grace deadline
@@ -404,9 +404,9 @@ class DisplayCoordinatorTest {
             now = 3500.0
             t.deliver(2, simple(Msg.PING)); coord.awaitIdle() // refreshes peer 2 presence
             out.disconnects.clear()
-            coord.tick(1100.0) // 1Hz sweep -> brain.tick(now, seen) -> expired -> rejoin QR
-            assertTrue(coord.brain.isDisconnected(1), "silent controller marked disconnected")
-            assertFalse(coord.brain.isDisconnected(2), "recently-seen controller stays connected")
+            coord.tick(1100.0) // 1Hz sweep -> roomCore.tick(now, seen) -> expired -> rejoin QR
+            assertTrue(coord.roomCore.isDisconnected(1), "silent controller marked disconnected")
+            assertFalse(coord.roomCore.isDisconnected(2), "recently-seen controller stays connected")
             val overlay = out.disconnects.lastOrNull { it.first == 1 }
             assertNotNull(overlay)
             assertTrue(overlay.second?.contains("claim=1") == true, "rejoin overlay carries ?claim=<peerIndex>")
@@ -462,15 +462,15 @@ class DisplayCoordinatorTest {
             toPlaying(coord, t, listOf(1, 2))
             t.deliver(1, simple(Msg.PING)); t.deliver(2, simple(Msg.PING)); coord.awaitIdle()
             t.deliver(3, hello("Zoe")); coord.awaitIdle() // late joiner -> arms the grace path
-            assertTrue(coord.brain.hasLateJoiners())
+            assertTrue(coord.roomCore.hasLateJoiners())
 
             // Our socket drops. No controller traffic can reach us for the whole reconnect
             // budget (~13s of capped backoff), so every lastSeen goes stale.
             coord.onLinkStateChanged(RelayTransport.ConnectionState.RECONNECTING); coord.awaitIdle()
             now = 12_000.0
             coord.tick(1100.0); coord.tick(1100.0)
-            assertFalse(coord.brain.isDisconnected(1), "our outage must not expire a controller")
-            assertFalse(coord.brain.isDisconnected(2), "our outage must not expire a controller")
+            assertFalse(coord.roomCore.isDisconnected(1), "our outage must not expire a controller")
+            assertFalse(coord.roomCore.isDisconnected(2), "our outage must not expire a controller")
             assertEquals(RoomState.PLAYING, coord.state, "the match is not grace-returned to the lobby")
 
             // Socket back, but the relay hasn't answered our join yet: it still drops
@@ -480,21 +480,21 @@ class DisplayCoordinatorTest {
             coord.onLinkStateChanged(RelayTransport.ConnectionState.OPEN); coord.awaitIdle()
             now = 24_000.0
             coord.tick(1100.0); coord.tick(1100.0)
-            assertFalse(coord.brain.isDisconnected(1), "socket-open alone must not re-arm the sweep")
-            assertFalse(coord.brain.isDisconnected(2), "socket-open alone must not re-arm the sweep")
+            assertFalse(coord.roomCore.isDisconnected(1), "socket-open alone must not re-arm the sweep")
+            assertFalse(coord.roomCore.isDisconnected(2), "socket-open alone must not re-arm the sweep")
             assertEquals(RoomState.PLAYING, coord.state)
 
             // The `joined` reply reconciles the roster and re-stamps the survivors, so the
             // sweep comes back on with clean presence.
             t.joined("R", listOf(1, 2, 3)); coord.awaitIdle()
             coord.tick(1100.0)
-            assertFalse(coord.brain.isDisconnected(1), "re-stamped by the roster reconcile")
-            assertFalse(coord.brain.isDisconnected(2), "re-stamped by the roster reconcile")
+            assertFalse(coord.roomCore.isDisconnected(1), "re-stamped by the roster reconcile")
+            assertFalse(coord.roomCore.isDisconnected(2), "re-stamped by the roster reconcile")
 
             // ...and it really is on again: silence from here does expire a controller.
             now = 30_000.0
             coord.tick(1100.0)
-            assertTrue(coord.brain.isDisconnected(1), "the sweep is live once we are back in the room")
+            assertTrue(coord.roomCore.isDisconnected(1), "the sweep is live once we are back in the room")
 
             coord.stop()
         } finally { bridge.close() }
@@ -582,7 +582,7 @@ class DisplayCoordinatorTest {
             toPlaying(coord, t, listOf(1, 2))
             // Player 1 drops mid-game -> disconnected + per-board rejoin overlay.
             t.peerLeft(1); coord.awaitIdle()
-            assertTrue(coord.brain.isDisconnected(1))
+            assertTrue(coord.roomCore.isDisconnected(1))
 
             // A returning phone gets a fresh peerIndex (5), then claims peer 1 via the ?claim= QR.
             t.peerJoined(5); coord.awaitIdle()
@@ -591,7 +591,7 @@ class DisplayCoordinatorTest {
 
             assertTrue(coord.room.has(5), "returning peer holds the reclaimed slot")
             assertFalse(coord.room.has(1), "the old peerIndex is gone (placeholder + old record merged)")
-            assertFalse(coord.brain.isDisconnected(5), "the reclaimed board is connected")
+            assertFalse(coord.roomCore.isDisconnected(5), "the reclaimed board is connected")
             assertTrue(coord.room.isParticipant(5), "and it inherited the dropped board's seat")
             assertTrue(out.disconnects.any { it.first == 1 && it.second == null }, "old board's rejoin overlay cleared")
             assertEquals(RoomState.PLAYING, coord.state, "the match continues")
@@ -611,12 +611,12 @@ class DisplayCoordinatorTest {
             coord.start()
             toPlaying(coord, t, listOf(1, 2))
             t.peerLeft(1); coord.awaitIdle()
-            assertTrue(coord.brain.isDisconnected(1))
+            assertTrue(coord.roomCore.isDisconnected(1))
 
             // Active participant 2 tries to claim player 1's dropped board.
             t.deliver(2, buildJsonObject { put("type", Msg.HELLO); put("rejoinToken", 1) }); coord.awaitIdle()
             assertTrue(coord.room.has(1), "the dropped board's slot is NOT absorbed")
-            assertTrue(coord.brain.isDisconnected(1), "player 1 stays reclaimable")
+            assertTrue(coord.roomCore.isDisconnected(1), "player 1 stays reclaimable")
             assertTrue(coord.room.has(2), "the forger keeps its own identity")
             coord.stop()
         } finally { bridge.close() }
@@ -626,7 +626,7 @@ class DisplayCoordinatorTest {
     fun autoNamesAreRoomUniqueAndSkipTheBlocklist() = runBlocking {
         // Auto-naming is the shared module's, not a Kotlin re-implementation: room-unique
         // HX-N picked at RANDOM from the allowed pool (Android used to pick lowest-free,
-        // tvOS had no blocklist at all — which is precisely why it moved into RoomBrain).
+        // tvOS had no blocklist at all — which is precisely why it moved into RoomCore).
         val bridge = EngineBridge.create(bundle())
         try {
             val t = FakeTransport(); val out = FakeOutput()
@@ -714,8 +714,8 @@ class DisplayCoordinatorTest {
             // still read t=0 (>3s stale) and both would be flagged disconnected here.
             now = 3200.0
             coord.tick(1100.0)
-            assertFalse(coord.brain.isDisconnected(1), "rejoin re-stamped survivor 1's liveness")
-            assertFalse(coord.brain.isDisconnected(2), "rejoin re-stamped survivor 2's liveness")
+            assertFalse(coord.roomCore.isDisconnected(1), "rejoin re-stamped survivor 1's liveness")
+            assertFalse(coord.roomCore.isDisconnected(2), "rejoin re-stamped survivor 2's liveness")
             coord.stop()
         } finally { bridge.close() }
     }
@@ -738,7 +738,7 @@ class DisplayCoordinatorTest {
             // Enter the countdown, then everyone drops mid-countdown (no auto-pause yet).
             coord.tick(0.0) // step 0 -> "3"
             t.peerLeft(1); t.peerLeft(2); coord.awaitIdle()
-            assertTrue(coord.brain.allParticipantsDisconnected())
+            assertTrue(coord.roomCore.allParticipantsDisconnected())
             assertEquals(RoomState.COUNTDOWN, coord.state, "no auto-pause during COUNTDOWN")
             assertFalse(out.pausedFlag)
 
@@ -779,8 +779,8 @@ class DisplayCoordinatorTest {
             now = 3500.0
             coord.tick(0.0)    // step 0 -> "3"
             coord.tick(1100.0) // 1Hz sweep at now=3500
-            assertFalse(coord.brain.isDisconnected(2), "beginCountdown re-stamped the quiet controller's liveness")
-            assertFalse(coord.brain.isDisconnected(1), "the host controller stays connected")
+            assertFalse(coord.roomCore.isDisconnected(2), "beginCountdown re-stamped the quiet controller's liveness")
+            assertFalse(coord.roomCore.isDisconnected(1), "the host controller stays connected")
             coord.stop()
         } finally { bridge.close() }
     }
@@ -829,7 +829,7 @@ class DisplayCoordinatorTest {
             toPlaying(coord, t, listOf(1, 2))
             // Both controllers last checked in at t=0; peer 2 then goes silent.
             t.deliver(1, simple(Msg.PING)); t.deliver(2, simple(Msg.PING)); coord.awaitIdle()
-            coord.tick(1100.0) // fold the batched `seen` set into the brain
+            coord.tick(1100.0) // fold the batched `seen` set into the room core
 
             // Host returns to lobby >3s later, BEFORE any liveness sweep flagged peer 2.
             now = 3500.0
@@ -1023,9 +1023,9 @@ class DisplayCoordinatorTest {
     @Test
     fun retainedSnapshotShapeAndThrottle() = runBlocking {
         // The snapshot IS the protocol, and the level stepper / colour rose are the two
-        // finger-speed controls the brain hints 'soon' for: leading + trailing, so a burst
+        // finger-speed controls the room core hints 'soon' for: leading + trailing, so a burst
         // collapses into one trailing publish that reads live state at fire time. The
-        // window comes from RoomBrain.SNAPSHOT_THROTTLE_MS, not from a Kotlin constant.
+        // window comes from RoomCore.SNAPSHOT_THROTTLE_MS, not from a Kotlin constant.
         val bridge = EngineBridge.create(bundle())
         try {
             var now = 0.0

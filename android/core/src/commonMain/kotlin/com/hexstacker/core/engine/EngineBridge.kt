@@ -160,9 +160,9 @@ class EngineBridge private constructor(
         frame.snapshot?.let { frame.copy(snapshot = reattachGrids(it)) } ?: frame
     }
 
-    // --- Room brain ----------------------------------------------------------
+    // --- Room core ----------------------------------------------------------
     //
-    // The room's single source of truth (server/RoomBrain.js, the same module the
+    // The room's single source of truth (server/RoomCore.js, the same module the
     // web display and tvOS run): roster, auto-naming, colour slots, host election
     // and the retained snapshot controllers derive their whole UI from.
     // Everything crosses as JSON, and the surface is deliberately generic rather
@@ -170,7 +170,7 @@ class EngineBridge private constructor(
     // every call is an interpolated source string, so one marshalling path per
     // direction is one place to get the escaping right (see [jsString]).
     //
-    // Unlike the engine, the brain exists for the WHOLE session: created once at
+    // Unlike the engine, the room core exists for the WHOLE session: created once at
     // coordinator start and surviving across matches, so [roomInit] must run
     // before any room event is handled.
 
@@ -194,14 +194,14 @@ class EngineBridge private constructor(
     }
 
     /**
-     * Invoke a RoomBrain method. [argsJson] is a JSON array of its arguments; the
+     * Invoke a RoomCore method. [argsJson] is a JSON array of its arguments; the
      * JSON-encoded return value comes back (`"null"` for void methods).
      */
     suspend fun roomCallJson(method: String, argsJson: String = "[]"): String = lock.withLock {
         evalTyped<String>("roomCall($method)", asciiJson("Bridge.roomCall(${jsString(method)}, ${jsString(argsJson)})"))
     }
 
-    /** Read a RoomBrain property (`state`, `host`, `participants`, ...) as JSON. */
+    /** Read a RoomCore property (`state`, `host`, `participants`, ...) as JSON. */
     suspend fun roomGetJson(property: String): String = lock.withLock {
         evalTyped<String>("roomGet($property)", asciiJson("Bridge.roomGet(${jsString(property)})"))
     }
@@ -279,7 +279,7 @@ internal fun jsNum(d: Double): String = if (d.isFinite()) d.toString() else "0"
  * Emit a JS string literal (quotes included) for [s].
  *
  * quickjs-kt has no call-with-arguments API, so every call into JS is a source
- * string Kotlin interpolates. Until the room brain landed, everything spliced in
+ * string Kotlin interpolates. Until the room core landed, everything spliced in
  * was an Int or a fixed enum constant and [jsNum] was the only sanitizer needed.
  * Room payloads carry PLAYER NAMES, i.e. arbitrary user text, so splicing them
  * raw would break on a quote or a backslash and would let a crafted name inject

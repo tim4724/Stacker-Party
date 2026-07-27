@@ -145,15 +145,15 @@ for (const [platform, getShim] of Object.entries(SHIMS)) {
   });
 }
 
-test('the shim reaches RoomBrain through the bundle global, which the bundle exports', () => {
-  // If core-entry.js ever stops exporting RoomBrain, both shells break at
+test('the shim reaches RoomCore through the bundle global, which the bundle exports', () => {
+  // If core-entry.js ever stops exporting RoomCore, both shells break at
   // roomInit with a TypeError that only shows up on a real device.
   assert.ok(
-    /HexCore\.RoomBrain/.test(block(SWIFT, 'ROOM-API', 'EngineBridge.swift')),
-    'the shim no longer constructs HexCore.RoomBrain'
+    /HexCore\.RoomCore/.test(block(SWIFT, 'ROOM-API', 'EngineBridge.swift')),
+    'the shim no longer constructs HexCore.RoomCore'
   );
   assert.ok(
-    /exports\.RoomBrain\s*=/.test(fs.readFileSync(path.join(ROOT, 'server/core-entry.js'), 'utf8')),
-    'core-entry.js no longer exports RoomBrain'
+    /exports\.RoomCore\s*=/.test(fs.readFileSync(path.join(ROOT, 'server/core-entry.js'), 'utf8')),
+    'core-entry.js no longer exports RoomCore'
   );
 });

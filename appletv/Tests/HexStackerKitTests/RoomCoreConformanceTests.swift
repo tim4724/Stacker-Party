@@ -2,12 +2,12 @@ import Testing
 import Foundation
 @testable import HexStackerKit
 
-/// RoomBrain conformance: the tvOS leg.
+/// RoomCore conformance: the tvOS leg.
 ///
 /// The SAME op log runs three times against the SAME module — in Node
-/// (tests/room-brain-conformance.test.js), here in JavaScriptCore, and in QuickJS
+/// (tests/room-core-conformance.test.js), here in JavaScriptCore, and in QuickJS
 /// on Android TV — and every step's return value and resulting snapshot must match
-/// tests/fixtures/room-brain-golden.json exactly.
+/// tests/fixtures/room-core-golden.json exactly.
 ///
 /// Because all three legs run the same JavaScript, this is no longer asking "did
 /// someone re-implement the room layer wrong". It asks "does the BRIDGE marshal
@@ -22,7 +22,7 @@ import Foundation
 /// blocklist at all, so an Apple TV really could seat HX-4 and HX-13), the three
 /// pause flags, suspend-and-rejoin via a cross-device claim, batched liveness
 /// ticks, late-joiner grace, results enrichment, and a full room rejecting one more.
-@Suite struct RoomBrainConformanceTests {
+@Suite struct RoomCoreConformanceTests {
 
     private struct Golden {
         let initJSON: String
@@ -31,12 +31,12 @@ import Foundation
     }
 
     private func loadGolden() throws -> Golden {
-        let data = try Data(contentsOf: EngineFixture.roomBrainGolden)
+        let data = try Data(contentsOf: EngineFixture.roomCoreGolden)
         guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let options = root["init"],
               let ops = root["ops"] as? [[String: Any]],
               let steps = root["steps"] as? [[String: Any]] else {
-            throw EngineBridge.EngineError.decode("room-brain-golden.json is not the expected shape")
+            throw EngineBridge.EngineError.decode("room-core-golden.json is not the expected shape")
         }
         return Golden(initJSON: try jsonText(options), ops: ops, steps: steps)
     }
@@ -68,7 +68,7 @@ import Foundation
         #expect(golden.ops.count == golden.steps.count, "the golden's op log and step log disagree")
 
         let bridge = try EngineBridge(engineDirectory: EngineFixture.coreBundleDir)
-        // The brain is SESSION-lived: constructed once here, exactly as the
+        // The room core is SESSION-lived: constructed once here, exactly as the
         // coordinator constructs it once at start() and keeps it across matches.
         try bridge.roomInit(optionsJSON: golden.initJSON)
 
@@ -101,7 +101,7 @@ import Foundation
         }
     }
 
-    /// The brain has to be built before it can be used, and the shell's ordering
+    /// The room core has to be built before it can be used, and the shell's ordering
     /// guarantee (roomInit ahead of transport.connect) is only worth anything if the
     /// bridge actually refuses the un-initialized case instead of silently no-oping.
     @Test func roomCallsBeforeRoomInitThrow() throws {
@@ -111,7 +111,7 @@ import Foundation
     }
 
     /// A JS throw must not leak into the NEXT call through the shared exception box
-    /// (the bug EngineBridge's drain discipline exists to prevent), and the brain
+    /// (the bug EngineBridge's drain discipline exists to prevent), and the room core
     /// must still be usable afterwards.
     @Test func aFailedRoomCallDrainsAndLeavesTheBrainUsable() throws {
         let bridge = try EngineBridge(engineDirectory: EngineFixture.coreBundleDir)

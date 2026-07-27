@@ -23,7 +23,7 @@ on:
       - 'partyplug/**'
       - 'scripts/build.js'
       - 'scripts/build-conformance-bundle.js'
-      - 'scripts/gen-room-brain-golden.js'
+      - 'scripts/gen-room-core-golden.js'
       - 'tests/helpers/**'
       - 'tests/fixtures/**'
       - 'package.json'

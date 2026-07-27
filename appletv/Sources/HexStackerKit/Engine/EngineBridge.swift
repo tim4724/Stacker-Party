@@ -8,7 +8,7 @@ import JavaScriptCore
 /// The engine ships as ONE esbuild bundle, `partycore.js` (built from
 /// `server/core-entry.js` by `npm run build:core`; see `scripts/build.js`). It is
 /// an iife exposing the global `HexCore` with `HexCore.PartyCore` and
-/// `HexCore.RoomBrain`, so there is no module load order to maintain and no
+/// `HexCore.RoomCore`, so there is no module load order to maintain and no
 /// `window`/`require`/CommonJS shim to provide — esbuild inlined the graph
 /// (`tests/core-bundle-runtime.test.js` proves it loads with none of those).
 /// PartyCore is the blessed native integration surface (`server/PartyCore.d.ts`):
@@ -177,16 +177,16 @@ public final class EngineBridge {
         catch { throw EngineError.decode("snapshotJSON: \(error)") }
     }
 
-    // MARK: - Room brain
+    // MARK: - Room core
 
-    /// The room's single source of truth (`server/RoomBrain.js`, the same module
+    /// The room's single source of truth (`server/RoomCore.js`, the same module
     /// the web display and Android TV run): roster, auto-naming, colour slots,
     /// host election, and the retained snapshot controllers derive their whole UI
     /// from. Everything crosses as JSON, and the surface is deliberately generic
     /// rather than ~30 typed wrappers so the marshalling and exception-draining
     /// discipline lives in one place per direction on both platforms.
     ///
-    /// Unlike the engine, the brain exists for the WHOLE session: it is created
+    /// Unlike the engine, the room core exists for the WHOLE session: it is created
     /// once at coordinator start and survives across matches, so `roomInit` must
     /// be called before any room event is handled.
     public func roomInit(optionsJSON: String = "{}") throws {
@@ -197,14 +197,14 @@ public final class EngineBridge {
         }
     }
 
-    /// Invoke a RoomBrain method. `argsJSON` is a JSON array of its arguments;
+    /// Invoke a RoomCore method. `argsJSON` is a JSON array of its arguments;
     /// the JSON-encoded return value comes back (`"null"` for void methods).
     @discardableResult
     public func roomCallJSON(_ method: String, _ argsJSON: String = "[]") throws -> String {
         try roomString("roomCall", [method, argsJSON], label: "roomCall(\(method))")
     }
 
-    /// Read a RoomBrain property (the getters: `state`, `host`, `participants`,
+    /// Read a RoomCore property (the getters: `state`, `host`, `participants`,
     /// `results`, ...) as JSON.
     public func roomGetJSON(_ property: String) throws -> String {
         try roomString("roomGet", [property], label: "roomGet(\(property))")
@@ -357,7 +357,7 @@ public final class EngineBridge {
       var PartyCore = HexCore.PartyCore;
       var core = null;
       // ROOM-SHIM-BEGIN
-      // The room brain: roster, naming, colour slots, host election and the
+      // The room core: roster, naming, colour slots, host election and the
       // retained snapshot, shared verbatim with the web display and Android TV.
       // Deliberately generic (one call/get pair rather than ~30 wrappers): the
       // Android shim has to build every call as an interpolated source string,
@@ -421,7 +421,7 @@ public final class EngineBridge {
         isEnded: function () { return !!(core && core.game && core.game.ended); },
         // ROOM-API-BEGIN
         roomInit: function (optsJson) {
-          room = new HexCore.RoomBrain(optsJson ? JSON.parse(optsJson) : {});
+          room = new HexCore.RoomCore(optsJson ? JSON.parse(optsJson) : {});
         },
         roomCall: function (method, argsJson) {
           var r = roomOrThrow();

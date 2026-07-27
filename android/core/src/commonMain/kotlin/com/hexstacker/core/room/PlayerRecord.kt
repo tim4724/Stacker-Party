@@ -4,16 +4,16 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * One roster row, decoded from the room brain's `list()` (join order, oldest first).
+ * One roster row, decoded from the room core's `list()` (join order, oldest first).
  *
  * The FULL record, unlike the wire snapshot's per-player entry: it also carries
  * [joinedAt] (the monotonic join counter the board layout and host election tie-break
  * on) and [connected], which the snapshot deliberately does not ship. Read it where
  * the lobby/board layout needs more than the snapshot has.
  *
- * Immutable: `server/RoomBrain.js` (running in QuickJS) is the only writer, and this
+ * Immutable: `server/RoomCore.js` (running in QuickJS) is the only writer, and this
  * is a decoded copy of what it holds. Nothing here may be mutated locally — a write
- * that doesn't go through the brain is exactly the drift this refactor removed.
+ * that doesn't go through the room core is exactly the drift this refactor removed.
  *
  * Field names follow the JS record, except `playerIndex`, which is the dense COLOUR
  * SLOT (0..MAX_PLAYERS-1) rather than the relay peer index; it is remapped to

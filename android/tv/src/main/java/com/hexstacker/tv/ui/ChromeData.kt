@@ -3,7 +3,7 @@ package com.hexstacker.tv.ui
 /**
  * Small, plain render-data classes for the stateless TV chrome composables.
  * These are intentionally decoupled from the `:core` networking/coordinator types:
- * MainActivity maps the room brain's `PlayerRecord` roster and the coordinator's
+ * MainActivity maps the room core's `PlayerRecord` roster and the coordinator's
  * `ResultEntry` into these when wiring the screens, so the chrome holds no room
  * state of its own.
  *

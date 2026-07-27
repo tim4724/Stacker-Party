@@ -128,7 +128,7 @@ function renderLoop(timestamp) {
         // the RESULTS snapshot is what carries the results to controllers.
         // Enriched like the normal end-of-game path, or the salvaged ranking
         // would reach the controllers with no names or colours on it.
-        if (results.results) brain.enrichResults(results.results);
+        if (results.results) roomCore.enrichResults(results.results);
         lastResults = results.results;
         setRoomState(ROOM_STATE.RESULTS);
         onGameEnd(results);

@@ -3,12 +3,12 @@
 const { test, describe, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { ROOM_STATE } = require('../public/shared/protocol');
-const { RoomBrain } = require('../server/RoomBrain.js');
+const { RoomCore } = require('../server/RoomCore.js');
 
 // =====================================================================
 // Joining while a round is already running, and the participant order that
 // decides board layout. Driven against the REAL handlers in
-// server/RoomBrain.js, which is what all three displays run.
+// server/RoomCore.js, which is what all three displays run.
 //
 // Someone who joins mid-round is in the ROSTER but not in `participants`.
 // That absence is the positive signal a controller routes on: it stays in the
@@ -19,7 +19,7 @@ const { RoomBrain } = require('../server/RoomBrain.js');
 // =====================================================================
 
 function makeBrain() {
-  return new RoomBrain({ rngSeed: 4242 });
+  return new RoomCore({ rngSeed: 4242 });
 }
 
 // Drive the room into a state through the real transition table.
@@ -30,30 +30,30 @@ const STATE_PATH = {
   [ROOM_STATE.RESULTS]: ['countdown', 'playing', 'results'],
 };
 
-function enter(brain, state) {
-  for (const step of STATE_PATH[state]) brain.transitionTo(step);
+function enter(roomCore, state) {
+  for (const step of STATE_PATH[state]) roomCore.transitionTo(step);
 }
 
 describe('Display: joining during a game', () => {
-  let brain;
+  let roomCore;
 
   beforeEach(() => {
-    brain = makeBrain();
+    roomCore = makeBrain();
   });
 
   test('a lobby joiner becomes a participant', () => {
-    brain.hello('player1', { name: 'Alice' }, 1000);
-    assert.ok(brain.has('player1'));
-    assert.ok(brain.isParticipant('player1'));
-    assert.deepEqual(brain.snapshot().participants, ['player1']);
+    roomCore.hello('player1', { name: 'Alice' }, 1000);
+    assert.ok(roomCore.has('player1'));
+    assert.ok(roomCore.isParticipant('player1'));
+    assert.deepEqual(roomCore.snapshot().participants, ['player1']);
   });
 
   for (const state of [ROOM_STATE.COUNTDOWN, ROOM_STATE.PLAYING]) {
     test(`a ${state} joiner is in the roster but NOT a participant`, () => {
-      enter(brain, state);
-      brain.hello('player2', { name: 'Bob' }, 1000);
+      enter(roomCore, state);
+      roomCore.hello('player2', { name: 'Bob' }, 1000);
 
-      const snap = brain.snapshot();
+      const snap = roomCore.snapshot();
       assert.equal(snap.roomState, state);
       assert.ok(snap.players['player2'], 'roster carries them, so their slot is claimed');
       assert.deepEqual(snap.participants, [], 'but they are not in the round');
@@ -63,63 +63,63 @@ describe('Display: joining during a game', () => {
   test('the production order, peer_joined then HELLO, also withholds participation', () => {
     // The relay fires peer_joined before the controller's HELLO, so the row
     // starts as a placeholder and the join decision is made there, not on HELLO.
-    enter(brain, ROOM_STATE.PLAYING);
-    const joined = brain.peerJoined('player4', 1000);
+    enter(roomCore, ROOM_STATE.PLAYING);
+    const joined = roomCore.peerJoined('player4', 1000);
 
     assert.ok(joined.added);
     assert.equal(joined.joinedLobby, false);
-    assert.ok(brain.has('player4'));
-    assert.ok(!brain.isParticipant('player4'));
-    assert.equal(brain.snapshot().players['player4'].helloSeen, false,
+    assert.ok(roomCore.has('player4'));
+    assert.ok(!roomCore.isParticipant('player4'));
+    assert.equal(roomCore.snapshot().players['player4'].helloSeen, false,
       'placeholder until their HELLO lands');
 
-    brain.hello('player4', { name: 'Dave' }, 1100);
-    assert.equal(brain.snapshot().players['player4'].helloSeen, true);
-    assert.ok(!brain.isParticipant('player4'), 'still waiting out the round');
+    roomCore.hello('player4', { name: 'Dave' }, 1100);
+    assert.equal(roomCore.snapshot().players['player4'].helloSeen, true);
+    assert.ok(!roomCore.isParticipant('player4'), 'still waiting out the round');
   });
 
   test('an active player reconnecting mid-game is NOT demoted to a late joiner', () => {
-    brain.hello('player1', { name: 'Alice' }, 1000);
-    assert.ok(brain.isParticipant('player1'));
+    roomCore.hello('player1', { name: 'Alice' }, 1000);
+    assert.ok(roomCore.isParticipant('player1'));
 
-    enter(brain, ROOM_STATE.PLAYING);
+    enter(roomCore, ROOM_STATE.PLAYING);
 
     // peer_joined for a peer we already know is a no-op; the HELLO refreshes them.
-    assert.equal(brain.peerJoined('player1', 2000).added, false);
-    brain.hello('player1', { name: 'Alice' }, 2000);
+    assert.equal(roomCore.peerJoined('player1', 2000).added, false);
+    roomCore.hello('player1', { name: 'Alice' }, 2000);
 
-    assert.ok(brain.isParticipant('player1'), 'keeps their seat in the running round');
-    assert.deepEqual(brain.snapshot().participants, ['player1']);
+    assert.ok(roomCore.isParticipant('player1'), 'keeps their seat in the running round');
+    assert.deepEqual(roomCore.snapshot().participants, ['player1']);
   });
 
   test('a KO is carried per player, and only for the player it hit', () => {
-    brain.hello('player1', { name: 'Alice' }, 1000);
-    brain.hello('player2', { name: 'Bob' }, 1000);
-    enter(brain, ROOM_STATE.PLAYING);
-    brain.setAlive('player1', false);
+    roomCore.hello('player1', { name: 'Alice' }, 1000);
+    roomCore.hello('player2', { name: 'Bob' }, 1000);
+    enter(roomCore, ROOM_STATE.PLAYING);
+    roomCore.setAlive('player1', false);
 
-    const snap = brain.snapshot();
+    const snap = roomCore.snapshot();
     assert.equal(snap.players['player1'].alive, false);
     assert.equal(snap.players['player2'].alive, true);
   });
 
   test('someone joining on the results screen sees the ranking', () => {
-    brain.hello('player1', { name: 'Alice' }, 1000);
-    enter(brain, ROOM_STATE.RESULTS);
+    roomCore.hello('player1', { name: 'Alice' }, 1000);
+    enter(roomCore, ROOM_STATE.RESULTS);
     const ranking = [{ rank: 1, playerId: 'player1', lines: 10 }];
-    brain.setResults(ranking);
+    roomCore.setResults(ranking);
 
-    brain.hello('player5', { name: 'Eve' }, 2000);
-    const snap = brain.snapshot();
+    roomCore.hello('player5', { name: 'Eve' }, 2000);
+    const snap = roomCore.snapshot();
     assert.equal(snap.roomState, ROOM_STATE.RESULTS);
     assert.deepEqual(snap.results, ranking);
   });
 
   test('the ranking never leaks into a snapshot that is not on results', () => {
-    brain.hello('player1', { name: 'Alice' }, 1000);
-    enter(brain, ROOM_STATE.PLAYING);
-    brain.setResults([{ rank: 1, playerId: 'player1' }]);
-    assert.equal(brain.snapshot().results, undefined);
+    roomCore.hello('player1', { name: 'Alice' }, 1000);
+    enter(roomCore, ROOM_STATE.PLAYING);
+    roomCore.setResults([{ rank: 1, playerId: 'player1' }]);
+    assert.equal(roomCore.snapshot().results, undefined);
   });
 });
 
@@ -129,64 +129,64 @@ describe('Display: joining during a game', () => {
 // =====================================================================
 
 describe('Display: participant order', () => {
-  let brain;
+  let roomCore;
 
   beforeEach(() => {
-    brain = makeBrain();
+    roomCore = makeBrain();
   });
 
   function join(id) {
-    brain.peerJoined(id, 1000);
+    roomCore.peerJoined(id, 1000);
   }
 
   test('matches join order after normal joins', () => {
     join('p1');
     join('p2');
-    assert.deepEqual(brain.freezeParticipantOrder(), ['p1', 'p2']);
+    assert.deepEqual(roomCore.freezeParticipantOrder(), ['p1', 'p2']);
   });
 
   test('reconnecting under a new peer index appends; older joiners keep their seat', () => {
     join('p1');
     join('p2');
 
-    brain.peerLeft('p1');
-    assert.deepEqual(brain.participants, ['p2']);
+    roomCore.peerLeft('p1');
+    assert.deepEqual(roomCore.participants, ['p2']);
 
     // p1 comes back as a fresh client, so a new joinedAt puts them at the end.
     join('p1-new');
-    assert.deepEqual(brain.freezeParticipantOrder(), ['p2', 'p1-new']);
+    assert.deepEqual(roomCore.freezeParticipantOrder(), ['p2', 'p1-new']);
   });
 
   test('colour changes do NOT reorder', () => {
     join('p1');
     join('p2');
     join('p3');
-    brain.setColor('p1', 7);
-    brain.setColor('p3', 0); // freed by p1 moving off it
-    assert.deepEqual(brain.freezeParticipantOrder(), ['p1', 'p2', 'p3']);
+    roomCore.setColor('p1', 7);
+    roomCore.setColor('p3', 0); // freed by p1 moving off it
+    assert.deepEqual(roomCore.freezeParticipantOrder(), ['p1', 'p2', 'p3']);
   });
 
   test('late joiners admitted at the next round land at the end', () => {
     join('p1');
     join('p2');
-    brain.transitionTo('countdown');
-    brain.freezeParticipantOrder();
-    brain.transitionTo('playing');
+    roomCore.transitionTo('countdown');
+    roomCore.freezeParticipantOrder();
+    roomCore.transitionTo('playing');
 
     join('late');
-    assert.ok(!brain.isParticipant('late'));
+    assert.ok(!roomCore.isParticipant('late'));
 
-    brain.transitionTo('lobby');
-    brain.admitWaiting();
-    assert.deepEqual(brain.freezeParticipantOrder(), ['p1', 'p2', 'late']);
+    roomCore.transitionTo('lobby');
+    roomCore.admitWaiting();
+    assert.deepEqual(roomCore.freezeParticipantOrder(), ['p1', 'p2', 'late']);
   });
 
   test('freezing snapshots the array, so a later roster edit cannot shift layout', () => {
     join('p1');
     join('p2');
-    const frozen = brain.freezeParticipantOrder();
+    const frozen = roomCore.freezeParticipantOrder();
     join('p3');
-    brain.admitWaiting();
+    roomCore.admitWaiting();
     assert.deepEqual(frozen, ['p1', 'p2'], 'the returned order is a copy');
   });
 });

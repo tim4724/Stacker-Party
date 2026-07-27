@@ -136,7 +136,7 @@ public struct PlayerResult: Decodable, Equatable {
     public let level: Int
     public let rank: Int           // 1-based, pre-sorted
 
-    /// The raw ranking as the room brain's `enrichResults` expects it: the brain
+    /// The raw ranking as the room core's `enrichResults` expects it: the room core
     /// labels each row with the roster's name/colour in place and appends the
     /// players who sat the round out.
     public var payload: [String: Any] {

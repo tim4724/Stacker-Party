@@ -5,7 +5,7 @@ public enum CountdownValue: Equatable { case number(Int), go }
 
 /// One display-ready results row: the engine's raw `PlayerResult` joined with the
 /// roster's name/color, or a late joiner who sat the match out (rank/lines/level
-/// nil, `newPlayer` true). Produced by the room brain's `enrichResults`; `payload`
+/// nil, `newPlayer` true). Produced by the room core's `enrichResults`; `payload`
 /// is the wire form that rides the RESULTS snapshot, omitting nil fields like the
 /// web.
 public struct MatchResult: Equatable, Decodable {
@@ -100,7 +100,7 @@ public extension DisplayOutput {
     func setDisplayMuted(_ muted: Bool) {}
 }
 
-/// What a RoomBrain mutator hands back — the fields THIS shell acts on. Every
+/// What a RoomCore mutator hands back — the fields THIS shell acts on. Every
 /// mutator returns a small object whose only universal member is the `publish`
 /// hint; the rest are per-method, so ONE all-optional struct decodes all of them
 /// and each call site reads only what it asked for (unknown members are ignored,
@@ -118,7 +118,7 @@ struct RoomResult: Decodable {
     var changed: Bool?           // transitionTo
 }
 
-/// One batched liveness pull (`RoomBrain.tick`): who just went silent, and whether
+/// One batched liveness pull (`RoomCore.tick`): who just went silent, and whether
 /// the late-joiner grace window elapsed.
 struct RoomTick: Decodable {
     let expired: [Int]
@@ -130,7 +130,7 @@ struct RoomTick: Decodable {
 ///
 /// Room state is NOT owned here. Roster, auto-naming, name sanitizing, colour
 /// slots, host election, pause/mute/results facts and the retained snapshot all
-/// live in `server/RoomBrain.js`, which runs inside the same JavaScriptCore
+/// live in `server/RoomCore.js`, which runs inside the same JavaScriptCore
 /// context as the engine and is reached through `EngineBridge`'s room API. The
 /// web display and Android TV load that same module out of the same bundle, so
 /// the three displays cannot drift; what is left here is transport, timers,
@@ -161,9 +161,9 @@ public final class DisplayCoordinator {
     var engine: EngineBridge?
     /// The session-lived JavaScriptCore runtime. It holds BOTH the engine (rebuilt
     /// per match via Bridge.create, which is free on an existing context) and the
-    /// room brain (constructed once by `roomInit` and never torn down). Because the
-    /// brain lives here, this handle is built once and then never dropped — see
-    /// `brain()`.
+    /// room core (constructed once by `roomInit` and never torn down). Because the
+    /// roomCore lives here, this handle is built once and then never dropped — see
+    /// `roomCore()`.
     private var runtime: EngineBridge?
     /// Latched after a failed build so a missing/broken core bundle doesn't retry
     /// (and re-log) on every relay packet.
@@ -185,27 +185,27 @@ public final class DisplayCoordinator {
     var demoSeedOverride: UInt32?   // deterministic seed for HEXDEMO
     private let nowProvider: () -> Double    // wall-clock ms for liveness (injectable for tests)
 
-    /// Peers heard from since the last frame. Batched deliberately: the brain's
+    /// Peers heard from since the last frame. Batched deliberately: the room core's
     /// `tick(nowMs, seen)` exists so an 8-player input burst costs ONE bridge
     /// crossing per frame instead of one per packet.
     private var seenSinceTick: Set<Int> = []
 
     /// Which boards currently show a rejoin QR. Shell state, not room state: it is
     /// the set of overlays we have raised (the web's `disconnectedQRs`).
-    /// INVARIANT: it moves in lockstep with the brain's presence set — every site
+    /// INVARIANT: it moves in lockstep with the room core's presence set — every site
     /// that raises one calls markDisconnected, every site that clears one calls
-    /// markReconnected. If they drift, host election (which reads the brain) skips
+    /// markReconnected. If they drift, host election (which reads the room core) skips
     /// a present player. It is also what makes the per-packet reconnect check free.
     private var rejoinQRs: Set<Int> = []
 
     // Retained-snapshot throttle. Leading + trailing, with the trailing edge pumped
-    // from tick(): the brain decides WHICH calls take the throttled path (every
+    // from tick(): the room core decides WHICH calls take the throttled path (every
     // mutator returns a 'now' | 'soon' | 'none' hint), the shell only owns the
-    // timer, because a timer needs a real clock and the brain has none.
+    // timer, because a timer needs a real clock and the room core has none.
     private var lastSnapshotAt = -1e12
     private var snapshotPending = false
-    /// RoomBrain.snapshotThrottleMs, read out of the bundle once the brain is up
-    /// (see `brain()`), so the window is not mirrored in Swift at all. The
+    /// RoomCore.snapshotThrottleMs, read out of the bundle once the room core is up
+    /// (see `roomCore()`), so the window is not mirrored in Swift at all. The
     /// fallback only covers the window before the first successful roomInit, and
     /// on a runtime that failed to build there is no publishing to throttle.
     public private(set) var snapshotThrottleMs = 500.0
@@ -253,28 +253,28 @@ public final class DisplayCoordinator {
         self.nowProvider = nowProvider
     }
 
-    // MARK: - The room brain
+    // MARK: - The room core
 
-    /// Liveness policy handed to the brain at construction, mirroring
+    /// Liveness policy handed to the room core at construction, mirroring
     /// server/constants.js (LIVENESS_TIMEOUT_MS / LATE_JOINER_GRACE_MS). Pinned to
     /// those values by tests/protocol-swift-parity.test.js.
     static let livenessTimeoutMs = 3000
     static let lateJoinerGraceMs = 5000
 
     /// The session's JavaScriptCore runtime, materialized on first use with the
-    /// room brain already constructed inside it.
+    /// room core already constructed inside it.
     ///
     /// Room state exists before the first rendered frame — the relay's `created`
     /// and `peer_joined` land early — so this is called from `start()`,
     /// SYNCHRONOUSLY, before `transport.connect()`. That ordering is the whole
-    /// answer to "the brain lives in a runtime that used to be built lazily": the
+    /// answer to "the room core lives in a runtime that used to be built lazily": the
     /// runtime is now built once per session, up front, and the old off-main
     /// per-match prewarm is gone with it (there is nothing left to prewarm, and an
     /// async build would reintroduce exactly the race this closes). The offline
     /// harnesses (gallery shots, local demo) never call `start()` and reach it here
     /// through their first roster write instead.
     @discardableResult
-    private func brain() -> EngineBridge? {
+    private func roomCore() -> EngineBridge? {
         if let runtime { return runtime }
         guard !runtimeFailed else { return nil }
         do {
@@ -302,12 +302,12 @@ public final class DisplayCoordinator {
     }
 
     /// Encode a room call's arguments as the JSON array the bridge expects. Values
-    /// are the JSON-native types the brain takes (numbers, strings, bools, arrays,
+    /// are the JSON-native types the room core takes (numbers, strings, bools, arrays,
     /// dictionaries — including a raw inbound HELLO, which arrived as JSON anyway).
     ///
     /// Returns nil rather than a fallback if the list won't encode, and the callers
     /// then DROP the call: a HELLO carrying something JSONSerialization refuses
-    /// would otherwise reach the brain with zero arguments, and
+    /// would otherwise reach the room core with zero arguments, and
     /// `hello(undefined, ...)` seats a roster row under the key `undefined`.
     private static func argsJSON(_ args: [Any]) -> String? {
         guard !args.isEmpty else { return "[]" }
@@ -318,7 +318,7 @@ public final class DisplayCoordinator {
     }
 
     /// JSON-safe optional. JSONSerialization rejects a wrapped `Optional`, so an
-    /// absent field crosses as an explicit null — which the brain's parseInt /
+    /// absent field crosses as an explicit null — which the room core's parseInt /
     /// typeof checks reject exactly like a missing one.
     private static func opt<T>(_ value: T?) -> Any { value.map { $0 as Any } ?? NSNull() }
 
@@ -334,13 +334,13 @@ public final class DisplayCoordinator {
     /// Call a room method and decode a typed return value (`nil` on a void return
     /// or a bridge failure).
     private func roomValue<T: Decodable>(_ type: T.Type, _ method: String, _ args: [Any] = []) -> T? {
-        guard let bridge = brain(), let argsText = Self.argsJSON(args) else { return nil }
+        guard let bridge = roomCore(), let argsText = Self.argsJSON(args) else { return nil }
         return try? bridge.roomCall(T.self, method, argsText)
     }
 
     /// Read a room property (`state`, `host`, `participants`, `muted`, ...).
     private func roomProperty<T: Decodable>(_ type: T.Type, _ property: String) -> T? {
-        guard let bridge = brain() else { return nil }
+        guard let bridge = roomCore() else { return nil }
         return try? bridge.roomGet(T.self, property)
     }
 
@@ -348,7 +348,7 @@ public final class DisplayCoordinator {
     /// the three pause flags are consulted on the input and frame paths), and a
     /// one-token JSON text is cheaper to match than to hand to JSONDecoder.
     private func roomScalar(_ property: String) -> String? {
-        guard let bridge = brain() else { return nil }
+        guard let bridge = roomCore() else { return nil }
         return try? bridge.roomGetJSON(property)
     }
 
@@ -356,21 +356,21 @@ public final class DisplayCoordinator {
 
     /// A predicate call, matched on the raw JSON for the same reason as roomScalar.
     private func roomBool(_ method: String, _ args: [Any] = []) -> Bool {
-        guard let bridge = brain(), let argsText = Self.argsJSON(args) else { return false }
+        guard let bridge = roomCore(), let argsText = Self.argsJSON(args) else { return false }
         return (try? bridge.roomCallJSON(method, argsText)) == "true"
     }
 
     private func roomInt(_ method: String, _ args: [Any] = []) -> Int? {
-        guard let bridge = brain(), let argsText = Self.argsJSON(args) else { return nil }
+        guard let bridge = roomCore(), let argsText = Self.argsJSON(args) else { return nil }
         return (try? bridge.roomCallJSON(method, argsText)).flatMap { Int($0) }
     }
 
-    /// The same runtime the brain lives in, for the gallery's static
+    /// The same runtime the room core lives in, for the gallery's static
     /// GalleryFixtures reads. One JSContext per coordinator: the gallery used to
     /// build a second one, back when the first existed only per match.
-    var fixtureBridge: EngineBridge? { brain() }
+    var fixtureBridge: EngineBridge? { roomCore() }
 
-    // MARK: - Room reads (the shell's window onto the brain)
+    // MARK: - Room reads (the shell's window onto the room core)
 
     public var state: RoomState {
         // JSON string literal: "lobby" with the quotes. The four room states are
@@ -381,7 +381,7 @@ public final class DisplayCoordinator {
 
     /// The effective host: platform master, else the sticky slot, else the
     /// oldest-joined eligible present player. All of it lives in the kit's RoomFlow
-    /// inside the brain.
+    /// inside the room core.
     public var hostPeerIndex: Int? {
         guard let json = roomScalar("host") else { return nil }
         return Int(json)   // "null" -> nil, which is exactly "no host"
@@ -426,7 +426,7 @@ public final class DisplayCoordinator {
     func nextColorSlot() -> Int { roomInt("nextAvailableColorSlot") ?? 0 }
 
     // Pause is a union of independent reasons so they don't clobber each other (a
-    // host Continue must not un-pause an all-disconnected freeze). The brain holds
+    // host Continue must not un-pause an all-disconnected freeze). The room core holds
     // all three and projects only the manual one into the snapshot: the auto-
     // (everyone disconnected) and connection (our own link down) pauses are
     // display-internal, self-clearing, and a controller shown either would get a
@@ -442,9 +442,9 @@ public final class DisplayCoordinator {
 
     public func start() {
         assertOwningThread()
-        // Build the runtime (and with it the room brain) BEFORE the socket opens —
-        // see brain(). Everything below can be answered by a relay callback.
-        brain()
+        // Build the runtime (and with it the room core) BEFORE the socket opens —
+        // see roomCore(). Everything below can be answered by a relay callback.
+        roomCore()
 
         transport.onCreated = { [weak self] room, instance, region in
             self?.onCreated(room: room, instance: instance)
@@ -540,7 +540,7 @@ public final class DisplayCoordinator {
 
     private func onPeerJoined(_ index: Int) {
         assertOwningThread()
-        // The brain allocates the colour slot, invents the placeholder auto-name (with
+        // The room core allocates the colour slot, invents the placeholder auto-name (with
         // the blocklist this platform used to be missing entirely) and decides whether
         // this joiner is a lobby member or a late joiner waiting out the round. It
         // refuses silently on a full room and on a duplicate — an in-session reconnect
@@ -558,7 +558,7 @@ public final class DisplayCoordinator {
         // End any in-progress soft drop so the departed board doesn't keep falling
         // fast until the engine's own deadline fires (web cleanupPlayerInput).
         engine?.softDropEnd(playerId: index)
-        // The brain owns the branch: mid-game an active participant keeps their row
+        // The room core owns the branch: mid-game an active participant keeps their row
         // (so the slot stays pinned for a reconnect via claimReconnect), while a late
         // joiner and anyone leaving in lobby/results is dropped outright, with the
         // sticky-host handoff and the empty-results return to lobby handled inside.
@@ -642,13 +642,13 @@ public final class DisplayCoordinator {
         if wasDisconnected, pausedAuto { autoResume() }
     }
 
-    /// `data` is the RAW hello, not the parsed `ControllerMessage`: the brain reads
+    /// `data` is the RAW hello, not the parsed `ControllerMessage`: the room core reads
     /// `name`/`autoName`/`colorIndex`/`rejoinToken`/`rejoinId` itself, and its
     /// lenient parsing (a rejoin token arrives as the string from `?claim=`) is
     /// exactly the parsing the web display does. Re-normalizing it here first would
     /// be a second implementation of the thing this refactor deleted.
     private func handleHello(from: Int, data: [String: Any]) {
-        // Everything a HELLO decides lives in the brain: the name (sanitized, with
+        // Everything a HELLO decides lives in the room core: the name (sanitized, with
         // empty and legacy P1-P8 submissions resolving to room-unique HX names), the
         // preferred colour (honoured right away, so the snapshot below already names
         // the colour the controller will keep), whether a cross-device rejoin claim is
@@ -676,13 +676,13 @@ public final class DisplayCoordinator {
         if res.claimed == true, pausedAuto { autoResume() }
     }
 
-    /// Finish a cross-device rejoin the brain has already accepted: everything keyed
+    /// Finish a cross-device rejoin the room core has already accepted: everything keyed
     /// by peer index that lives OUTSIDE the room (the engine's board, garbage queue
     /// and drop cooldown, and the rejoin overlays) moves from the old index to the
     /// new one. The room half (roster record, sticky host slot, participant order,
-    /// alive flags, cached ranking) moved inside the brain's claimReconnect.
+    /// alive flags, cached ranking) moved inside the room core's claimReconnect.
     ///
-    /// The engine's own rekey refusal is unreachable by construction — the brain
+    /// The engine's own rekey refusal is unreachable by construction — the room core
     /// only accepts a claim whose old index IS a participant (so it owns a board)
     /// and whose new index is NOT (so it owns none) — but a refusal would desync
     /// roster and engine, so it is logged rather than swallowed.
@@ -713,14 +713,14 @@ public final class DisplayCoordinator {
     }
 
     private func handleSetLevel(from: Int, msg: ControllerMessage) {
-        // Held-finger control: the brain's 'soon' hint routes this through the
+        // Held-finger control: the room core's 'soon' hint routes this through the
         // throttle, so a burst of +/- taps collapses to at most ~2 publishes per
         // second and the trailing one always carries the final level. Outside the
         // lobby the stepper is unreachable and the hint is 'none'.
         publishAs(roomDo("setLevel", [from, Self.opt(msg.level)]).publish)
     }
 
-    /// Re-claim a palette slot. The brain silently rejects collisions so concurrent
+    /// Re-claim a palette slot. The room core silently rejects collisions so concurrent
     /// picks don't spam the sender with errors; the next snapshot carries the truth.
     private func handleSetColor(from: Int, msg: ControllerMessage) {
         publishAs(roomDo("setColor", [from, Self.opt(msg.colorIndex)]).publish)
@@ -781,7 +781,7 @@ public final class DisplayCoordinator {
         let order = roomValue([Int].self, "freezeParticipantOrder") ?? []
         // Stamp everyone present so a controller that went briefly quiet in the lobby
         // isn't instantly expired once the COUNTDOWN liveness gate applies. tick() is
-        // the brain's batched seen-list entry point; its expiry decisions are empty by
+        // the room core's batched seen-list entry point; its expiry decisions are empty by
         // construction here, because it has just stamped every peer it could report.
         roomDo("tick", [nowProvider(), roster().map(\.peerIndex)])
         guard !order.isEmpty else { returnToLobby(); return }
@@ -808,7 +808,7 @@ public final class DisplayCoordinator {
     }
 
     private func makeEngine(order: [Int]) -> Bool {
-        guard let bridge = brain() else { return false }
+        guard let bridge = roomCore() else { return false }
         var levels: [Int: Int] = [:]
         for rec in roster() { levels[rec.peerIndex] = rec.startLevel }
         let players: [(id: Int, startLevel: Int)] = order.map { (id: $0, startLevel: levels[$0] ?? 1) }
@@ -818,7 +818,7 @@ public final class DisplayCoordinator {
             return true
         } catch {
             // Deliberately NOT dropping the runtime the way the old per-match build
-            // did: the room brain lives in this same context, so discarding it would
+            // did: the room core lives in this same context, so discarding it would
             // take the whole room with it. A JS throw inside Bridge.create leaves the
             // context itself intact.
             FileHandle.standardError.write(Data("[engine] createGame failed: \(error)\n".utf8))
@@ -993,7 +993,7 @@ public final class DisplayCoordinator {
         publishAs(res.publish)
     }
 
-    /// The shell half of a lobby return. Split out because the brain can decide the
+    /// The shell half of a lobby return. Split out because the room core can decide the
     /// room is back in the lobby on its own (the last results participant leaving),
     /// in which case `returnToLobby()`'s state guard would skip the UI entirely.
     private func returnToLobbyUI() {
@@ -1132,7 +1132,7 @@ public final class DisplayCoordinator {
 
     // MARK: - Presence / liveness
 
-    /// Push the batched "heard from" set across and read back the brain's liveness
+    /// Push the batched "heard from" set across and read back the room core's liveness
     /// decisions. One bridge crossing per frame however many packets landed.
     private func drainSeen(_ now: Double) -> RoomTick {
         let seen = Array(seenSinceTick)
@@ -1185,7 +1185,7 @@ public final class DisplayCoordinator {
     // MARK: - Rejoin QR overlays
 
     /// Raise a dropped participant's rejoin QR. INVARIANT (see `rejoinQRs`): the
-    /// overlay set and the brain's presence set move together, so this is also the
+    /// overlay set and the room core's presence set move together, so this is also the
     /// single place a mid-game disconnect is recorded.
     private func raiseRejoinQR(_ peerIndex: Int) {
         rejoinQRs.insert(peerIndex)
@@ -1273,11 +1273,11 @@ public final class DisplayCoordinator {
     private func publishRoomSnapshot() {
         snapshotPending = false
         lastSnapshotAt = nowProvider()
-        guard let bridge = brain(),
+        guard let bridge = roomCore(),
               let json = try? bridge.roomSnapshotJSON(),
               let data = json.data(using: .utf8),
               let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return }
-        // Built by RoomBrain, byte-identically on the web and Android TV, which is
+        // Built by RoomCore, byte-identically on the web and Android TV, which is
         // the whole point of the module.
         transport.setState(dict)
     }

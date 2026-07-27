@@ -24,16 +24,16 @@ var joinUrl = null;
 var lastRoomCode = null;
 var lastInstance = null;       // relay instance id from `created` — pins reconnect / controller WS to the same shard
 var gameState = null;
-// RoomBrain (server/RoomBrain.js, shipped in dist/partycore.js) is the single
+// RoomCore (server/RoomCore.js, shipped in dist/partycore.js) is the single
 // source of truth for everything a controller renders: roster identity and join
 // order, auto-naming, colour slots, host election, the pause/mute/results facts,
 // and the retained room snapshot itself. tvOS and Android TV load the same
 // module out of the same bundle, so the three displays cannot drift.
 //
-// It composes the generic PartyPlug RoomFlow (reachable as brain.flow, though
+// It composes the generic PartyPlug RoomFlow (reachable as roomCore.flow, though
 // nothing here should need it) and keeps liveness as pure nowMs-injected
 // predicates; this file keeps the EFFECTS (QR fetch, pause/resume, returnToLobby).
-var brain = new window.GameEngine.RoomBrain({
+var roomCore = new window.GameEngine.RoomCore({
   maxPlayers: GameConstants.MAX_PLAYERS,
   masterProvider: function () {
     return (party && typeof party.getMasterPeerIndex === 'function')
@@ -51,21 +51,21 @@ var brain = new window.GameEngine.RoomBrain({
 // ROOM_STATE (protocol.js, shared with controllers) and the kit's STATES are
 // separate copies of the same string set: protocol.js can't depend on the kit.
 // Fail loudly if a future rename in one silently diverges from the other.
-var _brainStates = window.GameEngine.RoomBrain.STATES;
+var _brainStates = window.GameEngine.RoomCore.STATES;
 if (ROOM_STATE.LOBBY !== _brainStates.LOBBY ||
     ROOM_STATE.COUNTDOWN !== _brainStates.COUNTDOWN ||
     ROOM_STATE.PLAYING !== _brainStates.PLAYING ||
     ROOM_STATE.RESULTS !== _brainStates.RESULTS) {
-  throw new Error('ROOM_STATE and RoomBrain.STATES have drifted — keep the string values in sync');
+  throw new Error('ROOM_STATE and RoomCore.STATES have drifted — keep the string values in sync');
 }
-// Roster backing store, aliased onto the brain's map so existing reads
-// (players.get/has/size/for..of) keep working; writes go through the brain
-// (peerJoined/hello/peerLeft/setColor/...). brain.reset() clears this same Map.
+// Roster backing store, aliased onto the room core's map so existing reads
+// (players.get/has/size/for..of) keep working; writes go through the room core
+// (peerJoined/hello/peerLeft/setColor/...). roomCore.reset() clears this same Map.
 // peerIndex (1..N for controllers; the display owns slot 0, not in this map)
 // -> { playerName, playerIndex (color slot), startLevel, helloSeen, joinedAt, connected }
-var players = brain.players;
+var players = roomCore.players;
 
-// The rest of the room's truth lives in the brain too. These properties keep the
+// The rest of the room's truth lives in the room core too. These properties keep the
 // old global names so every read site stays untouched; the setters forward, so a
 // stray write can't create a second source of truth. No `var` on any of them:
 // a var declaration would make the window property non-configurable and this
@@ -77,8 +77,8 @@ var players = brain.players;
 // participant order (empty in the lobby, where host eligibility is open).
 Object.defineProperty(window, 'playerOrder', {
   configurable: true,
-  get: function () { return brain.participants; },
-  set: function (v) { brain.setParticipants(v); }
+  get: function () { return roomCore.participants; },
+  set: function (v) { roomCore.setParticipants(v); }
 });
 
 // The RAW sticky host slot. Use getHostPeerIndex() for the effective
@@ -86,8 +86,8 @@ Object.defineProperty(window, 'playerOrder', {
 // sticky holder is disconnected but their slot stays pinned for their return.
 Object.defineProperty(window, 'hostPeerIndex', {
   configurable: true,
-  get: function () { return brain.stickyHost; },
-  set: function () { throw new Error('hostPeerIndex is read-only; the host moves via the brain (hello/peerLeft/claim)'); }
+  get: function () { return roomCore.stickyHost; },
+  set: function () { throw new Error('hostPeerIndex is read-only; the host moves via the room core (hello/peerLeft/claim)'); }
 });
 
 // setRoomState() drives the machine; the transition table and sticky-host
@@ -95,12 +95,12 @@ Object.defineProperty(window, 'hostPeerIndex', {
 // caught loudly instead of silently lost.
 Object.defineProperty(window, 'roomState', {
   configurable: true,
-  get: function () { return brain.state; },
+  get: function () { return roomCore.state; },
   set: function () { throw new Error('roomState is read-only; use setRoomState()'); }
 });
 
 function setRoomState(newState) {
-  var result = brain.transitionTo(newState);
+  var result = roomCore.transitionTo(newState);
   // Controllers route their screens purely off snapshot.roomState, so every
   // transition publishes here, immediately, ahead of the level/colour throttle.
   // Routing them from one guaranteed publish per transition is what let the
@@ -114,22 +114,22 @@ function setRoomState(newState) {
 // host pressing Pause, and the two mean opposite things to a controller. A
 // manual pause is the ONLY one a controller can act on (Continue); the auto- and
 // connection pauses are display-internal and resolve themselves. Reporting the
-// composite stranded controllers on an undismissable pause overlay. The brain
+// composite stranded controllers on an undismissable pause overlay. The room core
 // owns all three and projects userVisiblePaused() into the snapshot.
 Object.defineProperty(window, 'paused', {
   configurable: true,
-  get: function () { return brain.paused; },
-  set: function (v) { brain.setPaused(v); }
+  get: function () { return roomCore.paused; },
+  set: function (v) { roomCore.setPaused(v); }
 });
 Object.defineProperty(window, 'autoPaused', {
   configurable: true,
-  get: function () { return brain.autoPaused; },
-  set: function (v) { brain.setAutoPaused(v); }
+  get: function () { return roomCore.autoPaused; },
+  set: function (v) { roomCore.setAutoPaused(v); }
 });
 Object.defineProperty(window, 'connectionPaused', {
   configurable: true,
-  get: function () { return brain.connectionPaused; },
-  set: function (v) { brain.setConnectionPaused(v); }
+  get: function () { return roomCore.connectionPaused; },
+  set: function (v) { roomCore.setConnectionPaused(v); }
 });
 var boardRenderers = [];
 var uiRenderers = [];
@@ -176,20 +176,20 @@ var RELAY_RTT_OK_MS = 200;
 var RELAY_REPORT_THRESHOLD = 5;
 
 // The final ranking, replayed in the RESULTS snapshot so a controller that
-// rejoins on the results screen still sees it. Owned by the brain (which also
+// rejoins on the results screen still sees it. Owned by the room core (which also
 // re-keys it when a player rejoins from another device); this property keeps the
 // old global name for the write sites.
 Object.defineProperty(window, 'lastResults', {
   configurable: true,
-  get: function () { return brain.results; },
-  set: function (v) { brain.setResults(v); }
+  get: function () { return roomCore.results; },
+  set: function (v) { roomCore.setResults(v); }
 });
 
 // Clear all room-local state — used when entering a fresh room or returning to welcome.
 // Note: does not touch the publish throttle state (module-private to
 // DisplayConnection) or roomCode.
 // Calls clearCountdownTimers() (defined in DisplayGame.js) — only safe after all
-// scripts load. brain.reset() clears the roster, presence set, and the
+// scripts load. roomCore.reset() clears the roster, presence set, and the
 // late-joiner grace deadline.
 function resetRoomData() {
   if (music) music.stop();
@@ -200,8 +200,8 @@ function resetRoomData() {
   // sequence, participant order, presence set, alive flags, results, the pause
   // flags, and the room state back to lobby. Mute survives (a device
   // preference, not room state).
-  brain.reset();
-  // Not folded into brain.reset(): setAutoPaused also drives toolbar chrome.
+  roomCore.reset();
+  // Not folded into roomCore.reset(): setAutoPaused also drives toolbar chrome.
   setAutoPaused(false);
   gameState = null;
   boardRenderers = [];
@@ -218,12 +218,12 @@ var suppressPopstate = false;
 // Pre-created room state (ready before user clicks "New Game")
 var preCreatedRoom = null;  // { roomCode, joinUrl }
 
-// Mute. The brain holds it (the snapshot carries displayMuted); localStorage is
+// Mute. The room core holds it (the snapshot carries displayMuted); localStorage is
 // this shell's business, so the persisted value is read here and pushed in.
 Object.defineProperty(window, 'muted', {
   configurable: true,
-  get: function () { return brain.muted; },
-  set: function (v) { brain.setMuted(v); }
+  get: function () { return roomCore.muted; },
+  set: function (v) { roomCore.setMuted(v); }
 });
 try { muted = localStorage.getItem('stacker_muted') === '1'; } catch (e) { /* iframe sandbox */ }
 
@@ -243,12 +243,12 @@ var prevFrameTime = 0;
 // Effective host (the master controller). The full election logic (sticky slot,
 // AirConsole master priority, restricted-to-participants eligibility mid-game,
 // disconnected fallback, and the LOBBY/RESULTS reconcile) lives in the kit's
-// RoomFlow, reached through the brain. The AC master rule is injected via
+// RoomFlow, reached through the room core. The AC master rule is injected via
 // masterProvider; disconnection comes from the presence set (kept in sync with
 // disconnectedQRs through markDisconnected/markReconnected/clearDisconnected).
 // NOTE: tests/room-flow.test.js covers this algorithm.
 function getHostPeerIndex() {
-  return brain.host;
+  return roomCore.host;
 }
 
 // --- DOM References ---

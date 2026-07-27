@@ -80,7 +80,7 @@ public enum MSG {
 
     // welcome / lobby_update / game_start / countdown / game_end / game_over /
     // game_paused / game_resumed / display_muted are GONE. The retained room
-    // snapshot (server/RoomBrain.js) is the single source of truth controllers
+    // snapshot (server/RoomCore.js) is the single source of truth controllers
     // derive their whole UI from, screen routing included, so there is no second
     // channel left that could disagree with it. DisplayCoordinatorTests
     // .retiredMessageTypesAreNeverSent walks a whole session asserting none of
@@ -99,8 +99,8 @@ public enum InputAction: String, CaseIterable {
     case hold
 }
 
-/// Room states, from `ROOM_STATE`. Kept identical to the room brain's states
-/// (server/RoomBrain.js -> partyplug/RoomFlow.js), which the snapshot reports as
+/// Room states, from `ROOM_STATE`. Kept identical to the room core's states
+/// (server/RoomCore.js -> partyplug/RoomFlow.js), which the snapshot reports as
 /// `roomState` and controllers route their screens off.
 public enum RoomState: String {
     case lobby

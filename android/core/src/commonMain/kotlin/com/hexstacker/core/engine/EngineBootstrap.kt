@@ -15,7 +15,7 @@ internal object EngineBootstrap {
       var PartyCore = HexCore.PartyCore;
       var core = null;
       // ROOM-SHIM-BEGIN
-      // The room brain: roster, naming, colour slots, host election and the
+      // The room core: roster, naming, colour slots, host election and the
       // retained snapshot, shared verbatim with the web display and Android TV.
       // Deliberately generic (one call/get pair rather than ~30 wrappers): the
       // Android shim has to build every call as an interpolated source string,
@@ -118,7 +118,7 @@ internal object EngineBootstrap {
         isEnded: function () { return !!(core && core.game && core.game.ended); },
         // ROOM-API-BEGIN
         roomInit: function (optsJson) {
-          room = new HexCore.RoomBrain(optsJson ? JSON.parse(optsJson) : {});
+          room = new HexCore.RoomCore(optsJson ? JSON.parse(optsJson) : {});
         },
         roomCall: function (method, argsJson) {
           var r = roomOrThrow();

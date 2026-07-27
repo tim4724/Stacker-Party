@@ -5,9 +5,9 @@ import Testing
 // `swift test` (works with only Command Line Tools; no full Xcode).
 //
 // The room/host FSM used to be tested here against a hand-ported Swift RoomFlow.
-// That port is gone: the room layer is server/RoomBrain.js running in the shared
+// That port is gone: the room layer is server/RoomCore.js running in the shared
 // JavaScriptCore context, so its behaviour is pinned by the cross-platform golden
-// (RoomBrainConformanceTests) and its Node twin, not by a second implementation.
+// (RoomCoreConformanceTests) and its Node twin, not by a second implementation.
 
 @Suite struct GeometryTests {
     @Test func boardDimensions() {

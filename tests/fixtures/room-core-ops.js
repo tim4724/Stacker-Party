@@ -1,11 +1,11 @@
 'use strict';
 
-// The canonical RoomBrain operation log.
+// The canonical RoomCore operation log.
 //
 // This is the cross-platform contract. The same sequence is replayed against
-// the same module three times: in Node (tests/room-brain-conformance.test.js),
-// inside JavaScriptCore on tvOS (RoomBrainConformanceTests.swift) and inside
-// QuickJS on Android TV (RoomBrainConformanceTest.kt), and the snapshot after
+// the same module three times: in Node (tests/room-core-conformance.test.js),
+// inside JavaScriptCore on tvOS (RoomCoreConformanceTests.swift) and inside
+// QuickJS on Android TV (RoomCoreConformanceTest.kt), and the snapshot after
 // every step must be byte-identical.
 //
 // Because all three run the SAME JavaScript, these tests are not asking "did
@@ -18,7 +18,7 @@
 // deterministic, which matters because auto-naming is one of the behaviours
 // that had silently diverged across the three platforms.
 //
-// Each op is { m: <RoomBrain method>, a: [args] }. Steps that read a getter use
+// Each op is { m: <RoomCore method>, a: [args] }. Steps that read a getter use
 // { g: <property> }. The runner records the method's return value AND the full
 // snapshot after every step.
 

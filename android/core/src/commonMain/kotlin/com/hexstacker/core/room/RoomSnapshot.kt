@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 
 /**
- * The retained room snapshot, decoded from `RoomBrain.snapshotJSON()`.
+ * The retained room snapshot, decoded from `RoomCore.snapshotJSON()`.
  *
  * This is the protocol: the display publishes exactly this object via the relay's
  * `set_state` and sends nothing else about the room, and controllers derive their
@@ -14,7 +14,7 @@ import kotlinx.serialization.json.JsonArray
  * far too often to cross into JS for each one, and re-reading the published
  * snapshot after every mutation is the cheapest way to stay honest about it.
  *
- * The wire keys are the brain's; do not rename them.
+ * The wire keys are the room core's; do not rename them.
  */
 @Serializable
 data class RoomSnapshot(
@@ -40,7 +40,7 @@ data class RoomSnapshot(
     fun isParticipant(peerIndex: Int): Boolean = participants.contains(peerIndex)
 
     companion object {
-        /** Before the brain exists (see DisplayCoordinator.consume): an empty lobby. */
+        /** Before the room core exists (see DisplayCoordinator.consume): an empty lobby. */
         val EMPTY = RoomSnapshot()
     }
 }

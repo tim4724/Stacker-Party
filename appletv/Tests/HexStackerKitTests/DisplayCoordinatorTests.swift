@@ -10,9 +10,9 @@ import Foundation
 ///
 /// Room assertions read the retained snapshot (`FakeTransport.states`), because the
 /// snapshot IS the protocol now: it is the only thing the display tells controllers
-/// about the room, and it is built by the shared RoomBrain rather than here. The
-/// room LOGIC is pinned by RoomBrainConformanceTests; what these tests own is the
-/// shell — which brain call each relay event maps to, and what the shell does with
+/// about the room, and it is built by the shared RoomCore rather than here. The
+/// room LOGIC is pinned by RoomCoreConformanceTests; what these tests own is the
+/// shell — which room-core call each relay event maps to, and what the shell does with
 /// the answer.
 @Suite struct DisplayCoordinatorTests {
 
@@ -35,7 +35,7 @@ import Foundation
         coord.start()
         ft.onCreated?("ROOM42", "inst1", "eu")
         if players > 0 {
-            // Deliberately NOT "P1": P1-P8 are the legacy slot names the brain
+            // Deliberately NOT "P1": P1-P8 are the legacy slot names the room core
             // resolves away to room-unique HX names (see legacyNameResolvesToAnAutoName).
             for i in 1...players {
                 ft.onPeerJoined?(i)
@@ -98,7 +98,7 @@ import Foundation
 
     /// Every room change publishes ONE retained `set_state` snapshot; the relay pushes
     /// it live and replays it to any (re)joining controller, so a briefly-dropped
-    /// phone catches up without a round trip. The brain decides which changes take
+    /// phone catches up without a round trip. The room core decides which changes take
     /// the throttled path; the shell only owns the timer.
     @Test func roomChangesPublishOneRetainedSnapshot() {
         let clock = Clock()
@@ -126,7 +126,7 @@ import Foundation
     }
 
     /// The colour rose and the +/- stepper are finger-speed controls where only the
-    /// final value matters, so the brain hints 'soon' and the shell collapses the
+    /// final value matters, so the room core hints 'soon' and the shell collapses the
     /// burst into one leading + one trailing publish that reads live state at fire time.
     @Test func levelAndColourPublishesAreThrottledLeadingAndTrailing() {
         let clock = Clock()
@@ -277,7 +277,7 @@ import Foundation
         #expect(fo.paused == true, "manual pause shows the overlay")
         #expect(ft.states.last?["paused"] as? Bool == true)
         // One frame, so the batched "heard from" stamps land at the CURRENT clock:
-        // the brain's tick(nowMs, seen) applies a whole frame's arrivals at one time,
+        // the room core's tick(nowMs, seen) applies a whole frame's arrivals at one time,
         // which is why the silence below has to start from a drained sweep.
         coord.tick(deltaMs: 16)
 
@@ -354,7 +354,7 @@ import Foundation
 
     /// GAME_OVER is retired: the snapshot's per-player `alive` carries the KO, and it
     /// has to survive a reconnect or the eliminated phone flips back to the live
-    /// playing UI (the web's lastAliveState, now the brain's).
+    /// playing UI (the web's lastAliveState, now the room core's).
     @Test func koedPlayerStaysDeadInTheSnapshotAcrossAReconnect() {
         let clock = Clock()
         // Three players: KO'ing one still leaves two alive, so the match keeps
@@ -388,7 +388,7 @@ import Foundation
 
     /// The relay replays the retained snapshot to a controller that (re)joins on the
     /// results screen, so the ranking has to ride IN it — that is what the retired
-    /// WELCOME `results` replay did. It is enriched by the brain: engine rows get the
+    /// WELCOME `results` replay did. It is enriched by the room core: engine rows get the
     /// roster's name and colour, and the players who sat the round out are appended
     /// flagged newPlayer instead of silently dropped.
     @Test func resultsSnapshotCarriesTheEnrichedRanking() {

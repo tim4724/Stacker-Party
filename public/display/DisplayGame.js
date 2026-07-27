@@ -41,7 +41,7 @@ function playAgain() {
 // request because the display isn't manually paused, so no GAME_RESUMED is ever
 // sent and the overlay never clears. This is what the room snapshot publishes.
 function userVisiblePaused() {
-  return brain.userVisiblePaused();
+  return roomCore.userVisiblePaused();
 }
 
 function setAutoPaused(value) {
@@ -59,18 +59,18 @@ function startNewGame() {
   connectionPaused = false;
   setAutoPaused(false);
   lastResults = null;
-  brain.clearAlive();
+  roomCore.clearAlive();
   // Drop players still flagged as disconnected from the previous game so they
   // don't carry into the new one, including a relay peer that dropped right as
   // RESULTS appeared, before peer_left or the liveness tick flagged it.
   // Reconnects clear the flag, so present players survive.
-  brain.pruneDisconnected(Date.now());
+  roomCore.pruneDisconnected(Date.now());
   // Clear stale disconnected-QR flags from the previous game so they don't
   // suppress host eligibility here. (onGameEnd no longer clears them — we
   // keep the disconnected state through RESULTS so the host role hands off
   // correctly; see getHostPeerIndex().)
   disconnectedQRs.clear();
-  brain.clearDisconnected(Date.now());
+  roomCore.clearDisconnected(Date.now());
   // Everyone who remained was disconnected — don't launch an empty game.
   // Both callers (startGame, playAgain) check players.size before this prune,
   // so neither catches the all-disconnected case. From RESULTS, returnToLobby()
@@ -86,7 +86,7 @@ function startNewGame() {
     return;
   }
   // Fold in the late joiners who sat out the previous round.
-  brain.admitWaiting();
+  roomCore.admitWaiting();
   setRoomState(ROOM_STATE.COUNTDOWN);
   acquireWakeLock();
 
@@ -98,7 +98,7 @@ function startNewGame() {
 
     // Show disconnect QR for any players that disconnected during countdown
     for (const entry of players) {
-      if (brain.isExpired(entry[0], Date.now())) {
+      if (roomCore.isExpired(entry[0], Date.now())) {
         showDisconnectQR(entry[0]);
       }
     }
@@ -174,7 +174,7 @@ function pauseGame() {
 // kept so the call sites (canResumeGame, checkAllPlayersDisconnected,
 // DisplayLiveness, display-airconsole) don't all have to change.
 function allPlayersDisconnected() {
-  return brain.allParticipantsDisconnected();
+  return roomCore.allParticipantsDisconnected();
 }
 
 function canResumeGame() {
@@ -184,7 +184,7 @@ function canResumeGame() {
 function checkAllPlayersDisconnected() {
   // Don't auto-pause during COUNTDOWN — let it finish so disconnect QRs become visible.
   if (roomState !== ROOM_STATE.PLAYING) return;
-  if (!brain.allParticipantsDisconnected()) return;
+  if (!roomCore.allParticipantsDisconnected()) return;
 
   // Arm the late-joiner grace deadline immediately on the event path — a
   // manually-paused host who then disconnects strands late joiners the same way
@@ -194,7 +194,7 @@ function checkAllPlayersDisconnected() {
   // discarding it — otherwise return-to-lobby slips a full window. Any active
   // player reconnecting drops allParticipantsDisconnected so graceTick clears
   // the deadline (implicit cancel).
-  if (brain.graceTick(Date.now())) {
+  if (roomCore.graceTick(Date.now())) {
     returnToLobby();
     return;
   }
@@ -260,11 +260,11 @@ function returnToLobby() {
   // Remove disconnected players (AirConsole mode flags them without ever
   // expiring; relay mode can expire one before a QR flag was set), then fold in
   // the late joiners who were waiting out the round.
-  brain.pruneDisconnected(Date.now());
-  brain.admitWaiting();
+  roomCore.pruneDisconnected(Date.now());
+  roomCore.admitWaiting();
 
   lastResults = null;
-  brain.clearAlive();
+  roomCore.clearAlive();
   // Publishes: controllers see roomState back at LOBBY and route themselves
   // there, which is what the RETURN_TO_LOBBY broadcast used to do.
   setRoomState(ROOM_STATE.LOBBY);
@@ -277,7 +277,7 @@ function returnToLobbyUI() {
   gameState = null;
   prevFrameTime = 0;
   disconnectedQRs.clear();
-  brain.clearDisconnected(Date.now());
+  roomCore.clearDisconnected(Date.now());
   garbageIndicatorEffects.clear();
   garbageDefenceEffects.clear();
   showScreen(SCREEN.LOBBY);
@@ -319,7 +319,7 @@ function runGameLocallyWithSeed(seed) {
   // Sort by join time so the engine's order matches the lobby's board positions
   // (first joiner leftmost; see calculateLayout, same rule), snapshot the array
   // so mid-game layout can't drift, and pin it as the host-eligibility set.
-  brain.freezeParticipantOrder();
+  roomCore.freezeParticipantOrder();
   var gamePlayers = new Map();
   for (var i = 0; i < playerOrder.length; i++) {
     var pInfo = players.get(playerOrder[i]);
@@ -341,7 +341,7 @@ function runGameLocallyWithSeed(seed) {
         }
       } else if (event.type === 'player_ko') {
         onPlayerKO(event);
-        brain.setAlive(event.playerId, false);
+        roomCore.setAlive(event.playerId, false);
         party.sendTo(event.playerId, { type: MSG.PLAYER_STATE, alive: false });
         // The snapshot carries alive too, so a reconnect right after a KO
         // still lands on the dead board. The targeted PLAYER_STATE above stays
@@ -359,7 +359,7 @@ function runGameLocallyWithSeed(seed) {
       // Label the ranking with roster names/colours and append the players who
       // sat this round out, flagged newPlayer so every screen renders them
       // rather than omitting them.
-      if (results && results.results) brain.enrichResults(results.results);
+      if (results && results.results) roomCore.enrichResults(results.results);
       // Stash the ranking BEFORE the transition: setRoomState publishes, and
       // the RESULTS snapshot is what carries the results to controllers.
       lastResults = results && results.results;

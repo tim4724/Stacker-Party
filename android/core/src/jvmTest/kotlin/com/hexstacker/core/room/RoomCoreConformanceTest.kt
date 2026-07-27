@@ -13,11 +13,11 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * RoomBrain conformance: the Android TV leg.
+ * RoomCore conformance: the Android TV leg.
  *
- * `tests/fixtures/room-brain-golden.json` is a self-contained artifact — the
+ * `tests/fixtures/room-core-golden.json` is a self-contained artifact — the
  * constructor options, an 88-step op log, and the expected return value plus full
- * snapshot after every step. Node replays it (tests/room-brain-conformance.test.js),
+ * snapshot after every step. Node replays it (tests/room-core-conformance.test.js),
  * JavaScriptCore replays it on tvOS, and QuickJS replays it here.
  *
  * Because all three legs run the SAME JavaScript, this is not asking "did someone
@@ -30,7 +30,7 @@ import kotlin.test.assertEquals
  * indices, the three pause flags, suspend + cross-device rejoin, batched liveness
  * ticks, late-joiner grace, results enrichment, and a full room rejecting one more.
  */
-class RoomBrainConformanceTest {
+class RoomCoreConformanceTest {
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -92,7 +92,7 @@ class RoomBrainConformanceTest {
     fun exposesTheModuleSnapshotThrottle() = runBlocking {
         val bridge = EngineBridge.create(bundle())
         try {
-            val client = RoomBrainClient.create(bridge, JsonObject(emptyMap()))
+            val client = RoomCoreClient.create(bridge, JsonObject(emptyMap()))
             assertEquals(500.0, client.snapshotThrottleMs())
         } finally {
             bridge.close()

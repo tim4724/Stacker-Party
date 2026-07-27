@@ -17,7 +17,7 @@ const path = require('path');
 
 const { MSG, INPUT, ROOM_STATE, RELAY_URL, STUN_URL } = require('../public/shared/protocol.js');
 const constants = require('../server/constants.js');
-const { RoomBrain } = require('../server/RoomBrain.js');
+const { RoomCore } = require('../server/RoomCore.js');
 
 const ROOT = path.join(__dirname, '..');
 const SWIFT = read('appletv/Sources/HexStackerKit/Net/Protocol.swift');
@@ -101,29 +101,29 @@ test('the controller base URL matches the Android mirror', () => {
   assert.strictEqual(swiftStringConsts(swiftEnum('Protocol')).controllerBaseURL, kt[1]);
 });
 
-// The room LAYER is no longer mirrored — tvOS runs server/RoomBrain.js itself, and
-// RoomBrainConformanceTests replays the shared golden through its bridge — so there
+// The room LAYER is no longer mirrored — tvOS runs server/RoomCore.js itself, and
+// RoomCoreConformanceTests replays the shared golden through its bridge — so there
 // is nothing left here to pin about naming, colours, host election or the snapshot.
 // What survives is the handful of numbers the shell still has to hold in Swift,
-// because they configure or schedule the brain rather than living inside it.
-test('the snapshot throttle is READ from the brain, not mirrored in Swift', () => {
-  // The brain hands back a 'now' | 'soon' | 'none' hint per mutator; the WINDOW
-  // the 'soon' hint is throttled by has to be the brain's own. Swift reads it
+// because they configure or schedule the room core rather than living inside it.
+test('the snapshot throttle is READ from the room core, not mirrored in Swift', () => {
+  // The room core hands back a 'now' | 'soon' | 'none' hint per mutator; the WINDOW
+  // the 'soon' hint is throttled by has to be the room core's own. Swift reads it
   // through roomGet at roomInit time, exactly as Kotlin does, so there is no
   // constant here to drift. This asserts the READ still happens: a future edit
   // that quietly reinstates a Swift literal would otherwise go unnoticed.
   assert.match(
     COORDINATOR,
     /roomGet\(Double\.self, "snapshotThrottleMs"\)/,
-    'Swift no longer reads the throttle window from the brain'
+    'Swift no longer reads the throttle window from the room core'
   );
   assert.ok(
     !/(static )?let snapshotThrottleMs = /.test(COORDINATOR),
-    'the throttle window is mirrored as a Swift constant again; read it from the brain instead'
+    'the throttle window is mirrored as a Swift constant again; read it from the room core instead'
   );
 });
 
-test('the liveness policy handed to the brain matches the canonical constants', () => {
+test('the liveness policy handed to the room core matches the canonical constants', () => {
   // Constructor options, so they are Swift-side by necessity; the web display passes
   // the same two values from server/constants.js.
   const timeout = COORDINATOR.match(/static let livenessTimeoutMs = (\d+)/);

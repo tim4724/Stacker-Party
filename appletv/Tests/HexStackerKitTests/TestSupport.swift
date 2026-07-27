@@ -37,10 +37,10 @@ enum EngineFixture {
     /// The committed V8-recorded golden the conformance test byte-compares against.
     static let frameGolden = repoRoot.appendingPathComponent("tests/fixtures/partycore-frame-golden.json")
 
-    /// The cross-platform RoomBrain golden: constructor options, the canonical op
+    /// The cross-platform RoomCore golden: constructor options, the canonical op
     /// log, and the expected return value + snapshot after every step. Self-contained
     /// on purpose — this leg can't `require` the JS fixture the Node leg reads.
-    static let roomBrainGolden = repoRoot.appendingPathComponent("tests/fixtures/room-brain-golden.json")
+    static let roomCoreGolden = repoRoot.appendingPathComponent("tests/fixtures/room-core-golden.json")
 
     private static func run(_ arguments: [String]) {
         let proc = Process()

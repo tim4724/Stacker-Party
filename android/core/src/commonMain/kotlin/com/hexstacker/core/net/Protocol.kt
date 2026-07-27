@@ -96,7 +96,7 @@ enum class RoomState(val wire: String) {
     RESULTS("results");
 
     companion object {
-        /** Decode the room brain's `roomState`. An unknown value can only mean the
+        /** Decode the room core's `roomState`. An unknown value can only mean the
          *  bundle moved ahead of this mirror, and a lobby is the safe reading. */
         fun fromWire(wire: String?): RoomState = entries.firstOrNull { it.wire == wire } ?: LOBBY
     }

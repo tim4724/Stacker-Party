@@ -106,13 +106,13 @@ test('the controller-URL template registered on create mirrors the web shape', (
 test('timing constants mirror server/constants.js and PartyConnection.js', () => {
   assert.strictEqual(kotlinConst(KOTLIN.protocol, 'SELF_HEARTBEAT_DEAD_MS'), constants.SELF_HEARTBEAT_DEAD_MS);
 
-  // DisplayCoordinator hands these to the room brain as its `liveness` options.
+  // DisplayCoordinator hands these to the room core as its `liveness` options.
   assert.strictEqual(kotlinConst(KOTLIN.coordinator, 'LIVENESS_TIMEOUT_MS'), constants.LIVENESS_TIMEOUT_MS);
   assert.strictEqual(kotlinConst(KOTLIN.coordinator, 'LATE_JOINER_GRACE_MS'), constants.LATE_JOINER_GRACE_MS);
 
   // The snapshot-publish throttle is NOT pinned here any more: Kotlin no longer
-  // declares it. DisplayCoordinator reads RoomBrain.SNAPSHOT_THROTTLE_MS out of the
-  // bundle at start-up (RoomBrainClient.snapshotThrottleMs), so there is no second
+  // declares it. DisplayCoordinator reads RoomCore.SNAPSHOT_THROTTLE_MS out of the
+  // bundle at start-up (RoomCoreClient.snapshotThrottleMs), so there is no second
   // copy of the value to keep in step — which is a stronger guarantee than this
   // file could give. The read itself is covered by the Kotlin conformance test.
 

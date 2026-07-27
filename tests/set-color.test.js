@@ -2,11 +2,11 @@ const { test, describe, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { ROOM_STATE } = require('../public/shared/protocol');
 const { PLAYER_COLORS } = require('../public/shared/theme');
-const { RoomBrain } = require('../server/RoomBrain.js');
+const { RoomCore } = require('../server/RoomCore.js');
 
 // =====================================================================
 // The lobby colour-picker protocol (MSG.SET_COLOR), driven against the REAL
-// handler in server/RoomBrain.js rather than a mirror of it. The rules:
+// handler in server/RoomCore.js rather than a mirror of it. The rules:
 //   - Reject invalid indices (non-integer, out-of-range).
 //   - Reject if another player already claims the target index.
 //   - No-op if the sender already holds the target index.
@@ -28,18 +28,18 @@ function takenIn(snap) {
     .sort(function(a, b) { return a - b; });
 }
 
-// The thin shell around the brain: honour the publish hint, exactly as
+// The thin shell around the room core: honour the publish hint, exactly as
 // DisplayInput.js#onSetColor and DisplayConnection.js#onPeerJoined do.
 function publishAs(room, hint) {
-  if (hint === 'now' || hint === 'soon') room.party.setState(room.brain.snapshot());
+  if (hint === 'now' || hint === 'soon') room.party.setState(room.roomCore.snapshot());
 }
 
 function onSetColor(room, fromId, msg) {
-  publishAs(room, room.brain.setColor(fromId, msg.colorIndex).publish);
+  publishAs(room, room.roomCore.setColor(fromId, msg.colorIndex).publish);
 }
 
 function onPeerJoined(room, peerIndex) {
-  publishAs(room, room.brain.peerJoined(peerIndex, 1000).publish);
+  publishAs(room, room.roomCore.peerJoined(peerIndex, 1000).publish);
 }
 
 describe('Display: onSetColor', () => {
@@ -48,24 +48,24 @@ describe('Display: onSetColor', () => {
   beforeEach(() => {
     sent = [];
     room = {
-      brain: new RoomBrain({ rngSeed: 7 }),
+      roomCore: new RoomCore({ rngSeed: 7 }),
       party: { setState: (snap) => { sent.push(snap); } },
     };
-    players = room.brain.players;
+    players = room.roomCore.players;
   });
 
   // Seat a player directly in a chosen slot (the fixture path: a real join
   // allocates the lowest free one).
   function seedPlayer(id, playerIndex) {
-    room.brain.addPlayer(id, { playerName: id, playerIndex: playerIndex, startLevel: 1 });
-    room.brain.addParticipant(id);
+    room.roomCore.addPlayer(id, { playerName: id, playerIndex: playerIndex, startLevel: 1 });
+    room.roomCore.addParticipant(id);
   }
 
   // Drive the room into a non-lobby state through the real transition table.
   function enter(state) {
     for (const step of { countdown: ['countdown'], playing: ['countdown', 'playing'],
                          results: ['countdown', 'playing', 'results'] }[state] || []) {
-      room.brain.transitionTo(step);
+      room.roomCore.transitionTo(step);
     }
     sent.length = 0;
   }

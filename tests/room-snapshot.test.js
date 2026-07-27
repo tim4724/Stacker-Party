@@ -4,7 +4,7 @@ const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { RoomBrain } = require('../server/RoomBrain.js');
+const { RoomCore } = require('../server/RoomCore.js');
 
 // =====================================================================
 // The retained room snapshot is the controller's single source of truth.
@@ -13,7 +13,7 @@ const { RoomBrain } = require('../server/RoomBrain.js');
 // is derived from it: identity, roster, host, pause, liveness, results, and
 // which screen is up. No per-recipient message survives alongside it.
 //
-// The snapshot is built by the REAL production module (server/RoomBrain.js),
+// The snapshot is built by the REAL production module (server/RoomCore.js),
 // which tvOS and Android TV load out of the same bundle, so these assertions
 // are about all three displays at once. Only the CONTROLLER side is mirrored
 // here (it is still per-shell JavaScript), and the lockstep guard at the
@@ -119,7 +119,7 @@ function deriveWelcomeEquivalent(snap, peerIndex) {
   return out;
 }
 
-// Build a real RoomBrain in the described state, then expose it behind the same
+// Build a real RoomCore in the described state, then expose it behind the same
 // field names legacyWelcomeTo reads, so the frozen WELCOME payload is compared
 // against genuine production output rather than a second copy of it.
 const STATE_PATH = { lobby: [], countdown: ['countdown'], playing: ['countdown', 'playing'], results: ['countdown', 'playing', 'results'] };
@@ -138,7 +138,7 @@ function makeRoom(over) {
 
   // rng is pinned but unused by these fixtures: every row carries an explicit
   // name, so no auto-name is generated.
-  const brain = new RoomBrain({ rng: () => 0 });
+  const roomCore = new RoomCore({ rng: () => 0 });
 
   // Seat the intended host first. The first joiner takes the sticky slot, which
   // is how a real room elects one, so the fixture never has to poke at it.
@@ -147,26 +147,26 @@ function makeRoom(over) {
     ids.splice(ids.indexOf(spec.hostPeerIndex), 1);
     ids.unshift(spec.hostPeerIndex);
   }
-  for (const id of ids) brain.addPlayer(id, Object.assign({}, spec.players.get(id)));
+  for (const id of ids) roomCore.addPlayer(id, Object.assign({}, spec.players.get(id)));
 
-  for (const step of STATE_PATH[spec.roomState]) brain.transitionTo(step);
-  brain.setParticipants(spec.playerOrder);
+  for (const step of STATE_PATH[spec.roomState]) roomCore.transitionTo(step);
+  roomCore.setParticipants(spec.playerOrder);
   for (const id of Object.keys(spec.lastAliveState)) {
-    brain.setAlive(Number(id), spec.lastAliveState[id]);
+    roomCore.setAlive(Number(id), spec.lastAliveState[id]);
   }
-  if (spec.userVisiblePaused) brain.setPaused(true);
-  if (spec.muted) brain.setMuted(true);
-  if (spec.lastResults) brain.setResults(spec.lastResults.results);
+  if (spec.userVisiblePaused) roomCore.setPaused(true);
+  if (spec.muted) roomCore.setMuted(true);
+  if (spec.lastResults) roomCore.setResults(spec.lastResults.results);
 
   return {
-    brain,
-    snapshot: () => brain.snapshot(),
-    get players() { return brain.players; },
-    get hostPeerIndex() { return brain.host; },
-    get roomState() { return brain.state; },
-    get playerOrder() { return brain.participants; },
-    get muted() { return brain.muted; },
-    get userVisiblePaused() { return brain.userVisiblePaused(); },
+    roomCore,
+    snapshot: () => roomCore.snapshot(),
+    get players() { return roomCore.players; },
+    get hostPeerIndex() { return roomCore.host; },
+    get roomState() { return roomCore.state; },
+    get playerOrder() { return roomCore.participants; },
+    get muted() { return roomCore.muted; },
+    get userVisiblePaused() { return roomCore.userVisiblePaused(); },
     lastAliveState: spec.lastAliveState,
     lastResults: spec.lastResults,
   };

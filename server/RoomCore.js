@@ -1,10 +1,10 @@
 'use strict';
 
-// UMD: works in Node.js (require), the browser (window.GameEngine.RoomBrain),
+// UMD: works in Node.js (require), the browser (window.GameEngine.RoomCore),
 // and JavaScriptCore/QuickJS on native (tvOS / Android TV). Pure: no wall clock,
 // no timers, no DOM, no I/O. Time is injected via nowMs, randomness via opts.rng.
 //
-// RoomBrain is HexStacker's room brain: the single source of truth for
+// RoomCore is HexStacker's room core: the single source of truth for
 // everything a controller renders. It COMPOSES the generic partyplug RoomFlow
 // (roster, presence, host election, the state machine, liveness predicates) and
 // adds the game-flavoured layer RoomFlow deliberately refuses to know about:
@@ -77,7 +77,7 @@ function isAllowedAutoNameNumber(num) {
 
 // ---------------------------------------------------------------------
 
-function RoomBrain(opts) {
+function RoomCore(opts) {
   opts = opts || {};
 
   this.maxPlayers = opts.maxPlayers != null ? opts.maxPlayers : GameConstants.MAX_PLAYERS;
@@ -110,7 +110,7 @@ function RoomBrain(opts) {
 
   // Roster backing store, aliased onto flow's map so in-process consumers (the
   // web display's renderers) keep their cheap reads. Writes always go through
-  // this brain. Native shells cannot alias a JS Map and read the snapshot
+  // this core. Native shells cannot alias a JS Map and read the snapshot
   // instead, which is the same data by construction.
   // peerIndex -> { playerName, playerIndex (colour slot), startLevel, helloSeen,
   //                joinedAt, connected, peerIndex }
@@ -136,11 +136,11 @@ function RoomBrain(opts) {
   this._connectionPaused = false;
 }
 
-RoomBrain.SNAPSHOT_THROTTLE_MS = SNAPSHOT_THROTTLE_MS;
-RoomBrain.AUTO_NAME_BLOCKLIST = AUTO_NAME_BLOCKLIST.slice();
-RoomBrain.NAME_MAX_LEN = NAME_MAX_LEN;
-RoomBrain.STATES = RoomFlow.STATES;
-RoomBrain.cleanInboundName = cleanInboundName;
+RoomCore.SNAPSHOT_THROTTLE_MS = SNAPSHOT_THROTTLE_MS;
+RoomCore.AUTO_NAME_BLOCKLIST = AUTO_NAME_BLOCKLIST.slice();
+RoomCore.NAME_MAX_LEN = NAME_MAX_LEN;
+RoomCore.STATES = RoomFlow.STATES;
+RoomCore.cleanInboundName = cleanInboundName;
 
 // =====================================================================
 // Read accessors
@@ -151,66 +151,66 @@ RoomBrain.cleanInboundName = cleanInboundName;
 // constructor is unreachable from tvOS and Android; without this each of them
 // has to hand-mirror the number, which is exactly the drift the module exists
 // to stop.
-Object.defineProperty(RoomBrain.prototype, 'snapshotThrottleMs', {
+Object.defineProperty(RoomCore.prototype, 'snapshotThrottleMs', {
   get: function () { return SNAPSHOT_THROTTLE_MS; },
 });
 
-Object.defineProperty(RoomBrain.prototype, 'state', {
+Object.defineProperty(RoomCore.prototype, 'state', {
   get: function () { return this.flow.state; },
 });
 
 // The RAW sticky host slot. Use `host` for the effective (fallback-resolved)
 // one: the two differ during a mid-game blip, when the sticky holder is
 // disconnected but their slot stays pinned for their return.
-Object.defineProperty(RoomBrain.prototype, 'stickyHost', {
+Object.defineProperty(RoomCore.prototype, 'stickyHost', {
   get: function () { return this.flow.hostPeerIndex; },
 });
 
-Object.defineProperty(RoomBrain.prototype, 'host', {
+Object.defineProperty(RoomCore.prototype, 'host', {
   get: function () { return this.flow.host; },
 });
 
-Object.defineProperty(RoomBrain.prototype, 'participants', {
+Object.defineProperty(RoomCore.prototype, 'participants', {
   get: function () { return this._participants; },
 });
 
-Object.defineProperty(RoomBrain.prototype, 'size', {
+Object.defineProperty(RoomCore.prototype, 'size', {
   get: function () { return this.flow.size; },
 });
 
-Object.defineProperty(RoomBrain.prototype, 'connectedCount', {
+Object.defineProperty(RoomCore.prototype, 'connectedCount', {
   get: function () { return this.flow.connectedCount; },
 });
 
-Object.defineProperty(RoomBrain.prototype, 'results', {
+Object.defineProperty(RoomCore.prototype, 'results', {
   get: function () { return this._results; },
 });
 
-Object.defineProperty(RoomBrain.prototype, 'muted', {
+Object.defineProperty(RoomCore.prototype, 'muted', {
   get: function () { return this._muted; },
 });
 
-Object.defineProperty(RoomBrain.prototype, 'paused', {
+Object.defineProperty(RoomCore.prototype, 'paused', {
   get: function () { return this._paused; },
 });
 
-Object.defineProperty(RoomBrain.prototype, 'autoPaused', {
+Object.defineProperty(RoomCore.prototype, 'autoPaused', {
   get: function () { return this._autoPaused; },
 });
 
-Object.defineProperty(RoomBrain.prototype, 'connectionPaused', {
+Object.defineProperty(RoomCore.prototype, 'connectionPaused', {
   get: function () { return this._connectionPaused; },
 });
 
-RoomBrain.prototype.get = function (peerIndex) { return this.flow.get(peerIndex); };
-RoomBrain.prototype.has = function (peerIndex) { return this.flow.has(peerIndex); };
-RoomBrain.prototype.list = function () { return this.flow.list(); };
-RoomBrain.prototype.isHost = function (peerIndex) { return this.flow.isHost(peerIndex); };
-RoomBrain.prototype.isDisconnected = function (peerIndex) { return this.flow.isDisconnected(peerIndex); };
-RoomBrain.prototype.isAlive = function (peerIndex) { return this._alive[peerIndex] !== false; };
-RoomBrain.prototype.isParticipant = function (peerIndex) { return this._participants.indexOf(peerIndex) >= 0; };
+RoomCore.prototype.get = function (peerIndex) { return this.flow.get(peerIndex); };
+RoomCore.prototype.has = function (peerIndex) { return this.flow.has(peerIndex); };
+RoomCore.prototype.list = function () { return this.flow.list(); };
+RoomCore.prototype.isHost = function (peerIndex) { return this.flow.isHost(peerIndex); };
+RoomCore.prototype.isDisconnected = function (peerIndex) { return this.flow.isDisconnected(peerIndex); };
+RoomCore.prototype.isAlive = function (peerIndex) { return this._alive[peerIndex] !== false; };
+RoomCore.prototype.isParticipant = function (peerIndex) { return this._participants.indexOf(peerIndex) >= 0; };
 
-RoomBrain.prototype.userVisiblePaused = function () {
+RoomCore.prototype.userVisiblePaused = function () {
   return this._paused && !this._autoPaused && !this._connectionPaused;
 };
 
@@ -223,7 +223,7 @@ RoomBrain.prototype.userVisiblePaused = function () {
 // UI from this, screen routing included, so there is no second message left that
 // could drift out of sync with it. Tiny: well under 2 KiB even for a full room
 // sitting on results, against the relay's 16 KiB retained-state cap.
-RoomBrain.prototype.snapshot = function () {
+RoomCore.prototype.snapshot = function () {
   var roster = {};
   for (var entry of this.players) {
     var p = entry[1];
@@ -257,7 +257,7 @@ RoomBrain.prototype.snapshot = function () {
 
 // Native shells cross the bridge with JSON strings, so hand them one directly
 // rather than making every platform re-serialize an object it just decoded.
-RoomBrain.prototype.snapshotJSON = function () {
+RoomCore.prototype.snapshotJSON = function () {
   return JSON.stringify(this.snapshot());
 };
 
@@ -265,7 +265,7 @@ RoomBrain.prototype.snapshotJSON = function () {
 // Naming
 // =====================================================================
 
-RoomBrain.prototype._takenAutoNameNumbers = function (exceptPeerIndex) {
+RoomCore.prototype._takenAutoNameNumbers = function (exceptPeerIndex) {
   var taken = [];
   for (var entry of this.players) {
     if (entry[0] === exceptPeerIndex) continue;
@@ -278,7 +278,7 @@ RoomBrain.prototype._takenAutoNameNumbers = function (exceptPeerIndex) {
 // A room-unique HX name. Honours a preferred number (so a returning player keeps
 // the name they had) when it is allowed and free, otherwise picks at random from
 // what is left.
-RoomBrain.prototype.generateAutoName = function (exceptPeerIndex, preferredName) {
+RoomCore.prototype.generateAutoName = function (exceptPeerIndex, preferredName) {
   var taken = this._takenAutoNameNumbers(exceptPeerIndex);
   var preferredNum = autoNameNumber(preferredName);
   if (preferredNum != null
@@ -306,7 +306,7 @@ RoomBrain.prototype.generateAutoName = function (exceptPeerIndex, preferredName)
 
 // Resolve a submitted name. Empty submissions and legacy P1-P8 fallbacks become
 // room-unique HX names; custom names stay as entered.
-RoomBrain.prototype.resolveName = function (name, peerIndex, requestedAutoName) {
+RoomCore.prototype.resolveName = function (name, peerIndex, requestedAutoName) {
   if (requestedAutoName || !name || LEGACY_SLOT_NAME_RE.test(name)) {
     return this.generateAutoName(peerIndex, name);
   }
@@ -320,7 +320,7 @@ RoomBrain.prototype.resolveName = function (name, peerIndex, requestedAutoName) 
 // Lowest free colour slot. Slots are dense (0..maxPlayers-1) and game-owned;
 // peerIndex is NOT a slot (it can be a sparse AirConsole device_id), so we
 // allocate from the slots in use via the kit's sparse-safe helper.
-RoomBrain.prototype.nextAvailableColorSlot = function () {
+RoomCore.prototype.nextAvailableColorSlot = function () {
   var used = [];
   for (var entry of this.players) used.push(entry[1].playerIndex);
   return RoomFlow.lowestFreeSlot(used, this.maxPlayers);
@@ -332,7 +332,7 @@ RoomBrain.prototype.nextAvailableColorSlot = function () {
 // Honouring it at HELLO time (instead of waiting for the controller's follow-up
 // SET_COLOR reclaim) removes a full round trip during which both the display and
 // the controller showed the default slot colour.
-RoomBrain.prototype.preferredColor = function (peerIndex, rawColorIndex) {
+RoomCore.prototype.preferredColor = function (peerIndex, rawColorIndex) {
   var idx = parseInt(rawColorIndex, 10);
   if (isNaN(idx) || idx < 0 || idx >= this.maxPlayers) return null;
   for (var entry of this.players) {
@@ -351,7 +351,7 @@ RoomBrain.prototype.preferredColor = function (peerIndex, rawColorIndex) {
 // palette slot), but the joiner's own controller must not render a guessed
 // identity and then visibly correct itself a round trip later, which is what
 // helloSeen:false gates.
-RoomBrain.prototype.peerJoined = function (peerIndex, nowMs) {
+RoomCore.prototype.peerJoined = function (peerIndex, nowMs) {
   if (this.players.has(peerIndex)) return { added: false, publish: 'none' };
   if (this.players.size >= this.maxPlayers) return { added: false, publish: 'none' };
 
@@ -382,7 +382,7 @@ RoomBrain.prototype.peerJoined = function (peerIndex, nowMs) {
 // room was full.
 //
 // `msg` is the raw HELLO: { name, autoName, colorIndex, rejoinToken, rejoinId }.
-RoomBrain.prototype.hello = function (peerIndex, msg, nowMs) {
+RoomCore.prototype.hello = function (peerIndex, msg, nowMs) {
   msg = msg || {};
   var name = cleanInboundName(msg.name);
   var claim = this.claimReconnect(peerIndex, msg, nowMs);
@@ -454,7 +454,7 @@ RoomBrain.prototype.hello = function (peerIndex, msg, nowMs) {
 // deterministic, possibly non-contiguous roster (three players plus player 7)
 // that the join sequence would never produce. Real joins go through peerJoined
 // and hello, which is where the allocation policy lives.
-RoomBrain.prototype.addPlayer = function (peerIndex, fields) {
+RoomCore.prototype.addPlayer = function (peerIndex, fields) {
   return this.flow.addPlayer(peerIndex, fields);
 };
 
@@ -462,7 +462,7 @@ RoomBrain.prototype.addPlayer = function (peerIndex, fields) {
 //   'disconnected' - keep the row, raise a rejoin QR, they may come back
 //   'removed'      - the row is gone, drop their effects/boards
 //   'none'         - we never knew them
-RoomBrain.prototype.peerLeft = function (peerIndex) {
+RoomCore.prototype.peerLeft = function (peerIndex) {
   if (!this.players.has(peerIndex)) return { known: false, action: 'none', publish: 'none' };
 
   var state = this.flow.state;
@@ -521,7 +521,7 @@ function normalizePeerIndex(value) {
 // Can `peerIndex` claim the dropped seat named by the HELLO's rejoin token?
 // Returns the old peer index, or null. Reads flow's presence set rather than the
 // display's QR map, so the decision cannot drift from the roster it is about.
-RoomBrain.prototype.claimablePeerIndex = function (peerIndex, msg) {
+RoomCore.prototype.claimablePeerIndex = function (peerIndex, msg) {
   var oldId = normalizePeerIndex(msg && msg.rejoinToken);
   if (oldId == null && msg && msg.rejoinId != null) oldId = normalizePeerIndex(msg.rejoinId);
   if (oldId == null || oldId === peerIndex) return null;
@@ -535,9 +535,9 @@ RoomBrain.prototype.claimablePeerIndex = function (peerIndex, msg) {
 };
 
 // Honour the claim if it is valid: move the kept record (and everything keyed by
-// peer index that this brain owns) from the old index to the new one. The shell
+// peer index that this core owns) from the old index to the new one. The shell
 // remaps its own structures using the returned oldPeerIndex.
-RoomBrain.prototype.claimReconnect = function (peerIndex, msg, nowMs) {
+RoomCore.prototype.claimReconnect = function (peerIndex, msg, nowMs) {
   var oldId = this.claimablePeerIndex(peerIndex, msg);
   if (oldId == null) return { claimed: false, oldPeerIndex: null };
 
@@ -571,7 +571,7 @@ RoomBrain.prototype.claimReconnect = function (peerIndex, msg, nowMs) {
 // Controller settings
 // =====================================================================
 
-RoomBrain.prototype.setLevel = function (peerIndex, rawLevel) {
+RoomCore.prototype.setLevel = function (peerIndex, rawLevel) {
   var player = this.players.get(peerIndex);
   if (!player) return { changed: false, publish: 'none' };
   var level = parseInt(rawLevel, 10);
@@ -591,7 +591,7 @@ RoomBrain.prototype.setLevel = function (peerIndex, rawLevel) {
 // not spam the sender with errors; the next snapshot carries the truth. Not
 // state-gated: the controller's colour picker is reachable only in the lobby, so
 // a mid-game pick cannot occur in practice.
-RoomBrain.prototype.setColor = function (peerIndex, rawColorIndex) {
+RoomCore.prototype.setColor = function (peerIndex, rawColorIndex) {
   var player = this.players.get(peerIndex);
   if (!player) return { changed: false, publish: 'none' };
   var idx = parseInt(rawColorIndex, 10);
@@ -614,7 +614,7 @@ RoomBrain.prototype.setColor = function (peerIndex, rawColorIndex) {
 // Live rename from an already-registered controller (e.g. an AirConsole profile
 // edit). Unlike setColor this is allowed in every state, including mid-game,
 // because it only relabels the player and never touches game state.
-RoomBrain.prototype.setName = function (peerIndex, rawName) {
+RoomCore.prototype.setName = function (peerIndex, rawName) {
   var player = this.players.get(peerIndex);
   if (!player) return { changed: false, publish: 'none' };
   var prevName = player.playerName;
@@ -631,26 +631,26 @@ RoomBrain.prototype.setName = function (peerIndex, rawName) {
 // Snapshot inputs the display owns
 // =====================================================================
 
-RoomBrain.prototype.setAlive = function (peerIndex, alive) {
+RoomCore.prototype.setAlive = function (peerIndex, alive) {
   if (alive === false) this._alive[peerIndex] = false;
   else delete this._alive[peerIndex];
   return { changed: true, publish: 'now' };
 };
 
-RoomBrain.prototype.clearAlive = function () { this._alive = {}; };
+RoomCore.prototype.clearAlive = function () { this._alive = {}; };
 
-RoomBrain.prototype.setResults = function (results) {
+RoomCore.prototype.setResults = function (results) {
   this._results = results || null;
 };
 
-RoomBrain.prototype.setMuted = function (muted) {
+RoomCore.prototype.setMuted = function (muted) {
   this._muted = !!muted;
   return { changed: true, publish: 'now' };
 };
 
-RoomBrain.prototype.setPaused = function (paused) { this._paused = !!paused; };
-RoomBrain.prototype.setAutoPaused = function (paused) { this._autoPaused = !!paused; };
-RoomBrain.prototype.setConnectionPaused = function (paused) { this._connectionPaused = !!paused; };
+RoomCore.prototype.setPaused = function (paused) { this._paused = !!paused; };
+RoomCore.prototype.setAutoPaused = function (paused) { this._autoPaused = !!paused; };
+RoomCore.prototype.setConnectionPaused = function (paused) { this._connectionPaused = !!paused; };
 
 // =====================================================================
 // Room lifecycle
@@ -660,30 +660,30 @@ RoomBrain.prototype.setConnectionPaused = function (paused) { this._connectionPa
 // route their screens purely off snapshot.roomState, so one guaranteed publish
 // per transition is what let the GAME_START / COUNTDOWN / GAME_END /
 // RETURN_TO_LOBBY broadcasts go. Immediate, ahead of the level/colour throttle.
-RoomBrain.prototype.transitionTo = function (to) {
+RoomCore.prototype.transitionTo = function (to) {
   var applied = this.flow.transitionTo(to);
   return { changed: applied, publish: 'now' };
 };
 
-RoomBrain.prototype.setParticipants = function (peerIndices) {
+RoomCore.prototype.setParticipants = function (peerIndices) {
   this._participants = (peerIndices || []).slice();
 };
 
-RoomBrain.prototype.addParticipant = function (peerIndex) {
+RoomCore.prototype.addParticipant = function (peerIndex) {
   if (this._participants.indexOf(peerIndex) < 0) this._participants.push(peerIndex);
 };
 
-RoomBrain.prototype._removeParticipant = function (peerIndex) {
+RoomCore.prototype._removeParticipant = function (peerIndex) {
   var i = this._participants.indexOf(peerIndex);
   if (i >= 0) this._participants.splice(i, 1);
 };
 
-RoomBrain.prototype.removeParticipant = function (peerIndex) { this._removeParticipant(peerIndex); };
+RoomCore.prototype.removeParticipant = function (peerIndex) { this._removeParticipant(peerIndex); };
 
 // Keep flow's host-eligibility set in step with the game's participant order.
 // Called at exactly the moments the display already did it, because in the lobby
 // the two deliberately differ (flow's is empty; eligibility is unrestricted).
-RoomBrain.prototype.setActiveOrder = function (peerIndices) {
+RoomCore.prototype.setActiveOrder = function (peerIndices) {
   this.flow.setActiveOrder(peerIndices || this._participants);
 };
 
@@ -692,7 +692,7 @@ RoomBrain.prototype.setActiveOrder = function (peerIndices) {
 // flow's own COUNTDOWN auto-snapshot: the two normally agree, but this makes the
 // game's order authoritative if they ever diverge. A row that vanished mid-sort
 // sinks to the end rather than jumping to the front.
-RoomBrain.prototype.freezeParticipantOrder = function () {
+RoomCore.prototype.freezeParticipantOrder = function () {
   var self = this;
   this._participants.sort(function (a, b) {
     var pa = self.players.get(a);
@@ -710,7 +710,7 @@ RoomBrain.prototype.freezeParticipantOrder = function () {
 // AirConsole mode (where isExpired is always false); isExpired catches a
 // relay-mode peer that dropped without peer_left or a liveness tick ever
 // flagging it. Reconnects clear the flag, so present players survive.
-RoomBrain.prototype.pruneDisconnected = function (nowMs) {
+RoomCore.prototype.pruneDisconnected = function (nowMs) {
   var gone = [];
   for (var entry of this.players) {
     if (this.flow.isDisconnected(entry[0]) || this.flow.isExpired(entry[0], nowMs)) {
@@ -726,7 +726,7 @@ RoomBrain.prototype.pruneDisconnected = function (nowMs) {
 
 // Fold everyone still waiting (late joiners from the round that just ended) into
 // the participant list, preserving the existing order.
-RoomBrain.prototype.admitWaiting = function () {
+RoomCore.prototype.admitWaiting = function () {
   var admitted = [];
   for (var id of this.players.keys()) {
     if (this._participants.indexOf(id) < 0) { this._participants.push(id); admitted.push(id); }
@@ -740,7 +740,7 @@ RoomBrain.prototype.admitWaiting = function () {
 // flagged newPlayer and every screen renders them as such instead of dropping
 // them. Mutates and returns the array, which is also what the RESULTS snapshot
 // then carries.
-RoomBrain.prototype.enrichResults = function (ranking) {
+RoomCore.prototype.enrichResults = function (ranking) {
   if (!Array.isArray(ranking)) return ranking;
   var played = {};
   for (var i = 0; i < ranking.length; i++) {
@@ -768,7 +768,7 @@ RoomBrain.prototype.enrichResults = function (ranking) {
 // Reset to a fresh room. Mirrors the room-local half of the display's
 // resetRoomData: roster, participants, liveness, results and the pause flags.
 // Mute is deliberately untouched (it is a device preference, not room state).
-RoomBrain.prototype.reset = function () {
+RoomCore.prototype.reset = function () {
   this.flow.reset();
   this._participants = [];
   this._alive = {};
@@ -782,22 +782,22 @@ RoomBrain.prototype.reset = function () {
 // the shell, which owns the QR canvases, the pause and the lobby return)
 // =====================================================================
 
-RoomBrain.prototype.onSeen = function (peerIndex, nowMs) { this.flow.onSeen(peerIndex, nowMs); };
-RoomBrain.prototype.isExpired = function (peerIndex, nowMs) { return this.flow.isExpired(peerIndex, nowMs); };
-RoomBrain.prototype.expiredPeers = function (nowMs) { return this.flow.expiredPeers(nowMs); };
-RoomBrain.prototype.markDisconnected = function (peerIndex) { this.flow.markDisconnected(peerIndex); };
-RoomBrain.prototype.markReconnected = function (peerIndex) { this.flow.markReconnected(peerIndex); };
-RoomBrain.prototype.clearDisconnected = function (nowMs) { this.flow.clearDisconnected(nowMs); };
-RoomBrain.prototype.allParticipantsDisconnected = function () { return this.flow.allParticipantsDisconnected(); };
-RoomBrain.prototype.hasLateJoiners = function () { return this.flow.hasLateJoiners(); };
-RoomBrain.prototype.graceTick = function (nowMs) { return this.flow.graceTick(nowMs); };
+RoomCore.prototype.onSeen = function (peerIndex, nowMs) { this.flow.onSeen(peerIndex, nowMs); };
+RoomCore.prototype.isExpired = function (peerIndex, nowMs) { return this.flow.isExpired(peerIndex, nowMs); };
+RoomCore.prototype.expiredPeers = function (nowMs) { return this.flow.expiredPeers(nowMs); };
+RoomCore.prototype.markDisconnected = function (peerIndex) { this.flow.markDisconnected(peerIndex); };
+RoomCore.prototype.markReconnected = function (peerIndex) { this.flow.markReconnected(peerIndex); };
+RoomCore.prototype.clearDisconnected = function (nowMs) { this.flow.clearDisconnected(nowMs); };
+RoomCore.prototype.allParticipantsDisconnected = function () { return this.flow.allParticipantsDisconnected(); };
+RoomCore.prototype.hasLateJoiners = function () { return this.flow.hasLateJoiners(); };
+RoomCore.prototype.graceTick = function (nowMs) { return this.flow.graceTick(nowMs); };
 
 // One batched liveness pull. Native shells call this once per frame rather than
 // crossing the bridge on every inbound controller packet: `seen` is the set of
 // peers heard from since the last tick. Returns the decisions, never the
 // effects. Empty `expired` when the shell is not currently in the room, which
 // the caller signals by simply not calling it.
-RoomBrain.prototype.tick = function (nowMs, seen) {
+RoomCore.prototype.tick = function (nowMs, seen) {
   if (seen) {
     for (var i = 0; i < seen.length; i++) this.flow.onSeen(seen[i], nowMs);
   }
@@ -807,6 +807,6 @@ RoomBrain.prototype.tick = function (nowMs, seen) {
   };
 };
 
-exports.RoomBrain = RoomBrain;
+exports.RoomCore = RoomCore;
 
 })(typeof module !== 'undefined' ? module.exports : (window.GameEngine = window.GameEngine || {}));

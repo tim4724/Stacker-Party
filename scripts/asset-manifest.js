@@ -72,9 +72,9 @@ const DISPLAY_SCRIPTS = [
   '/partyplug/AirConsoleAdapter.js',
   '/partyplug/AirConsoleStorage.js',
   '/partyplug/RoomFlow.js',
-  // Out of the /engine/ block on purpose: RoomBrain composes RoomFlow and reads
+  // Out of the /engine/ block on purpose: RoomCore composes RoomFlow and reads
   // window.RoomFlow at module-eval time, so the kit's IIFE has to have run first.
-  '/engine/RoomBrain.js',
+  '/engine/RoomCore.js',
   '/shared/protocol.js',
   '/shared/i18n.js',
   '/shared/i18n-fallback.js',
