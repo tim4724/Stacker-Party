@@ -291,8 +291,11 @@ public final class DisplayCoordinator {
             }
             try e.roomInit(optionsJSON: Self.roomOptionsJSON)
             // The publish window comes from the module too: Android reads the
-            // same property, so the number lives in exactly one place.
+            // same property, so the number lives in exactly one place. Same for
+            // how strong each hint is (publishRank) — the fold below is local,
+            // but what "stronger" means is the room core's call.
             if let ms = try? e.roomGet(Double.self, "snapshotThrottleMs") { snapshotThrottleMs = ms }
+            if let rank = try? e.roomGet([String: Int].self, "publishRank") { publishRank = rank }
             runtime = e
             return e
         } catch {
@@ -519,7 +522,7 @@ public final class DisplayCoordinator {
         // moved, because it also clears their reconnect overlay and display-gone bail
         // timer and tells them the game is running again. Web onDisplayRejoined and
         // Android handleJoined batch the same span.
-        publishBatch(floor: "now") {
+        publishBatch(floor: Self.publishNow) {
             for id in goneIds { onPeerLeft(id) }
             // Inside the batch, so the resume lands before the one snapshot goes out.
             roomLinkRestored()
@@ -780,7 +783,7 @@ public final class DisplayCoordinator {
         // RESULTS this returns to the lobby; from LOBBY returnToLobby no-ops and the
         // publish below refreshes the (now empty) lobby controls.
         guard playerCount >= 1 else {
-            if state == .lobby { publishAs("now") } else { returnToLobby() }
+            if state == .lobby { publishAs(Self.publishNow) } else { returnToLobby() }
             return
         }
         // Fold in the late joiners who sat out the previous round.
@@ -808,7 +811,7 @@ public final class DisplayCoordinator {
         // Controllers route their screens purely off snapshot.roomState, so the
         // COUNTDOWN transition's publish is what dims their pad; the digits themselves
         // never cross the wire (that is what the retired COUNTDOWN broadcast did).
-        publishAs("now")
+        publishAs(Self.publishNow)
         output?.showScreen(.game)
         if let engine, let snap = try? engine.snapshot() { output?.renderSnapshot(snap.preGame()) }
         // First countdown value in the SAME call as the screen change, so the
@@ -884,7 +887,12 @@ public final class DisplayCoordinator {
             // Events are the complete record — drive the native-only board
             // animations from them (line clears, lock flashes, KO, shakes).
             for event in frame.events { output?.handleGameEvent(event) }
-            output?.renderSnapshot(frame.snapshot)
+            // nil = render-identical to the last delivered frame (PartyCore's
+            // scene signature): the scene keeps drawing its retained state and
+            // its own time-driven animations, so skipping the push saves the
+            // decode AND the node updates. Events above still fire, since a
+            // frame that changes nothing still has none.
+            if let snapshot = frame.snapshot { output?.renderSnapshot(snapshot) }
             // Commands normalize the host effects (controller sends, match end),
             // single-sourced from PartyCore so they can't drift from the web.
             // One frame is one change: a tick that KOs several players at once (a
@@ -1222,7 +1230,7 @@ public final class DisplayCoordinator {
         // A silent expiry can take out the host, and every host-gated control — the
         // controllers' menus and the display's own host-tinted chrome — reads the host
         // from the snapshot, so republish as soon as the sweep flags anyone.
-        if !sweep.expired.isEmpty { publishAs("now") }
+        if !sweep.expired.isEmpty { publishAs(Self.publishNow) }
 
         switch roomState {
         case .playing:
@@ -1324,6 +1332,14 @@ public final class DisplayCoordinator {
 
     // MARK: - Retained room snapshot
 
+    /// The publish-hint vocabulary every room-core mutator returns (RoomCore.PUBLISH),
+    /// pinned to the module by tests/protocol-swift-parity.test.js. The STRENGTH
+    /// ordering is not mirrored here — it is read out of the room core itself, see
+    /// `publishRank`.
+    static let publishNone = "none"
+    static let publishSoon = "soon"
+    static let publishNow = "now"
+
     /// Apply a mutator's publish hint. Keeps the three-way decision in one place so
     /// call sites read as "do the thing, then honour the hint".
     ///
@@ -1334,20 +1350,21 @@ public final class DisplayCoordinator {
     private func publishAs(_ hint: String?) {
         if let batch = batchHint {
             // Inside a batch: fold instead of publishing. Strongest wins.
-            if Self.hintRank(hint) > Self.hintRank(batch) { batchHint = hint ?? "none" }
+            if hintRank(hint) > hintRank(batch) { batchHint = hint ?? Self.publishNone }
             return
         }
-        guard hint == "now" || hint == "soon" else { return }
+        guard hint == Self.publishNow || hint == Self.publishSoon else { return }
         refreshDisplayLobby()
-        if hint == "now" { publishRoomSnapshot() } else { publishRoomSnapshotSoon() }
+        if hint == Self.publishNow { publishRoomSnapshot() } else { publishRoomSnapshotSoon() }
     }
 
-    private static func hintRank(_ hint: String?) -> Int {
-        switch hint {
-        case "now":  return 2
-        case "soon": return 1
-        default:     return 0
-        }
+    /// RoomCore.publishRank, read out of the module at roomInit. The fallback
+    /// only covers the window before the room core is up, when nothing publishes
+    /// anyway. An unknown hint ranks 0, so it can never strengthen a batch.
+    private var publishRank: [String: Int] = [publishNone: 0, publishSoon: 1, publishNow: 2]
+    private func hintRank(_ hint: String?) -> Int {
+        guard let hint else { return 0 }
+        return publishRank[hint] ?? 0
     }
 
     /// Run a group of room changes as ONE change: everything inside publishes once,
@@ -1366,7 +1383,7 @@ public final class DisplayCoordinator {
     /// changed nothing stays silent (what makes wrapping the frame drain free), pass
     /// "now" when the publish has to happen regardless. `defer` closes the fold, so a
     /// throw mid-block still ships what did change. Web and Android carry this verbatim.
-    private func publishBatch(floor: String = "none", _ body: () -> Void) {
+    private func publishBatch(floor: String = DisplayCoordinator.publishNone, _ body: () -> Void) {
         batchHint = floor
         defer {
             let hint = batchHint

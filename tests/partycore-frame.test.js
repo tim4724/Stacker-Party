@@ -103,7 +103,7 @@ test('game_end is drained from the separate onGameEnd callback exactly once (eve
   assert.equal(endCommands, 1, 'gameEnd command must appear exactly once');
 });
 
-test('_toCommands maps each engine event type to the host-effect vocabulary', () => {
+test('toCommands maps each engine event type to the host-effect vocabulary', () => {
   const snapshot = {
     players: [
       { id: 'p1', level: 2, lines: 11, alive: true, pendingGarbage: 4 },
@@ -111,22 +111,22 @@ test('_toCommands maps each engine event type to the host-effect vocabulary', ()
     ],
     elapsed: 1000,
   };
-  // _toCommands is pure: no instance/core arg.
+  // toCommands is pure: no instance/core arg.
 
   // garbage_sent carries senderId/toId, NOT playerId
   assert.deepStrictEqual(
-    PartyCore._toCommands([{ type: 'garbage_sent', senderId: 'p1', toId: 'p2', lines: 3 }], snapshot),
+    PartyCore.toCommands([{ type: 'garbage_sent', senderId: 'p1', toId: 'p2', lines: 3 }], snapshot),
     [{ type: 'garbageSent', senderId: 'p1', toId: 'p2', lines: 3 }]);
 
   assert.deepStrictEqual(
-    PartyCore._toCommands([{ type: 'piece_lock', playerId: 'p1', blocks: [[0, 0]], typeId: 5 }], snapshot),
+    PartyCore.toCommands([{ type: 'piece_lock', playerId: 'p1', blocks: [[0, 0]], typeId: 5 }], snapshot),
     [{ type: 'pieceLock', playerId: 'p1', blocks: [[0, 0]], typeId: 5 }]);
 
   // player_ko -> KO anim, then alive:false state, then playerEliminated (web order).
   // playerEliminated (this player is out) is deliberately distinct from gameEnd
   // (the whole match is done) so a native consumer can't conflate them.
   assert.deepStrictEqual(
-    PartyCore._toCommands([{ type: 'player_ko', playerId: 'p2' }], snapshot),
+    PartyCore.toCommands([{ type: 'player_ko', playerId: 'p2' }], snapshot),
     [
       { type: 'playerKO', playerId: 'p2' },
       { type: 'playerState', playerId: 'p2', alive: false },
@@ -135,19 +135,19 @@ test('_toCommands maps each engine event type to the host-effect vocabulary', ()
 
   // line_clear -> lineClear anim, then playerState with snapshot-resolved garbageIncoming
   assert.deepStrictEqual(
-    PartyCore._toCommands([{ type: 'line_clear', playerId: 'p1', lines: 1, rows: [3], clearCells: [[0, 3]] }], snapshot),
+    PartyCore.toCommands([{ type: 'line_clear', playerId: 'p1', lines: 1, rows: [3], clearCells: [[0, 3]] }], snapshot),
     [
       { type: 'lineClear', playerId: 'p1', clearCells: [[0, 3]], lines: 1 },
       { type: 'playerState', playerId: 'p1', level: 2, lines: 11, alive: true, garbageIncoming: 4 },
     ]);
 
   assert.deepStrictEqual(
-    PartyCore._toCommands([{ type: 'garbage_cancelled', playerId: 'p1', lines: 2 }], snapshot),
+    PartyCore.toCommands([{ type: 'garbage_cancelled', playerId: 'p1', lines: 2 }], snapshot),
     [{ type: 'garbageCancelled', playerId: 'p1', lines: 2 }]);
 
   // game_end is RAW (elapsed + results), no roster enrichment
   assert.deepStrictEqual(
-    PartyCore._toCommands([{ type: 'game_end', elapsed: 1234, results: [{ playerId: 'p1', rank: 1 }] }], snapshot),
+    PartyCore.toCommands([{ type: 'game_end', elapsed: 1234, results: [{ playerId: 'p1', rank: 1 }] }], snapshot),
     [{ type: 'gameEnd', elapsed: 1234, results: [{ playerId: 'p1', rank: 1 }] }]);
 });
 
@@ -165,7 +165,7 @@ test('snapshot pendingGarbage and line_clear garbageIncoming include the delayed
   assert.equal(p2.pendingGarbage, 3, 'snapshot pendingGarbage includes the delayed queue');
   assert.ok(p2.pendingGarbage > boardOnly, 'snapshot pendingGarbage strictly exceeds board-only');
 
-  const cmds = PartyCore._toCommands(
+  const cmds = PartyCore.toCommands(
     [{ type: 'line_clear', playerId: 'p2', lines: 1, rows: [], clearCells: [] }], snap);
   const playerState = cmds.find((c) => c.type === 'playerState');
   assert.equal(playerState.garbageIncoming, 3, 'garbageIncoming uses the snapshot (board + delayed) value');
@@ -276,6 +276,84 @@ test('frame() caps a large nowMs jump to MAX_FRAME_DELTA_MS', () => {
   assert.equal(PartyCore.MAX_FRAME_DELTA_MS, 50);
   assert.equal(f.snapshot.elapsed, PartyCore.MAX_FRAME_DELTA_MS,
     'a 200ms jump advances elapsed by the 50ms cap, not 200ms');
+});
+
+// --- delivery filter (deliverFrame / deliverSnapshot) ------------------------
+//
+// What a native host actually pulls. Both TV ports call these instead of
+// frame()/snapshot(); the logic lives here rather than in their bootstrap shims
+// precisely because it drifted between those two copies once already.
+
+test('deliverFrame omits the snapshot while the frame is render-identical', () => {
+  const pc = newPartyCore(1);
+  pc.init();
+  assert.ok(pc.deliverFrame(0).snapshot, 'the opening frame is always delivered');
+  assert.equal('snapshot' in pc.deliverFrame(1), false,
+    'nothing moved in 1ms, so the whole snapshot is dropped from the payload');
+
+  pc.processInput('p1', 'hard_drop');
+  const locked = pc.deliverFrame(17);
+  assert.ok(locked.snapshot, 'a changed board is delivered again');
+  assert.ok(locked.commands.some((c) => c.type === 'pieceLock'),
+    'events and commands are never filtered, whatever the snapshot does');
+});
+
+test('deliverFrame strips a grid only while its gridVersion is unchanged', () => {
+  const pc = newPartyCore(1);
+  pc.init();
+  const first = pc.deliverFrame(0).snapshot;
+  assert.ok(first.players[0].grid, 'first delivery carries full grids');
+
+  pc.processInput('p1', 'hard_drop');
+  const locked = pc.deliverFrame(17).snapshot;
+  const [p1, p2] = locked.players;
+  assert.ok(p1.grid, "the locked board's rows must be re-sent");
+  assert.equal('grid' in p2, false, 'the untouched board keeps its grid stripped');
+  assert.notEqual(p1.gridVersion, first.players[0].gridVersion);
+});
+
+test('deliverSnapshot strips grids but does not consume the scene signature', () => {
+  const pc = newPartyCore(1);
+  pc.init();
+  const full = pc.deliverSnapshot();
+  assert.ok(full.players[0].grid);
+  assert.equal('grid' in pc.deliverSnapshot().players[0], false,
+    'a second pull at the same gridVersion is stripped');
+  // An out-of-band pull is not a delivered FRAME: the next frame still has to
+  // arrive, or a host that pulled a snapshot would never get its first render.
+  assert.ok(pc.deliverFrame(0).snapshot, 'the first frame is still delivered');
+});
+
+test('rekeyPlayer voids both delivery ledgers so the new id gets a full render', () => {
+  const pc = newPartyCore(1);
+  pc.init();
+  pc.deliverFrame(0);
+  assert.equal('snapshot' in pc.deliverFrame(1), false);   // steady state: nothing delivered
+
+  assert.equal(pc.rekeyPlayer('p1', 'p9'), true);
+  const after = pc.deliverFrame(2).snapshot;
+  assert.ok(after, 'the roster changed ids, so the frame must be delivered');
+  const moved = after.players.find((p) => p.id === 'p9');
+  assert.ok(moved && moved.grid, 'the moved board re-sends its grid under the new id');
+});
+
+test('the web display drives its off-screen effects through the shared mapping', () => {
+  // The web used to hand-write this mapping in its engine callback, which is how
+  // it ended up telling controllers a garbageIncoming the engine had already
+  // reduced (see toCommands). It now dispatches the same command list the TVs do,
+  // so the callback must only BUFFER: any send or room mutation inside it is the
+  // per-shell mapping this test exists to keep deleted.
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'display', 'DisplayGame.js'), 'utf8');
+  assert.match(src, /PartyCore\.toCommands\(/,
+    'DisplayGame.js no longer maps engine events through PartyCore');
+  for (const type of ['playerState', 'gameEnd']) {
+    assert.ok(src.includes(`'${type}'`), `DisplayGame.js handles no ${type} command`);
+  }
+  const onEvent = src.match(/onEvent: function\(event\) \{([^}]*)\}/);
+  assert.ok(onEvent, 'the engine onEvent callback moved — re-point this guard');
+  assert.match(onEvent[1], /engineEvents\.push/, 'onEvent must buffer the event');
+  assert.ok(!/sendTo|roomCore\.|publishAs/.test(onEvent[1]),
+    'the engine callback acts on events again; route it through toCommands instead');
 });
 
 test('PartyCore.js is wired into the served engine artifacts', () => {

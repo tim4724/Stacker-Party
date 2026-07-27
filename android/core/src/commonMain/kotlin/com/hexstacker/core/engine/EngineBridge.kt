@@ -114,7 +114,7 @@ class EngineBridge private constructor(
      * owns a board (the engine's forged-claim guard). Calls `PartyCore.rekeyPlayer`.
      */
     suspend fun rekey(oldId: Int, newId: Int): Boolean = lock.withLock {
-        val ok = evalTyped<Boolean>("rekey", "Bridge.rekey($oldId, $newId)")
+        val ok = evalTyped<Boolean>("rekey", "Bridge.rekeyPlayer($oldId, $newId)")
         // Follow the engine's board move in the grid cache (the shim drops both
         // ids from its sent-grid ledger, so the next pull re-sends a full grid).
         if (ok) gridCache.remove(oldId)?.let { gridCache[newId] = it }

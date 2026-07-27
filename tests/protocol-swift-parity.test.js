@@ -135,6 +135,28 @@ test('the snapshot throttle is READ from the room core, not mirrored in Swift', 
   );
 });
 
+test('the publish-hint vocabulary matches the room core, and its ranking is READ from it', () => {
+  // The three hint strings are compared against in Swift, so they have to exist
+  // as constants; what must NOT be mirrored is how strong each one is. That
+  // ordering decides what a batched group of mutations publishes, and three
+  // hand-written copies of it is how one platform ends up shipping a
+  // half-finished room. Android reads the same property.
+  const consts = {};
+  for (const m of COORDINATOR.matchAll(/static let publish(None|Soon|Now) = "([^"]*)"/g)) {
+    consts[m[1].toUpperCase()] = m[2];
+  }
+  assert.deepStrictEqual(consts, RoomCore.PUBLISH);
+  assert.match(
+    COORDINATOR,
+    /roomGet\(\[String: Int\]\.self, "publishRank"\)/,
+    'Swift no longer reads the hint ranking from the room core'
+  );
+  assert.ok(
+    !/case "(now|soon)":\s*return \d/.test(COORDINATOR),
+    'the hint ranking is hand-mirrored in Swift again; read publishRank instead'
+  );
+});
+
 test('the liveness policy handed to the room core matches the canonical constants', () => {
   // Constructor options, so they are Swift-side by necessity; the web display passes
   // the same two values from server/constants.js.

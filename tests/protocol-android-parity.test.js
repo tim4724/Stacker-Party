@@ -89,6 +89,27 @@ test('PauseReason wire values mirror the room core', () => {
   );
 });
 
+test('the publish-hint vocabulary matches the room core, and its ranking is READ from it', () => {
+  // The three hint strings are compared against in Kotlin, so they have to exist
+  // as constants; what must NOT be mirrored is how strong each one is. That
+  // ordering decides what a batched group of mutations publishes, and three
+  // hand-written copies of it is how one platform ends up shipping a
+  // half-finished room. tvOS reads the same property.
+  const client = read('android/core/src/commonMain/kotlin/com/hexstacker/core/room/RoomCoreClient.kt');
+  const consts = {};
+  for (const m of client.matchAll(/const val PUBLISH_(NONE|NOW|SOON) = "([^"]*)"/g)) consts[m[1]] = m[2];
+  assert.deepStrictEqual(consts, RoomCore.PUBLISH);
+  assert.match(
+    client,
+    /roomGetJson\("publishRank"\)/,
+    'Kotlin no longer reads the hint ranking from the room core'
+  );
+  assert.ok(
+    !/PUBLISH_(NOW|SOON) -> [12]\b/.test(KOTLIN.coordinator),
+    'the hint ranking is hand-mirrored in Kotlin again; read publishRank instead'
+  );
+});
+
 test('relay endpoints and limits mirror the web', () => {
   assert.strictEqual(kotlinConst(KOTLIN.protocol, 'RELAY_URL'), RELAY_URL);
   assert.strictEqual(kotlinConst(KOTLIN.protocol, 'STUN_URL'), STUN_URL);

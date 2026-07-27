@@ -371,6 +371,7 @@ class DisplayCoordinator(
             val bridge = bridgeProvider()
             brainOrNull = RoomCoreClient.create(bridge, roomOptions())
             snapshotThrottleMs = roomCore.snapshotThrottleMs()
+            publishRank = roomCore.publishRank()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
@@ -1129,11 +1130,18 @@ class DisplayCoordinator(
         }
     }
 
-    private fun hintRank(hint: String): Int = when (hint) {
-        RoomCoreClient.PUBLISH_NOW -> 2
-        RoomCoreClient.PUBLISH_SOON -> 1
-        else -> 0
-    }
+    /**
+     * RoomCore.publishRank, read out of the module once the room core is up. The
+     * fallback only covers the window before that, when nothing publishes anyway.
+     * An unknown hint ranks 0, so it can never strengthen a batch.
+     */
+    private var publishRank: Map<String, Int> = mapOf(
+        RoomCoreClient.PUBLISH_NONE to 0,
+        RoomCoreClient.PUBLISH_SOON to 1,
+        RoomCoreClient.PUBLISH_NOW to 2,
+    )
+
+    private fun hintRank(hint: String): Int = publishRank[hint] ?: 0
 
     /**
      * Run a group of room changes as ONE change: everything inside publishes once, when
@@ -1155,7 +1163,7 @@ class DisplayCoordinator(
      * `inline` so [body] can call suspend functions in the caller's context.
      */
     private suspend inline fun publishBatch(
-        floor: String = "none",
+        floor: String = RoomCoreClient.PUBLISH_NONE,
         body: () -> Unit,
     ) {
         batchHint = floor

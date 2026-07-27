@@ -39,7 +39,7 @@ data class GameEvent(
 )
 
 /**
- * Host command (camelCase `type`), in `_toCommands` emission order. FLAT model.
+ * Host command (camelCase `type`), in `toCommands` emission order. FLAT model.
  *
  * Types: pieceLock | lineClear | playerState | playerKO | playerEliminated |
  *        garbageCancelled | garbageSent | gameEnd
@@ -81,7 +81,7 @@ object EventType {
     val ALL = setOf(PIECE_LOCK, LINE_CLEAR, PLAYER_KO, GARBAGE_CANCELLED, GARBAGE_SENT, GAME_END)
 }
 
-/** Known command `type` strings (`PartyCore._toCommands`). */
+/** Known command `type` strings (`PartyCore.toCommands`). */
 object CommandType {
     const val PIECE_LOCK = "pieceLock"
     const val LINE_CLEAR = "lineClear"

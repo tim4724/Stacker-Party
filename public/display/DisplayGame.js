@@ -340,6 +340,9 @@ function stopDisplayGame() {
   if (displayGame) {
     displayGame = null;
   }
+  // Drop anything the dead game buffered but never drained, so a stale event can
+  // never surface against the NEXT match's snapshot.
+  engineEvents.length = 0;
   garbageDefenceEffects.clear();
   clearCountdownTimers();
 }
@@ -369,49 +372,101 @@ function runGameLocallyWithSeed(seed) {
     gamePlayers.set(playerOrder[i], { startLevel: (pInfo && pInfo.startLevel) || 1 });
   }
 
+  // Both engine callbacks BUFFER rather than act. What each event means for the
+  // room and the controllers is decided by PartyCore.toCommands (see stepEngine),
+  // the same mapping tvOS and Android dispatch out of PartyCore.frame() — one
+  // implementation for all three displays instead of this shell's own copy.
   displayGame = new Game(gamePlayers, {
-    onEvent: function(event) {
-      if (event.type === 'line_clear') {
-        onLineClear(event);
-        var snap = displayGame.getSnapshot();
-        var p = snap.players.find(function(pl) { return pl.id === event.playerId; });
-        if (p) {
-          party.sendTo(event.playerId, {
-            type: MSG.PLAYER_STATE,
-            level: p.level, lines: p.lines,
-            alive: p.alive, garbageIncoming: p.pendingGarbage || 0
-          });
-        }
-      } else if (event.type === 'player_ko') {
-        onPlayerKO(event);
-        roomCore.setAlive(event.playerId, false);
-        party.sendTo(event.playerId, { type: MSG.PLAYER_STATE, alive: false });
-        // The snapshot carries alive too, so a reconnect right after a KO
-        // still lands on the dead board. The targeted PLAYER_STATE above stays
-        // because it is what fires the KO overlay the instant it happens.
-        publishAs('now');
-      } else if (event.type === 'piece_lock') {
-        onPieceLock(event);
-      } else if (event.type === 'garbage_cancelled') {
-        onGarbageCancelled(event);
-      } else if (event.type === 'garbage_sent') {
-        onGarbageSent(event);
-      }
-    },
+    onEvent: function(event) { engineEvents.push(event); },
     onGameEnd: function(results) {
-      // Label the ranking with roster names/colours and append the players who
-      // sat this round out, flagged newPlayer so every screen renders them
-      // rather than omitting them.
-      if (results && results.results) roomCore.enrichResults(results.results);
-      // Stash the ranking BEFORE the transition: setRoomState publishes, and
-      // the RESULTS snapshot is what carries the results to controllers.
-      lastResults = results && results.results;
-      setRoomState(ROOM_STATE.RESULTS);
-      onGameEnd(results);
+      // Folded into the same ordered buffer, exactly as PartyCore folds the
+      // separate onGameEnd callback into its drained events.
+      engineEvents.push({
+        type: 'game_end',
+        elapsed: results && results.elapsed,
+        results: results && results.results
+      });
     }
   }, seed);
 
   displayGame.init();
+}
+
+// Engine events emitted since the last drain. The engine fires them
+// synchronously from update() (and the test harness injects some between
+// frames), so they accumulate here and surface at the next step — the same
+// between-frame buffering PartyCore.drainEvents gives the native ports.
+var engineEvents = [];
+
+// One engine step plus this frame's effects. Called from the rAF loop inside
+// publishBatch, so everything a single tick moves publishes once.
+//
+// The split is the native one: raw `events` drive the board ANIMATIONS, and the
+// normalized commands drive everything with a consequence outside this screen
+// (controller sends, the KO record, the match-end transition). Sampling the
+// snapshot HERE, after update() returns, is also what fixes the old divergence:
+// the web used to read it inside the line_clear callback, which fires before the
+// clear's defence has cancelled incoming garbage, so a controller was told a
+// garbageIncoming the engine had already reduced.
+function stepEngine(deltaMs) {
+  displayGame.update(deltaMs);
+  if (!engineEvents.length) return;
+  var events = engineEvents.splice(0, engineEvents.length);
+  var commands = window.GameEngine.PartyCore.toCommands(events, displayGame.getSnapshot());
+  for (var i = 0; i < events.length; i++) renderEngineEvent(events[i]);
+  dispatchCommands(commands);
+}
+
+function renderEngineEvent(event) {
+  if (event.type === 'piece_lock') onPieceLock(event);
+  else if (event.type === 'line_clear') onLineClear(event);
+  else if (event.type === 'player_ko') onPlayerKO(event);
+  else if (event.type === 'garbage_cancelled') onGarbageCancelled(event);
+  else if (event.type === 'garbage_sent') onGarbageSent(event);
+}
+
+// Map PartyCore's normalized host-effect commands to controller sends and the
+// match-end transition. Mirrors DisplayCoordinator.dispatchCommands on both TVs,
+// which is the point: the vocabulary is shared, so only the effects are local.
+function dispatchCommands(commands) {
+  for (var i = 0; i < commands.length; i++) {
+    var c = commands[i];
+    if (c.type === 'playerState') {
+      // Record the KO in the room: the snapshot's per-player `alive` is what a
+      // reconnecting eliminated phone reads.
+      if (c.alive === false) publishAs(roomCore.setAlive(c.playerId, false).publish);
+      if (c.level != null) {
+        // Full form (after a line clear): level/lines/alive + pre-resolved
+        // incoming garbage.
+        party.sendTo(c.playerId, {
+          type: MSG.PLAYER_STATE,
+          level: c.level, lines: c.lines,
+          alive: c.alive, garbageIncoming: c.garbageIncoming || 0
+        });
+      } else if (c.alive === false) {
+        // Short form (after a KO). Kept alongside the snapshot because it is what
+        // fires the KO overlay the instant it happens, rather than on the next
+        // retained-state push.
+        party.sendTo(c.playerId, { type: MSG.PLAYER_STATE, alive: false });
+      }
+    } else if (c.type === 'gameEnd') {
+      endMatch(c);
+    }
+    // pieceLock / lineClear / playerKO / playerEliminated / garbageCancelled /
+    // garbageSent are rendered from `events` or fully covered by the snapshot.
+  }
+}
+
+function endMatch(c) {
+  // Label the ranking with roster names/colours and append the players who sat
+  // this round out, flagged newPlayer so every screen renders them rather than
+  // omitting them.
+  if (c.results) roomCore.enrichResults(c.results);
+  // Stash the ranking BEFORE the transition: setRoomState publishes, and the
+  // RESULTS snapshot is what carries the results to controllers.
+  lastResults = c.results;
+  setRoomState(ROOM_STATE.RESULTS);
+  onGameEnd({ elapsed: c.elapsed, results: c.results });
 }
 
 // =====================================================================

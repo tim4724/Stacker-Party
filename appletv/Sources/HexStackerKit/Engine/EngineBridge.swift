@@ -298,6 +298,10 @@ public final class EngineBridge {
     /// this frame's `events` (complete record), a value-copy `snapshot`, and the
     /// normalized host-effect `commands`. The blessed native integration surface.
     /// Decodes through the fast path (see `snapshot()`).
+    ///
+    /// The snapshot is nil when the frame is render-identical to the last one this
+    /// bridge delivered (PartyCore's scene signature) — skip the repaint and keep
+    /// the retained snapshot. `snapshot()` is unaffected: it always returns a copy.
     public func frame(nowMs: Double) throws -> FrameResult {
         let obj = try jsonObject(method: "frameJSON", args: [nowMs])
         do { return try FrameParsing.frameResult(obj, gridCache: &gridCache) }
@@ -351,46 +355,41 @@ public final class EngineBridge {
 
     /// JS shim wrapping PartyCore (the native integration surface) in a flat,
     /// JSON-friendly API. PartyCore inverts Game's onEvent/onGameEnd push into a
-    /// drained events buffer, so the shim no longer wires callbacks itself.
+    /// drained events buffer and applies the delivery filter (grid stripping,
+    /// render-identical frame skipping), so this is marshalling and nothing else.
+    ///
+    /// The marked blocks are kept TOKEN-IDENTICAL to the Android shim
+    /// (android/.../EngineBootstrap.kt) by tests/room-bridge-shim-parity.test.js,
+    /// which also runs both of them against the real bundle. Anything outside the
+    /// markers is platform-only and listed in that gate.
     private static let bootstrapJS = """
     var Bridge = (function () {
+      // ENGINE-SHIM-BEGIN
       var PartyCore = HexCore.PartyCore;
       var core = null;
-      // ROOM-SHIM-BEGIN
       // The room core: roster, naming, colour slots, host election and the
       // retained snapshot, shared verbatim with the web display and Android TV.
       // Deliberately generic (one call/get pair rather than ~30 wrappers): the
       // Android shim has to build every call as an interpolated source string,
       // so one marshalling path per direction is one place to get escaping and
-      // exception draining right. Kept token-identical to the Android copy by
-      // tests/room-bridge-shim-parity.test.js.
+      // exception draining right.
       var room = null;
       function roomOrThrow() {
         if (!room) throw new Error('room: roomInit() not called');
         return room;
       }
-      // ROOM-SHIM-END
-      // playerId -> gridVersion last serialized WITH its grid. The grid is the
-      // dominant payload of the 60 Hz frame()/snapshot() pulls and only changes
-      // on a lock/clear/garbage insert, so strip it while the version is
-      // unchanged; EngineBridge re-attaches the cached rows Swift-side. Safe to
-      // delete off the snapshot: PartyCore.snapshot() is a value copy.
-      var sentGridVersions = {};
-      function stripUnchangedGrids(snap) {
-        for (var i = 0; i < snap.players.length; i++) {
-          var p = snap.players[i];
-          if (sentGridVersions[p.id] === p.gridVersion) delete p.grid;
-          else sentGridVersions[p.id] = p.gridVersion;
-        }
-        return snap;
+      function gameOrThrow() {
+        if (!core) throw new Error('no game: create() not called');
+        return core;
       }
+      // ENGINE-SHIM-END
       return {
+        // ENGINE-API-BEGIN
         create: function (specs, seed) {
           var map = new Map();
           for (var i = 0; i < specs.length; i++) {
             map.set(specs[i][0], { startLevel: specs[i][1] });
           }
-          sentGridVersions = {};
           core = new PartyCore(map, seed >>> 0);
           core.init();
         },
@@ -399,26 +398,23 @@ public final class EngineBridge {
           if (core) core.handleSoftDropStart(pid, (speed === undefined ? null : speed));
         },
         softDropEnd: function (pid) { if (core) core.handleSoftDropEnd(pid); },
-        update: function (dt) { if (core) core.update(dt); },
         pause: function () { if (core) core.pause(); },
         resume: function () { if (core) core.resume(); },
-        rekeyPlayer: function (oldId, newId) {
-          if (!core) return false;
-          var ok = core.rekeyPlayer(oldId, newId);
-          // The board moved ids: forget both ledger entries so the next pull
-          // re-sends the full grid under the new id (host cache follows suit).
-          if (ok) { delete sentGridVersions[oldId]; delete sentGridVersions[newId]; }
-          return ok;
-        },
         resetFrameClock: function () { if (core) core.resetFrameClock(); },
-        snapshotJSON: function () { return JSON.stringify(stripUnchangedGrids(core.snapshot())); },
-        drainEventsJSON: function () { return JSON.stringify(core.drainEvents()); },
-        frameJSON: function (now) {
-          var f = core.frame(now);
-          stripUnchangedGrids(f.snapshot);
-          return JSON.stringify(f);
-        },
+        rekeyPlayer: function (oldId, newId) { return !!(core && core.rekeyPlayer(oldId, newId)); },
+        // Reads can't no-op like the writes above (they must return JSON), so a
+        // read-before-create fails loud with a message that names the ordering
+        // bug instead of an opaque TypeError on `core.snapshot`.
+        //
+        // deliverSnapshot/deliverFrame are frame() and snapshot() filtered for
+        // this boundary: unchanged grids stripped, and a render-identical frame
+        // delivered without its snapshot at all. Both ledgers live in PartyCore
+        // (server/PartyCore.js), so the two platforms cannot drift on them.
+        snapshotJSON: function () { return JSON.stringify(gameOrThrow().deliverSnapshot()); },
+        drainEventsJSON: function () { return JSON.stringify(gameOrThrow().drainEvents()); },
+        frameJSON: function (now) { return JSON.stringify(gameOrThrow().deliverFrame(now)); },
         isEnded: function () { return !!(core && core.game && core.game.ended); },
+        // ENGINE-API-END
         // ROOM-API-BEGIN
         roomInit: function (optsJson) {
           room = new HexCore.RoomCore(optsJson ? JSON.parse(optsJson) : {});
@@ -436,8 +432,16 @@ public final class EngineBridge {
         },
         roomSnapshotJSON: function () { return roomOrThrow().snapshotJSON(); },
         // ROOM-API-END
+        // tvOS-only below (declared in tests/room-bridge-shim-parity.test.js).
+        //
+        // Granular tick, for driving the engine deterministically without
+        // frame()'s clock (EngineBridgeTests). Android has no caller and so no
+        // entry — everything there goes through frameJSON.
+        update: function (dt) { if (core) core.update(dt); },
         // Screen-gallery fixtures (HexCore.GalleryFixtures) — the single source
-        // the web, tvOS and Android TV galleries all render.
+        // the web, tvOS and Android TV galleries all render. Android reads the
+        // same fixtures through its own QuickJS context in the screenshot tests,
+        // not through this Bridge.
         galleryRosterJSON: function (n, long) { return JSON.stringify(HexCore.GalleryFixtures.roster(n, !!long)); },
         galleryJoinJSON: function () { return JSON.stringify(HexCore.GalleryFixtures.JOIN); },
         gallerySnapshotJSON: function (variant, players, level) {

@@ -38,6 +38,16 @@ var GameConstants = ((typeof require !== 'undefined') ? require('./constants.js'
 // so the latest value always wins.
 var SNAPSHOT_THROTTLE_MS = 500;
 
+// The publish-hint vocabulary every mutator returns, and how strong each hint
+// is. The STRENGTH is the room core's business, not each shell's: a shell that
+// batches several mutations has to fold their hints down to the strongest one,
+// and three hand-written copies of "now beats soon beats none" is how one of
+// them quietly ends up publishing a half-finished room. The shells read the
+// ranking (statically on web, through `publishRank` on the native bridges) and
+// keep only the fold itself, which needs a closure and so cannot live here.
+var PUBLISH = { NONE: 'none', SOON: 'soon', NOW: 'now' };
+var PUBLISH_RANK = { none: 0, soon: 1, now: 2 };
+
 // Auto names are room-unique, language-neutral, and survive lobby compaction
 // (unlike the legacy P1-P8 slot names, which renumbered when someone left).
 var AUTO_NAME_RE = /^HX-([1-9][0-9]?)$/i;
@@ -148,6 +158,8 @@ function RoomCore(opts) {
 }
 
 RoomCore.SNAPSHOT_THROTTLE_MS = SNAPSHOT_THROTTLE_MS;
+RoomCore.PUBLISH = { NONE: PUBLISH.NONE, SOON: PUBLISH.SOON, NOW: PUBLISH.NOW };
+RoomCore.PUBLISH_RANK = { none: PUBLISH_RANK.none, soon: PUBLISH_RANK.soon, now: PUBLISH_RANK.now };
 RoomCore.AUTO_NAME_BLOCKLIST = AUTO_NAME_BLOCKLIST.slice();
 RoomCore.NAME_MAX_LEN = NAME_MAX_LEN;
 RoomCore.STATES = RoomFlow.STATES;
@@ -164,6 +176,13 @@ RoomCore.PAUSE = { MANUAL: PAUSE_MANUAL, AUTO: PAUSE_AUTO, CONNECTION: PAUSE_CON
 // to stop.
 Object.defineProperty(RoomCore.prototype, 'snapshotThrottleMs', {
   get: function () { return SNAPSHOT_THROTTLE_MS; },
+});
+
+// Instance mirror of RoomCore.PUBLISH_RANK, for the same reason as above: the
+// native bridges reach the room core through `roomGet(prop)`, so a static is
+// invisible to them. Both read it once at roomInit and fold batches with it.
+Object.defineProperty(RoomCore.prototype, 'publishRank', {
+  get: function () { return { none: PUBLISH_RANK.none, soon: PUBLISH_RANK.soon, now: PUBLISH_RANK.now }; },
 });
 
 Object.defineProperty(RoomCore.prototype, 'state', {

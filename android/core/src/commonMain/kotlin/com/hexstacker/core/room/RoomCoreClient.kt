@@ -53,8 +53,11 @@ class RoomCoreClient private constructor(private val bridge: EngineBridge) {
     val size: Int get() = snapshot.size
 
     companion object {
-        /** Publish hints. Every mutator returns one; the shells own the timer, because
-         *  a throttle timer needs a real clock and the room core has none. */
+        /** Publish hints (RoomCore.PUBLISH), pinned to the module by
+         *  tests/protocol-android-parity.test.js. Every mutator returns one; the shells
+         *  own the timer, because a throttle timer needs a real clock and the room core
+         *  has none. How STRONG each hint is is not mirrored here — see [publishRank]. */
+        const val PUBLISH_NONE = "none"
         const val PUBLISH_NOW = "now"
         const val PUBLISH_SOON = "soon"
 
@@ -199,6 +202,11 @@ class RoomCoreClient private constructor(private val bridge: EngineBridge) {
      *  prototype for exactly this read), so the policy is single-sourced with the web
      *  instead of hand-mirrored into a Kotlin constant that then drifts. */
     suspend fun snapshotThrottleMs(): Double = decode(bridge.roomGetJson("snapshotThrottleMs"))
+
+    /** How strong each publish hint is (RoomCore.publishRank), read for the same reason:
+     *  a shell that batches mutations folds them down to the strongest hint, and which
+     *  one that is belongs to the room core, not to three hand-written copies. */
+    suspend fun publishRank(): Map<String, Int> = decode(bridge.roomGetJson("publishRank"))
 
     // =====================================================================
     // Internals

@@ -73,6 +73,12 @@ declare class PartyCore {
    *  can't drift. Value: 50. */
   static MAX_FRAME_DELTA_MS: number;
 
+  /** Signature of everything a renderer draws from a snapshot: equal signatures
+   *  paint the same picture. Pure. `deliverFrame()` uses it to skip delivering a
+   *  render-identical frame; exposed so a host can apply the same test to a
+   *  snapshot it obtained some other way. */
+  static sceneSig(snapshot: PartyCore.Snapshot): string;
+
   /** The wrapped Game engine. Internal/white-box (tests reach into `game.boards`
    *  / `game.garbageManager`); NOT part of the native contract — drive PartyCore
    *  through the methods below. */
@@ -155,6 +161,27 @@ declare class PartyCore {
    * @param nowMs Monotonic timestamp (ms). Only deltas matter; the origin is free.
    */
   frame(nowMs: number): PartyCore.FrameResult;
+
+  // --- delivery (what a native host should actually pull) --------------------
+  /**
+   * `frame()` filtered for the JS<->native boundary, and what both TV ports call
+   * every tick. Events and commands always ride in full; the `snapshot` is
+   *
+   *   - ABSENT when this frame is render-identical to the last delivered one
+   *     (see `PartyCore.sceneSig`) — keep rendering the retained snapshot, and
+   *     skip both the decode and the repaint;
+   *   - otherwise present, with each player's `grid` OMITTED while its
+   *     `gridVersion` is unchanged since the last delivery. The host re-attaches
+   *     the rows it cached (both EngineBridge implementations do).
+   *
+   * Both filters are stateful (per instance, reset by a new game and by
+   * `rekeyPlayer`), which is exactly why they live here rather than in each
+   * host's bootstrap shim.
+   */
+  deliverFrame(nowMs: number): PartyCore.DeliveredFrame;
+  /** `snapshot()` with the same grid stripping `deliverFrame` applies. Does NOT
+   *  affect the scene signature: an out-of-band pull is not a delivered frame. */
+  deliverSnapshot(): PartyCore.DeliveredSnapshot;
 }
 
 declare namespace PartyCore {
@@ -170,6 +197,19 @@ declare namespace PartyCore {
   interface FrameResult {
     events: EngineEvent[];
     snapshot: Snapshot;
+    commands: HostCommand[];
+  }
+
+  /** A snapshot as DELIVERED: `grid` is absent on players whose rows the host
+   *  already holds (unchanged `gridVersion`). */
+  type DeliveredSnapshot = Omit<Snapshot, 'players'> & {
+    players: (Omit<PlayerSnapshot, 'grid'> & { grid?: number[][] })[];
+  };
+
+  /** `deliverFrame()`: `snapshot` absent on a render-identical frame. */
+  interface DeliveredFrame {
+    events: EngineEvent[];
+    snapshot?: DeliveredSnapshot;
     commands: HostCommand[];
   }
 
