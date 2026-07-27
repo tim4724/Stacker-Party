@@ -51,11 +51,11 @@ var roomCore = new window.GameEngine.RoomCore({
 // ROOM_STATE (protocol.js, shared with controllers) and the kit's STATES are
 // separate copies of the same string set: protocol.js can't depend on the kit.
 // Fail loudly if a future rename in one silently diverges from the other.
-var _brainStates = window.GameEngine.RoomCore.STATES;
-if (ROOM_STATE.LOBBY !== _brainStates.LOBBY ||
-    ROOM_STATE.COUNTDOWN !== _brainStates.COUNTDOWN ||
-    ROOM_STATE.PLAYING !== _brainStates.PLAYING ||
-    ROOM_STATE.RESULTS !== _brainStates.RESULTS) {
+var _coreStates = window.GameEngine.RoomCore.STATES;
+if (ROOM_STATE.LOBBY !== _coreStates.LOBBY ||
+    ROOM_STATE.COUNTDOWN !== _coreStates.COUNTDOWN ||
+    ROOM_STATE.PLAYING !== _coreStates.PLAYING ||
+    ROOM_STATE.RESULTS !== _coreStates.RESULTS) {
   throw new Error('ROOM_STATE and RoomCore.STATES have drifted — keep the string values in sync');
 }
 // Roster backing store, aliased onto the room core's map so existing reads

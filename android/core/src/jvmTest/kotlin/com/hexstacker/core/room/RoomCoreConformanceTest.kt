@@ -38,8 +38,8 @@ class RoomCoreConformanceTest {
         File(System.getProperty("hexcore.bundle") ?: error("hexcore.bundle not set by build")).readText()
 
     private fun golden(): JsonObject {
-        val path = System.getProperty("hexcore.roombrain.golden")
-            ?: error("hexcore.roombrain.golden not set by build")
+        val path = System.getProperty("hexcore.roomcore.golden")
+            ?: error("hexcore.roomcore.golden not set by build")
         return json.parseToJsonElement(File(path).readText()).jsonObject
     }
 

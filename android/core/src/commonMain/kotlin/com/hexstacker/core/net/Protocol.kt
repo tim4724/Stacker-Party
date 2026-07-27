@@ -208,7 +208,6 @@ object OutboundMessage {
         put("type", Msg.PONG); if (t != null) put("t", t)
     }
 
-
     fun error(message: String): JsonObject = buildJsonObject { put("type", Msg.ERROR); put("message", message) }
     fun playerState(level: Int, lines: Int, alive: Boolean, garbageIncoming: Int): JsonObject = buildJsonObject {
         put("type", Msg.PLAYER_STATE); put("level", level); put("lines", lines)

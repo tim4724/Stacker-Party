@@ -135,7 +135,7 @@ for (const [platform, getShim] of Object.entries(SHIMS)) {
     // A name carrying a quote, a backslash and a control character has to
     // survive the round trip. On Android this string is spliced into evaluated
     // SOURCE, which is what jsString() exists to make safe.
-    const nasty = 'a"b\\cd';
+    const nasty = 'a"b\\c\x07d';
     vm.runInContext(
       `Bridge.roomCall("setName", ${JSON.stringify(JSON.stringify([1, nasty]))})`, ctx);
     assert.equal(call('Bridge.roomSnapshotJSON()').players['1'].name, 'a"b\\cd',

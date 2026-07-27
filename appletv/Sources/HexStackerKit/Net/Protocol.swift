@@ -172,7 +172,6 @@ public enum OutboundMessage {
         return m
     }
 
-
     public static func error(message: String) -> [String: Any] {
         ["type": MSG.error, "message": message]
     }
@@ -183,5 +182,4 @@ public enum OutboundMessage {
     public static func playerDead() -> [String: Any] {
         ["type": MSG.playerState, "alive": false]
     }
-
 }
