@@ -40,12 +40,12 @@ if (urlParams.get('test') === '1' || debugCount > 0 || _adclipMode) {
         // Explicit slot lets gallery scenarios fake a non-contiguous roster
         // (e.g. 3 players + player 7 when "View as P7" is picked with
         // Players=4). Falls back to sequential fill for the usual case.
-        var index = (typeof p.slot === 'number') ? p.slot : nextAvailableSlot();
+        var index = (typeof p.slot === 'number') ? p.slot : brain.nextAvailableColorSlot();
         // joinedAt = array position → stable, incrementing within the seed so
         // calculateLayout()/getHostPeerIndex() get meaningful ordering. Using a
         // derived counter instead of Date.now() keeps scenarios deterministic.
-        flow.addPlayer(p.id, {
-          playerName: sanitizePlayerName(p.name, p.id),
+        brain.addPlayer(p.id, {
+          playerName: brain.resolveName(p.name, p.id, false),
           playerIndex: index,
           startLevel: p.level || 1
         });
@@ -69,8 +69,10 @@ if (urlParams.get('test') === '1' || debugCount > 0 || _adclipMode) {
         setRoomState(ROOM_STATE.COUNTDOWN);
         setRoomState(ROOM_STATE.PLAYING);
       }
+      // Before the transition: setRoomState publishes and the RESULTS snapshot
+      // is what carries the ranking to controllers.
+      lastResults = results && results.results;
       setRoomState(ROOM_STATE.RESULTS);
-      lastResults = results;
       onGameEnd(results);
     },
 
@@ -107,7 +109,7 @@ if (urlParams.get('test') === '1' || debugCount > 0 || _adclipMode) {
       // Engine event handlers call party.broadcast / party.sendTo at multiple
       // sites — install a no-op stub so they don't throw in the no-network harness.
       window.party = window.party || { broadcast: function() {}, sendTo: function() {}, getMasterClientId: function() { return null; } };
-      flow.reset();
+      brain.reset();
       playerOrder = [];
       for (var i = 0; i < info.length; i++) {
         var p = info[i];
@@ -119,8 +121,8 @@ if (urlParams.get('test') === '1' || debugCount > 0 || _adclipMode) {
         var displayedLevel = p.level || 1;
         var startLines = p.startLines || 0;
         var internalStartLevel = Math.max(1, displayedLevel - Math.floor(startLines / 10));
-        flow.addPlayer(p.id, {
-          playerName: sanitizePlayerName(p.name, p.id),
+        brain.addPlayer(p.id, {
+          playerName: brain.resolveName(p.name, p.id, false),
           playerIndex: slot,
           startLevel: internalStartLevel
         });
@@ -653,7 +655,7 @@ function initScenario(opts) {
     // would bounce the PLAY AGAIN step back to an empty lobby.
     setInterval(function() {
       for (var hi = 0; hi < tourRoster.length; hi++) {
-        flow.onSeen(tourRoster[hi].id, Date.now());
+        brain.onSeen(tourRoster[hi].id, Date.now());
       }
     }, 1000);
     function tourResults() {

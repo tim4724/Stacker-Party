@@ -4,16 +4,20 @@ const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { RoomBrain } = require('../server/RoomBrain.js');
 
 // =====================================================================
 // The retained room snapshot is the controller's single source of truth.
 // The display publishes ONE object via party.setState(); the relay pushes it
 // live and replays it to any (re)joining peer. Everything a controller shows
-// is derived from it — identity, roster, host, pause, liveness, results, and
+// is derived from it: identity, roster, host, pause, liveness, results, and
 // which screen is up. No per-recipient message survives alongside it.
 //
-// These mirror the production logic (kept in lockstep with the source):
-//   buildRoomSnapshot   -> public/display/DisplayConnection.js
+// The snapshot is built by the REAL production module (server/RoomBrain.js),
+// which tvOS and Android TV load out of the same bundle, so these assertions
+// are about all three displays at once. Only the CONTROLLER side is mirrored
+// here (it is still per-shell JavaScript), and the lockstep guard at the
+// bottom keeps those two mirrors honest:
 //   applyRoster         -> public/controller/ControllerGame.js#applyRoster
 //   routeToRoomState    -> public/controller/ControllerGame.js#routeToRoomState
 //   legacyWelcomeTo     -> the DELETED per-recipient WELCOME, frozen here as
@@ -22,46 +26,6 @@ const path = require('node:path');
 // The core property under test: for any room, the snapshot round-trips to
 // exactly what the old WELCOME told each recipient, screen routing included.
 // =====================================================================
-
-// --- Production mirror: display side --------------------------------------
-
-// The body below is a VERBATIM copy of production. The bindings production
-// reads from display globals are hoisted into locals here so every line stays
-// token-identical, which is what makes the lockstep guard at the bottom able
-// to pin the whole function rather than a few incidental lines.
-function buildRoomSnapshot(room) {
-  const players = room.players;
-  const roomState = room.roomState;
-  const muted = room.muted;
-  const playerOrder = room.playerOrder;
-  const lastAliveState = room.lastAliveState;
-  const lastResults = room.lastResults;
-  const ROOM_STATE = { RESULTS: 'results' };
-  const getHostPeerIndex = () => room.hostPeerIndex;
-  const userVisiblePaused = () => room.userVisiblePaused;
-
-  var roster = {};
-  for (const entry of players) {
-    var p = entry[1];
-    roster[entry[0]] = {
-      name: p.playerName,
-      color: p.playerIndex,
-      startLevel: p.startLevel || 1,
-      alive: lastAliveState[entry[0]] !== false,
-      helloSeen: p.helloSeen !== false
-    };
-  }
-  var snap = {
-    roomState: roomState,
-    hostPeerIndex: getHostPeerIndex(),
-    paused: userVisiblePaused(),
-    displayMuted: !!muted,
-    participants: playerOrder.slice(),
-    players: roster
-  };
-  if (roomState === ROOM_STATE.RESULTS && lastResults) snap.results = lastResults.results;
-  return snap;
-}
 
 // The OLD per-recipient payload (WELCOME), for parity assertions.
 function legacyWelcomeTo(room, id) {
@@ -155,8 +119,13 @@ function deriveWelcomeEquivalent(snap, peerIndex) {
   return out;
 }
 
+// Build a real RoomBrain in the described state, then expose it behind the same
+// field names legacyWelcomeTo reads, so the frozen WELCOME payload is compared
+// against genuine production output rather than a second copy of it.
+const STATE_PATH = { lobby: [], countdown: ['countdown'], playing: ['countdown', 'playing'], results: ['countdown', 'playing', 'results'] };
+
 function makeRoom(over) {
-  return Object.assign({
+  const spec = Object.assign({
     roomState: 'lobby',
     hostPeerIndex: null,
     userVisiblePaused: false,
@@ -166,7 +135,45 @@ function makeRoom(over) {
     lastAliveState: {},
     lastResults: null,
   }, over);
+
+  // rng is pinned but unused by these fixtures: every row carries an explicit
+  // name, so no auto-name is generated.
+  const brain = new RoomBrain({ rng: () => 0 });
+
+  // Seat the intended host first. The first joiner takes the sticky slot, which
+  // is how a real room elects one, so the fixture never has to poke at it.
+  const ids = [...spec.players.keys()];
+  if (spec.hostPeerIndex != null && ids.indexOf(spec.hostPeerIndex) >= 0) {
+    ids.splice(ids.indexOf(spec.hostPeerIndex), 1);
+    ids.unshift(spec.hostPeerIndex);
+  }
+  for (const id of ids) brain.addPlayer(id, Object.assign({}, spec.players.get(id)));
+
+  for (const step of STATE_PATH[spec.roomState]) brain.transitionTo(step);
+  brain.setParticipants(spec.playerOrder);
+  for (const id of Object.keys(spec.lastAliveState)) {
+    brain.setAlive(Number(id), spec.lastAliveState[id]);
+  }
+  if (spec.userVisiblePaused) brain.setPaused(true);
+  if (spec.muted) brain.setMuted(true);
+  if (spec.lastResults) brain.setResults(spec.lastResults.results);
+
+  return {
+    brain,
+    snapshot: () => brain.snapshot(),
+    get players() { return brain.players; },
+    get hostPeerIndex() { return brain.host; },
+    get roomState() { return brain.state; },
+    get playerOrder() { return brain.participants; },
+    get muted() { return brain.muted; },
+    get userVisiblePaused() { return brain.userVisiblePaused(); },
+    lastAliveState: spec.lastAliveState,
+    lastResults: spec.lastResults,
+  };
 }
+
+// Shorthand for the many places that only care about the published object.
+function snapshotOf(spec) { return makeRoom(spec).snapshot(); }
 
 describe('room snapshot: display builder', () => {
   test('encodes the roster keyed by peerIndex plus the room-wide state', () => {
@@ -178,7 +185,7 @@ describe('room snapshot: display builder', () => {
         [3, { playerName: 'Bo', playerIndex: 0, startLevel: 1 }],
       ]),
     });
-    assert.deepEqual(buildRoomSnapshot(room), {
+    assert.deepEqual(room.snapshot(), {
       roomState: 'lobby',
       hostPeerIndex: 1,
       paused: false,
@@ -199,7 +206,7 @@ describe('room snapshot: display builder', () => {
         [3, { playerName: 'Bo', playerIndex: 0 }],
       ]),
     });
-    const snap = buildRoomSnapshot(room);
+    const snap = room.snapshot();
     assert.equal(snap.players[1].startLevel, 9);
     assert.equal(snap.players[3].startLevel, 1);
   });
@@ -215,7 +222,7 @@ describe('room snapshot: display builder', () => {
       ]),
       lastAliveState: { 3: false },
     });
-    const snap = buildRoomSnapshot(room);
+    const snap = room.snapshot();
     assert.equal(snap.players[1].alive, true);
     assert.equal(snap.players[3].alive, false);
   });
@@ -224,12 +231,12 @@ describe('room snapshot: display builder', () => {
     const results = { elapsed: 1234, results: [{ playerId: 1, rank: 1, lines: 20 }] };
     const players = new Map([[1, { playerName: 'Ann', playerIndex: 2, startLevel: 1 }]]);
     assert.deepEqual(
-      buildRoomSnapshot(makeRoom({ roomState: 'results', players, lastResults: results })).results,
+      snapshotOf(({ roomState: 'results', players, lastResults: results })).results,
       results.results
     );
     // Same cached ranking, mid-game: must not leak into a playing snapshot.
     assert.equal(
-      buildRoomSnapshot(makeRoom({ roomState: 'playing', players, lastResults: results })).results,
+      snapshotOf(({ roomState: 'playing', players, lastResults: results })).results,
       undefined
     );
   });
@@ -247,7 +254,7 @@ describe('room snapshot: display builder', () => {
         [3, { playerName: 'HX-8', playerIndex: 0, startLevel: 1, helloSeen: false }],
       ]),
     });
-    const snap = buildRoomSnapshot(room);
+    const snap = room.snapshot();
     assert.equal(snap.players[1].helloSeen, true);
     assert.equal(snap.players[3].helloSeen, false);
     // The placeholder still claims its colour for everyone else's picker.
@@ -258,7 +265,7 @@ describe('room snapshot: display builder', () => {
   test('an emptied lobby publishes an honest empty roster (no departed ghost / stale host)', () => {
     // When the last lobby player leaves, the display republishes so the relay
     // never replays a snapshot naming a player who is gone.
-    const snap = buildRoomSnapshot(makeRoom({}));
+    const snap = snapshotOf(({}));
     assert.deepEqual(snap.players, {});
     assert.equal(snap.hostPeerIndex, null);
     // A peer that isn't in the roster has no identity to render: the controller
@@ -274,7 +281,7 @@ describe('room snapshot: display builder', () => {
       players.set(i, { playerName: 'Player-' + i, playerIndex: i - 1, startLevel: 1 });
       results.push({ playerId: i, playerName: 'Player-' + i, colorIndex: i - 1, rank: i, lines: 40, level: 12 });
     }
-    const snap = buildRoomSnapshot(makeRoom({
+    const snap = snapshotOf(({
       roomState: 'results',
       hostPeerIndex: 1,
       playerOrder: [...players.keys()],
@@ -323,7 +330,7 @@ describe('room snapshot: controller derivation parity with the deleted WELCOME',
 
   for (const [label, room] of cases) {
     test(`every recipient derives what WELCOME told them — ${label}`, () => {
-      const snap = buildRoomSnapshot(room);
+      const snap = room.snapshot();
       for (const id of room.players.keys()) {
         assert.deepEqual(deriveWelcomeEquivalent(snap, id), legacyWelcomeTo(room, id), 'parity for peer ' + id);
       }
@@ -331,7 +338,7 @@ describe('room snapshot: controller derivation parity with the deleted WELCOME',
   }
 
   test('non-host derives isHost=false; host derives isHost=true', () => {
-    const snap = buildRoomSnapshot(makeRoom({
+    const snap = snapshotOf(({
       hostPeerIndex: 1,
       players: new Map([
         [1, { playerName: 'Ann', playerIndex: 2, startLevel: 1 }],
@@ -346,7 +353,7 @@ describe('room snapshot: controller derivation parity with the deleted WELCOME',
 
   test('a color pick is reflected back to the picker via the roster', () => {
     // Ann picks color 4; the display updates the roster and republishes.
-    const snap = buildRoomSnapshot(makeRoom({
+    const snap = snapshotOf(({
       hostPeerIndex: 1,
       players: new Map([[1, { playerName: 'Ann', playerIndex: 4, startLevel: 1 }]]),
     }));
@@ -357,7 +364,7 @@ describe('room snapshot: controller derivation parity with the deleted WELCOME',
 
 describe('room snapshot: screen routing', () => {
   function snapshotIn(roomState, over) {
-    return buildRoomSnapshot(makeRoom(Object.assign({
+    return snapshotOf((Object.assign({
       roomState,
       hostPeerIndex: 1,
       playerOrder: [1, 3],
@@ -403,8 +410,8 @@ describe('room snapshot: screen routing', () => {
 // =====================================================================
 // Production lockstep drift guard
 // =====================================================================
-// The functions above are hand-copied MIRRORS of production logic (see the
-// header). Nothing structural forces them to track the source, so this guard
+// The two controller-side functions above are hand-copied MIRRORS of
+// production logic (the display side now calls the real module). Nothing structural forces them to track the source, so this guard
 // reads the REAL production files and asserts that each mirror's load-bearing
 // lines still appear in BOTH the production source AND the mirror's own body.
 // If production changes a mirrored line without this test being updated (or
@@ -424,9 +431,6 @@ function stripToTokens(src) {
   return src.replace(/\/\/[^\n]*/g, '').replace(/\s+/g, '');
 }
 
-const DISPLAY_SRC = stripToTokens(
-  fs.readFileSync(path.join(__dirname, '..', 'public', 'display', 'DisplayConnection.js'), 'utf8')
-);
 const CONTROLLER_SRC = stripToTokens(
   fs.readFileSync(path.join(__dirname, '..', 'public', 'controller', 'ControllerGame.js'), 'utf8')
 );
@@ -435,27 +439,6 @@ const CONTROLLER_SRC = stripToTokens(
 // fragment must appear (token-normalized) in BOTH the mirror's own source and
 // the production file.
 const LOCKSTEP = [
-  {
-    what: 'buildRoomSnapshot mirrors DisplayConnection.js#buildRoomSnapshot',
-    mirror: buildRoomSnapshot,
-    prod: DISPLAY_SRC,
-    fragments: [
-      'for (const entry of players) {',
-      'roster[entry[0]] = {',
-      'name: p.playerName,',
-      'color: p.playerIndex,',
-      'startLevel: p.startLevel || 1,',
-      'alive: lastAliveState[entry[0]] !== false,',
-      'helloSeen: p.helloSeen !== false',
-      'roomState: roomState,',
-      'hostPeerIndex: getHostPeerIndex(),',
-      'paused: userVisiblePaused(),',
-      'displayMuted: !!muted,',
-      'participants: playerOrder.slice(),',
-      'players: roster',
-      'if (roomState === ROOM_STATE.RESULTS && lastResults) snap.results = lastResults.results;',
-    ],
-  },
   {
     what: 'applyRoster mirrors ControllerGame.js#applyRoster',
     mirror: applyRoster,

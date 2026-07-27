@@ -14,6 +14,10 @@
 // with no require/window/DOM/timers to prove it stays host-injectable.
 exports.PartyCore = require('./PartyCore.js').PartyCore;
 exports.RoomFlow = require('../partyplug/RoomFlow.js');
+// The room brain: roster, naming, colour slots, host election and the retained
+// room snapshot, shared verbatim by web, tvOS and Android TV so the three cannot
+// drift. Composes RoomFlow (which stays game-agnostic, as the reusable kit).
+exports.RoomBrain = require('./RoomBrain.js').RoomBrain;
 // Canonical screen-gallery fixture data (scripts/gallery/): shipped in the
 // core so tvOS HEXSHOT states and the Android screenshot tests render the
 // exact snapshots the web gallery shows. Small (data + a scripted-drop

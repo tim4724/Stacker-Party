@@ -20,6 +20,7 @@ const path = require('path');
 
 const { MSG, INPUT, ROOM_STATE, RELAY_URL, STUN_URL } = require('../public/shared/protocol.js');
 const constants = require('../server/constants.js');
+const { RoomBrain } = require('../server/RoomBrain.js');
 
 const ROOT = path.join(__dirname, '..');
 const KOTLIN = {
@@ -112,9 +113,13 @@ test('timing constants mirror server/constants.js and PartyConnection.js', () =>
   assert.strictEqual(Number(liveness[1]), constants.LIVENESS_TIMEOUT_MS);
   assert.strictEqual(Number(grace[1]), constants.LATE_JOINER_GRACE_MS);
 
-  // Snapshot-publish throttle (web DisplayConnection ROOM_STATE_THROTTLE_MS).
-  const webThrottle = read('public/display/DisplayConnection.js').match(/ROOM_STATE_THROTTLE_MS = (\d+)/);
-  assert.strictEqual(kotlinConst(KOTLIN.coordinator, 'LOBBY_BROADCAST_MIN_INTERVAL_MS'), Number(webThrottle[1]));
+  // Snapshot-publish throttle. Read from the canonical module rather than from
+  // web source text: every display, this one included, gets the value from
+  // RoomBrain now, so this pins Kotlin to the same constant the web reads.
+  assert.strictEqual(
+    kotlinConst(KOTLIN.coordinator, 'LOBBY_BROADCAST_MIN_INTERVAL_MS'),
+    RoomBrain.SNAPSHOT_THROTTLE_MS
+  );
 
   // Reconnect backoff (web PartyConnection: `|| 5` default attempts and
   // `Math.min(1000 * Math.pow(1.5, attempt - 1), 5000)`).

@@ -68,12 +68,12 @@ function startLivenessCheck() {
     // runs, so the display's own reconnect detection is unaffected.
     if (!joinedRoom) return;
 
-    // Check individual controller liveness. flow.expiredPeers already applies
+    // Check individual controller liveness. brain.expiredPeers already applies
     // the state!==LOBBY + not-already-disconnected gates and the AirConsole
     // no-op (its enabledProvider closure), so the SDK's onDisconnect
     // (→ peer_left → onPeerLeft) becomes the only disconnect trigger there.
     var newDisconnect = false;
-    var expired = flow.expiredPeers(now);
+    var expired = brain.expiredPeers(now);
     for (const id of expired) {
       showDisconnectQR(id);
       newDisconnect = true;
@@ -89,7 +89,7 @@ function startLivenessCheck() {
     // setTimeout: fires within one tick of the 5s window elapsing, and
     // graceTick re-checks all-disconnected so a reconnect can't strand us. A
     // no-op if the event path already fired between ticks (deadline cleared).
-    if (flow.graceTick(now)) returnToLobby();
+    if (brain.graceTick(now)) returnToLobby();
   }, 1000);
 }
 

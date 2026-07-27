@@ -14,6 +14,20 @@ internal object EngineBootstrap {
     globalThis.Bridge = (function () {
       var PartyCore = HexCore.PartyCore;
       var core = null;
+      // ROOM-SHIM-BEGIN
+      // The room brain: roster, naming, colour slots, host election and the
+      // retained snapshot, shared verbatim with the web display and Android TV.
+      // Deliberately generic (one call/get pair rather than ~30 wrappers): the
+      // Android shim has to build every call as an interpolated source string,
+      // so one marshalling path per direction is one place to get escaping and
+      // exception draining right. Kept token-identical to the Android copy by
+      // tests/room-bridge-shim-parity.test.js.
+      var room = null;
+      function roomOrThrow() {
+        if (!room) throw new Error('room: roomInit() not called');
+        return room;
+      }
+      // ROOM-SHIM-END
       // playerId -> gridVersion last serialized WITH its grid. The grid is the
       // dominant payload of the 60 Hz frame()/snapshot() pulls and only changes
       // on a lock/clear/garbage insert, so strip it while the version is
@@ -101,7 +115,24 @@ internal object EngineBootstrap {
           }
           return JSON.stringify(f);
         },
-        isEnded: function () { return !!(core && core.game && core.game.ended); }
+        isEnded: function () { return !!(core && core.game && core.game.ended); },
+        // ROOM-API-BEGIN
+        roomInit: function (optsJson) {
+          room = new HexCore.RoomBrain(optsJson ? JSON.parse(optsJson) : {});
+        },
+        roomCall: function (method, argsJson) {
+          var r = roomOrThrow();
+          var fn = r[method];
+          if (typeof fn !== 'function') throw new Error('room: no method ' + method);
+          var out = fn.apply(r, argsJson ? JSON.parse(argsJson) : []);
+          return JSON.stringify(out === undefined ? null : out);
+        },
+        roomGet: function (prop) {
+          var v = roomOrThrow()[prop];
+          return JSON.stringify(v === undefined ? null : v);
+        },
+        roomSnapshotJSON: function () { return roomOrThrow().snapshotJSON(); }
+        // ROOM-API-END
       };
     })();
     """.trimIndent()

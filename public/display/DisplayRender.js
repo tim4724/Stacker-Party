@@ -124,9 +124,13 @@ function renderLoop(timestamp) {
       displayGame = null;
       prevFrameTime = 0;
       if (results) {
+        // Stash the ranking BEFORE the transition: setRoomState publishes, and
+        // the RESULTS snapshot is what carries the results to controllers.
+        // Enriched like the normal end-of-game path, or the salvaged ranking
+        // would reach the controllers with no names or colours on it.
+        if (results.results) brain.enrichResults(results.results);
+        lastResults = results.results;
         setRoomState(ROOM_STATE.RESULTS);
-        lastResults = results;
-        party.broadcast({ type: MSG.GAME_END, elapsed: results.elapsed, results: results.results });
         onGameEnd(results);
       }
       return;

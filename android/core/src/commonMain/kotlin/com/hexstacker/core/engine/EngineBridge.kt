@@ -160,6 +160,42 @@ class EngineBridge private constructor(
         frame.snapshot?.let { frame.copy(snapshot = reattachGrids(it)) } ?: frame
     }
 
+    // --- Room brain ----------------------------------------------------------
+    //
+    // The room's single source of truth (server/RoomBrain.js, the same module the
+    // web display and tvOS run): roster, auto-naming, colour slots, host election
+    // and the retained snapshot controllers derive their whole UI from.
+    // Everything crosses as JSON, and the surface is deliberately generic rather
+    // than ~30 typed wrappers, because quickjs-kt has no call-with-arguments API:
+    // every call is an interpolated source string, so one marshalling path per
+    // direction is one place to get the escaping right (see [jsString]).
+    //
+    // Unlike the engine, the brain exists for the WHOLE session: created once at
+    // coordinator start and surviving across matches, so [roomInit] must run
+    // before any room event is handled.
+
+    suspend fun roomInit(optionsJson: String = "{}"): Unit = lock.withLock {
+        eval("roomInit", "Bridge.roomInit(${jsString(optionsJson)})")
+    }
+
+    /**
+     * Invoke a RoomBrain method. [argsJson] is a JSON array of its arguments; the
+     * JSON-encoded return value comes back (`"null"` for void methods).
+     */
+    suspend fun roomCallJson(method: String, argsJson: String = "[]"): String = lock.withLock {
+        evalTyped<String>("roomCall($method)", "Bridge.roomCall(${jsString(method)}, ${jsString(argsJson)})")
+    }
+
+    /** Read a RoomBrain property (`state`, `host`, `participants`, ...) as JSON. */
+    suspend fun roomGetJson(property: String): String = lock.withLock {
+        evalTyped<String>("roomGet($property)", "Bridge.roomGet(${jsString(property)})")
+    }
+
+    /** The retained room snapshot, ready to hand straight to `set_state`. */
+    suspend fun roomSnapshotJson(): String = lock.withLock {
+        evalTyped<String>("roomSnapshotJSON", "Bridge.roomSnapshotJSON()")
+    }
+
     /**
      * Close the QuickJS runtime. `suspend` + [lock] so it can never overlap an
      * in-flight frame()/input call; hopping to [dispatcher] additionally keeps the
@@ -223,3 +259,36 @@ class EngineBridge private constructor(
  * only guard non-finite so a glitch never injects `NaN`/`Infinity` into a script.
  */
 internal fun jsNum(d: Double): String = if (d.isFinite()) d.toString() else "0"
+
+/**
+ * Emit a JS string literal (quotes included) for [s].
+ *
+ * quickjs-kt has no call-with-arguments API, so every call into JS is a source
+ * string Kotlin interpolates. Until the room brain landed, everything spliced in
+ * was an Int or a fixed enum constant and [jsNum] was the only sanitizer needed.
+ * Room payloads carry PLAYER NAMES, i.e. arbitrary user text, so splicing them
+ * raw would break on a quote or a backslash and would let a crafted name inject
+ * script into the engine context.
+ *
+ * Beyond the JSON escapes: U+2028/U+2029 are legal inside a JSON string but were
+ * line terminators in JS source before ES2019, and DEL is escaped so a name can
+ * never carry an invisible control character through into the literal.
+ */
+internal fun jsString(s: String): String {
+    val sb = StringBuilder(s.length + 2)
+    sb.append('"')
+    for (ch in s) {
+        when {
+            ch == '"' -> sb.append("\\\"")
+            ch == '\\' -> sb.append("\\\\")
+            ch == '\n' -> sb.append("\\n")
+            ch == '\r' -> sb.append("\\r")
+            ch == '\t' -> sb.append("\\t")
+            ch < ' ' || ch == '\u007F' || ch == '\u2028' || ch == '\u2029' ->
+                sb.append("\\u").append(ch.code.toString(16).padStart(4, '0'))
+            else -> sb.append(ch)
+        }
+    }
+    sb.append('"')
+    return sb.toString()
+}

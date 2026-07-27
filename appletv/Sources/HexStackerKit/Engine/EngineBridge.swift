@@ -177,6 +177,78 @@ public final class EngineBridge {
         catch { throw EngineError.decode("snapshotJSON: \(error)") }
     }
 
+    // MARK: - Room brain
+
+    /// The room's single source of truth (`server/RoomBrain.js`, the same module
+    /// the web display and Android TV run): roster, auto-naming, colour slots,
+    /// host election, and the retained snapshot controllers derive their whole UI
+    /// from. Everything crosses as JSON, and the surface is deliberately generic
+    /// rather than ~30 typed wrappers so the marshalling and exception-draining
+    /// discipline lives in one place per direction on both platforms.
+    ///
+    /// Unlike the engine, the brain exists for the WHOLE session: it is created
+    /// once at coordinator start and survives across matches, so `roomInit` must
+    /// be called before any room event is handled.
+    public func roomInit(optionsJSON: String = "{}") throws {
+        bridge.invokeMethod("roomInit", withArguments: [optionsJSON])
+        if let e = takeException() {
+            onEngineError?("roomInit: \(e)")
+            throw EngineError.evalFailed("roomInit: \(e)")
+        }
+    }
+
+    /// Invoke a RoomBrain method. `argsJSON` is a JSON array of its arguments;
+    /// the JSON-encoded return value comes back (`"null"` for void methods).
+    @discardableResult
+    public func roomCallJSON(_ method: String, _ argsJSON: String = "[]") throws -> String {
+        try roomString("roomCall", [method, argsJSON], label: "roomCall(\(method))")
+    }
+
+    /// Read a RoomBrain property (the getters: `state`, `host`, `participants`,
+    /// `results`, ...) as JSON.
+    public func roomGetJSON(_ property: String) throws -> String {
+        try roomString("roomGet", [property], label: "roomGet(\(property))")
+    }
+
+    /// The retained room snapshot, ready to hand straight to `set_state`.
+    public func roomSnapshotJSON() throws -> String {
+        try roomString("roomSnapshotJSON", [], label: "roomSnapshotJSON")
+    }
+
+    /// Typed convenience over `roomCallJSON`.
+    public func roomCall<T: Decodable>(_ type: T.Type, _ method: String, _ argsJSON: String = "[]") throws -> T {
+        try decodeRoom(type, json: try roomCallJSON(method, argsJSON), label: "roomCall(\(method))")
+    }
+
+    /// Typed convenience over `roomGetJSON`.
+    public func roomGet<T: Decodable>(_ type: T.Type, _ property: String) throws -> T {
+        try decodeRoom(type, json: try roomGetJSON(property), label: "roomGet(\(property))")
+    }
+
+    /// Shared call + drain for the three room entry points. Draining before
+    /// inspecting the result is the same discipline `decode` documents: a JS
+    /// throw yields no usable string, and bailing without draining would leave
+    /// the message to be mis-attributed to the next frame().
+    private func roomString(_ method: String, _ args: [Any], label: String) throws -> String {
+        let result = bridge.invokeMethod(method, withArguments: args)
+        if let e = takeException() {
+            onEngineError?("\(label): \(e)")
+            throw EngineError.evalFailed("\(label): \(e)")
+        }
+        guard let json = result?.toString() else {
+            throw EngineError.decode("\(label): no string returned")
+        }
+        return json
+    }
+
+    private func decodeRoom<T: Decodable>(_ type: T.Type, json: String, label: String) throws -> T {
+        guard let data = json.data(using: .utf8) else {
+            throw EngineError.decode("\(label): not utf8")
+        }
+        do { return try decoder.decode(T.self, from: data) }
+        catch { throw EngineError.decode("\(label): \(error)") }
+    }
+
     // MARK: - Gallery fixtures
 
     /// The canonical cross-platform screen-gallery fixtures (`HexCore.GalleryFixtures`,
@@ -284,6 +356,20 @@ public final class EngineBridge {
     var Bridge = (function () {
       var PartyCore = HexCore.PartyCore;
       var core = null;
+      // ROOM-SHIM-BEGIN
+      // The room brain: roster, naming, colour slots, host election and the
+      // retained snapshot, shared verbatim with the web display and Android TV.
+      // Deliberately generic (one call/get pair rather than ~30 wrappers): the
+      // Android shim has to build every call as an interpolated source string,
+      // so one marshalling path per direction is one place to get escaping and
+      // exception draining right. Kept token-identical to the Android copy by
+      // tests/room-bridge-shim-parity.test.js.
+      var room = null;
+      function roomOrThrow() {
+        if (!room) throw new Error('room: roomInit() not called');
+        return room;
+      }
+      // ROOM-SHIM-END
       // playerId -> gridVersion last serialized WITH its grid. The grid is the
       // dominant payload of the 60 Hz frame()/snapshot() pulls and only changes
       // on a lock/clear/garbage insert, so strip it while the version is
@@ -333,6 +419,23 @@ public final class EngineBridge {
           return JSON.stringify(f);
         },
         isEnded: function () { return !!(core && core.game && core.game.ended); },
+        // ROOM-API-BEGIN
+        roomInit: function (optsJson) {
+          room = new HexCore.RoomBrain(optsJson ? JSON.parse(optsJson) : {});
+        },
+        roomCall: function (method, argsJson) {
+          var r = roomOrThrow();
+          var fn = r[method];
+          if (typeof fn !== 'function') throw new Error('room: no method ' + method);
+          var out = fn.apply(r, argsJson ? JSON.parse(argsJson) : []);
+          return JSON.stringify(out === undefined ? null : out);
+        },
+        roomGet: function (prop) {
+          var v = roomOrThrow()[prop];
+          return JSON.stringify(v === undefined ? null : v);
+        },
+        roomSnapshotJSON: function () { return roomOrThrow().snapshotJSON(); },
+        // ROOM-API-END
         // Screen-gallery fixtures (HexCore.GalleryFixtures) — the single source
         // the web, tvOS and Android TV galleries all render.
         galleryRosterJSON: function (n, long) { return JSON.stringify(HexCore.GalleryFixtures.roster(n, !!long)); },

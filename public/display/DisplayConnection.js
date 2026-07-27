@@ -344,7 +344,7 @@ function onDisplayRejoined(partyRoomCode, peers) {
   var disconnectedIds = [];
   for (const pEntry of players) {
     if (connectedSet.has(pEntry[0])) {
-      flow.onSeen(pEntry[0], now);
+      brain.onSeen(pEntry[0], now);
     } else {
       disconnectedIds.push(pEntry[0]);
     }
@@ -386,40 +386,17 @@ function onDisplayRejoined(partyRoomCode, peers) {
 }
 
 function onPeerJoined(peerIndex) {
-  if (players.has(peerIndex)) return;
-  if (players.size >= GameConstants.MAX_PLAYERS) return;
+  // The brain allocates the colour slot, invents the placeholder auto-name, and
+  // decides whether this joiner is a lobby member or a late joiner waiting out
+  // the round. It refuses silently on a duplicate or a full room.
+  var res = brain.peerJoined(peerIndex, Date.now());
+  if (!res.added) return;
 
-  var index = nextAvailableSlot();
-  if (index < 0) return;
-
-  // flow.addPlayer assigns joinedAt + connected and makes the first joiner the
-  // sticky host. The game fields (name, color slot, level, ping) ride along on
-  // the same record; the kit never reads them.
-  //
-  // helloSeen: false marks this a placeholder. The relay hands us peer_joined
-  // before the controller's HELLO, so the name and colour here are our guesses,
-  // not the player's. Other controllers still need the row (it claims a palette
-  // slot), but the joiner's own controller must not render a guessed identity
-  // and then visibly correct itself a round trip later.
-  flow.addPlayer(peerIndex, {
-    playerName: generateAutoPlayerName(peerIndex),
-    playerIndex: index,
-    startLevel: 1,
-    helloSeen: false
-  });
-  flow.onSeen(peerIndex, Date.now());
-
-  // Only add to playerOrder in lobby — late joiners wait for next game.
-  // playerOrder is snapshotted at game start by runGameLocally().
-  if (roomState === ROOM_STATE.LOBBY) {
-    playerOrder.push(peerIndex);
+  if (res.joinedLobby) {
     updatePlayerList();
     updateStartButton();
   }
-  // The roster changed: a palette slot is claimed and (in an empty room) the
-  // host moved. The joiner's own HELLO republishes a moment later, but the
-  // other controllers' pickers must not wait for it.
-  publishRoomState();
+  publishAs(res.publish);
 }
 
 function onPeerLeft(peerIndex) {
@@ -428,71 +405,37 @@ function onPeerLeft(peerIndex) {
 
   cleanupPlayerInput(peerIndex);
 
-  // Sticky-host handoff is owned by RoomFlow: flow.removePlayer re-elects only
-  // when the player leaves in LOBBY/RESULTS. Mid-game (PLAYING/COUNTDOWN) the
-  // participant stays in the roster (flagged disconnected via showDisconnectQR
-  // -> flow.markDisconnected) so the slot stays pinned and a reconnect via
-  // claimReconnectPeer (flow.rekey) reclaims it; flow's host fallback elects a
-  // present player for any host action needed during the blip.
-  if (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN) {
-    if (playerOrder.indexOf(peerIndex) >= 0) {
-      // Active game participant — keep in Map for seamless reconnect
-      showDisconnectQR(peerIndex);
-      checkAllPlayersDisconnected();
-    } else {
-      // Late joiner (never in the game) — remove silently
-      flow.removePlayer(peerIndex);
-      garbageIndicatorEffects.delete(peerIndex);
-      garbageDefenceEffects.delete(peerIndex);
-    }
-  } else if (roomState === ROOM_STATE.LOBBY) {
-    removeLobbyPlayer(peerIndex);
-  } else if (roomState === ROOM_STATE.RESULTS) {
-    flow.removePlayer(peerIndex);
-    var idx = playerOrder.indexOf(peerIndex);
-    if (idx !== -1) playerOrder.splice(idx, 1);
-    flow.setActiveOrder(playerOrder);
+  // The brain owns the branch: mid-game an active participant keeps their row
+  // (so the slot stays pinned for a reconnect via claimReconnect), while a late
+  // joiner and anyone leaving in lobby/results is dropped outright, with the
+  // sticky-host handoff and the empty-results return to lobby handled inside.
+  var res = brain.peerLeft(peerIndex);
+  if (!res.known) return;
+
+  if (res.action === 'disconnected') {
+    showDisconnectQR(peerIndex);
+    checkAllPlayersDisconnected();
+  } else {
     garbageIndicatorEffects.delete(peerIndex);
     garbageDefenceEffects.delete(peerIndex);
-    // Return to lobby when no game participants remain (late joiners don't count)
-    var hasParticipants = false;
-    for (var i = 0; i < playerOrder.length; i++) {
-      if (players.has(playerOrder[i])) { hasParticipants = true; break; }
-    }
-    if (!hasParticipants) {
-      lastResults = null;
-      setRoomState(ROOM_STATE.LOBBY);
-      returnToLobbyUI();
+    if (roomState === ROOM_STATE.LOBBY) {
+      updatePlayerList();
+      updateStartButton();
     }
   }
+  if (res.returnedToLobby) returnToLobbyUI();
 
   // The roster changed in every branch above: someone is gone, the host may
   // have moved to a present player, and a mid-game departure flips that
   // player's `alive` for the remaining boards. Publishing unconditionally also
   // covers the last-player-leaves case, where the snapshot must stop naming a
   // departed player (and a stale host) to the next peer that joins.
-  publishRoomState();
-}
-
-function removeLobbyPlayer(peerIndex) {
-  flow.removePlayer(peerIndex);
-  playerOrder = playerOrder.filter(function(id) { return id !== peerIndex; });
-  garbageIndicatorEffects.delete(peerIndex);
-  garbageDefenceEffects.delete(peerIndex);
-  updatePlayerList();
-  updateStartButton();
+  publishAs(res.publish);
 }
 
 // =====================================================================
 // QR Rejoin Claim Handling
 // =====================================================================
-
-function normalizePeerIndex(value) {
-  if (typeof value === 'number') return Number.isInteger(value) && value >= 0 ? value : null;
-  if (typeof value !== 'string' || value.trim() === '') return null;
-  var n = Number(value);
-  return Number.isInteger(n) && n >= 0 ? n : null;
-}
 
 function rekeyMapPreservingOrder(map, oldId, newId, mutateValue) {
   if (!map || !map.has(oldId)) return;
@@ -544,52 +487,20 @@ function transferMapEntry(map, oldId, newId) {
   map.set(newId, value);
 }
 
-function claimReconnectPeer(fromId, msg) {
-  var token = msg && msg.rejoinToken;
-  var oldId = normalizePeerIndex(token);
-  if (oldId == null && msg && msg.rejoinId != null) oldId = normalizePeerIndex(msg.rejoinId);
-  if (oldId == null || oldId === fromId) return false;
-  if (!players.has(oldId) || !disconnectedQRs.has(oldId)) return false;
-  if (playerOrder.indexOf(oldId) < 0) return false;
-  // An active participant can't claim another board: rekeying onto an id that
-  // already owns a board would silently drop one of the two in the Map rebuild.
-  // A genuine cross-device rejoin always arrives under a FRESH peer index.
-  if (playerOrder.indexOf(fromId) >= 0) return false;
-
+// Finish a cross-device rejoin the brain has already accepted: everything keyed
+// by peer index that lives OUTSIDE the room (input state, the QR canvases, the
+// garbage effect maps, the engine's boards) moves from the old index to the new
+// one. The room half (roster record, sticky host slot, participant order,
+// alive flags, cached ranking) moved inside brain.claimReconnect.
+function applyReconnectClaim(oldId, fromId) {
   cleanupPlayerInput(oldId);
   cleanupPlayerInput(fromId);
-
-  // flow.rekey moves the kept record from oldId to fromId (dropping the
-  // placeholder slot fromId got when it joined), and reclaims the sticky host
-  // slot, participant order, and last-seen stamp for the returning peer. The
-  // game-side arrays below (playerOrder, alive state, garbage effects, game
-  // boards) are rekeyed alongside it.
-  flow.rekey(oldId, fromId);
-  flow.onSeen(fromId, Date.now());
-
-  for (var i = 0; i < playerOrder.length; i++) {
-    if (playerOrder[i] === oldId) playerOrder[i] = fromId;
-  }
-
-  if (lastAliveState[oldId] !== undefined) {
-    lastAliveState[fromId] = lastAliveState[oldId];
-    delete lastAliveState[oldId];
-  }
-  // Remap the cached ranking too: a claim on the RESULTS screen replays
-  // lastResults in the snapshot, and the returning controller matches its own
-  // row by playerId.
-  if (lastResults && Array.isArray(lastResults.results)) {
-    for (var li = 0; li < lastResults.results.length; li++) {
-      if (lastResults.results[li].playerId === oldId) lastResults.results[li].playerId = fromId;
-    }
-  }
   transferMapEntry(garbageIndicatorEffects, oldId, fromId);
   transferMapEntry(garbageDefenceEffects, oldId, fromId);
   disconnectedQRs.delete(oldId);
   disconnectedQRs.delete(fromId);
   rekeyDisplayGamePlayer(oldId, fromId);
   calculateLayout();
-  return true;
 }
 
 // =====================================================================
@@ -602,10 +513,22 @@ function claimReconnectPeer(fromId, msg) {
 // change after a quiet period goes out immediately (the picker overlay closes
 // on the display's echo, so it must not feel laggy), and everything inside the
 // window collapses into one trailing publish that reads live state at fire
-// time — the latest value always wins. Everything else publishes immediately.
-var ROOM_STATE_THROTTLE_MS = 500;
+// time, so the latest value always wins. Everything else publishes immediately.
+//
+// Which calls take which path is the brain's decision, not this file's: every
+// mutator returns a `publish` hint of 'now', 'soon' or 'none', and tvOS and
+// Android read the same hints. Only the timer is per-shell, because a timer
+// needs a real clock and the brain has none.
+var ROOM_STATE_THROTTLE_MS = window.GameEngine.RoomBrain.SNAPSHOT_THROTTLE_MS;
 var _publishTimer = null;
 var _lastPublishAt = 0;
+
+// Apply a mutator's publish hint. Keeps the three-way decision in one place so
+// call sites read as "do the thing, then honour the hint".
+function publishAs(hint) {
+  if (hint === 'now') publishRoomState();
+  else if (hint === 'soon') publishRoomStateSoon();
+}
 
 function publishRoomStateSoon() {
   if (_publishTimer) return;
@@ -630,46 +553,10 @@ function publishRoomState() {
   _lastPublishAt = Date.now();
   applyHostTint();
   if (party && typeof party.setState === 'function') {
-    party.setState(buildRoomSnapshot());
+    // The snapshot itself is built by RoomBrain, byte-identically on tvOS and
+    // Android TV, which is the whole point of the module.
+    party.setState(brain.snapshot());
   }
-}
-
-// Everything a controller renders, in one object — identity, roster, host,
-// room state, pause, liveness and the final ranking. Controllers derive their
-// whole UI from this, screen routing included (see the controller's onState),
-// so there is no second message left that could drift out of sync with it.
-// Tiny: well under 2 KiB even for a full 9-player room sitting on results,
-// against the relay's 16 KiB retained-state cap.
-function buildRoomSnapshot() {
-  var roster = {};
-  for (const entry of players) {
-    var p = entry[1];
-    roster[entry[0]] = {
-      name: p.playerName,
-      color: p.playerIndex,
-      startLevel: p.startLevel || 1,
-      alive: lastAliveState[entry[0]] !== false,
-      // False until this player's HELLO lands — see onPeerJoined. Their own
-      // controller waits for it before rendering itself; everyone else reads
-      // the row regardless, so the palette slot is claimed immediately.
-      helloSeen: p.helloSeen !== false
-    };
-  }
-  var snap = {
-    roomState: roomState,
-    hostPeerIndex: getHostPeerIndex(),
-    // Only a host-pressed pause reaches controllers — an auto- or connection
-    // pause is display-internal and un-dismissable from there. See
-    // userVisiblePaused().
-    paused: userVisiblePaused(),
-    displayMuted: !!muted,
-    // Who is actually in the running game. A player in the roster but absent
-    // here during playing/countdown joined late and waits out the round.
-    participants: playerOrder.slice(),
-    players: roster
-  };
-  if (roomState === ROOM_STATE.RESULTS && lastResults) snap.results = lastResults.results;
-  return snap;
 }
 
 // =====================================================================
@@ -737,7 +624,7 @@ function showDisconnectQR(peerIndex) {
   // disconnect must touch BOTH — markDisconnected/markReconnected/clearDisconnected
   // here, and rekey() clears flow's flag on a cross-device claim. If they drift,
   // host election (which reads flow) skips a present player.
-  flow.markDisconnected(peerIndex);
+  brain.markDisconnected(peerIndex);
   if (!joinUrl) return;
   // Splice the claim in before the fragment so the instance hash stays intact.
   var hashIdx = joinUrl.indexOf('#');
