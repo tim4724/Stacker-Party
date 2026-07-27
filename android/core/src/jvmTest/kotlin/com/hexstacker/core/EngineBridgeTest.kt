@@ -109,7 +109,11 @@ class EngineBridgeTest {
             )
             val secondPlayers = assertNotNull(second.snapshot, "hold re-delivers the snapshot").players
             assertTrue(secondPlayers.all { it.grid.isEmpty() }, "unchanged grids are stripped from later pulls")
-            assertTrue(secondPlayers.all { it.gridVersion >= 0 }, "gridVersion stays on the wire")
+            // gridVersion is what the strip decides on, so it has to survive the strip:
+            // compare it to the full pull rather than merely assert it is a number.
+            val firstVersions = assertNotNull(first.snapshot).players.associate { it.id to it.gridVersion }
+            assertEquals(firstVersions, secondPlayers.associate { it.id to it.gridVersion },
+                "gridVersion rides even on a frame whose grids were stripped")
             evaluate<Any?>("Bridge.processInput(0, 'hard_drop')") // lock bumps p0's gridVersion
             val third = PackedFrame.decode(evaluate<String>("Bridge.snapshotPacked()"))
             assertTrue(
