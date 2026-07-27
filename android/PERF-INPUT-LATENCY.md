@@ -406,8 +406,13 @@ deliberately.
   and pins every split field on the `0xffff` boundary and either side of it, plus a
   match walked across all four `elapsed` boundary crossings.
 * `tests/fixtures/partycore-packed-golden.json` pins packed payloads and the frames
-  they must decode to; `PackedFrameTest` (Kotlin) replays it through the port. A layout
-  change landing on one side only fails the build rather than a TV.
+  they must decode to. BOTH ports replay it — `PackedFrameTest` (Kotlin) and
+  `PackedGoldenConformanceTests` (Swift) — so a layout change landing on one side only
+  fails a build rather than a TV. The fixture ends with three synthetic steps that
+  drive the 15-bit split with a non-zero high half: a driven match never gets there
+  (a few seconds of `elapsed`, single-digit `gridVersion`s), and with a zero high half
+  every shift width decodes identically, so without them a port using 16-bit halves
+  replayed the whole corpus byte-for-byte and the gate proved nothing.
 * `tests/room-bridge-shim-parity.test.js` drives the packed surface through the real
   bundle in a bare VM for BOTH shims, and holds their ENGINE-API token-identical.
 

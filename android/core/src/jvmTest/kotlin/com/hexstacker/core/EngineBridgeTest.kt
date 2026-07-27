@@ -95,30 +95,47 @@ class EngineBridgeTest {
             evaluate<Any?>(EngineBootstrap.SHIM + "\nvoid 0;")
             evaluate<Any?>("Bridge.create([[0,1],[1,1]], 7)")
             // Frames cross packed, so assert on the DECODED payload rather than on
-            // substrings of JSON: a stripped grid arrives as an empty list, and
-            // re-attaching cached rows is EngineBridge's job, not the reader's.
-            val first = PackedFrame.decode(evaluate<String>("Bridge.framePacked(0)"))
+            // substrings of JSON. The reader substitutes cached rows as it reads, so
+            // what proves a grid was stripped ON THE WIRE is that decoding the same
+            // payload against an EMPTY cache has nothing to substitute.
+            val cache = HashMap<Int, List<List<Int>>>()
+            val firstPacked = evaluate<String>("Bridge.framePacked(0)")
+            val first = PackedFrame.decode(firstPacked, cache)
             // HOLD changes the scene (so the snapshot is delivered at all — see the
             // scene-signature omission) without touching any grid: the delivered
             // snapshot strips every player's unchanged grid.
             evaluate<Any?>("Bridge.processInput(0, 'hold')")
-            val second = PackedFrame.decode(evaluate<String>("Bridge.framePacked(16)"))
-            assertTrue(
-                assertNotNull(first.snapshot).players.all { it.grid.isNotEmpty() },
-                "first pull carries full grids",
-            )
+            val secondPacked = evaluate<String>("Bridge.framePacked(16)")
+            val second = PackedFrame.decode(secondPacked, cache)
+            val firstPlayers = assertNotNull(first.snapshot).players
+            assertTrue(firstPlayers.all { it.grid.isNotEmpty() }, "first pull carries full grids")
             val secondPlayers = assertNotNull(second.snapshot, "hold re-delivers the snapshot").players
-            assertTrue(secondPlayers.all { it.grid.isEmpty() }, "unchanged grids are stripped from later pulls")
-            // gridVersion is what the strip decides on, so it has to survive the strip:
-            // compare it to the full pull rather than merely assert it is a number.
-            val firstVersions = assertNotNull(first.snapshot).players.associate { it.id to it.gridVersion }
-            assertEquals(firstVersions, secondPlayers.associate { it.id to it.gridVersion },
-                "gridVersion rides even on a frame whose grids were stripped")
-            evaluate<Any?>("Bridge.processInput(0, 'hard_drop')") // lock bumps p0's gridVersion
-            val third = PackedFrame.decode(evaluate<String>("Bridge.snapshotPacked()"))
             assertTrue(
-                assertNotNull(third.snapshot).players.any { it.grid.isNotEmpty() },
-                "a lock re-sends the changed grid",
+                runCatching { PackedFrame.decode(secondPacked, HashMap()) }.isFailure,
+                "unchanged grids are stripped from later pulls, so a cold cache cannot decode them",
+            )
+            assertEquals(
+                firstPlayers.associate { it.id to it.grid },
+                secondPlayers.associate { it.id to it.grid },
+                "a warm cache re-attaches exactly the rows that were last sent",
+            )
+            // gridVersion is what the strip decides on, so it has to survive the strip.
+            assertEquals(
+                firstPlayers.associate { it.id to it.gridVersion },
+                secondPlayers.associate { it.id to it.gridVersion },
+                "gridVersion rides even on a frame whose grids were stripped",
+            )
+            evaluate<Any?>("Bridge.processInput(0, 'hard_drop')") // lock bumps p0's gridVersion
+            val third = PackedFrame.decode(evaluate<String>("Bridge.snapshotPacked()"), cache)
+            val thirdPlayers = assertNotNull(third.snapshot).players
+            assertTrue(
+                thirdPlayers.first { it.id == 0 }.grid != firstPlayers.first { it.id == 0 }.grid,
+                "a lock re-sends the changed grid rather than the cached one",
+            )
+            assertEquals(
+                firstPlayers.first { it.id == 1 }.grid,
+                thirdPlayers.first { it.id == 1 }.grid,
+                "the untouched board still comes from cache",
             )
         }
         Unit
@@ -133,15 +150,18 @@ class EngineBridgeTest {
             evaluate<Any?>(bundle())
             evaluate<Any?>(EngineBootstrap.SHIM + "\nvoid 0;")
             evaluate<Any?>("Bridge.create([[0,1],[1,1]], 7)")
-            val first = PackedFrame.decode(evaluate<String>("Bridge.framePacked(0)"))
+            // One cache for the sequence, like the bridge keeps: the third pull below
+            // has its grids stripped and would have nothing to substitute otherwise.
+            val cache = HashMap<Int, List<List<Int>>>()
+            val first = PackedFrame.decode(evaluate<String>("Bridge.framePacked(0)"), cache)
             assertNotNull(first.snapshot, "first pull delivers the snapshot")
             // 16ms later: no input, no gravity step, same timer second — omitted.
-            val second = PackedFrame.decode(evaluate<String>("Bridge.framePacked(16)"))
+            val second = PackedFrame.decode(evaluate<String>("Bridge.framePacked(16)"), cache)
             assertEquals(null, second.snapshot, "a render-identical frame omits the snapshot")
             assertNotNull(second.events, "events stay on the wire")
             assertNotNull(second.commands, "commands stay on the wire")
             evaluate<Any?>("Bridge.processInput(0, 'left')") // moves p0's piece
-            val third = PackedFrame.decode(evaluate<String>("Bridge.framePacked(33)"))
+            val third = PackedFrame.decode(evaluate<String>("Bridge.framePacked(33)"), cache)
             assertNotNull(third.snapshot, "a scene change re-delivers the snapshot")
         }
         Unit

@@ -45,8 +45,10 @@ internal object PackedFrame {
     )
 
     /** Decode a packed frame. The snapshot is null when the frame was
-     *  render-identical to the last delivered one (PartyCore omits it). */
-    fun decode(packed: String): FrameResult {
+     *  render-identical to the last delivered one (PartyCore omits it). Grid
+     *  stripping is undone from [gridCache] during the read — the caller owns the
+     *  cache across frames, and gets back a snapshot that always carries full rows. */
+    fun decode(packed: String, gridCache: MutableMap<Int, List<List<Int>>>): FrameResult {
         val r = Reader(packed)
         val version = r.next()
         check(version == PACK_VERSION) { "packed layout version $version, expected $PACK_VERSION" }
@@ -54,7 +56,7 @@ internal object PackedFrame {
         if (r.next() == 1) {
             val count = r.split()
             val bodyStart = r.at
-            snapshot = readSnapshot(r)
+            snapshot = readSnapshot(r, gridCache)
             // Landing anywhere but the tail means the layout drifted between this
             // reader and the packer; trusting the count instead would surface as a
             // confusing JSON parse error further down.
@@ -75,15 +77,15 @@ internal object PackedFrame {
         }
     }
 
-    private fun readSnapshot(r: Reader): GameSnapshot {
+    private fun readSnapshot(r: Reader, gridCache: MutableMap<Int, List<List<Int>>>): GameSnapshot {
         val elapsed = r.split().toDouble()
         val n = r.next()
         val players = ArrayList<PlayerState>(n)
-        repeat(n) { players.add(readPlayer(r)) }
+        repeat(n) { players.add(readPlayer(r, gridCache)) }
         return GameSnapshot(players = players, elapsed = elapsed)
     }
 
-    private fun readPlayer(r: Reader): PlayerState {
+    private fun readPlayer(r: Reader, gridCache: MutableMap<Int, List<List<Int>>>): PlayerState {
         val id = r.next()
         val level = r.next()
         val lines = r.split()
@@ -92,8 +94,9 @@ internal object PackedFrame {
         val gridVersion = r.split()
 
         // Absent whenever the delivery filter stripped it (unchanged since the last
-        // one this host was sent); EngineBridge re-attaches its cached rows.
-        var grid: List<List<Int>> = emptyList()
+        // one this host was sent): substitute the cached rows here rather than in a
+        // second pass, so a stripped player costs no extra PlayerState.
+        val grid: List<List<Int>>
         if (r.next() == 1) {
             val rows = r.next()
             val cols = r.next()
@@ -103,7 +106,10 @@ internal object PackedFrame {
                 repeat(cols) { row.add(r.next()) }
                 g.add(row)
             }
+            gridCache[id] = g
             grid = g
+        } else {
+            grid = gridCache[id] ?: error("stripped grid with no cached rows for id $id")
         }
 
         var piece: Piece? = null

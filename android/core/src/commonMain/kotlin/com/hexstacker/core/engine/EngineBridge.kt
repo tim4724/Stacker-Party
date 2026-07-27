@@ -39,8 +39,9 @@ class EngineBridge private constructor(
     // player's `grid` from the 60 Hz frame()/snapshot() payloads while its
     // `gridVersion` is unchanged (the grid dominates the serialized snapshot
     // at 8 players, and it only changes on a lock/clear/garbage insert);
-    // [reattachGrids] substitutes these cached rows so consumers always see a
-    // full snapshot. Guarded by [lock] like every engine call.
+    // [PackedFrame.decode] substitutes these cached rows AS IT READS, so consumers
+    // always see a full snapshot and a stripped player costs no extra allocation.
+    // Guarded by [lock] like every engine call.
     private val gridCache = HashMap<Int, List<List<Int>>>()
 
     companion object {
@@ -118,7 +119,7 @@ class EngineBridge private constructor(
             "snapshotPlayerPacked",
             "Bridge.snapshotPlayerPacked($playerId, ${inputsJs(inputs)})",
         ) ?: return@withLock null
-        reattachGrids(decodePacked("snapshotPlayerPacked", packed).snapshot!!)
+        decodePacked("snapshotPlayerPacked", packed).snapshot!!
     }
 
     suspend fun softDropStart(playerId: Int, speed: Int? = null): Unit = lock.withLock {
@@ -165,7 +166,7 @@ class EngineBridge private constructor(
 
     suspend fun snapshot(): GameSnapshot = lock.withLock {
         val packed = evalTyped<String>("snapshotPacked", "Bridge.snapshotPacked()")
-        reattachGrids(decodePacked("snapshotPacked", packed).snapshot!!)
+        decodePacked("snapshotPacked", packed).snapshot!!
     }
 
     suspend fun drainEvents(): List<GameEvent> = lock.withLock {
@@ -193,8 +194,7 @@ class EngineBridge private constructor(
                 "framePacked",
                 "Bridge.framePacked(${jsNum(nowMs)}, ${inputsJs(inputs)})",
             )
-            val frame = decodePacked("framePacked", packed)
-            frame.snapshot?.let { frame.copy(snapshot = reattachGrids(it)) } ?: frame
+            decodePacked("framePacked", packed)
         }
 
     // --- Room core ----------------------------------------------------------
@@ -257,24 +257,6 @@ class EngineBridge private constructor(
 
     // --- internals -----------------------------------------------------------
 
-    /** Substitute cached rows for shim-stripped grids (see [gridCache]) and
-     *  refresh the cache from the grids that did arrive. */
-    private fun reattachGrids(snap: GameSnapshot): GameSnapshot {
-        var stripped = false
-        val players = snap.players.map { p ->
-            if (p.grid.isEmpty()) {
-                stripped = true
-                val cached = gridCache[p.id]
-                    ?: error("stripped grid for player ${p.id} with no cached rows")
-                p.copy(grid = cached)
-            } else {
-                gridCache[p.id] = p.grid
-                p
-            }
-        }
-        return if (stripped) snap.copy(players = players) else snap
-    }
-
     private suspend fun eval(label: String, code: String) {
         evalTyped<Any?>(label, code)
     }
@@ -296,7 +278,7 @@ class EngineBridge private constructor(
      */
     private fun decodePacked(label: String, packed: String): FrameResult =
         try {
-            PackedFrame.decode(packed)
+            PackedFrame.decode(packed, gridCache)
         } catch (e: Throwable) {
             throw EngineException.decode(label, e)
         }

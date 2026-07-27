@@ -237,6 +237,25 @@ function recordGolden() {
     if (i % 8 !== 0) return; // sample, so the fixture stays reviewable
     steps.push({ packed: PartyCore.packFrame(frame), frame: normalize(frame) });
   });
+  // A driven match never reaches a split value whose HIGH half is non-zero (a few
+  // seconds of elapsed, single-digit gridVersions), and with a zero high half every
+  // shift width decodes identically — a port using 16-bit halves replayed the
+  // driven corpus byte-for-byte. These steps are what make the fixture able to tell
+  // the ports apart at all, so they pin the split explicitly, including the 0xffff
+  // boundary the +1 bias turns back into a NUL.
+  var SPLIT_PROBES = [
+    { elapsed: 100000, over: { lines: 70000, gridVersion: 131073 } },
+    { elapsed: 65535, over: { lines: 0xffff, gridVersion: 0xffff } },
+    { elapsed: 1073741823, over: { lines: 0xfffe, gridVersion: 0x10000 } },
+  ];
+  for (const probe of SPLIT_PROBES) {
+    const frame = {
+      events: [],
+      snapshot: { players: [player(probe.over)], elapsed: probe.elapsed },
+      commands: []
+    };
+    steps.push({ packed: PartyCore.packFrame(frame), frame: normalize(frame) });
+  }
   return { version: 2, steps };
 }
 

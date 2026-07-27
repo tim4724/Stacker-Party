@@ -39,13 +39,20 @@ class PackedFrameTest {
         assertTrue(steps.size > 10, "fixture is too small to be meaningful: ${steps.size} steps")
         var withSnapshot = 0
         var withGrid = 0
+        var withStrippedGrid = 0
         var withEvents = 0
+        // The reader substitutes cached rows for stripped grids as it reads, so the
+        // replay is stateful and the EXPECTATION has to track the same rows. That is
+        // extra coverage, not a workaround: it gates re-attachment, which a per-step
+        // comparison against the raw fixture never touched.
+        val gridCache = HashMap<Int, List<List<Int>>>()
+        val expectedGrids = HashMap<Int, List<List<Int>>>()
         for ((i, step) in steps.withIndex()) {
             val obj = step.jsonObject
             val packed = obj["packed"]!!.jsonPrimitive.content
             val expected = obj["frame"]!!.jsonObject
 
-            val actual = PackedFrame.decode(packed)
+            val actual = PackedFrame.decode(packed, gridCache)
 
             // events / commands ride as JSON and must survive verbatim.
             assertEquals(
@@ -69,10 +76,22 @@ class PackedFrameTest {
             assertEquals(want.players.size, got.players.size, "step $i: player count")
             for ((j, wp) in want.players.withIndex()) {
                 val gp = got.players[j]
+                // A stripped grid must come back as the rows this player last sent.
+                val wantPlayer = if (wp.grid.isNotEmpty()) {
+                    expectedGrids[wp.id] = wp.grid
+                    withGrid++
+                    wp
+                } else {
+                    withStrippedGrid++
+                    val rows = assertNotNull(
+                        expectedGrids[wp.id],
+                        "step $i: fixture stripped player ${wp.id}'s grid before ever sending it",
+                    )
+                    wp.copy(grid = rows)
+                }
                 // Compare the whole player at once: every field matters to the
                 // renderer, and a per-field list here would rot as fields are added.
-                assertEquals(wp, gp, "step $i: player $j (id ${wp.id}) decoded differently")
-                if (wp.grid.isNotEmpty()) withGrid++
+                assertEquals(wantPlayer, gp, "step $i: player $j (id ${wp.id}) decoded differently")
             }
             if (actual.events.isNotEmpty()) withEvents++
         }
@@ -80,6 +99,7 @@ class PackedFrameTest {
         // would prove nothing.
         assertTrue(withSnapshot > 0, "fixture never carried a snapshot")
         assertTrue(withGrid > 0, "fixture never carried a grid")
+        assertTrue(withStrippedGrid > 0, "fixture never stripped a grid, so re-attachment went untested")
         assertTrue(withEvents > 0, "fixture never carried events")
     }
 
@@ -89,7 +109,7 @@ class PackedFrameTest {
         val packed = steps[0].jsonObject["packed"]!!.jsonPrimitive.content
         // Bump the version code unit; every value is +1 biased on the wire.
         val bumped = (PackedFrame.PACK_VERSION + 42).toChar() + packed.substring(1)
-        val e = runCatching { PackedFrame.decode(bumped) }.exceptionOrNull()
+        val e = runCatching { PackedFrame.decode(bumped, HashMap()) }.exceptionOrNull()
         assertNotNull(e, "a foreign layout version must fail loudly, not be misread")
         assertTrue(
             e.message?.contains("version") == true,
