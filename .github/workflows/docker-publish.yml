@@ -13,9 +13,6 @@ on:
       sha_tag:
         description: "Image tag for this commit (sha)"
         value: ${{ jobs.build.outputs.sha_tag }}
-      branch_tag:
-        description: "Image tag for branch (short ref)"
-        value: ${{ jobs.build.outputs.branch_tag }}
 
 env:
   REGISTRY: ghcr.io
@@ -23,9 +20,9 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       sha_tag: ${{ steps.out.outputs.sha_tag }}
-      branch_tag: ${{ steps.out.outputs.branch_tag }}
     permissions:
       contents: read
       packages: write
@@ -73,10 +70,13 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
 
-      - name: Capture tags for outputs
+      # The sha tag is the one callers deploy: it names this exact commit's image
+      # even on a branch whose moving tag has already been overwritten.
+      - name: Capture tag for output
         id: out
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
         run: |
-          SHA_TAG=$(echo "${{ steps.meta.outputs.tags }}" | tr ',' '\n' | grep ":sha-" | head -n1)
-          BRANCH_TAG=$(echo "${{ steps.meta.outputs.tags }}" | tr ',' '\n' | grep ":${GITHUB_REF_NAME}$" | head -n1)
+          set -euo pipefail
+          SHA_TAG=$(printf '%s' "$TAGS" | tr ',' '\n' | grep ":sha-" | head -n1)
           echo "sha_tag=$SHA_TAG" >> "$GITHUB_OUTPUT"
-          echo "branch_tag=$BRANCH_TAG" >> "$GITHUB_OUTPUT"

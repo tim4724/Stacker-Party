@@ -20,7 +20,6 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/android.yml'
-      - '.github/actions/sticky-comment/**'
   workflow_dispatch:
 
 concurrency:
@@ -33,7 +32,6 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      pull-requests: write
     steps:
       - uses: actions/checkout@v7
 
@@ -43,7 +41,7 @@ jobs:
       # dist/partycore.js + dist/partycore-frame-test.js as its cross-engine oracles.
       - uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: 'npm'
       - run: npm ci
       - name: Build engine bundles (QuickJS core + conformance golden driver)

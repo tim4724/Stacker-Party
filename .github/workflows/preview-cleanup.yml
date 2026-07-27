@@ -1,16 +1,25 @@
 name: Preview Cleanup
 
 on:
+  # delete fires for tags too and takes no branches filter (one was declared here
+  # and silently ignored), so the branch check lives in the job condition below.
   delete:
-    branches:
-      - '**'
+
+permissions:
+  contents: read
 
 jobs:
   cleanup:
     runs-on: [self-hosted, k8s]
-    if: github.event.ref_type == 'branch' && github.event.ref != 'main' && github.actor != 'dependabot[bot]'
+    if: github.event.ref_type == 'branch' && github.event.ref != 'main'
     environment: preview
+    timeout-minutes: 10
     steps:
+      # Delete events run on the default branch, so this checks out main (the
+      # deleted ref comes from the event payload). Needed for the local action.
+      - name: Checkout
+        uses: actions/checkout@v7
+
       - name: Install kubectl
         uses: azure/setup-kubectl@v5
         with:
@@ -23,10 +32,22 @@ jobs:
         env:
           KUBECONFIG_B64: ${{ secrets.KUBECONFIG_B64 }}
 
+      # The same mapping Preview Deploy used to create the namespace. This step
+      # used to inline its own sed pipeline, which skipped the 50-char
+      # truncation: deleting a long-named branch then targeted a namespace that
+      # never existed and leaked the real one (silently, courtesy of
+      # --ignore-not-found). It also interpolated the ref straight into the
+      # script body, which a branch named with a $() would have executed here,
+      # on the runner holding the cluster kubeconfig.
+      - name: Resolve preview names
+        id: names
+        uses: ./.github/actions/branch-slug
+        with:
+          branch: ${{ github.event.ref }}
+
       - name: Delete preview namespace
+        env:
+          NS: ${{ steps.names.outputs.namespace }}
         run: |
           set -euo pipefail
-          BRANCH_RAW="${{ github.event.ref }}"
-          SAFE_BRANCH=$(echo "$BRANCH_RAW" | tr '[:upper:]' '[:lower:]' | sed 's#[^a-z0-9-]#-#g')
-          NS="cg-${SAFE_BRANCH}"
           kubectl delete namespace "$NS" --ignore-not-found

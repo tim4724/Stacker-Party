@@ -3,9 +3,22 @@ name: Production Deploy
 on:
   push:
     tags:
-      - '[0-9]*'
+      # Bare semver, the repo's release tag convention (matching release.yml).
+      # The old '[0-9]*' also matched things like a 2026-experiment tag.
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: read
 
 jobs:
+  # Tag pushes don't match the Tests workflow's branch filter, so without this
+  # the rollout to users was the one deploy nothing gated. Runs alongside the
+  # image build, so it costs no wall clock the build wasn't already spending.
+  tests:
+    uses: ./.github/workflows/test.yml
+    permissions:
+      contents: read
+
   build:
     uses: ./.github/workflows/docker-publish.yml
     secrets: inherit
@@ -16,8 +29,11 @@ jobs:
 
   deploy:
     runs-on: [self-hosted, k8s]
-    needs: build
+    needs: [tests, build]
     environment: production
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - name: Install kubectl
         uses: azure/setup-kubectl@v5

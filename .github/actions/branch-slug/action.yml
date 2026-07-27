@@ -1,0 +1,57 @@
+name: Branch slug
+description: >
+  The one branch -> preview slug / namespace / host mapping. Every workflow that
+  names a preview resource resolves it here, because the name has to agree across
+  workflows that never see each other's code: Preview Deploy creates the
+  namespace, TV Gallery deploys into it, Preview Cleanup deletes it, and Preview
+  Comment posts its URL. Four copies of the sed pipeline had already drifted into
+  two behaviours (two of them skipped the 50-char truncation), which leaks the
+  namespace forever on a long branch name: cleanup computes a name deploy never
+  created, and `kubectl delete --ignore-not-found` reports success.
+
+inputs:
+  branch:
+    description: Raw branch name (e.g. github.ref_name, or github.event.ref on a delete event).
+    required: true
+
+outputs:
+  slug:
+    description: Lowercased, dash-escaped, 50-char-truncated branch name.
+    value: ${{ steps.resolve.outputs.slug }}
+  namespace:
+    description: Preview Kubernetes namespace for the branch (cg-<slug>).
+    value: ${{ steps.resolve.outputs.namespace }}
+  host:
+    description: Preview hostname for the branch (main gets its own host).
+    value: ${{ steps.resolve.outputs.host }}
+
+runs:
+  using: composite
+  steps:
+    - id: resolve
+      shell: bash
+      # BRANCH goes through the environment, never through ${{ }} interpolation:
+      # a ref name may legally contain backticks and $(), so interpolating it
+      # into the script body would run it (these jobs hold the cluster kubeconfig).
+      env:
+        BRANCH: ${{ inputs.branch }}
+      run: |
+        set -euo pipefail
+        # 50 chars keeps "cg-<slug>" inside the 63-char DNS label limit; the
+        # trailing-dash strip keeps a truncated-mid-word slug a valid label.
+        SLUG=$(printf '%s' "$BRANCH" \
+          | tr '[:upper:]' '[:lower:]' \
+          | sed 's#[^a-z0-9-]#-#g' \
+          | cut -c1-50 \
+          | sed 's/-*$//')
+        if [ "$BRANCH" = "main" ]; then
+          HOST="main.hexstacker.com"
+        else
+          HOST="preview-${SLUG}.hexstacker.com"
+        fi
+        {
+          echo "slug=$SLUG"
+          echo "namespace=cg-${SLUG}"
+          echo "host=$HOST"
+        } >> "$GITHUB_OUTPUT"
+        echo "$BRANCH -> ns cg-${SLUG}, host $HOST"

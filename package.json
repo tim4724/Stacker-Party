@@ -11,9 +11,10 @@
     "build:native": "npm run build:core && npm run build:conformance",
     "start": "npm run build && node server/index.js",
     "dev": "node scripts/generate-airconsole-html.js && node --watch server/index.js",
-    "test": "node --test tests/*.test.js partyplug/tests/*.test.js",
+    "test": "node --test \"tests/**/*.test.js\" \"partyplug/tests/**/*.test.js\"",
     "test:e2e": "npx playwright test --project=e2e",
     "test:e2e:airconsole": "AC_MOCK=1 npx playwright test --project=e2e-airconsole",
+    "test:e2e:all": "AC_MOCK=1 npx playwright test --project=e2e --project=e2e-airconsole",
     "record:transitions": "npm run build && node scripts/record-transitions.js",
     "record:transitions:tvos": "scripts/record-transitions-tvos.sh",
     "ad:capture": "node artwork/ad-clip/capture.js",
@@ -23,7 +24,7 @@
     "ad:max": "AD_MAX=1 npm run ad"
   },
   "devDependencies": {
-    "@playwright/test": "1.61.1",
+    "@playwright/test": "^1.61.1",
     "esbuild": "^0.28.1"
   }
 }

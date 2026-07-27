@@ -14,6 +14,9 @@ concurrency:
   group: preview-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   build:
     uses: ./.github/workflows/docker-publish.yml
@@ -28,8 +31,10 @@ jobs:
   deploy:
     runs-on: [self-hosted, k8s]
     needs: build
-    if: github.actor != 'dependabot[bot]'
     environment: preview
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -46,101 +51,27 @@ jobs:
         env:
           KUBECONFIG_B64: ${{ secrets.KUBECONFIG_B64 }}
 
+      # One mapping for every workflow that names a preview resource, so the
+      # namespace this creates is the one Preview Cleanup later deletes.
+      - name: Resolve preview names
+        id: names
+        uses: ./.github/actions/branch-slug
+        with:
+          branch: ${{ github.ref_name }}
+
+      - name: Prepare preview namespace
+        uses: ./.github/actions/preview-namespace
+        with:
+          namespace: ${{ steps.names.outputs.namespace }}
+
       - name: Deploy preview to Kubernetes
         env:
-          BRANCH_RAW: ${{ github.ref_name }}
+          NS: ${{ steps.names.outputs.namespace }}
+          HOST: ${{ steps.names.outputs.host }}
           IMAGE: ${{ needs.build.outputs.sha_tag }}
           GIT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          SAFE_BRANCH=$(echo "$BRANCH_RAW" | tr '[:upper:]' '[:lower:]' | sed 's#[^a-z0-9-]#-#g' | cut -c1-50 | sed 's/-*$//')
-          NS="cg-${SAFE_BRANCH}"
-
-          if [ "$BRANCH_RAW" = "main" ]; then
-            HOST="main.hexstacker.com"
-          else
-            HOST="preview-${SAFE_BRANCH}.hexstacker.com"
-          fi
-
-          kubectl get ns "$NS" >/dev/null 2>&1 || kubectl create ns "$NS"
-
-          # Grant deployer SA permissions in this namespace (scoped RBAC)
-          cat <<RBAC | kubectl apply -n "$NS" -f -
-          apiVersion: rbac.authorization.k8s.io/v1
-          kind: RoleBinding
-          metadata:
-            name: stacker-deployer
-          roleRef:
-            apiGroup: rbac.authorization.k8s.io
-            kind: ClusterRole
-            name: stacker-preview-resources
-          subjects:
-          - kind: ServiceAccount
-            name: stacker-deployer
-            namespace: github-runner
-          RBAC
-
-          # Network policies: default-deny + allow DNS + allow traefik ingress
-          cat <<NETPOL | kubectl apply -n "$NS" -f -
-          apiVersion: networking.k8s.io/v1
-          kind: NetworkPolicy
-          metadata:
-            name: default-deny-all
-          spec:
-            podSelector: {}
-            policyTypes:
-            - Ingress
-            - Egress
-          ---
-          apiVersion: networking.k8s.io/v1
-          kind: NetworkPolicy
-          metadata:
-            name: allow-dns
-          spec:
-            podSelector: {}
-            policyTypes:
-            - Egress
-            egress:
-            - to:
-              - namespaceSelector:
-                  matchLabels:
-                    kubernetes.io/metadata.name: kube-system
-              ports:
-              - protocol: UDP
-                port: 53
-              - protocol: TCP
-                port: 53
-          ---
-          apiVersion: networking.k8s.io/v1
-          kind: NetworkPolicy
-          metadata:
-            name: allow-ingress-from-traefik
-          spec:
-            podSelector: {}
-            policyTypes:
-            - Ingress
-            ingress:
-            - from:
-              - ipBlock:
-                  cidr: 192.168.1.115/32
-              ports:
-              - protocol: TCP
-          NETPOL
-
-          TLS_CRT=$(kubectl get secret hexstacker-wildcard-tls -n default -o jsonpath='{.data.tls\.crt}')
-          TLS_KEY=$(kubectl get secret hexstacker-wildcard-tls -n default -o jsonpath='{.data.tls\.key}')
-
-          cat <<EOS | kubectl apply -n "$NS" -f -
-          apiVersion: v1
-          kind: Secret
-          metadata:
-            name: hexstacker-wildcard-tls
-          type: kubernetes.io/tls
-          data:
-            tls.crt: ${TLS_CRT}
-            tls.key: ${TLS_KEY}
-          EOS
-
           cat <<EOF | kubectl apply -n "$NS" -f -
           apiVersion: apps/v1
           kind: Deployment
@@ -230,14 +161,8 @@ jobs:
 
       - name: Publish preview URL
         env:
-          BRANCH_RAW: ${{ github.ref_name }}
+          HOST: ${{ steps.names.outputs.host }}
         run: |
-          SAFE_BRANCH=$(echo "$BRANCH_RAW" | tr '[:upper:]' '[:lower:]' | sed 's#[^a-z0-9-]#-#g' | cut -c1-50 | sed 's/-*$//')
-          if [ "$BRANCH_RAW" = "main" ]; then
-            HOST="main.hexstacker.com"
-          else
-            HOST="preview-${SAFE_BRANCH}.hexstacker.com"
-          fi
           {
             echo "### Preview"
             echo "- URL: https://${HOST}"

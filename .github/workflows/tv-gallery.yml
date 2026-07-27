@@ -51,8 +51,8 @@ jobs:
       packages: write      # push the static gallery image for the k8s preview
     outputs:
       image_tag: ${{ steps.image.outputs.tag }}
-      safe_branch: ${{ steps.host.outputs.safe_branch }}
-      host: ${{ steps.host.outputs.host }}
+      namespace: ${{ steps.names.outputs.namespace }}
+      host: ${{ steps.names.outputs.host }}
     env:
       HEAD_SHA: ${{ github.sha }}
       HEAD_BRANCH: ${{ github.ref_name }}
@@ -63,7 +63,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: 'npm'
       - run: npm ci
       # Chromium is ~130MB per run; cache it keyed on the Playwright version
@@ -182,17 +182,13 @@ jobs:
       # only after the platform toolchains ran (Simulator on macOS,
       # Robolectric), so this can't ride the app image build — it's its own
       # image built from the just-assembled files.
-      - name: Resolve gallery host
-        id: host
-        run: |
-          SAFE_BRANCH=$(echo "$HEAD_BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's#[^a-z0-9-]#-#g' | cut -c1-50 | sed 's/-*$//')
-          if [ "$HEAD_BRANCH" = "main" ]; then
-            HOST="main.hexstacker.com"
-          else
-            HOST="preview-${SAFE_BRANCH}.hexstacker.com"
-          fi
-          echo "safe_branch=$SAFE_BRANCH" >> "$GITHUB_OUTPUT"
-          echo "host=$HOST" >> "$GITHUB_OUTPUT"
+      # Same mapping Preview Deploy uses: the gallery lands in that branch's
+      # namespace, on that branch's host, and dies with it on branch delete.
+      - name: Resolve gallery names
+        id: names
+        uses: ./.github/actions/branch-slug
+        with:
+          branch: ${{ github.ref_name }}
 
       - name: Build and push gallery image
         id: image
@@ -209,7 +205,7 @@ jobs:
           node scripts/gallery/stage-assets.mjs
           echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           REPO_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          TAG="ghcr.io/${REPO_LC}-tv-gallery:${{ steps.host.outputs.safe_branch }}-${HEAD_SHA:0:12}"
+          TAG="ghcr.io/${REPO_LC}-tv-gallery:${{ steps.names.outputs.slug }}-${HEAD_SHA:0:12}"
           docker build -f scripts/gallery/Dockerfile -t "$TAG" scripts/gallery
           docker push "$TAG"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
@@ -224,18 +220,22 @@ jobs:
   # deployment in the same per-branch namespace (cg-<branch>), path-routed on
   # the preview's own host at https://<host>/gallery-tv/ (Traefik's longer
   # PathPrefix rule outranks the app's host-only rule, and the route works even
-  # on native-only branches where no app preview exists). The namespace
-  # boilerplate mirrors preview.yml and is applied idempotently — a native-only
-  # branch can land here before (or without) an app preview ever creating the
-  # namespace. Cleanup rides the existing Preview Cleanup workflow, which
-  # deletes the whole namespace on branch delete.
+  # on native-only branches where no app preview exists). The namespace itself
+  # comes from the shared preview-namespace action, applied idempotently: a
+  # native-only branch can land here before (or without) an app preview ever
+  # creates the namespace. Cleanup rides the existing Preview Cleanup workflow,
+  # which deletes the whole namespace on branch delete.
   deploy:
     runs-on: [self-hosted, k8s]
     needs: assemble
-    if: github.actor != 'dependabot[bot]'
     environment: preview
     timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
       - name: Install kubectl
         uses: azure/setup-kubectl@v5
         with:
@@ -248,94 +248,18 @@ jobs:
         env:
           KUBECONFIG_B64: ${{ secrets.KUBECONFIG_B64 }}
 
+      - name: Prepare preview namespace
+        uses: ./.github/actions/preview-namespace
+        with:
+          namespace: ${{ needs.assemble.outputs.namespace }}
+
       - name: Deploy gallery to Kubernetes
         env:
           IMAGE: ${{ needs.assemble.outputs.image_tag }}
-          SAFE_BRANCH: ${{ needs.assemble.outputs.safe_branch }}
+          NS: ${{ needs.assemble.outputs.namespace }}
           HOST: ${{ needs.assemble.outputs.host }}
         run: |
           set -euo pipefail
-          NS="cg-${SAFE_BRANCH}"
-
-          kubectl get ns "$NS" >/dev/null 2>&1 || kubectl create ns "$NS"
-
-          # Grant deployer SA permissions in this namespace (scoped RBAC)
-          cat <<RBAC | kubectl apply -n "$NS" -f -
-          apiVersion: rbac.authorization.k8s.io/v1
-          kind: RoleBinding
-          metadata:
-            name: stacker-deployer
-          roleRef:
-            apiGroup: rbac.authorization.k8s.io
-            kind: ClusterRole
-            name: stacker-preview-resources
-          subjects:
-          - kind: ServiceAccount
-            name: stacker-deployer
-            namespace: github-runner
-          RBAC
-
-          # Network policies: default-deny + allow DNS + allow traefik ingress
-          cat <<NETPOL | kubectl apply -n "$NS" -f -
-          apiVersion: networking.k8s.io/v1
-          kind: NetworkPolicy
-          metadata:
-            name: default-deny-all
-          spec:
-            podSelector: {}
-            policyTypes:
-            - Ingress
-            - Egress
-          ---
-          apiVersion: networking.k8s.io/v1
-          kind: NetworkPolicy
-          metadata:
-            name: allow-dns
-          spec:
-            podSelector: {}
-            policyTypes:
-            - Egress
-            egress:
-            - to:
-              - namespaceSelector:
-                  matchLabels:
-                    kubernetes.io/metadata.name: kube-system
-              ports:
-              - protocol: UDP
-                port: 53
-              - protocol: TCP
-                port: 53
-          ---
-          apiVersion: networking.k8s.io/v1
-          kind: NetworkPolicy
-          metadata:
-            name: allow-ingress-from-traefik
-          spec:
-            podSelector: {}
-            policyTypes:
-            - Ingress
-            ingress:
-            - from:
-              - ipBlock:
-                  cidr: 192.168.1.115/32
-              ports:
-              - protocol: TCP
-          NETPOL
-
-          TLS_CRT=$(kubectl get secret hexstacker-wildcard-tls -n default -o jsonpath='{.data.tls\.crt}')
-          TLS_KEY=$(kubectl get secret hexstacker-wildcard-tls -n default -o jsonpath='{.data.tls\.key}')
-
-          cat <<EOS | kubectl apply -n "$NS" -f -
-          apiVersion: v1
-          kind: Secret
-          metadata:
-            name: hexstacker-wildcard-tls
-          type: kubernetes.io/tls
-          data:
-            tls.crt: ${TLS_CRT}
-            tls.key: ${TLS_KEY}
-          EOS
-
           cat <<EOF2 | kubectl apply -n "$NS" -f -
           apiVersion: apps/v1
           kind: Deployment
