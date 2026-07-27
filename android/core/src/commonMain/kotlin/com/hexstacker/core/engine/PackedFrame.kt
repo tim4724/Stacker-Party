@@ -1,0 +1,176 @@
+package com.hexstacker.core.engine
+
+import com.hexstacker.core.model.Cell
+import com.hexstacker.core.model.EngineJson
+import com.hexstacker.core.model.FrameResult
+import com.hexstacker.core.model.GameSnapshot
+import com.hexstacker.core.model.Ghost
+import com.hexstacker.core.model.Axial
+import com.hexstacker.core.model.Piece
+import com.hexstacker.core.model.PlayerState
+import kotlinx.serialization.Serializable
+
+/**
+ * Reader for the packed native wire format — a port of `PartyCore.unpackFrame`
+ * (server/PartyCore.js), which is the reference implementation. Both are gated
+ * against `tests/fixtures/partycore-packed-golden.json`, so a layout change that
+ * only lands on one side fails the build rather than the TV.
+ *
+ * Why this exists: the JS/native boundary, not the simulation, is what costs a
+ * frame. At eight boards the physics is ~0.5ms while `JSON.stringify` plus a
+ * kotlinx decode is ~11ms — most of it spent rebuilding objects the renderer
+ * immediately flattens again. Every snapshot field is a small integer, so the
+ * payload crosses as one integer per UTF-16 code unit instead.
+ *
+ * Every value is biased +1 on the wire: quickjs-kt hands JS strings over as C
+ * strings, so a NUL code unit would truncate the payload — and 0 is the most
+ * common raw value here (every empty grid cell). That same bias is why values
+ * wider than one code unit cross as two FIFTEEN-bit halves rather than sixteen:
+ * a raw 0xffff biases to 0x10000, which the packer's `fromCharCode` wraps back to
+ * the very NUL the bias exists to avoid. Coordinates are biased by [COORD_BIAS]
+ * first, because a piece still in the spawn buffer has a negative row.
+ */
+internal object PackedFrame {
+
+    const val PACK_VERSION = 2
+    private const val COORD_BIAS = 256
+    private const val SPLIT_SHIFT = 15
+
+    /** The `{events, commands}` tail, which stays JSON: both are small, rare, and
+     *  genuinely heterogeneous, so packing them would buy nothing and cost clarity. */
+    @Serializable
+    private data class Tail(
+        val events: List<com.hexstacker.core.model.GameEvent> = emptyList(),
+        val commands: List<com.hexstacker.core.model.Command> = emptyList(),
+    )
+
+    /** Decode a packed frame. The snapshot is null when the frame was
+     *  render-identical to the last delivered one (PartyCore omits it). Grid
+     *  stripping is undone from [gridCache] during the read — the caller owns the
+     *  cache across frames, and gets back a snapshot that always carries full rows. */
+    fun decode(packed: String, gridCache: MutableMap<Int, List<List<Int>>>): FrameResult {
+        val r = Reader(packed)
+        val version = r.next()
+        check(version == PACK_VERSION) { "packed layout version $version, expected $PACK_VERSION" }
+        var snapshot: GameSnapshot? = null
+        if (r.next() == 1) {
+            val count = r.split()
+            val bodyStart = r.at
+            snapshot = readSnapshot(r, gridCache)
+            // Landing anywhere but the tail means the layout drifted between this
+            // reader and the packer; trusting the count instead would surface as a
+            // confusing JSON parse error further down.
+            check(r.at == bodyStart + count) { "packed body: read ${r.at - bodyStart} of $count values" }
+        }
+        val tail = EngineJson.json.decodeFromString<Tail>(packed.substring(r.at))
+        return FrameResult(events = tail.events, snapshot = snapshot, commands = tail.commands)
+    }
+
+    private class Reader(val s: String) {
+        var at = 0
+        fun next(): Int = s[at++].code - 1
+
+        /** Reassemble a value the packer split into two 15-bit halves, high first. */
+        fun split(): Int {
+            val hi = next()
+            return (hi shl SPLIT_SHIFT) or next()
+        }
+    }
+
+    private fun readSnapshot(r: Reader, gridCache: MutableMap<Int, List<List<Int>>>): GameSnapshot {
+        val elapsed = r.split().toDouble()
+        val n = r.next()
+        val players = ArrayList<PlayerState>(n)
+        repeat(n) { players.add(readPlayer(r, gridCache)) }
+        return GameSnapshot(players = players, elapsed = elapsed)
+    }
+
+    private fun readPlayer(r: Reader, gridCache: MutableMap<Int, List<List<Int>>>): PlayerState {
+        val id = r.next()
+        val level = r.next()
+        val lines = r.split()
+        val alive = r.next() == 1
+        val pendingGarbage = r.next()
+        val gridVersion = r.split()
+
+        // Absent whenever the delivery filter stripped it (unchanged since the last
+        // one this host was sent): substitute the cached rows here rather than in a
+        // second pass, so a stripped player costs no extra PlayerState.
+        val grid: List<List<Int>>
+        if (r.next() == 1) {
+            val rows = r.next()
+            val cols = r.next()
+            val g = ArrayList<List<Int>>(rows)
+            repeat(rows) {
+                val row = ArrayList<Int>(cols)
+                repeat(cols) { row.add(r.next()) }
+                g.add(row)
+            }
+            gridCache[id] = g
+            grid = g
+        } else {
+            grid = gridCache[id] ?: error("stripped grid with no cached rows for id $id")
+        }
+
+        var piece: Piece? = null
+        if (r.next() == 1) {
+            val typeId = r.next()
+            val anchorCol = r.next() - COORD_BIAS
+            val anchorRow = r.next() - COORD_BIAS
+            val cellCount = r.next()
+            val cells = ArrayList<Axial>(cellCount)
+            repeat(cellCount) { cells.add(Axial(r.next() - COORD_BIAS, r.next() - COORD_BIAS)) }
+            piece = Piece(
+                type = PIECE_TYPES[typeId - 1],
+                typeId = typeId,
+                anchorCol = anchorCol,
+                anchorRow = anchorRow,
+                cells = cells,
+                blocks = readCells(r),
+            )
+        }
+
+        var ghost: Ghost? = null
+        if (r.next() == 1) {
+            val gt = r.next()
+            ghost = Ghost(
+                typeId = if (gt == 0) null else gt,
+                anchorCol = r.next() - COORD_BIAS,
+                anchorRow = r.next() - COORD_BIAS,
+                blocks = readCells(r),
+            )
+        }
+
+        val hold = r.next()
+        val nextCount = r.next()
+        val next = ArrayList<String>(nextCount)
+        repeat(nextCount) { next.add(PIECE_TYPES[r.next() - 1]) }
+        val clearing = if (r.next() == 1) readCells(r) else null
+
+        return PlayerState(
+            id = id,
+            grid = grid,
+            currentPiece = piece,
+            ghost = ghost,
+            holdPiece = if (hold == 0) null else PIECE_TYPES[hold - 1],
+            nextPieces = next,
+            level = level,
+            lines = lines,
+            alive = alive,
+            pendingGarbage = pendingGarbage,
+            clearingCells = clearing,
+            gridVersion = gridVersion,
+        )
+    }
+
+    private fun readCells(r: Reader): List<Cell> {
+        val n = r.next()
+        val out = ArrayList<Cell>(n)
+        repeat(n) { out.add(Cell(r.next() - COORD_BIAS, r.next() - COORD_BIAS)) }
+        return out
+    }
+
+    /** constants.js PIECE_TYPES, indexed by typeId-1. Pinned by
+     *  tests/protocol-android-parity.test.js alongside the other mirrored constants. */
+    private val PIECE_TYPES = listOf("I3", "V3", "T3", "o", "d", "b")
+}

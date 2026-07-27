@@ -37,6 +37,12 @@ enum EngineFixture {
     /// The committed V8-recorded golden the conformance test byte-compares against.
     static let frameGolden = repoRoot.appendingPathComponent("tests/fixtures/partycore-frame-golden.json")
 
+    /// The packed-wire golden: per step, the exact payload PartyCore.packFrame
+    /// produced and the frame it must decode to. Read by both native readers, which
+    /// is the point — a layout change that lands on only one of them fails a build
+    /// rather than a TV.
+    static let packedGolden = repoRoot.appendingPathComponent("tests/fixtures/partycore-packed-golden.json")
+
     /// The cross-platform RoomCore golden: constructor options, the canonical op
     /// log, and the expected return value + snapshot after every step. Self-contained
     /// on purpose — this leg can't `require` the JS fixture the Node leg reads.

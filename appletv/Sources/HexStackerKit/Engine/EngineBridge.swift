@@ -168,13 +168,43 @@ public final class EngineBridge {
 
     // MARK: - Reading state
 
-    /// Value-copy snapshot via the fast path: shim-stripped grids re-attached
-    /// from `gridCache`, hand-rolled parsing instead of JSONDecoder (this and
-    /// `frame(nowMs:)` run up to once per display frame).
+    /// Value-copy snapshot, decoded from the PACKED payload: shim-stripped grids
+    /// re-attached from `gridCache`, one integer per UTF-16 code unit rather than
+    /// JSON (this and `frame(nowMs:)` run up to once per display frame, and the
+    /// boundary — not the simulation — is what costs a frame).
     public func snapshot() throws -> GameSnapshot {
-        let obj = try jsonObject(method: "snapshotJSON")
-        do { return try FrameParsing.gameSnapshot(obj, gridCache: &gridCache) }
-        catch { throw EngineError.decode("snapshotJSON: \(error)") }
+        let packed = try packedString(method: "snapshotPacked")
+        do {
+            guard let snap = try PackedFrame.frameResult(packed, gridCache: &gridCache).snapshot else {
+                throw EngineError.decode("snapshotPacked: an explicit pull always carries a snapshot")
+            }
+            return snap
+        } catch { throw EngineError.decode("snapshotPacked: \(error)") }
+    }
+
+    /// Value-copy snapshot of ONE seat — the render-on-input path. An input can
+    /// only move one board, so pulling all eight to reflect it is waste. Returns
+    /// nil when the id owns no board.
+    public func snapshotPlayer(_ playerId: Int,
+                               inputs: [(playerId: Int, action: String)] = []) throws -> GameSnapshot? {
+        let result = invoke("snapshotPlayerPacked", [playerId, Self.inputsArg(inputs)])
+        guard let packed = result?.toString(), packed != "null", !packed.isEmpty else { return nil }
+        do { return try PackedFrame.frameResult(packed, gridCache: &gridCache).snapshot }
+        catch { throw EngineError.decode("snapshotPlayerPacked: \(error)") }
+    }
+
+    /// Apply a batch of inputs in arrival order through ONE bridge call. Callers that
+    /// are about to read anyway should pass the batch to `frame`/`snapshotPlayer`
+    /// instead, which applies it in the same crossing.
+    public func processInputs(_ batch: [(playerId: Int, action: String)]) {
+        guard !batch.isEmpty else { return }
+        invoke("processInputs", [Self.inputsArg(batch)])
+    }
+
+    /// `[[id, "action"], …]` for the shim, or NSNull for an empty batch so it can
+    /// skip the loop outright.
+    private static func inputsArg(_ batch: [(playerId: Int, action: String)]) -> Any {
+        batch.isEmpty ? NSNull() : batch.map { [$0.playerId, $0.action] as [Any] }
     }
 
     // MARK: - Room core
@@ -302,13 +332,33 @@ public final class EngineBridge {
     /// The snapshot is nil when the frame is render-identical to the last one this
     /// bridge delivered (PartyCore's scene signature) — skip the repaint and keep
     /// the retained snapshot. `snapshot()` is unaffected: it always returns a copy.
-    public func frame(nowMs: Double) throws -> FrameResult {
-        let obj = try jsonObject(method: "frameJSON", args: [nowMs])
-        do { return try FrameParsing.frameResult(obj, gridCache: &gridCache) }
-        catch { throw EngineError.decode("frameJSON: \(error)") }
+    /// `inputs` ride along rather than crossing in their own call: they are applied
+    /// before the tick, exactly as a separate `processInputs` would have been, for one
+    /// boundary crossing instead of two.
+    public func frame(nowMs: Double,
+                      inputs: [(playerId: Int, action: String)] = []) throws -> FrameResult {
+        let packed = try packedString(method: "framePacked", args: [nowMs, Self.inputsArg(inputs)])
+        do { return try PackedFrame.frameResult(packed, gridCache: &gridCache) }
+        catch { throw EngineError.decode("framePacked: \(error)") }
     }
 
     // MARK: - Internals
+
+    /// The per-frame twin of `jsonObject`: same call + exception-drain discipline,
+    /// but the payload IS the returned string (see PackedFrame).
+    private func packedString(method: String, args: [Any] = []) throws -> String {
+        let result = bridge.invokeMethod(method, withArguments: args)
+        // Drain BEFORE inspecting the result: a JS throw yields no usable string,
+        // and bailing without draining would mis-attribute it to the NEXT call.
+        if let e = takeException() {
+            onEngineError?("\(method): \(e)")
+            throw EngineError.evalFailed("\(method): \(e)")
+        }
+        guard let packed = result?.toString() else {
+            throw EngineError.decode("\(method): no string returned")
+        }
+        return packed
+    }
 
     /// Invoke a fire-and-forget engine method and DRAIN the shared exception box
     /// afterward. Draining is the point: a JS throw from input/tick/pause used to
@@ -378,6 +428,13 @@ public final class EngineBridge {
         if (!room) throw new Error('room: roomInit() not called');
         return room;
       }
+      // Inputs always land before whatever read follows them in the same call:
+      // the engine is one mutable board set, so a frame or a snapshot that ran
+      // ahead of queued input would act on a board the controller already moved.
+      function applyInputs(batch) {
+        if (!core || !batch) return;
+        for (var i = 0; i < batch.length; i++) core.processInput(batch[i][0], batch[i][1]);
+      }
       function gameOrThrow() {
         if (!core) throw new Error('no game: create() not called');
         return core;
@@ -394,6 +451,13 @@ public final class EngineBridge {
           core.init();
         },
         processInput: function (pid, action) { if (core) core.processInput(pid, action); },
+        // A whole frame's queued input in ONE call. Neither bridge can pass
+        // arguments without building a call expression, and on Android that
+        // expression is re-parsed per call (~0.65ms floor, more than the input
+        // itself costs): eight separate calls measured 5.9ms against 1.1ms batched.
+        // The reads below take the same batch, so a tick or a render-on-input pull
+        // costs ONE evaluate rather than two — applyInputs is the shared prelude.
+        processInputs: function (batch) { applyInputs(batch); },
         softDropStart: function (pid, speed) {
           if (core) core.handleSoftDropStart(pid, (speed === undefined ? null : speed));
         },
@@ -402,17 +466,31 @@ public final class EngineBridge {
         resume: function () { if (core) core.resume(); },
         resetFrameClock: function () { if (core) core.resetFrameClock(); },
         rekeyPlayer: function (oldId, newId) { return !!(core && core.rekeyPlayer(oldId, newId)); },
-        // Reads can't no-op like the writes above (they must return JSON), so a
-        // read-before-create fails loud with a message that names the ordering
+        // Reads can't no-op like the writes above (they must return a payload), so
+        // a read-before-create fails loud with a message that names the ordering
         // bug instead of an opaque TypeError on `core.snapshot`.
         //
-        // deliverSnapshot/deliverFrame are frame() and snapshot() filtered for
-        // this boundary: unchanged grids stripped, and a render-identical frame
-        // delivered without its snapshot at all. Both ledgers live in PartyCore
-        // (server/PartyCore.js), so the two platforms cannot drift on them.
-        snapshotJSON: function () { return JSON.stringify(gameOrThrow().deliverSnapshot()); },
+        // The frame payloads are PACKED, not JSON: one integer per UTF-16 code
+        // unit, with events/commands as a JSON tail (PartyCore.packFrame). The
+        // boundary, not the simulation, is what costs a frame — decoding eight
+        // boards measured 8.4ms as JSON against 0.06ms packed. Both delivery
+        // filters still apply inside PartyCore: unchanged grids are stripped and a
+        // render-identical frame carries no snapshot at all.
+        snapshotPacked: function () { return gameOrThrow().deliverSnapshotPacked(); },
+        // One seat, for reflecting a single controller input: an input can only
+        // move one board, and deep-copying the other seven was the most expensive
+        // thing this bridge did per input. null when the id owns no board.
+        snapshotPlayerPacked: function (pid, batch) {
+          var c = gameOrThrow();
+          applyInputs(batch);
+          return c.deliverSnapshotPlayerPacked(pid);
+        },
         drainEventsJSON: function () { return JSON.stringify(gameOrThrow().drainEvents()); },
-        frameJSON: function (now) { return JSON.stringify(gameOrThrow().deliverFrame(now)); },
+        framePacked: function (now, batch) {
+          var c = gameOrThrow();
+          applyInputs(batch);
+          return c.deliverFramePacked(now);
+        },
         isEnded: function () { return !!(core && core.game && core.game.ended); },
         // ENGINE-API-END
         // ROOM-API-BEGIN

@@ -232,4 +232,9 @@ dependencies {
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.uiautomator)
+    // EnginePerfTest drives its own QuickJS with a measurement shim, to separate
+    // engine compute from JSON.stringify (the shipping shim only ever returns JSON).
+    // :core keeps quickjs-kt `implementation`, so it isn't on this classpath already.
+    androidTestImplementation(libs.quickjs.kt)
+    androidTestImplementation(libs.kotlinx.coroutines.core)
 }
