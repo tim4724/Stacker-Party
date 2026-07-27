@@ -2,47 +2,27 @@
 
 const { test, describe, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
-const { MSG, ROOM_STATE } = require('../public/shared/protocol');
+const { MSG } = require('../public/shared/protocol');
 const { PLAYER_COLORS } = require('../public/shared/theme');
-const { generateAutoPlayerName, sanitizePlayerName } = require('./auto-name-helper');
+const { RoomBrain } = require('../server/RoomBrain.js');
 
 // =====================================================================
-// Tests for the preferred color riding on HELLO.
+// The preferred colour riding on HELLO, driven against the REAL handlers in
+// server/RoomBrain.js rather than a mirror of them.
 //
 // Production flow (web controller):
-//   1. relay peer_joined -> DisplayConnection.js#onPeerJoined registers the
-//      player with an HX fallback name and the default slot color.
-//   2. The controller's HELLO carries { name, colorIndex } (the persisted
-//      preferred color). DisplayInput.js#onHello applies both and publishes.
-//   3. The published snapshot already names the honored color, so the
+//   1. relay peer_joined -> peerJoined registers the player with an HX
+//      fallback name, the next free slot, and helloSeen:false.
+//   2. The controller's HELLO carries { name, colorIndex } (its persisted
+//      preferred colour). hello applies both and asks for a publish.
+//   3. The published snapshot already names the honoured colour, so the
 //      controller's reclaimPreferredColor SET_COLOR round trip no-ops and the
-//      controller never renders the default slot color.
+//      controller never renders the default slot colour.
 // =====================================================================
 
 const PALETTE_SIZE = PLAYER_COLORS.length;
 
-function nextAvailableSlot(players) {
-  var used = new Set();
-  for (const entry of players) used.add(entry[1].playerIndex);
-  for (var i = 0; i < PALETTE_SIZE; i++) { if (!used.has(i)) return i; }
-  return -1;
-}
-
-// Mirrors DisplayConnection.js#publishRoomState — one retained snapshot every
-// controller reads, in place of the old per-recipient fanout.
-function publishRoomState(room) {
-  var roster = {};
-  for (const entry of room.players) {
-    roster[entry[0]] = {
-      name: entry[1].playerName,
-      color: entry[1].playerIndex,
-      helloSeen: entry[1].helloSeen !== false
-    };
-  }
-  room.published.push(roster);
-}
-
-// The colour slots claimed in a published snapshot, sorted.
+// The colour slots claimed in a published roster, sorted.
 function takenIn(roster) {
   return Object.keys(roster)
     .map(function(id) { return roster[id].color; })
@@ -53,82 +33,31 @@ function lastPublished(room) {
   return room.published[room.published.length - 1];
 }
 
-// Mirrors DisplayConnection.js#onPeerJoined (roster registration only).
-function onPeerJoined(room, clientId) {
-  if (room.players.has(clientId)) return;
-  var index = nextAvailableSlot(room.players);
-  if (index < 0) return;
-  room.players.set(clientId, {
-    playerName: generateAutoPlayerName(room.players, clientId),
-    playerIndex: index,
-    startLevel: 1,
-    // Placeholder until the HELLO lands: the joiner's own controller ignores
-    // its row while this is false, so it never renders a guessed identity.
-    helloSeen: false
-  });
-  if (room.roomState === ROOM_STATE.LOBBY) room.playerOrder.push(clientId);
-  publishRoomState(room);
+// The thin shell around the brain: honour the publish hint, and send the
+// room-full error the brain reports rather than deciding it here.
+function publishAs(room, hint) {
+  if (hint === 'now' || hint === 'soon') room.published.push(room.brain.snapshot().players);
 }
 
-// Mirrors DisplayInput.js#helloPreferredColor.
-function helloPreferredColor(room, fromId, msg) {
-  var idx = parseInt(msg.colorIndex, 10);
-  if (isNaN(idx) || idx < 0 || idx >= PALETTE_SIZE) return null;
-  for (const entry of room.players) {
-    if (entry[0] !== fromId && entry[1].playerIndex === idx) return null;
-  }
-  return idx;
+function onPeerJoined(room, peerIndex) {
+  publishAs(room, room.brain.peerJoined(peerIndex, 1000).publish);
 }
 
-// Mirrors the name/color slice of DisplayInput.js#onHello.
 function onHello(room, fromId, msg) {
-  var name = typeof msg.name === 'string' ? msg.name.trim().slice(0, 16) : '';
-
-  if (room.players.has(fromId)) {
-    var existing = room.players.get(fromId);
-    existing.helloSeen = true;
-    if (name || msg.autoName === true) {
-      existing.playerName = sanitizePlayerName(
-        name || existing.playerName, room.players, fromId, msg.autoName === true);
-    }
-    var preferredColor = helloPreferredColor(room, fromId, msg);
-    if (preferredColor != null && existing.playerIndex !== preferredColor) {
-      existing.playerIndex = preferredColor;
-    }
-    // Unconditional: this publish is also what tells the joiner who they are,
-    // so it must go out even when the colour did not move.
-    publishRoomState(room);
-    return;
-  }
-
-  // New player (HELLO beat the relay's peer_joined).
-  var index = helloPreferredColor(room, fromId, msg);
-  if (index == null) index = nextAvailableSlot(room.players);
-  if (index < 0) {
+  const res = room.brain.hello(fromId, msg, 1100);
+  if (!res.accepted && res.roomFull) {
     room.errors.push({ to: fromId, message: 'Room is full' });
     return;
   }
-  room.players.set(fromId, {
-    playerName: sanitizePlayerName(name, room.players, fromId, msg.autoName === true),
-    playerIndex: index,
-    startLevel: 1,
-    helloSeen: true
-  });
-  if (room.roomState === ROOM_STATE.LOBBY) room.playerOrder.push(fromId);
-  publishRoomState(room);
+  publishAs(room, res.publish);
 }
 
 describe('Display: preferred color on HELLO', () => {
   let room;
 
   beforeEach(() => {
-    room = {
-      players: new Map(),
-      playerOrder: [],
-      roomState: ROOM_STATE.LOBBY,
-      published: [],
-      errors: [],
-    };
+    const brain = new RoomBrain({ rngSeed: 11 });
+    room = { brain, players: brain.players, published: [], errors: [] };
   });
 
   test('preferred color replaces the default slot for a peer_joined-registered player', () => {
@@ -148,7 +77,7 @@ describe('Display: preferred color on HELLO', () => {
   });
 
   test('taken preferred color keeps the assigned slot', () => {
-    room.players.set('a', { playerName: 'A', playerIndex: 5, startLevel: 1 });
+    room.brain.addPlayer('a', { playerName: 'A', playerIndex: 5, startLevel: 1 });
     onPeerJoined(room, 'b');
     room.published = [];
 
@@ -188,7 +117,7 @@ describe('Display: preferred color on HELLO', () => {
   });
 
   test('honored color is published so existing controllers grey out the swatch', () => {
-    room.players.set('a', { playerName: 'A', playerIndex: 1, startLevel: 1 });
+    room.brain.addPlayer('a', { playerName: 'A', playerIndex: 1, startLevel: 1 });
     onPeerJoined(room, 'b');
     room.published = [];
 
