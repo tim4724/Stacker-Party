@@ -192,6 +192,114 @@ import Foundation
     }
 
     /// Thread-safe capture of results delivered on the async callback queue.
+    // MARK: - Recovery after the retry budget is spent
+
+    /// Test double for the system path monitor: the test decides when the device
+    /// "gets its network back". A real NWPathMonitor can't be driven from here,
+    /// and stopping a loopback server doesn't change the system path at all.
+    private final class FakeReachability: NetworkReachability {
+        var onBecameReachable: (() -> Void)?
+        private(set) var started = false
+        func start() { started = true }
+        func stop() { started = false }
+        func fire() { onBecameReachable?() }
+    }
+
+    /// The reported field bug, reproduced end to end: Wi-Fi drops for longer than
+    /// the retry budget, so all 5 attempts fail against a dead network and the
+    /// client parks on `.closed`. Before the reachability escape it stayed there
+    /// FOREVER — the captured device log showed 15 connects, every one failing in
+    /// 2-33 ms (vs ~135 ms for a real handshake), then nothing ever again. The
+    /// only recovery was a button press that happened to land after the interface
+    /// had finished coming back up; pressing too early just burned another budget.
+    @Test func reconnectsWhenTheNetworkReturnsAfterGivingUp() throws {
+        let reach = FakeReachability()
+        let server = try MockRelayServer(); try server.start()
+        let port = server.port
+        let baseURL = server.baseURL
+
+        // Tight budget: same 5-attempt shape, milliseconds instead of ~13s.
+        let client = RelayClient(baseURL: baseURL, clientId: "display", callbackQueue: cbQueue,
+                                 maxReconnectAttempts: 5,
+                                 reconnectBaseSeconds: 0.02, reconnectCapSeconds: 0.05,
+                                 reachability: reach)
+        defer { client.disconnect() }
+
+        let state = Captured()
+        let states = StateLog()
+        client.onCreated = { room, inst, _ in state.set { $0.room = room; $0.instance = inst } }
+        client.onJoined = { _, peers in state.set { $0.rejoinPeers = peers } }
+        client.onConnectionState = { states.append($0) }
+
+        client.connect()
+        #expect(waitUntil(15) { state.get().room != nil }, "connected and created a room")
+        #expect(reach.started, "the client subscribes to reachability")
+
+        // The outage: the relay endpoint goes away entirely, like Wi-Fi dropping.
+        server.stop()
+        #expect(waitUntil(10) { states.contains(.closed) },
+                "the budget is spent and the client gives up")
+
+        // Nothing retries on its own — this is the parked state the field log ended in.
+        let attemptsAtGiveUp = server.connectionCount
+        Thread.sleep(forTimeInterval: 0.5)
+        states.clearAfterGiveUp()
+
+        // Network back: the endpoint is live again, but the client has no reason
+        // to know that until the path monitor tells it.
+        let revived = try MockRelayServer(port: port); try revived.start()
+        revived.peersOnJoin = [1, 2]
+        defer { revived.stop() }
+        Thread.sleep(forTimeInterval: 0.2)
+        #expect(revived.connectionCount == 0,
+                "still parked: a live endpoint alone does not wake the client")
+
+        reach.fire()   // <- NWPathMonitor: .satisfied
+
+        #expect(waitUntil(15) { state.get().rejoinPeers != nil },
+                "the reachability signal reconnects and rejoins the pinned room")
+        #expect(state.get().rejoinPeers == [1, 2], "the roster came back with the rejoin")
+        #expect(revived.connectionCount > 0, "the client actually dialled the revived endpoint")
+        #expect(server.connectionCount == attemptsAtGiveUp,
+                "no attempts leaked to the dead endpoint while parked")
+    }
+
+    /// The escape must not fire when there is nothing to escape from: a path that
+    /// merely flaps while the socket is healthy would otherwise tear down a live
+    /// room and re-handshake for no reason.
+    @Test func reachabilityIsIgnoredWhileTheLinkIsHealthy() throws {
+        let reach = FakeReachability()
+        let server = try MockRelayServer(); try server.start()
+        defer { server.stop() }
+
+        let client = RelayClient(baseURL: server.baseURL, clientId: "display", callbackQueue: cbQueue,
+                                 reachability: reach)
+        defer { client.disconnect() }
+
+        let state = Captured()
+        client.onCreated = { room, _, _ in state.set { $0.room = room } }
+        client.connect()
+        #expect(waitUntil(15) { state.get().room != nil }, "connected")
+
+        let connectsWhenHealthy = server.connectionCount
+        reach.fire(); reach.fire()
+        Thread.sleep(forTimeInterval: 0.3)
+        #expect(server.connectionCount == connectsWhenHealthy,
+                "a satisfied path while .open must not re-dial")
+    }
+
+    /// Ordered log of connection states, for asserting the give-up and what
+    /// follows it.
+    private final class StateLog {
+        private var v: [RelayClient.ConnectionState] = []
+        private let l = NSLock()
+        func append(_ s: RelayClient.ConnectionState) { l.lock(); v.append(s); l.unlock() }
+        func contains(_ s: RelayClient.ConnectionState) -> Bool {
+            l.lock(); defer { l.unlock() }; return v.contains(s)
+        }
+        func clearAfterGiveUp() { l.lock(); v.removeAll(); l.unlock() }
+    }
+
     private final class Captured {
         struct State {
             var room: String?

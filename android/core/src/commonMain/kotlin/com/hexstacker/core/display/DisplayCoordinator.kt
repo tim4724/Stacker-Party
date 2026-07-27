@@ -101,6 +101,23 @@ class DisplayCoordinator(
     // Set while the DISPLAY's own relay link is down; pauses the running game until we
     // reconnect (controllers are unreachable, so no broadcast). Web pauses on link drop.
     private var linkPaused = false
+
+    /**
+     * The only pause a controller can act on. The auto- (everyone disconnected) and
+     * link (our own relay down) pauses are display-internal: never broadcast,
+     * self-clearing, and a controller shown either one gets a Continue that cannot
+     * work — resumeGame() ignores the request because the display isn't manually
+     * paused, so no GAME_RESUMED follows and the overlay never clears. Mirrors the
+     * web's userVisiblePaused() and appletv's `pausedManual`.
+     */
+    private fun userVisiblePaused(): Boolean = paused && !autoPaused && !linkPaused
+
+    // True while we are IN the room, not merely holding an open socket. Gates the
+    // controller-liveness sweep (see checkLiveness): cleared the moment our link
+    // drops, restored only by the relay's `created`/`joined` reply. Starts true so a
+    // headless/test coordinator that never feeds link state still sweeps, matching
+    // appletv's `relayConnected = true` default.
+    private var relayConnected = true
     // Monotonic clock fed to engine.frame(); only deltas matter, so it never needs
     // resetting across games (a fresh EngineBridge re-primes on its first frame()).
     private var frameClockMs = 0.0
@@ -143,7 +160,7 @@ class DisplayCoordinator(
         private const val GO_HOLD_MS = 500.0 // goHoldMs (web GO->start setTimeout 500)
         // Coalesce bursty snapshot republishes (join storms, color picks, host churn)
         // into at most one leading + one trailing set_state per window (web value).
-        private const val LOBBY_BROADCAST_MIN_INTERVAL_MS = 400.0
+        private const val LOBBY_BROADCAST_MIN_INTERVAL_MS = 500.0
         private const val NAME_MAX_LEN = 16
         private const val START_LEVEL_MIN = 1
         private const val START_LEVEL_MAX = 15
@@ -274,6 +291,10 @@ class DisplayCoordinator(
     private fun handleCreated(room: String, instance: String?) {
         this.room = room
         this.instance = instance
+        // A fresh room means an empty roster, so there is nothing to re-stamp — but the
+        // sweep must come back on, or the room-gone recovery path (error -> createFresh)
+        // would leave liveness off for the rest of the session.
+        relayConnected = true
         output.roomReady(room, joinUrl(room, instance))
         output.showScreen(DisplayScreen.LOBBY)
     }
@@ -300,6 +321,27 @@ class DisplayCoordinator(
             if (p.peerIndex in peers) flow.onSeen(p.peerIndex, now) else gone.add(p.peerIndex)
         }
         for (id in gone) onPeerLeft(id)
+        // Only NOW is the sweep safe to re-arm: until this reply the relay dropped
+        // everything addressed to us, so every lastSeen was stale through no fault of the
+        // controllers. Gating on socket-OPEN instead left a hole — the re-stamp there buys
+        // exactly LIVENESS_TIMEOUT_MS, but the handshake deadline is twice that, so a slow
+        // `joined` expired the whole roster. The loop above re-stamped the survivors, which
+        // is strictly better than a blanket prime: it skips the peers the relay no longer
+        // lists, and those just went through onPeerLeft. Web ties its re-stamp to the same
+        // reply (onDisplayRejoined).
+        relayConnected = true
+        // The link-drop pause lifts here — after the roster reconcile above (so resumeGame's
+        // allParticipantsDisconnected guard sees post-reconcile truth) but BEFORE the
+        // re-welcome below, because sendWelcome reports `paused` and that field is the
+        // controller's authority. Resuming afterwards made every rejoin WELCOME say
+        // paused=true and then chase it with a GAME_RESUMED; a controller that latched the
+        // first and missed the second was stranded on a pause overlay whose Continue cannot
+        // help, since resumeGame() is gated on a manual pause and the display is no longer
+        // paused at all. Web onDisplayRejoined resumes before its WELCOME loop too.
+        if (linkPaused) {
+            linkPaused = false
+            resumeGame()
+        }
         // Re-welcome survivors, computing late-joiner status per peer (a mid-game late joiner
         // must NOT receive alive/paused, so their controller stays on the waiting screen).
         for (p in flow.list()) {
@@ -307,16 +349,17 @@ class DisplayCoordinator(
                 !playerOrder.contains(p.peerIndex)
             sendWelcome(p.peerIndex, isLateJoiner = late)
         }
-        // The link-drop pause lifts only now that the room-level rejoin reconciled the roster
-        // (resumeGame's allParticipantsDisconnected guard sees the post-reconcile truth and the
-        // GAME_RESUMED broadcast can't outrun the relay's join processing).
-        if (linkPaused) {
-            linkPaused = false
-            resumeGame()
-        }
     }
 
     private fun onPeerJoined(index: Int) {
+        // An in-session reconnect lands on the SAME relay slot, so the relay re-emits
+        // peer_joined for a peer we already know. Defer to the controller's HELLO
+        // (onMessage clears its disconnect + rejoin overlay) rather than re-adding:
+        // addPlayer's reconnect branch would overwrite the kept name/color with a
+        // fresh auto-name and a different free slot, and with a full room
+        // lowestFreeSlot() would answer a legitimately returning player "Room is
+        // full". Mirrors the web's `if (players.has(peerIndex)) return`.
+        if (flow.contains(index)) return
         val slot = flow.lowestFreeSlot()
         if (slot < 0) {
             transport.sendTo(index, OutboundMessage.error("Room is full"))
@@ -332,7 +375,12 @@ class DisplayCoordinator(
             RoomState.LOBBY -> {
                 flow.removePlayer(index)
                 playerOrder.removeAll { it == index }
-                if (flow.size > 0) broadcastLobby()
+                // Unconditional: this is one retained set_state, not a per-player
+                // fanout. When the LAST lobby player leaves there is nobody to fan out
+                // to, but the retained snapshot must stop naming a departed player (and
+                // a stale host) to the next (re)joiner — web removeLobbyPlayer's
+                // else-branch publishes the empty roster for exactly that.
+                broadcastLobby()
             }
             RoomState.RESULTS -> {
                 // Drop the leaver from roster + participant order; return to lobby once no
@@ -374,6 +422,13 @@ class DisplayCoordinator(
      * peers; a controller that pings again is reconnected in [onMessage].
      */
     private suspend fun checkLiveness() {
+        // Skip the sweep while the display's OWN link is down: no controller traffic
+        // can arrive, so every lastSeen is stale through no fault of the controllers.
+        // Without this a recoverable display outage flags the whole roster and, with a
+        // late joiner waiting, grace-returns the match to the lobby. Web gets the same
+        // effect from DisplayLiveness's `displayDead` early-return; appletv from the
+        // `guard relayConnected` in pollPresence.
+        if (!relayConnected) return
         val expired = flow.expiredPeers(nowWallMs())
         if (expired.isEmpty()) return
         for (id in expired) {
@@ -433,11 +488,13 @@ class DisplayCoordinator(
      * fires at raw-socket-open, before the relay has processed our join, so resuming (and
      * broadcasting GAME_RESUMED) now could race ahead of the roster reconciliation and be
      * dropped server-side. The web equivalent (onDisplayRejoined) also resumes only after
-     * the relay's `joined` reply.
+     * the relay's `joined` reply. Re-arming the liveness sweep waits for the same reply,
+     * for the same reason: see [relayConnected].
      */
     private suspend fun onLinkState(state: RelayTransport.ConnectionState) {
         when (state) {
             RelayTransport.ConnectionState.RECONNECTING, RelayTransport.ConnectionState.CLOSED -> {
+                relayConnected = false
                 val active = flow.state == RoomState.PLAYING || flow.state == RoomState.COUNTDOWN
                 if (active && !paused) {
                     paused = true
@@ -449,6 +506,8 @@ class DisplayCoordinator(
                     output.pauseMusic()
                 }
             }
+            // OPEN is deliberately NOT the point the liveness sweep resumes — see
+            // [relayConnected], re-armed in handleCreated/handleJoined instead.
             else -> {}
         }
     }
@@ -594,10 +653,11 @@ class DisplayCoordinator(
         if (level !in START_LEVEL_MIN..START_LEVEL_MAX) return
         val rec = flow.player(from) ?: return
         rec.startLevel = level
-        if (flow.state == RoomState.LOBBY) {
-            sendLobbyUpdate(from)
-            refreshDisplayLobby()
-        }
+        // startLevel rides the retained roster snapshot like every other roster field,
+        // which is what let LOBBY_UPDATE go entirely. Cheaper than the targeted echo it
+        // replaces, too: the snapshot's 400ms leading+trailing throttle collapses a
+        // burst of +/- taps into ~2.5 publishes/sec however fast they come.
+        if (flow.state == RoomState.LOBBY) broadcastLobby()
     }
 
     private fun handleSetColor(from: Int, msg: ControllerMessage) {
@@ -1008,6 +1068,7 @@ class DisplayCoordinator(
                 putJsonObject(p.peerIndex.toString()) {
                     put("name", p.playerName)
                     put("color", p.colorSlot)
+                    put("startLevel", p.startLevel)
                 }
             }
         }
@@ -1018,23 +1079,6 @@ class DisplayCoordinator(
         output.updateLobby(flow.list(), flow.host)
     }
 
-    private fun sendLobbyUpdate(id: Int) {
-        val rec = flow.player(id) ?: return
-        val host = flow.host
-        transport.sendTo(
-            id,
-            buildJsonObject {
-                put("type", Msg.LOBBY_UPDATE)
-                put("playerCount", flow.size)
-                put("startLevel", rec.startLevel)
-                put("isHost", id == host)
-                put("hostName", host?.let { flow.player(it)?.playerName })
-                put("hostColorIndex", host?.let { flow.player(it)?.colorSlot })
-                put("colorIndex", rec.colorSlot)
-                putJsonArray("takenColorIndices") { flow.takenColorSlots().forEach { add(it) } }
-            },
-        )
-    }
 
     private fun sendWelcome(id: Int, isLateJoiner: Boolean) {
         val rec = flow.player(id) ?: return
@@ -1053,7 +1097,7 @@ class DisplayCoordinator(
             put("displayMuted", muted)
             if (!isLateJoiner) {
                 put("alive", aliveState[id] ?: true) // a mid-game reconnect keeps its KO state
-                put("paused", paused)
+                put("paused", userVisiblePaused())
             }
             // A controller (re)connecting during RESULTS needs the standings to show them.
             if (flow.state == RoomState.RESULTS) lastResultsJson?.let { put("results", it) }

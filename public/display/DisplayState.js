@@ -86,11 +86,24 @@ Object.defineProperty(window, 'roomState', {
 });
 
 function setRoomState(newState) {
-  return flow.transitionTo(newState);
+  var result = flow.transitionTo(newState);
+  // Controllers route their screens purely off snapshot.roomState, so every
+  // transition publishes here — immediately, ahead of the level/colour
+  // throttle. Routing them from one guaranteed publish per transition is what
+  // let the GAME_START / COUNTDOWN / GAME_END / RETURN_TO_LOBBY broadcasts go.
+  publishRoomState();
+  return result;
 }
 
 var paused = false;
 var autoPaused = false;
+// Why we are paused, not just that we are. `paused` is a single composite flag,
+// so without this a link-drop pause is indistinguishable from a host pressing
+// Pause — and the two mean opposite things to a controller. A manual pause is
+// the ONLY one a controller can act on (Continue); the auto- and connection
+// pauses are display-internal and resolve themselves. Reporting the composite
+// stranded controllers on an undismissable pause overlay. See userVisiblePaused().
+var connectionPaused = false;
 var boardRenderers = [];
 var uiRenderers = [];
 var animations = null;
@@ -109,6 +122,14 @@ var countdown = { timer: null, remaining: 0, callback: null, goTimeout: null, ov
 
 // Controller liveness
 var livenessInterval = null;
+
+// True while we are IN the room, not merely holding an open socket. Gates the
+// controller-liveness sweep: until the relay answers our create/join it routes
+// nothing to us, so every lastSeen is stale through no fault of the controllers.
+// Cleared on the socket dropping, restored by 'created'/'joined'. Starts true so
+// the AirConsole adapter (which synthesizes 'created' but never drops) and the
+// gallery/test harnesses behave as before.
+var joinedRoom = true;
 
 // Display heartbeat — send echo to self via relay to verify connection
 var lastHeartbeatEcho = 0;
@@ -134,7 +155,8 @@ var lastAliveState = {};
 var lastResults = null;
 
 // Clear all room-local state — used when entering a fresh room or returning to welcome.
-// Note: does not touch _lastBroadcastedHostId (module-private to DisplayConnection) or roomCode.
+// Note: does not touch the publish throttle state (module-private to
+// DisplayConnection) or roomCode.
 // Calls clearCountdownTimers() (defined in DisplayGame.js) — only safe after all
 // scripts load. flow.reset() clears the roster, presence set, and the
 // late-joiner grace deadline.

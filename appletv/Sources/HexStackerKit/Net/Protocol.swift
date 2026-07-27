@@ -31,6 +31,14 @@ public protocol RelayTransport: AnyObject {
     func connect()
     func sendTo(_ index: Int, _ data: [String: Any])
     func broadcast(_ data: [String: Any])
+
+    /// Publish a retained state snapshot (host/slot-0 only; the relay rejects it from
+    /// anyone else). The relay keeps the latest blob on the room, pushes it live to
+    /// current peers (sender excluded), and replays it to any client right after
+    /// `joined` on (re)join. Costs exactly one broadcast. `data` must be
+    /// JSON-serializable and <= 16 KiB serialized.
+    func setState(_ data: [String: Any])
+
     /// Forget the current room and open a fresh one (the socket's next handshake
     /// sends `create`, not `join`). Used to recover when the relay reports the
     /// room is gone/full on a reconnect (web resetToWelcome).

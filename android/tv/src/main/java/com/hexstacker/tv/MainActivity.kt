@@ -286,6 +286,14 @@ class MainActivity : ComponentActivity() {
             fastlane.closeAll() // controllers re-offer their P2P channels on rejoin
             relay.suspendSocket()
             suspendedForBackground = true
+            // Graceful resume exists for rooms with PLAYERS. An empty lobby's room dies
+            // with our socket at the relay (rooms live on members), so reopening would
+            // rejoin a dead room, bounce off "Room not found", and visibly swap the QR
+            // mid-lobby. Forget it and reset the card instead.
+            if (ui.lobbyIsEmpty()) {
+                relay.unpinRoom()
+                ui.clearRoom()
+            }
         }
     }
 
@@ -514,6 +522,22 @@ class TvDisplayOutput(
      *  MainActivity.onPause); link-state transitions set it via setConnectionState. */
     fun setQrPending(pending: Boolean) {
         _state.value = _state.value.copy(qrPending = pending)
+    }
+
+    /** No players seated: the relay room is memberless and dies with our socket. */
+    fun lobbyIsEmpty(): Boolean = roster.isEmpty()
+
+    /** Drop the room card so the next foreground presents like a fresh open — blank
+     *  card, then the new room's QR — instead of a dimmed stale code that swaps once
+     *  the rejoin bounces. Paired with RelayClient.unpinRoom (see MainActivity.onStop);
+     *  mirrors appletv DisplayModel.appDidEnterBackground. */
+    fun clearRoom() {
+        room = ""
+        joinUrl = ""
+        roster = emptyList()
+        hostSlot = null
+        // Blank card, not a dimmed stale one.
+        _state.value = _state.value.copy(lobby = buildLobby(), qrPending = false)
     }
 
     fun setConnectionState(state: RelayTransport.ConnectionState, reconnectAttempt: Int = 0) {

@@ -2,7 +2,7 @@
 
 // =====================================================================
 // Display Game — game lifecycle, event handlers, audio
-// Depends on: DisplayState.js (globals), DisplayConnection.js (broadcastLobbyUpdate, showDisconnectQR)
+// Depends on: DisplayState.js (globals), DisplayConnection.js (publishRoomState, showDisconnectQR)
 // Called by: display.js (message handlers and UI buttons)
 // =====================================================================
 
@@ -34,6 +34,16 @@ function playAgain() {
   startNewGame();
 }
 
+// The only pause a controller can act on. An auto-pause (everyone disconnected)
+// and a connection pause (our own link is down) are display-internal: they are
+// deliberately never broadcast, they clear themselves, and a controller shown
+// either one gets a Continue button that cannot work — resumeGame() ignores the
+// request because the display isn't manually paused, so no GAME_RESUMED is ever
+// sent and the overlay never clears. This is what the room snapshot publishes.
+function userVisiblePaused() {
+  return paused && !autoPaused && !connectionPaused;
+}
+
 function setAutoPaused(value) {
   autoPaused = value;
   if (pauseBtn) pauseBtn.disabled = false;
@@ -46,6 +56,7 @@ function setAutoPaused(value) {
 function startNewGame() {
   stopDisplayGame();
   paused = false;
+  connectionPaused = false;
   setAutoPaused(false);
   lastResults = null;
   lastAliveState = {};
@@ -93,8 +104,9 @@ function startNewGame() {
   acquireWakeLock();
 
   startCountdown(function() {
+    // The transition publishes; that is what moves controllers off the
+    // countdown-dimmed pad and arms their touch input.
     setRoomState(ROOM_STATE.PLAYING);
-    party.broadcast({ type: MSG.GAME_START });
     runGameLocally();
 
     // Show disconnect QR for any players that disconnected during countdown
@@ -107,15 +119,18 @@ function startNewGame() {
   });
 }
 
+// The countdown digits are display-only: controllers learn they are counting
+// down from snapshot.roomState (which dims their pad) and learn the game is
+// live from the COUNTDOWN -> PLAYING transition. Nothing per-second crosses
+// the wire.
 function startCountdown(onComplete, startFrom) {
   var count = startFrom || GameConstants.COUNTDOWN_SECONDS;
   countdown.callback = onComplete;
   countdown.remaining = count;
 
   // On resume (startFrom is set), the current number is already on screen —
-  // skip the redundant broadcast/beep.
+  // skip the redundant beep.
   if (!startFrom) {
-    party.broadcast({ type: MSG.COUNTDOWN, value: count });
     onCountdownDisplay(count);
   }
 
@@ -123,13 +138,11 @@ function startCountdown(onComplete, startFrom) {
     count--;
     countdown.remaining = count;
     if (count > 0) {
-      party.broadcast({ type: MSG.COUNTDOWN, value: count });
       onCountdownDisplay(count);
     } else {
       clearInterval(countdown.timer);
       countdown.timer = null;
       countdown.remaining = 0;
-      party.broadcast({ type: MSG.COUNTDOWN, value: 'GO' });
       onCountdownDisplay('GO');
       countdown.goTimeout = setTimeout(function() {
         countdown.goTimeout = null;
@@ -162,7 +175,9 @@ function pauseGame() {
   if (roomState === ROOM_STATE.COUNTDOWN) {
     clearCountdownTimers();
   }
-  party.broadcast({ type: MSG.GAME_PAUSED });
+  // userVisiblePaused() may still be false here (a connection- or auto-pause
+  // is display-internal); publishing either way keeps the snapshot honest.
+  publishRoomState();
   onGamePaused();
 }
 
@@ -223,9 +238,10 @@ function resumeGame() {
   if (roomState !== ROOM_STATE.PLAYING && roomState !== ROOM_STATE.COUNTDOWN) return;
   if (!canResumeGame()) return;
   if (autoPaused) setAutoPaused(false);
+  connectionPaused = false;
   paused = false;
   if (roomState === ROOM_STATE.COUNTDOWN && countdown.callback) {
-    party.broadcast({ type: MSG.GAME_RESUMED });
+    publishRoomState();
     onGameResumed();
     if (countdown.remaining === 0) {
       armCountdownDismiss();
@@ -238,7 +254,7 @@ function resumeGame() {
     }
     return;
   }
-  party.broadcast({ type: MSG.GAME_RESUMED });
+  publishRoomState();
   onGameResumed();
 }
 
@@ -247,6 +263,7 @@ function returnToLobby() {
   countdown.callback = null;
   countdown.remaining = 0;
   paused = false;
+  connectionPaused = false;
   setAutoPaused(false);
   releaseWakeLock();
 
@@ -275,10 +292,9 @@ function returnToLobby() {
 
   lastResults = null;
   lastAliveState = {};
+  // Publishes: controllers see roomState back at LOBBY and route themselves
+  // there, which is what the RETURN_TO_LOBBY broadcast used to do.
   setRoomState(ROOM_STATE.LOBBY);
-
-  broadcastLobbyUpdate();
-  party.broadcast({ type: MSG.RETURN_TO_LOBBY, playerCount: players.size });
 
   returnToLobbyUI();
 }
@@ -363,7 +379,10 @@ function runGameLocallyWithSeed(seed) {
         onPlayerKO(event);
         lastAliveState[event.playerId] = false;
         party.sendTo(event.playerId, { type: MSG.PLAYER_STATE, alive: false });
-        party.sendTo(event.playerId, { type: MSG.GAME_OVER });
+        // The snapshot carries alive too, so a reconnect right after a KO
+        // still lands on the dead board. The targeted PLAYER_STATE above stays
+        // because it is what fires the KO overlay the instant it happens.
+        publishRoomState();
       } else if (event.type === 'piece_lock') {
         onPieceLock(event);
       } else if (event.type === 'garbage_cancelled') {
@@ -400,9 +419,10 @@ function runGameLocallyWithSeed(seed) {
           }
         });
       }
-      setRoomState(ROOM_STATE.RESULTS);
+      // Stash the ranking BEFORE the transition: setRoomState publishes, and
+      // the RESULTS snapshot is what carries the results to controllers.
       lastResults = results;
-      party.broadcast({ type: MSG.GAME_END, elapsed: results.elapsed, results: results.results });
+      setRoomState(ROOM_STATE.RESULTS);
       onGameEnd(results);
     }
   }, seed);
@@ -571,6 +591,10 @@ function dismissAutoPausedOverlay() {
     gameToolbar.classList.remove('hidden');
   }
   setAutoPaused(true);
+  // A manual pause just became an auto-pause: userVisiblePaused() flips true
+  // -> false, so returning players must not be handed a pause overlay whose
+  // Continue button the display would ignore.
+  publishRoomState();
 }
 
 function onGameResumed() {

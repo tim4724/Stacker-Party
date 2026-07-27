@@ -10,68 +10,22 @@
 // Message Dispatch
 // =====================================================================
 
+// Room state — identity, roster, host, pause, results and screen routing —
+// arrives as a retained snapshot through party.onState, which bypasses this
+// dispatcher entirely (see ControllerGame.js#onState). What's left here is
+// transient per-player traffic that isn't room state and would be wrong to
+// retain: this player's own board telemetry, the relay-liveness pong, and
+// errors. That's why there is no late-joiner allowlist any more — a late
+// joiner is never sent any of it.
 function handleMessage(data) {
   try {
-    // Ignore game broadcasts after rejection (e.g., joined during countdown).
-    // Only allow WELCOME (re-admission) and ERROR (new rejection info) through.
-    if (gameCancelled && data.type !== MSG.WELCOME && data.type !== MSG.ERROR) return;
-    // Late joiner waiting for next game — ignore game broadcasts but allow
-    // WELCOME (re-admission), GAME_END (show results), RETURN_TO_LOBBY, LOBBY_UPDATE, ERROR
-    if (waitingForNextGame && data.type !== MSG.WELCOME && data.type !== MSG.GAME_END
-        && data.type !== MSG.RETURN_TO_LOBBY && data.type !== MSG.LOBBY_UPDATE
-        && data.type !== MSG.ERROR && data.type !== MSG.PONG) return;
+    // Ignore everything after a terminal rejection. A snapshot can still
+    // re-admit us (AC mode survives the bail), and it clears the flag.
+    if (gameCancelled) return;
 
     switch (data.type) {
-      case MSG.WELCOME:
-        onWelcome(data);
-        break;
-      case MSG.LOBBY_UPDATE:
-        onLobbyUpdate(data);
-        break;
-      case MSG.GAME_START:
-        onGameStart();
-        break;
-      case MSG.COUNTDOWN:
-        removeKoOverlay();
-        if (currentScreen !== 'game') {
-          gameScreen.classList.remove('dead');
-          gameScreen.classList.remove('paused');
-          gameScreen.classList.add('countdown');
-          gameScreen.style.setProperty('--player-color', playerColor);
-          pauseOverlay.classList.add('hidden');
-          pauseBtn.disabled = false;
-          pauseBtn.classList.remove('hidden');
-          showScreen('game');
-        }
-        if (data.value === 'GO') {
-          gameScreen.classList.remove('countdown');
-          initTouchInput();
-        }
-        break;
       case MSG.PLAYER_STATE:
         onPlayerState(data);
-        break;
-      case MSG.GAME_OVER:
-        break;
-      case MSG.GAME_END:
-        waitingForNextGame = false;
-        onGameEnd(data);
-        break;
-      case MSG.GAME_PAUSED:
-        onGamePaused(data);
-        break;
-      case MSG.GAME_RESUMED:
-        onGameResumed();
-        break;
-      case MSG.DISPLAY_MUTED:
-        onDisplayMuted(data);
-        break;
-      case MSG.RETURN_TO_LOBBY:
-        waitingForNextGame = false;
-        playerCount = data.playerCount || playerCount;
-        gameScreen.classList.remove('dead');
-        gameScreen.classList.remove('paused');
-        showLobbyUI();
         break;
       case MSG.PONG:
         lastPongTime = Date.now();
@@ -200,15 +154,15 @@ document.addEventListener('pointerdown', function onFirstPointer() {
 // Loads persisted settings (mute/haptics/sensitivity), wires the popup,
 // and sends SET_DISPLAY_MUTE when the host toggles remote mute.
 // The display-mute row shows only when this controller is the host;
-// updateSettingsHostUI() is called from applyHostInfo when host changes.
+// updateSettingsHostUI() is called from onState when the host changes.
 
 ControllerSettings.init();
-// Mirrors the display's mute state. Populated from WELCOME on join/rejoin
-// and updated live via MSG.DISPLAY_MUTED whenever the display's mute
-// changes (settings toggle OR display-side mute button). The Game Music
+// Mirrors the display's mute state, which rides the room snapshot: it is
+// applied on join/rejoin and again whenever the display's mute changes
+// (settings toggle OR display-side mute button). The Game Music
 // toggle in settings reads this; host-initiated toggling sends
 // SET_DISPLAY_MUTE and optimistically updates this value before the
-// display's echo broadcast lands.
+// display's echoed snapshot lands.
 var displayMuteIntent = false;
 
 window.onDisplayMuted = function (data) {
@@ -304,7 +258,7 @@ function syncMuteDisplayToggle() {
   toggleMuteDisplay.setAttribute('aria-checked', displayMuteIntent ? 'false' : 'true');
 }
 
-// Called from applyHostInfo (ControllerGame.js) whenever host changes. Reveals
+// Called from onState (ControllerGame.js) whenever host changes. Reveals
 // or hides the host-only display-mute row. Explicit window assignment so
 // ControllerGame.js can reach it — this file executes inside the roomCode
 // else-block and its function declarations are block-scoped under 'use strict'.
@@ -711,7 +665,7 @@ bindTap(levelPlusBtn, function () {
 //   2. Tapping the backdrop or pressing Escape closes it.
 //   3. Tapping a non-taken rose cell sends SET_COLOR; the overlay stays
 //      open until the display echoes the accepted color back via
-//      LOBBY_UPDATE → renderColorPicker, which calls closeColorPicker
+//      the room snapshot → renderColorPicker, which calls closeColorPicker
 //      once playerColorIndex matches the pendingColorPick. Rejected picks
 //      simply leave the overlay open so the user can pick again.
 if (colorPickerEl) {
@@ -722,7 +676,7 @@ if (colorPickerEl) {
     var idx = parseInt(btn.dataset.idx, 10);
     if (isNaN(idx)) return;
     vibrate(15);
-    // Same userPickedColor + persistence flow as before: onLobbyUpdate
+    // Same userPickedColor + persistence flow as before: applyOwnIdentity
     // persists any confirmed color change, but only when this flag is
     // true so display-driven assignments (initial slot, reconnect default)
     // don't clobber a previous-session preference before reclaim can act.

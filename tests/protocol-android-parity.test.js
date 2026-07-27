@@ -112,8 +112,8 @@ test('timing constants mirror server/constants.js and PartyConnection.js', () =>
   assert.strictEqual(Number(liveness[1]), constants.LIVENESS_TIMEOUT_MS);
   assert.strictEqual(Number(grace[1]), constants.LATE_JOINER_GRACE_MS);
 
-  // Snapshot-publish throttle (web DisplayConnection LOBBY_BROADCAST_MIN_INTERVAL_MS).
-  const webThrottle = read('public/display/DisplayConnection.js').match(/LOBBY_BROADCAST_MIN_INTERVAL_MS = (\d+)/);
+  // Snapshot-publish throttle (web DisplayConnection ROOM_STATE_THROTTLE_MS).
+  const webThrottle = read('public/display/DisplayConnection.js').match(/ROOM_STATE_THROTTLE_MS = (\d+)/);
   assert.strictEqual(kotlinConst(KOTLIN.coordinator, 'LOBBY_BROADCAST_MIN_INTERVAL_MS'), Number(webThrottle[1]));
 
   // Reconnect backoff (web PartyConnection: `|| 5` default attempts and

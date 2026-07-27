@@ -126,10 +126,10 @@ function connect() {
         name: playerName,
         autoName: !!playerNameIsAuto,
         // Persisted preferred color rides along so the display can honor it
-        // at registration time; the first WELCOME then already carries it
-        // and reclaimPreferredColor's post-WELCOME SET_COLOR round trip
-        // no-ops. Omitted after an in-session swatch pick (the live pick
-        // outranks the persisted one, mirroring reclaimPreferredColor's
+        // at registration time; the first snapshot then already carries it
+        // and reclaimPreferredColor's follow-up SET_COLOR round trip no-ops.
+        // Omitted after an in-session swatch pick (the live pick outranks
+        // the persisted one, mirroring reclaimPreferredColor's
         // userPickedColor gate) and while the AC storage shim is unhydrated
         // (readStoredColorIndex returns null; the onLoad reclaim in
         // controller-airconsole.js covers that case).
@@ -168,9 +168,9 @@ function connect() {
     } else if (type === 'peer_joined') {
       if (msg.index === 0 && displayGoneTimer) {
         // Display is back on the relay. Don't clear the bail outright: its
-        // re-WELCOME is what proves this session survived (and hides the
-        // overlay + restarts pings). Re-arm so a display that returns but
-        // never welcomes us (restarted with an empty roster) still bails.
+        // republished snapshot is what proves this session survived (and hides
+        // the overlay + restarts pings). Re-arm so a display that returns but
+        // never names us (restarted with an empty roster) still bails.
         clearTimeout(displayGoneTimer);
         displayGoneTimer = setTimeout(function () {
           displayGoneTimer = null;
@@ -193,9 +193,9 @@ function connect() {
       else if (msg.message === 'Target peer not found' && currentScreen !== 'name') {
         // We only ever unicast to slot 0, so this means the display's relay
         // slot is empty; typically a PING that raced the peer_left(0)
-        // broadcast. In-session (post-WELCOME) that's the display-gone flow,
+        // broadcast. In-session (we have a snapshot) that's the display-gone flow,
         // not a terminal bail: the display may be seconds from rejoining
-        // (relay blip, tvOS Home and back). Pre-WELCOME ('name', i.e. the
+        // (relay blip, tvOS Home and back). Pre-session ('name', i.e. the
         // HELLO bounced off a hostless room) falls through and bails.
         onDisplayGone();
       }
@@ -211,10 +211,10 @@ function connect() {
     }
   };
 
-  // Retained room snapshot (roster + host). Replayed right after `joined` on
-  // (re)join and pushed live on each host update, replacing the LOBBY_UPDATE
-  // fanout for globally-shared lobby state. Same callback name on the
-  // AirConsole adapter, so this wiring covers both transports.
+  // The retained room snapshot: the controller's single source of truth.
+  // Replayed right after `joined` on (re)join and pushed live on every display
+  // update. Same callback name on the AirConsole adapter, so this one line
+  // covers both transports.
   party.onState = onState;
 
   party.onClose = function (attempt, maxAttempts, meta) {
@@ -288,17 +288,18 @@ function stopPing() {
 
 // The display's relay slot emptied out (peer_left(0), or a unicast to it
 // bounced) without the room being torn down: crash, network loss, or a TV
-// app backgrounded by the Home button. That's recoverable (the display
-// rejoins the same slot and re-WELCOMEs everyone), so wait on the reconnect
-// overlay instead of bailing, but not forever. WELCOME clears the timer,
-// hides the overlay, and restarts pings. A deliberate display exit is NOT
-// this path: the relay closes our socket with 4001 (onClose meta.roomClosed).
+// app backgrounded by the Home button. That's recoverable (the display rejoins
+// the same slot and republishes the room snapshot), so wait on the reconnect
+// overlay instead of bailing, but not forever. A snapshot that still names us
+// clears the timer, hides the overlay, and restarts pings — see
+// noteDisplayAlive. A deliberate display exit is NOT this path: the relay
+// closes our socket with 4001 (onClose meta.roomClosed).
 function onDisplayGone() {
   // Stop pinging the empty slot: each PING would bounce as a relay error and
   // re-enter here. The display re-stamps everyone's liveness on rejoin, so
   // going quiet is safe.
   stopPing();
-  // 'name' has no session to guard (pre-WELCOME); its JOIN error path owns it.
+  // 'name' has no session to guard (no snapshot yet); its JOIN error path owns it.
   if (currentScreen !== 'name') {
     reconnectOverlay.classList.remove('hidden');
     reconnectHeading.textContent = t('reconnecting');
@@ -402,6 +403,7 @@ function performDisconnect() {
   // default instead of their persisted favorite.
   userPickedColor = false;
   pendingColorPick = null;
+  reclaimedPreferredColor = false;
   // If the picker is open when the user bails (e.g. tap "back" before the
   // 350ms backdrop-enable timer fires), the overlay would never get
   // .hidden re-applied — and on the next lobby visit openColorPicker's

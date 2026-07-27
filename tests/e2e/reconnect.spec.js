@@ -186,6 +186,104 @@ test.describe('Reconnection', () => {
     await page.waitForSelector('#reconnect-overlay:not(.hidden)', { timeout: 15000 });
   });
 
+  // A display-side relay blip must not strand the CONTROLLER on a pause overlay.
+  // The display freezes while its link is down, but by the time it re-welcomes it
+  // has resumed, so the WELCOME must report paused=false. Getting that ordering
+  // wrong (resume AFTER the welcome loop) makes the WELCOME say paused=true and
+  // chase it with a GAME_RESUMED; a controller that latches the first and misses
+  // the second is stuck, because its Continue asks a display that is no longer
+  // paused, whose resume path is gated on a MANUAL pause and so silently drops the
+  // request — no GAME_RESUMED is ever sent and the overlay never clears.
+  // Reported on tvOS from a live Wi-Fi drop; Android had the same ordering. The web
+  // resumes before its welcome loop and is correct, but nothing guarded it.
+  test('display relay blip mid-game does not strand the controller on a pause overlay', async ({ page, context }) => {
+    const links = [];
+    await page.routeWebSocket(/ws\.hexstacker\.com/, (ws) => {
+      const server = ws.connectToServer();
+      ws.onMessage((msg) => server.send(msg));
+      server.onMessage((msg) => ws.send(msg));
+      links.push(server);
+    });
+
+    const { roomCode } = await createRoom(page);
+    const controller = await joinController(context, roomCode, 'Alice');
+    await waitForDisplayPlayers(page, 1);
+    await controller.click('#start-btn');
+    await waitForDisplayGame(page);
+    await expect(controller.locator('#pause-overlay')).toBeHidden();
+
+    // Sever the display's link; it reconnects on its own through the route.
+    links[links.length - 1].close();
+    await page.waitForSelector('#reconnect-overlay:not(.hidden)', { timeout: 15000 });
+    await expect(page.locator('#reconnect-overlay')).toBeHidden({ timeout: 15000 });
+
+    // Display is running again...
+    await page.waitForFunction(() => paused === false, null, { timeout: 15000 });
+    // ...so the controller must not be sitting behind a pause overlay it cannot
+    // dismiss. Settle first: the WELCOME lands right after the rejoin.
+    await controller.waitForTimeout(1500);
+    await expect(controller.locator('#pause-overlay')).toBeHidden();
+  });
+
+  // Regression guard for the `joinedRoom` gate, covering the gap between the
+  // display's socket re-OPENING and the relay answering `joined`. Until that
+  // reply the relay routes nothing to us, so no controller can prove it is alive
+  // and flagging them blames them for our outage. displayDead alone was not
+  // cover: it needs SELF_HEARTBEAT_DEAD_MS (6s) of self-echo silence while a
+  // controller expires after LIVENESS_TIMEOUT_MS (3s), so an outage flagged the
+  // whole roster for the ~3s before the gate engaged, and the flag persisted
+  // until the rejoin landed and each controller pinged again (measured: 3.8s of
+  // wrong flagging at a 2s `joined` delay, 6.8s at 5s). It also fired
+  // checkAllPlayersDisconnected, which auto-pauses and, with a late joiner
+  // waiting, could grace-return a live match to the lobby.
+  //
+  // The other drop tests never reach this window because a healthy relay answers
+  // in milliseconds; delaying `joined` opens it deterministically. Same contract
+  // as tvOS roomLinkRestored and Android handleJoined.
+  test('rejoin in flight: display keeps its roster and stays paused until joined lands', async ({ page, context }) => {
+    const JOINED_DELAY_MS = 5000;   // > LIVENESS_TIMEOUT_MS so the sweep can bite
+    let delayJoined = false;
+    const links = [];
+    await page.routeWebSocket(/ws\.hexstacker\.com/, (ws) => {
+      const server = ws.connectToServer();
+      ws.onMessage((msg) => server.send(msg));
+      server.onMessage((msg) => {
+        let parsed;
+        try { parsed = JSON.parse(msg); } catch { parsed = null; }
+        if (delayJoined && parsed && parsed.type === 'joined') {
+          setTimeout(() => ws.send(msg), JOINED_DELAY_MS);
+          return;
+        }
+        ws.send(msg);
+      });
+      links.push(server);
+    });
+
+    const { roomCode } = await createRoom(page);
+    const controller = await joinController(context, roomCode, 'Alice');
+    await waitForDisplayPlayers(page, 1);
+    await controller.click('#start-btn');
+    await waitForDisplayGame(page);
+    expect(await page.evaluate(() => disconnectedQRs.size)).toBe(0);
+
+    // Sever the link; the reconnect's `joined` is withheld for JOINED_DELAY_MS.
+    delayJoined = true;
+    links[links.length - 1].close();
+    await page.waitForSelector('#reconnect-overlay:not(.hidden)', { timeout: 15000 });
+
+    // Mid-window: socket is back but we are not in the room yet. The controller
+    // has been silent only because WE were unreachable, so it must not be
+    // flagged, and the sim must stay frozen.
+    await page.waitForTimeout(JOINED_DELAY_MS - 1000);
+    expect(await page.evaluate(() => disconnectedQRs.size)).toBe(0);
+    expect(await page.evaluate(() => paused)).toBe(true);
+
+    // `joined` lands: roster reconciled, overlay clears, sim resumes.
+    await expect(page.locator('#reconnect-overlay')).toBeHidden({ timeout: 15000 });
+    await page.waitForFunction(() => paused === false, null, { timeout: 15000 });
+    expect(await page.evaluate(() => disconnectedQRs.size)).toBe(0);
+  });
+
   test('controller in lobby: display vanishing shows reconnect overlay then bails home', async ({ page, context }) => {
     // Bridge the display's relay WS once; refuse reconnect attempts so the
     // display stays gone (a crash or a backgrounded tvOS app): no room

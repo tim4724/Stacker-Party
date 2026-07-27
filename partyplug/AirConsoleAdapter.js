@@ -48,6 +48,11 @@ class AirConsoleAdapter {
       }
     };
 
+    // Deliberately one-way for the screen: a controller gets peer_left(0) but never
+    // a matching peer_joined(0) (onConnect returns early for SCREEN below). On the
+    // relay, peer_joined(0) re-arms the display-gone bail and reopens the fastlane;
+    // in AirConsole there is no fastlane, and a screen that leaves has ended the
+    // session, so the controller's bail timer running out IS the correct outcome.
     ac.onDisconnect = function(device_id) {
       if (device_id === AirConsole.SCREEN) {
         if (self.role === 'controller') {
@@ -202,6 +207,13 @@ class AirConsoleAdapter {
   join() {}
   pinInstance() {}
   reconnectNow() {}
+  // The AC session IS the room: it ends when the screen unloads, and there is no
+  // relay to tell. Present so callers can invoke the full PartyConnection surface
+  // without branching on the transport.
+  closeRoom() {}
+  // Relay-only retry bookkeeping. AirConsole owns reconnection, so there is no
+  // attempt to fail and no backoff to drive; onClose is likewise never fired.
+  failAttempt() {}
   resetReconnectCount() { this.reconnectAttempt = 0; }
 
   close() {

@@ -58,6 +58,74 @@ import Foundation
         return (coord, ft, fo)
     }
 
+    // MARK: - Retained room snapshot (set_state)
+
+    /// Lobby changes publish ONE retained `set_state` snapshot (web PR #170), not a
+    /// per-recipient LOBBY_UPDATE fanout. The relay replays it to any (re)joining
+    /// controller, so a briefly-dropped phone catches up without a round trip.
+    @Test func lobbyChangesPublishOneRetainedSnapshotNotAFanout() {
+        let clock = Clock()
+        let (coord, ft, _) = makeLobby(players: 2, clock: clock)
+
+        #expect(!ft.states.isEmpty, "joins publish a retained room snapshot")
+        // No per-player lobby_update fanout: the roster now rides the snapshot.
+        #expect(!ft.didSend(MSG.lobbyUpdate, to: 1))
+        #expect(!ft.didSend(MSG.lobbyUpdate, to: 2))
+
+        // The join burst collapses into one leading + one trailing publish; flush the
+        // trailing one so `last` is the settled roster rather than the first join.
+        clock.ms += 500
+        coord.tick(deltaMs: 16)
+        let snap = ft.states.last!
+        #expect(snap["hostPeerIndex"] as? Int == coord.flow.host)
+        let roster = snap["players"] as? [String: Any]
+        #expect(roster?.count == 2)
+        let p1 = roster?["1"] as? [String: Any]
+        #expect(p1?["name"] as? String == "P1")
+        #expect(p1?["color"] as? Int == coord.flow.player(1)?.colorSlot)
+
+        // Throttled, leading + trailing: a burst inside the 400 ms window collapses
+        // into one trailing publish that reads live state at fire time.
+        ft.states.removeAll()
+        clock.ms += 1000
+        ft.onMessage?(1, ["type": MSG.setColor, "colorIndex": 6])   // leading edge
+        ft.onMessage?(2, ["type": MSG.setColor, "colorIndex": 7])   // collapses
+        #expect(ft.states.count == 1, "the second change inside the window is deferred")
+        coord.tick(deltaMs: 16)
+        #expect(ft.states.count == 1, "still inside the throttle window")
+        clock.ms += 400
+        coord.tick(deltaMs: 16)                                      // trailing edge
+        #expect(ft.states.count == 2)
+        let after = ft.states.last?["players"] as? [String: Any]
+        #expect((after?["2"] as? [String: Any])?["color"] as? Int == 7, "trailing publish carries live state")
+
+        // startLevel rides the roster too now — it was the last per-recipient holdout,
+        // and moving it here is what let LOBBY_UPDATE be deleted rather than shrunk.
+        ft.states.removeAll()
+        clock.ms += 1000
+        ft.onMessage?(1, ["type": MSG.setLevel, "level": 7])
+        #expect(!ft.didSend(MSG.lobbyUpdate, to: 1), "no targeted LOBBY_UPDATE survives")
+        let levels = ft.states.last?["players"] as? [String: Any]
+        #expect((levels?["1"] as? [String: Any])?["startLevel"] as? Int == 7,
+                "the snapshot carries the new start level")
+    }
+
+    /// When the LAST lobby player leaves there is nobody to fan out to, but the
+    /// retained snapshot must stop naming the departed player to the next joiner.
+    @Test func lastLobbyLeaverPublishesTheEmptyRoster() {
+        let clock = Clock()
+        let (coord, ft, _) = makeLobby(players: 1, clock: clock)
+        clock.ms += 1000
+        ft.states.removeAll()
+
+        ft.onPeerLeft?(1)
+        coord.tick(deltaMs: 16)   // flush any trailing publish
+        let snap = ft.states.last
+        #expect(snap != nil, "the empty roster is published")
+        #expect((snap?["players"] as? [String: Any])?.isEmpty == true)
+        #expect(snap?["hostPeerIndex"] is NSNull, "no host left")
+    }
+
     // MARK: - Render-on-input
 
     // A controller input renders the applied state on the spot, without waiting for the
@@ -328,9 +396,14 @@ import Foundation
 
     // MARK: - Relay-link drop freezes the sim
 
-    @Test func relayDropPausesAndReconnectResumes() {
+    /// The link-drop pause lifts on the relay's `joined` reply (roster reconciled),
+    /// NOT on raw socket open: at `.open` the relay has not yet re-admitted us to the
+    /// room, so a GAME_RESUMED broadcast there can be dropped server-side and leave
+    /// controllers stuck behind their overlay. Mirrors Android
+    /// linkResumeWaitsForRoomRejoinNotSocketOpen.
+    @Test func relayDropPausesAndRejoinResumes() {
         let clock = Clock()
-        let (coord, _, fo) = makeLobby(players: 1, clock: clock)
+        let (coord, ft, fo) = makeLobby(players: 1, clock: clock)
         coord.remoteStartMatch(); runCountdown(coord)
         #expect(coord.state == .playing)
 
@@ -339,9 +412,78 @@ import Foundation
         coord.tick(deltaMs: 16); coord.tick(deltaMs: 16)
         #expect(fo.renderCount == frozen, "relay-down freezes the simulation")
 
+        // Socket back, handshake still outstanding: stay frozen.
         coord.setRelayConnected(true)
+        coord.tick(deltaMs: 16); coord.tick(deltaMs: 16)
+        #expect(fo.renderCount == frozen, "socket-open alone must not resume the simulation")
+        #expect(!ft.didBroadcast(MSG.gameResumed), "no GAME_RESUMED before we are back in the room")
+
+        // `joined` reconciles the roster: now the sim resumes and controllers are told.
+        ft.onJoined?("ROOM42", [1])
         coord.tick(deltaMs: 16)
-        #expect(fo.renderCount > frozen, "reconnect resumes the simulation")
+        #expect(fo.renderCount > frozen, "rejoin resumes the simulation")
+    }
+
+    /// The rejoin WELCOME is the controller's authority on pause state, so it must
+    /// report the state the display will actually be in — not a stale paused=true
+    /// chased by a GAME_RESUMED. A controller that latched the first and missed the
+    /// second sat on a pause overlay whose Continue did nothing: the display was no
+    /// longer paused, so resumeGame()'s `pausedManual` guard dropped the request and
+    /// no GAME_RESUMED was ever sent. (Reported from a live Wi-Fi drop.)
+    @Test func rejoinWelcomeReportsResumedNotStalePaused() {
+        let clock = Clock()
+        let (coord, ft, _) = makeLobby(players: 1, clock: clock)
+        coord.remoteStartMatch(); runCountdown(coord)
+        #expect(coord.state == .playing)
+
+        // Link drops: the sim freezes. No broadcast goes out — the relay is gone.
+        coord.setRelayConnected(false)
+        coord.tick(deltaMs: 16)
+        ft.sent.removeAll()
+
+        // Link returns and the relay answers the rejoin.
+        coord.setRelayConnected(true)
+        ft.onJoined?("ROOM42", [1])
+
+        let welcome = ft.sent.last { ($0.data["type"] as? String) == MSG.welcome }
+        #expect(welcome != nil, "the rejoin re-welcomes the survivor")
+        #expect(welcome?.data["paused"] as? Bool == false,
+                "WELCOME must not report the pause the display is lifting in the same breath")
+    }
+
+    /// The presence sweep re-arms on the relay's `joined` reply, NOT on socket open.
+    /// Until that reply the relay drops everything addressed to us, so no controller
+    /// can prove it is alive — sweeping there would flag the whole roster (and, with a
+    /// late joiner waiting, grace-return the match) for a fault that is entirely ours.
+    @Test func presenceSweepReArmsOnRejoinNotOnSocketOpen() {
+        let clock = Clock()
+        let (coord, ft, _) = makeLobby(players: 2, clock: clock)
+        coord.remoteStartMatch(); runCountdown(coord)
+        #expect(coord.state == .playing)
+        ft.onMessage?(1, ["type": "ping"])
+        ft.onMessage?(2, ["type": "ping"])
+
+        // Our socket drops, then comes back — but the relay hasn't answered our join.
+        // Push the clock far past the liveness timeout: a re-stamp at socket-open would
+        // only have covered the first livenessTimeoutMs of this window.
+        coord.setRelayConnected(false)
+        clock.ms += 30_000
+        coord.setRelayConnected(true)
+        coord.tick(deltaMs: 16); coord.tick(deltaMs: 16)
+        #expect(!coord.flow.isDisconnected(1), "socket-open alone must not re-arm the sweep")
+        #expect(!coord.flow.isDisconnected(2), "socket-open alone must not re-arm the sweep")
+        #expect(coord.state == .playing)
+
+        // `joined` reconciles the roster, re-stamping the survivors: sweep back on, clean.
+        ft.onJoined?("ROOM42", [1, 2])
+        coord.tick(deltaMs: 16)
+        #expect(!coord.flow.isDisconnected(1), "re-stamped by the roster reconcile")
+        #expect(!coord.flow.isDisconnected(2), "re-stamped by the roster reconcile")
+
+        // ...and it really is live again: silence from here does expire a controller.
+        clock.ms += 30_000
+        coord.tick(deltaMs: 16)
+        #expect(coord.flow.isDisconnected(1), "the sweep is live once we are back in the room")
     }
 
     // MARK: - The reported bug: START does nothing with no players joined

@@ -68,9 +68,9 @@ function handleControllerMessage(fromId, msg) {
         break;
     }
 
-    // Auto-resume after processing the message (e.g. after onHello sends
-    // WELCOME with paused state) so the controller gets proper state sync
-    // before the GAME_RESUMED broadcast.
+    // Auto-resume after processing the message, so the reconnecting controller
+    // has already been sent a snapshot describing the paused game before the
+    // resume publishes over the top of it.
     if (wasDisconnected && playerOrder.indexOf(fromId) >= 0) {
       // The reconnect already dropped flow's disconnect flag (markReconnected
       // above), so allParticipantsDisconnected is now false and the next
@@ -96,10 +96,10 @@ function cleanInboundName(raw) {
 
 // Preferred color carried on HELLO (the controller's persisted favorite).
 // Returns a valid, un-taken palette index or null. Mirrors onSetColor's
-// validation: silently skip collisions, the WELCOME/LOBBY_UPDATE carries the
-// truth either way. Honoring it here (instead of waiting for the controller's
-// post-WELCOME SET_COLOR reclaim) removes a full round trip during which both
-// the TV and the controller showed the default slot color.
+// validation: silently skip collisions, the room snapshot carries the truth
+// either way. Honoring it here (instead of waiting for the controller's
+// follow-up SET_COLOR reclaim) removes a full round trip during which both the
+// TV and the controller showed the default slot color.
 function helloPreferredColor(fromId, msg) {
   var idx = parseInt(msg.colorIndex, 10);
   if (isNaN(idx) || idx < 0 || idx >= PLAYER_COLORS.length) return null;
@@ -116,10 +116,13 @@ function onHello(fromId, msg) {
   // Player already registered (from peer_joined or reconnect)
   if (players.has(fromId)) {
     var existing = players.get(fromId);
+    // Their identity is authoritative from here on, not the placeholder
+    // peer_joined guessed. Their own controller renders itself once it sees
+    // this in the snapshot.
+    existing.helloSeen = true;
 
     // Update name. Empty submissions and legacy P1-P8 fallbacks resolve to
     // room-unique HX names; custom names stay as entered.
-    var prevName = existing.playerName;
     if (name || (msg.autoName === true && !claimedReconnect)) {
       // For the peer_joined-before-HELLO path, preserve the HX name already
       // assigned on the player's Map entry while excluding that entry from
@@ -127,83 +130,23 @@ function onHello(fromId, msg) {
       var requestedName = name || existing.playerName;
       existing.playerName = sanitizePlayerName(requestedName, fromId, msg.autoName === true);
     }
-    // Honor the preferred color before the WELCOME below is built, so it
-    // answers with the color the controller will actually keep. Applies on
-    // reconnects too, matching what the controller's reclaimPreferredColor
-    // (fired on every WELCOME) would have requested one round trip later.
+    // Honor the preferred color right away, so the snapshot we publish below
+    // already names the color the controller will actually keep — no round
+    // trip through the controller's reclaimPreferredColor.
     var preferredColor = helloPreferredColor(fromId, msg);
-    var colorChanged = preferredColor != null && existing.playerIndex !== preferredColor;
-    if (colorChanged) {
+    if (preferredColor != null && existing.playerIndex !== preferredColor) {
       existing.playerIndex = preferredColor;
-      // Retint the start button (and other host-tinted CTAs) in the same
-      // paint as the roster card. broadcastLobbyUpdate below also applies
-      // the tint, but its 400ms throttle turns the trailing call into a
-      // visible lag: the card recolors instantly, the button up to 400ms
-      // later. Idempotent; when the sender isn't the host it re-applies
-      // the host's unchanged color.
-      applyHostTint();
     }
-    // The host's name reaches other controllers only via LOBBY_UPDATE's
-    // hostName, and onPeerJoined already broadcast the auto HX- fallback. When
-    // the host's HELLO upgrades that to a real name (AC nickname applied after
-    // the peer_joined-before-HELLO registration), their "Waiting for <host>"
-    // banner is stale until we re-broadcast — maybeBroadcastHostChange only
-    // fires on a host *index* change, not a host *name* change.
-    var hostNameChanged = existing.playerName !== prevName
-      && fromId === getHostPeerIndex();
     updatePlayerList();
 
-    // Late joiner: registered via onPeerJoined during active game but never
-    // participated. Omit alive/paused so controller shows waiting screen.
-    var isLateJoiner = (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN)
-      && playerOrder.indexOf(fromId) < 0;
-
-    // Send welcome with current state
-    var hostId = getHostPeerIndex();
-    var hostPlayer = hostId != null ? players.get(hostId) : null;
-    var welcomeMsg = {
-      type: MSG.WELCOME,
-      playerName: existing.playerName,
-      colorIndex: existing.playerIndex,
-      playerCount: players.size,
-      roomState: roomState,
-      startLevel: existing.startLevel || 1,
-      isHost: fromId === hostId,
-      hostName: hostPlayer ? hostPlayer.playerName : null,
-      hostColorIndex: hostPlayer ? hostPlayer.playerIndex : null,
-      takenColorIndices: collectTakenColorIndices(),
-      displayMuted: !!muted
-    };
-    if (!isLateJoiner) {
-      welcomeMsg.alive = lastAliveState[fromId] != null ? lastAliveState[fromId] : true;
-      welcomeMsg.paused = paused;
-    }
-    if (roomState === ROOM_STATE.RESULTS && lastResults) {
-      welcomeMsg.results = lastResults.results;
-    }
-    party.sendTo(fromId, welcomeMsg);
-
-    // Refresh host info on the other controllers too.
-    //
-    // - Standard mode: a reconnecting ex-host reclaims their role.
-    //   onPeerLeft kept hostPeerIndex pinned through the disconnect, and
-    //   claimReconnectPeer rekeyed it from the old peerIndex to the new
-    //   one. The temp host (oldest-joined present player who was acting
-    //   via getHostPeerIndex's read-only fallback) cedes back, so the
-    //   broadcast flips their Return-to-lobby button off and the original
-    //   host's on.
-    // - AirConsole mode: getMasterPeerIndex() takes priority in
-    //   getHostPeerIndex, so the platform CAN re-elect the reconnecting
-    //   player as master if they were the AC master before. The dedup
-    //   sentinel inside maybeBroadcastHostChange suppresses the broadcast
-    //   when nothing actually changed.
-    maybeBroadcastHostChange();
-    if (claimedReconnect) {
-      broadcastLobbyUpdate();
-      if (autoPaused) checkAutoResume();
-    } else if (hostNameChanged || colorChanged) {
-      broadcastLobbyUpdate();
-    }
+    // One publish settles everything a HELLO can move: this controller's own
+    // identity (name, colour, level), the roster the others render, and the
+    // host — a reconnecting ex-host reclaims the role their pinned slot held
+    // through the disconnect (or, in AirConsole mode, whatever
+    // getMasterPeerIndex now dictates), so the temp host's Return-to-lobby
+    // button switches off in the same update.
+    publishRoomState();
+    if (claimedReconnect && autoPaused) checkAutoResume();
     return;
   }
 
@@ -225,42 +168,22 @@ function onHello(fromId, msg) {
   flow.addPlayer(fromId, {
     playerName: playerName,
     playerIndex: index,
-    startLevel: 1
+    startLevel: 1,
+    helloSeen: true
   });
   flow.onSeen(fromId, Date.now());
   if (roomState === ROOM_STATE.LOBBY) {
     playerOrder.push(fromId);
   }
 
-  var hostId = getHostPeerIndex();
-  var hostPlayer = hostId != null ? players.get(hostId) : null;
-  var welcomeMsg = {
-    type: MSG.WELCOME,
-    playerName: playerName,
-    colorIndex: index,
-    playerCount: players.size,
-    roomState: roomState,
-    startLevel: 1,
-    isHost: fromId === hostId,
-    hostName: hostPlayer ? hostPlayer.playerName : null,
-    hostColorIndex: hostPlayer ? hostPlayer.playerIndex : null,
-    takenColorIndices: collectTakenColorIndices(),
-    displayMuted: !!muted
-  };
-  if (roomState === ROOM_STATE.RESULTS && lastResults) {
-    welcomeMsg.results = lastResults.results;
-  }
-  party.sendTo(fromId, welcomeMsg);
-
   if (roomState === ROOM_STATE.LOBBY) {
-    broadcastLobbyUpdate();
     updatePlayerList();
     updateStartButton();
-  } else if (roomState === ROOM_STATE.RESULTS) {
-    // A new low-slot player can become host — notify existing controllers so
-    // their "Waiting for {name}" banners and Play Again buttons stay accurate.
-    broadcastLobbyUpdate();
   }
+  // Publishes in every room state: the joiner needs the snapshot to learn who
+  // they are and which screen to show, and a new low-slot player can take over
+  // as host, which moves the other controllers' "Waiting for {name}" banners.
+  publishRoomState();
 }
 
 function onInput(fromId, msg) {
@@ -308,17 +231,15 @@ function onSetLevel(fromId, msg) {
   player.startLevel = level;
   if (roomState === ROOM_STATE.LOBBY) {
     updatePlayerList();
-    // startLevel is a per-recipient field and the only thing that changed, so
-    // a full fanout would re-send unchanged payloads to every other player —
-    // rapid +/- taps were a main driver of the AirConsole 25 msgs/sec limit.
-    // Echo only to the sender (confirms the level if their optimistic local
-    // update raced a clamp or a reconnect).
-    sendLobbyUpdateTo(fromId);
+    // Held-finger control: the 500ms throttle collapses a burst of +/- taps
+    // into at most ~2 publishes per second no matter how fast they come, and
+    // the trailing one always carries the final level.
+    publishRoomStateSoon();
   }
 }
 
 // Re-claim a palette slot. Silently rejects collisions so concurrent picks
-// don't spam the sender with errors; the next LOBBY_UPDATE carries the truth.
+// don't spam the sender with errors; the next snapshot carries the truth.
 // Not state-gated: the controller's color picker is reachable only in the
 // lobby, so a mid-game pick can't occur in practice — no guard needed.
 function onSetColor(fromId, msg) {
@@ -335,18 +256,19 @@ function onSetColor(fromId, msg) {
 
   player.playerIndex = idx;
   updatePlayerList();
-  // Same rationale as onHello's colorChanged branch: don't let the host's
-  // start-button tint trail the card recolor by the broadcast throttle.
+  // Retint the host-tinted CTAs in the same paint as the roster card. The
+  // publish below applies the tint too, but on the throttled path that can be
+  // up to 500ms later — long enough to see the card recolor without the button.
   applyHostTint();
-  broadcastLobbyUpdate();
+  // Throttled like the level stepper: the picker overlay closes on the echoed
+  // colour, so the leading edge keeps a deliberate pick feeling instant while a
+  // flurry of picks still collapses to the last one.
+  publishRoomStateSoon();
 }
 
 // Live rename from an already-registered controller (e.g. an AirConsole profile
 // edit). Unlike SET_COLOR this is allowed in every state — including mid-game —
-// because it only relabels the player and never touches game state. It's the
-// lightweight counterpart to a HELLO: no WELCOME reply, so it can't trigger the
-// controller's reconnect-restore path (initTouchInput teardown, screen reset)
-// that a mid-game HELLO would.
+// because it only relabels the player and never touches game state.
 function onSetName(fromId, msg) {
   if (!players.has(fromId)) return;
   var player = players.get(fromId);
@@ -358,12 +280,7 @@ function onSetName(fromId, msg) {
   player.playerName = sanitizePlayerName(cleanInboundName(msg.name), fromId, false);
   if (player.playerName === prevName) return;
   updatePlayerList();
-  // The host's name reaches other controllers only via LOBBY_UPDATE's hostName,
-  // so refresh their "Waiting for <host>" banner when the host renames. A
-  // non-host rename only affects the TV roster (updatePlayerList above), which
-  // controllers don't mirror — skip the broadcast to stay under the controller
-  // message-rate limit.
-  if (fromId === getHostPeerIndex()) broadcastLobbyUpdate();
+  publishRoomState();
 }
 
 function cleanupPlayerInput(clientId) {

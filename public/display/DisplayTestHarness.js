@@ -583,7 +583,7 @@ function initScenario(opts) {
   //     idle on the welcome screen until ▶ starts the tour).
   // The countdown's 1s tick pace is gameplay timing and is never scaled.
   if (scenario === 'transitions') {
-    // Full party stub: startNewGame/returnToLobby/broadcastLobbyUpdate call
+    // Full party stub: startNewGame/returnToLobby/publishRoomState call
     // broadcast/sendTo (the host-only stub above covers just the tint).
     party = {
       broadcast: function() {},

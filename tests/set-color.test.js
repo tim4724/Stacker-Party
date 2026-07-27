@@ -2,7 +2,7 @@
 
 const { test, describe, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
-const { MSG, ROOM_STATE } = require('../public/shared/protocol');
+const { ROOM_STATE } = require('../public/shared/protocol');
 const { PLAYER_COLORS } = require('../public/shared/theme');
 const { generateAutoPlayerName } = require('./auto-name-helper');
 
@@ -17,29 +17,28 @@ const { generateAutoPlayerName } = require('./auto-name-helper');
 //     picker is reachable only in the lobby, so a mid-game pick can't occur in
 //     practice — the handler itself imposes no lock.
 //
-// broadcastLobbyUpdate mirrors the production broadcaster: its outgoing
-// takenColorIndices payload should reflect the post-swap state.
+// publishRoomState mirrors the production publisher: the roster in the
+// retained snapshot should reflect the post-swap state.
 // =====================================================================
 
 const PALETTE_SIZE = PLAYER_COLORS.length;
 
-function collectTakenColorIndices(players) {
-  var out = [];
-  for (const entry of players) out.push(entry[1].playerIndex);
-  out.sort(function(a, b) { return a - b; });
-  return out;
+// The colour slots claimed in a published snapshot, sorted — what a
+// controller derives as takenColorIndices.
+function takenIn(snap) {
+  return Object.keys(snap.players)
+    .map(function(id) { return snap.players[id].color; })
+    .sort(function(a, b) { return a - b; });
 }
 
-function broadcastLobbyUpdate(players, playerOrder, roomState, party) {
-  var takenColorIndices = collectTakenColorIndices(players);
+// Mirrors DisplayConnection.js#publishRoomState: one retained snapshot, not a
+// per-recipient fanout. Every controller reads the same roster out of it.
+function publishRoomState(players, playerOrder, roomState, party) {
+  var roster = {};
   for (const entry of players) {
-    party.sendTo(entry[0], {
-      type: MSG.LOBBY_UPDATE,
-      playerCount: players.size,
-      colorIndex: entry[1].playerIndex,
-      takenColorIndices: takenColorIndices
-    });
+    roster[entry[0]] = { name: entry[1].playerName, color: entry[1].playerIndex };
   }
+  party.setState({ roomState: roomState, players: roster });
 }
 
 function nextAvailableSlot(players) {
@@ -51,8 +50,8 @@ function nextAvailableSlot(players) {
 
 // Mirrors DisplayConnection.js#onPeerJoined — the display-side handler that
 // fires on the relay's peer_joined event (before the joiner's HELLO).
-// Claims the next free palette slot and, in LOBBY, broadcasts so existing
-// controllers can grey out the newly-taken swatch immediately.
+// Claims the next free palette slot and republishes so existing controllers
+// can grey out the newly-taken swatch immediately.
 function onPeerJoined(players, playerOrder, roomState, party, clientId) {
   if (players.has(clientId)) return;
   var index = nextAvailableSlot(players);
@@ -63,10 +62,8 @@ function onPeerJoined(players, playerOrder, roomState, party, clientId) {
     startLevel: 1,
     lastPingTime: Date.now()
   });
-  if (roomState === ROOM_STATE.LOBBY) {
-    playerOrder.push(clientId);
-    broadcastLobbyUpdate(players, playerOrder, roomState, party);
-  }
+  if (roomState === ROOM_STATE.LOBBY) playerOrder.push(clientId);
+  publishRoomState(players, playerOrder, roomState, party);
 }
 
 // Mirrors DisplayInput.js#onSetColor.
@@ -83,7 +80,7 @@ function onSetColor(players, playerOrder, roomState, party, fromId, msg) {
   }
 
   player.playerIndex = idx;
-  broadcastLobbyUpdate(players, playerOrder, roomState, party);
+  publishRoomState(players, playerOrder, roomState, party);
 }
 
 function seedPlayer(players, id, playerIndex) {
@@ -98,7 +95,7 @@ describe('Display: onSetColor', () => {
     playerOrder = [];
     roomState = ROOM_STATE.LOBBY;
     sent = [];
-    party = { sendTo: (to, msg) => { sent.push({ to, msg }); } };
+    party = { setState: (snap) => { sent.push(snap); } };
   });
 
   test('accepts an unclaimed color in LOBBY', () => {
@@ -107,10 +104,9 @@ describe('Display: onSetColor', () => {
 
     onSetColor(players, playerOrder, roomState, party, 'a', { colorIndex: 4 });
     assert.strictEqual(players.get('a').playerIndex, 4);
-    // One LOBBY_UPDATE fanout, taken reflects the new slot.
-    const lobbyMsgs = sent.filter(s => s.msg.type === MSG.LOBBY_UPDATE);
-    assert.ok(lobbyMsgs.length >= 1);
-    assert.deepStrictEqual(lobbyMsgs[0].msg.takenColorIndices, [4]);
+    // One publish, and its roster reflects the new slot.
+    assert.strictEqual(sent.length, 1);
+    assert.deepStrictEqual(takenIn(sent[0]), [4]);
   });
 
   test('rejects collision with another player', () => {
@@ -120,7 +116,7 @@ describe('Display: onSetColor', () => {
 
     onSetColor(players, playerOrder, roomState, party, 'a', { colorIndex: 3 });
     assert.strictEqual(players.get('a').playerIndex, 0, 'should not change on collision');
-    assert.strictEqual(sent.length, 0, 'no broadcast on rejection');
+    assert.strictEqual(sent.length, 0, 'no publish on rejection');
   });
 
   test('no-op if requesting the same color already held', () => {
@@ -157,7 +153,7 @@ describe('Display: onSetColor', () => {
 
     onSetColor(players, playerOrder, roomState, party, 'a', { colorIndex: 5 });
     assert.strictEqual(players.get('a').playerIndex, 5);
-    assert.ok(sent.some(s => s.msg.type === MSG.LOBBY_UPDATE), 'broadcasts the swap');
+    assert.deepStrictEqual(takenIn(sent[0]), [5], 'publishes the swap');
   });
 
   test('accepts a color change during COUNTDOWN', () => {
@@ -194,12 +190,10 @@ describe('Display: onSetColor', () => {
     assert.strictEqual(sent.length, 0);
   });
 
-  test('onPeerJoined broadcasts so existing controllers see the new slot as taken', () => {
-    // Regression: onPeerJoined used to claim the slot silently. The
-    // subsequent HELLO from the joiner takes onHello's reconnect branch
-    // (player already in Map) and does NOT broadcast, so Alice's picker
-    // would keep showing Bob's color as available until some unrelated
-    // LOBBY_UPDATE (e.g. a level change) finally refreshed it.
+  test('onPeerJoined publishes so existing controllers see the new slot as taken', () => {
+    // Regression: onPeerJoined used to claim the slot silently, so Alice's
+    // picker kept showing Bob's colour as available until some unrelated
+    // update (e.g. a level change) finally refreshed it.
     seedPlayer(players, 'alice', 0);
     playerOrder.push('alice');
     sent.length = 0;
@@ -207,21 +201,20 @@ describe('Display: onSetColor', () => {
     onPeerJoined(players, playerOrder, roomState, party, 'bob');
 
     assert.strictEqual(players.get('bob').playerIndex, 1, 'bob claims the next free slot');
-
-    const aliceUpdate = sent.find(s => s.to === 'alice' && s.msg.type === MSG.LOBBY_UPDATE);
-    assert.ok(aliceUpdate, 'alice receives a LOBBY_UPDATE when bob joins');
-    assert.deepStrictEqual(aliceUpdate.msg.takenColorIndices, [0, 1]);
+    assert.strictEqual(sent.length, 1, 'the join republishes');
+    assert.deepStrictEqual(takenIn(sent[0]), [0, 1]);
   });
 
-  test('LOBBY_UPDATE fanout tags each recipient with their own colorIndex', () => {
+  test('one snapshot serves every controller: each finds its own colour by peerIndex', () => {
     seedPlayer(players, 'a', 0);
     seedPlayer(players, 'b', 1);
     playerOrder.push('a', 'b');
 
     onSetColor(players, playerOrder, roomState, party, 'a', { colorIndex: 7 });
-    const byRecipient = new Map();
-    for (const s of sent) if (s.msg.type === MSG.LOBBY_UPDATE) byRecipient.set(s.to, s.msg.colorIndex);
-    assert.strictEqual(byRecipient.get('a'), 7);
-    assert.strictEqual(byRecipient.get('b'), 1);
+    // The old fanout sent one tagged message per recipient; the snapshot is a
+    // single object each controller indexes with its own peerIndex.
+    assert.strictEqual(sent.length, 1);
+    assert.strictEqual(sent[0].players['a'].color, 7);
+    assert.strictEqual(sent[0].players['b'].color, 1);
   });
 });

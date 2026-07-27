@@ -125,9 +125,17 @@ public final class DisplayCoordinator {
     private var pausedAuto = false          // every participant disconnected (silent)
     private var pausedConnection = false    // the display's OWN relay link is down
     private var paused: Bool { pausedManual || pausedAuto || pausedConnection }
-    // The display's own relay link is up. While it's down, controller traffic
-    // can't arrive, so the controller-liveness sweep must be skipped (every
-    // lastSeen is stale through no fault of the controllers).
+    /// The only pause a controller can act on. The auto- (everyone disconnected)
+    /// and connection (our own link down) pauses are display-internal: never
+    /// broadcast, self-clearing, and a controller shown either gets a Continue
+    /// that cannot work — resumeGame() ignores it because the display isn't
+    /// manually paused, so no GAME_RESUMED follows and the overlay never clears.
+    private var userVisiblePaused: Bool { pausedManual }
+    // True while we are IN the room, not merely holding an open socket. While it's
+    // false, controller traffic can't arrive, so the controller-liveness sweep must be
+    // skipped (every lastSeen is stale through no fault of the controllers). Cleared
+    // the moment the link drops (setRelayConnected), restored only by the relay's
+    // `created`/`joined` reply — see roomLinkRestored().
     private var relayConnected = true
 
     // Monotonic clock fed to PartyCore.frame(); only deltas matter, so it never
@@ -148,6 +156,13 @@ public final class DisplayCoordinator {
     var demoSeedOverride: UInt32?   // deterministic seed for HEXDEMO
     private var muted = false
     private let nowProvider: () -> Double    // wall-clock ms for liveness (injectable for tests)
+
+    // Retained-snapshot throttle (web _lastLobbyBroadcastAt / _lobbyBroadcastTimer).
+    private var lastSnapshotAt = -1e12
+    private var snapshotPending = false
+    /// Coalesce bursty republishes (join storms, colour picks, host churn) into at
+    /// most one leading + one trailing set_state per window. Web's value.
+    private static let lobbyBroadcastMinIntervalMs = 400.0
 
     // The single-threaded contract (class doc) is otherwise enforced by nothing:
     // a RelayClient built with a non-main callbackQueue would race the fields
@@ -233,6 +248,10 @@ public final class DisplayCoordinator {
         assertOwningThread()
         self.room = room
         self.instance = instance
+        // A fresh room has an empty roster, so there is nothing to re-stamp — but the
+        // sweep must come back on, or the room-gone recovery path (onRelayError ->
+        // recreateRoom) would leave liveness off for the rest of the session.
+        roomLinkRestored()
         let url = joinURL(room: room, instance: instance)
         output?.roomReady(room: room, joinURL: url, qrText: url)   // production QR == join URL
         output?.showScreen(.lobby)
@@ -274,6 +293,17 @@ public final class DisplayCoordinator {
             }
         }
         for id in goneIds { onPeerLeft(id) }
+        // BEFORE the WELCOMEs, not after: the roster is reconciled (so the
+        // all-disconnected guard sees post-reconcile truth) but sendWelcome reports
+        // `paused`, and that field is the controller's authority. Resuming afterwards
+        // makes every rejoin WELCOME say paused=true and then chase it with a
+        // GAME_RESUMED — and if a controller latches the first and misses the second
+        // it is stranded on a pause overlay whose Continue cannot help, because
+        // resumeGame() is gated on `pausedManual` and the display is no longer paused
+        // at all. Web onDisplayRejoined resumes before its WELCOME loop for the same
+        // reason. The GAME_RESUMED that connectionResume broadcasts is then merely
+        // redundant, which is the harmless direction.
+        roomLinkRestored()
         for p in flow.list() { sendWelcome(to: p.peerIndex, isLateJoiner: isLateJoiner(p.peerIndex)) }
     }
 
@@ -323,7 +353,12 @@ public final class DisplayCoordinator {
         switch flow.state {
         case .lobby:
             flow.removePlayer(index)
-            if flow.size > 0 { broadcastLobby() }
+            // Unconditional now that this is one retained set_state rather than a
+            // per-player fanout: when the LAST lobby player leaves there is nobody to
+            // fan out to, but the retained snapshot must stop naming a departed player
+            // (and a stale host) to the next (re)joiner. Web removeLobbyPlayer's
+            // else-branch publishes the empty roster for the same reason.
+            broadcastLobby()
         case .results:
             // Drop the leaver and return to the lobby once no connected participant
             // remains (late joiners don't count), mirroring the web RESULTS path.
@@ -490,7 +525,11 @@ public final class DisplayCoordinator {
     private func handleSetLevel(from: Int, msg: ControllerMessage) {
         guard let level = msg.level, (1...15).contains(level), let rec = flow.player(from) else { return }
         rec.startLevel = level
-        if flow.state == .lobby { sendLobbyUpdate(to: from); refreshDisplayLobby() }
+        // startLevel rides the retained roster snapshot like every other roster field,
+        // which is what let LOBBY_UPDATE go entirely. Cheaper than the targeted echo it
+        // replaces, too: the snapshot's 400ms leading+trailing throttle collapses a
+        // burst of +/- taps into ~2.5 publishes/sec however fast they come.
+        if flow.state == .lobby { broadcastLobby() }
     }
 
     private func handleSetColor(from: Int, msg: ControllerMessage) {
@@ -610,6 +649,7 @@ public final class DisplayCoordinator {
     public func tick(deltaMs rawDelta: Double) {
         assertOwningThread()
         renderedInputSinceTick = false   // new frame: re-arm render-on-input
+        flushPendingSnapshot()           // trailing edge of the set_state throttle
         let deltaMs = min(max(rawDelta, 0), Self.maxFrameDeltaMs)
         // The local demo has no controllers sending heartbeats, so keep its
         // synthetic players "seen" — otherwise the liveness sweep flags them
@@ -819,19 +859,38 @@ public final class DisplayCoordinator {
         let was = paused; pausedConnection = false; reconcilePause(wasPaused: was)
     }
 
-    /// Observe the display's relay link: freeze on drop, resume on reconnect, so a
-    /// recoverable outage doesn't KO players who can't send input meanwhile.
+    /// Observe the display's relay link. Only the DROP is actionable here: it freezes
+    /// the sim so it can't run blind, and closes the presence gate. The RESTORE
+    /// deliberately waits for the relay to answer our handshake — see
+    /// roomLinkRestored() — because a socket that is merely open is not yet back in
+    /// the room.
     public func setRelayConnected(_ connected: Bool) {
         assertOwningThread()
-        relayConnected = connected
-        if connected {
-            // Re-stamp present controllers so a >timeout outage doesn't instantly
-            // expire them on the first post-reconnect sweep.
-            flow.primeLiveness(nowProvider())
-            connectionResume()
-        } else {
-            connectionPause()
-        }
+        guard !connected else { return }
+        relayConnected = false
+        connectionPause()
+    }
+
+    /// The relay answered our handshake: we are back IN the room, so it will route
+    /// traffic to and from us again. Two things resume together here, both for the
+    /// same reason — socket `.open` is too early:
+    ///
+    /// - The presence sweep. Until this reply the relay drops everything addressed to
+    ///   us, so no controller can prove it is alive; re-stamping at `.open` instead
+    ///   buys only `livenessTimeoutMs` while the handshake deadline is twice that, so
+    ///   a slow `joined` expired the whole roster.
+    /// - The link-drop pause. Resuming at `.open` broadcasts GAME_RESUMED into a
+    ///   socket the relay has not yet re-admitted to the room, so the message can be
+    ///   dropped server-side and controllers stay stuck behind their overlay.
+    ///
+    /// Web ties both to the same reply (onDisplayRejoined), as does the Android port
+    /// (handleJoined). Callers re-stamp presence first where there is a roster to
+    /// re-stamp: onJoined's reconcile does it per surviving peer, onCreated's room is
+    /// empty. `connectionResume` no-ops unless a link drop actually paused us, so the
+    /// first `created` of a session is unaffected.
+    private func roomLinkRestored() {
+        relayConnected = true
+        connectionResume()
     }
 
     // MARK: - Presence / liveness
@@ -933,10 +992,56 @@ public final class DisplayCoordinator {
 
     // MARK: - Outbound builders
 
+    /// Publish ONE retained room snapshot via `set_state` instead of fanning out a
+    /// per-recipient LOBBY_UPDATE (web doBroadcastLobbyUpdate, PR #170): the relay
+    /// pushes it live to connected controllers and replays it to any (re)joining peer
+    /// right after `joined`, so N messages collapse to one set_state and a briefly
+    /// dropped controller catches up for free. Controllers derive playerCount, taken
+    /// colours, host name/colour and their own colour from the roster (controller
+    /// onState); per-recipient startLevel still goes out targeted (sendLobbyUpdate on
+    /// SET_LEVEL) and WELCOME stays authoritative for identity.
     private func broadcastLobby() {
-        for p in flow.list() { sendLobbyUpdate(to: p.peerIndex) }
-        refreshDisplayLobby()
         lastBroadcastedHostId = flow.host   // so maybeBroadcastHostChange won't re-fire
+        publishRoomSnapshot()
+        refreshDisplayLobby()
+    }
+
+    /// Throttled, leading + trailing: a call after a quiet period publishes
+    /// immediately; calls inside the window collapse into one trailing publish that
+    /// reads live state at fire time (the frame loop drives the trailing edge).
+    private func publishRoomSnapshot() {
+        let now = nowProvider()
+        guard now - lastSnapshotAt >= Self.lobbyBroadcastMinIntervalMs else {
+            snapshotPending = true
+            return
+        }
+        snapshotPending = false
+        lastSnapshotAt = now
+        transport.setState(buildRoomSnapshot())
+    }
+
+    /// Fire a pending trailing snapshot once the throttle window has elapsed.
+    private func flushPendingSnapshot() {
+        guard snapshotPending else { return }
+        let now = nowProvider()
+        guard now - lastSnapshotAt >= Self.lobbyBroadcastMinIntervalMs else { return }
+        snapshotPending = false
+        lastSnapshotAt = now
+        transport.setState(buildRoomSnapshot())
+    }
+
+    /// Web buildRoomSnapshot: roster keyed by peerIndex (display-facing name + colour
+    /// slot) plus the effective host. Globally-shared state only — per-recipient
+    /// fields (startLevel, alive, results, paused) stay on WELCOME / LOBBY_UPDATE.
+    /// Tiny (<1 KiB for a full room), well under the relay's 16 KiB cap.
+    private func buildRoomSnapshot() -> [String: Any] {
+        var roster: [String: Any] = [:]
+        for p in flow.list() {
+            roster[String(p.peerIndex)] = ["name": p.playerName, "color": p.colorSlot, "startLevel": p.startLevel]
+        }
+        // NSNull, not nil: JSONSerialization drops an `Any?` and the controller reads
+        // `hostPeerIndex == null` as "no host" (web sends an explicit null).
+        return ["hostPeerIndex": flow.host.map { $0 as Any } ?? NSNull(), "players": roster]
     }
 
     /// Rebuild the display's own lobby UI from the current roster. Needed because
@@ -946,24 +1051,6 @@ public final class DisplayCoordinator {
         output?.updateLobby(players: flow.list(), hostPeerIndex: flow.host)
     }
 
-    private func sendLobbyUpdate(to id: Int) {
-        guard let rec = flow.player(id) else { return }
-        let host = flow.host
-        // Build the payload omitting nil optionals rather than coercing them with
-        // `as Any` (Optional.none as Any is a JSONSerialization footgun that can
-        // throw and silently drop the whole message in sendEnvelope).
-        var msg: [String: Any] = [
-            "type": MSG.lobbyUpdate,
-            "playerCount": flow.size,
-            "startLevel": rec.startLevel,
-            "isHost": id == host,
-            "colorIndex": rec.colorSlot,
-            "takenColorIndices": flow.takenColorSlots(),
-        ]
-        if let hostName = host.flatMap({ flow.player($0)?.playerName }) { msg["hostName"] = hostName }
-        if let hostColor = host.flatMap({ flow.player($0)?.colorSlot }) { msg["hostColorIndex"] = hostColor }
-        transport.sendTo(id, msg)
-    }
 
     private func sendWelcome(to id: Int, isLateJoiner: Bool) {
         guard let rec = flow.player(id) else { return }
@@ -985,7 +1072,7 @@ public final class DisplayCoordinator {
         // Report the participant's real alive state (false once KO'd) so a
         // reconnecting eliminated phone stays on its game-over screen instead of
         // flipping back to the live playing UI (web parity: lastAliveState).
-        if !isLateJoiner { welcome["alive"] = aliveState[id] ?? true; welcome["paused"] = paused }
+        if !isLateJoiner { welcome["alive"] = aliveState[id] ?? true; welcome["paused"] = userVisiblePaused }
         // Replay the finished ranking to a controller landing on RESULTS.
         if flow.state == .results, let lastResults { welcome["results"] = lastResults.map { $0.payload } }
         transport.sendTo(id, welcome)

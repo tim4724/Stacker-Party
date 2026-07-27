@@ -16,18 +16,6 @@ function updateLevelDisplay() {
   if (levelPlusBtn) levelPlusBtn.disabled = startLevel >= 15;
 }
 
-// Apply host info from a WELCOME or LOBBY_UPDATE payload, then refresh any
-// visible host-gated UI. Safe to call on any screen.
-function applyHostInfo(data) {
-  if (data.isHost !== undefined) isHost = !!data.isHost;
-  if (data.hostName !== undefined) hostName = data.hostName;
-  if (data.hostColorIndex !== undefined) {
-    hostColor = data.hostColorIndex != null ? PLAYER_COLORS[data.hostColorIndex] : null;
-  }
-  updateHostVisibility();
-  if (typeof updateSettingsHostUI === 'function') updateSettingsHostUI();
-}
-
 function updateHostVisibility() {
   // Lobby: host sees Start button, non-host sees waiting banner.
   // Skip when waitingForNextGame — late joiners in an active game sit on
@@ -48,7 +36,7 @@ function updateHostVisibility() {
   // Results: host sees Play Again / New Game, non-host sees waiting banner.
   // The 1.5s anti-misclick delay is handled by the #gameover-buttons CSS
   // animation (pointer-events: none during the delay), so a concurrent
-  // LOBBY_UPDATE mid-delay can't flip the buttons to clickable early — the
+  // snapshot mid-delay can't flip the buttons to clickable early — the
   // animation restarts whenever the element transitions from hidden to shown.
   if (currentScreen === 'gameover') {
     if (isHost) {
@@ -101,11 +89,9 @@ if (document.fonts && document.fonts.ready) {
 
 // Shell-driven live rename, shared by the AirConsole profile-change path and
 // the Couch Games setName bridge. SET_NAME is a lightweight rename the display
-// accepts in any state (including mid-game) and answers with no WELCOME, so it
-// can't trigger the reconnect-restore path (initTouchInput teardown, screen
-// reset) that a re-sent HELLO would. The display relabels the roster and, if
-// we're the host, re-broadcasts so the other controllers' "Waiting for <host>"
-// banner updates.
+// accepts in any state (including mid-game). The display relabels the roster
+// and republishes, so the other controllers' "Waiting for <host>" banner
+// updates without this controller re-announcing itself.
 function applyShellRename(name) {
   if (!name || name === playerName) return;
   playerName = name;
@@ -304,10 +290,10 @@ function setAccentColorMeta(color) {
   if (meta) meta.setAttribute('content', color);
 }
 
-// Tint the JOIN button before WELCOME arrives. In AirConsole mode the
+// Tint the JOIN button before the first snapshot arrives. In AirConsole mode the
 // storage shim hydrates asynchronously, so the bootstrap re-invokes this
 // from its onLoad callback (see controller-airconsole.js). Skip when
-// playerColorIndex is already set: WELCOME established the authoritative
+// playerColorIndex is already set: the snapshot established the authoritative
 // color, and overriding it with the previous-session preference would
 // leave body --player-color stuck on a color the player no longer owns
 // (reclaimPreferredColor bails when the preferred color is taken).
@@ -321,7 +307,7 @@ function captureSessionColorIndex() {
 captureSessionColorIndex();
 
 // Save the player's current color so a future reload can reclaim it.
-// Called from onLobbyUpdate when userPickedColor is true (i.e. the user
+// Called from applyOwnIdentity when userPickedColor is true (i.e. the user
 // actually tapped a swatch — display-assigned defaults are ignored).
 function persistColorIndex(idx) {
   try { localStorage.setItem('stacker_color_index', String(idx)); }
@@ -331,9 +317,9 @@ function persistColorIndex(idx) {
 // If the persisted color differs from what the display just assigned, ask
 // for it back. Same-index is a no-op on the display side; collisions are
 // silently rejected. Skip when the preferred color is already taken
-// (takenColorIndices is set from the same WELCOME just before this fires).
-// Safe to re-call from controller-airconsole's onLoad: a no-op when the
-// shim was hydrated before WELCOME, and the actual reclaim path when not.
+// (takenColorIndices comes from the same snapshot, applied just before this).
+// Safe to re-call from controller-airconsole's onLoad: a no-op when the shim
+// hydrated before the first snapshot, and the actual reclaim path when not.
 function reclaimPreferredColor() {
   var preferred = readStoredColorIndex();
   if (preferred == null) return;
@@ -465,155 +451,81 @@ function renderHostBanner(element, key, name, color) {
 }
 
 // =====================================================================
-// Message Handlers
+// Room Snapshot — the single source of truth
 // =====================================================================
+//
+// The display publishes ONE retained snapshot (party.setState) describing the
+// whole room. The relay pushes it live to every connected controller and
+// replays it to a (re)joining peer right after `joined`, so "live update" and
+// "resync after a blip" are literally the same code path and cannot drift
+// apart. Everything this controller shows is derived from it — identity,
+// roster, host, pause, liveness, results, and which screen is up.
+//
+// Shape (see DisplayConnection.js#buildRoomSnapshot):
+//   { roomState, hostPeerIndex, paused, displayMuted, participants: [peerIndex],
+//     players: { <peerIndex>: { name, color, startLevel, alive, helloSeen } },
+//     results?: [...] }
+//
+// Applying it is idempotent: every step diffs against what is already
+// rendered, so a snapshot that only moved another player's colour must not
+// reset our screen, re-run the pause animation, or rebuild the touch handler
+// under the player's finger.
 
-function onWelcome(data) {
-  if (data.colorIndex != null) {
-    playerColorIndex = data.colorIndex;
-    playerColor = PLAYER_COLORS[data.colorIndex] || PLAYER_COLORS[0];
-    // Don't persist the display-assigned color here — it's not a user
-    // choice. Persisting it would clobber the previous-session preference
-    // before reclaimPreferredColor gets a chance to read it. The user's
-    // explicit picks are persisted in onLobbyUpdate (display echoes the
-    // accepted SET_COLOR back), which is the only signal that a colorIndex
-    // is actually the user's selection.
-  } else {
-    // Defensive: the display always sends colorIndex, but if it's missing
-    // keep whatever we already have. Only seed a default when nothing is
-    // set — and seed both pieces so the picker still finds a selected
-    // swatch on the next render.
-    if (playerColorIndex == null) playerColorIndex = 0;
-    if (!playerColor) playerColor = PLAYER_COLORS[0];
-  }
-  if (Array.isArray(data.takenColorIndices)) takenColorIndices = data.takenColorIndices;
-  // Mirror the three setProperty targets in onLobbyUpdate. WELCOME's
-  // colorIndex is the same value the controller already had (the display
-  // doesn't reassign on reconnect), so this is symmetry/defensiveness
-  // rather than a fix for an observed flash.
-  document.body.style.setProperty('--player-color', playerColor);
-  playerIdentity.style.setProperty('--player-color', playerColor);
-  gameScreen.style.setProperty('--player-color', playerColor);
-  setAccentColorMeta(playerColor);
-  playerCount = data.playerCount || 1;
-  gameCancelled = false;
-  waitingForNextGame = false;
-  // Try to reclaim the user's preferred color (saved on prior swatch
-  // taps). The display rejects same-idx as a no-op and silently rejects
-  // collisions, so this is safe to fire on every WELCOME — the next
-  // LOBBY_UPDATE settles the truth either way.
-  reclaimPreferredColor();
-  // Sync the display's mute state so a reconnecting / newly-promoted host
-  // sees the correct Game Music toggle without waiting for the next
-  // DISPLAY_MUTED broadcast.
-  if (typeof data.displayMuted === 'boolean' && typeof onDisplayMuted === 'function') {
-    onDisplayMuted({ muted: data.displayMuted });
-  }
-  // Set host state first so renderGameResults / showLobbyUI below see it.
-  // updateHostVisibility is a no-op on the current screen ('name' or mid-
-  // transition) thanks to its screen guards.
-  applyHostInfo(data);
+// Reclaiming the persisted colour is a once-per-session handshake, not state.
+// Reset on performDisconnect, which starts a genuinely new session.
+var reclaimedPreferredColor = false;
 
-  if (party) party.resetReconnectCount();
-  startPing();
-  clearTimeout(disconnectedTimer);
-  // Also covers the display returning while OUR socket was down: the rejoin
-  // delivers no peer_joined(0), so the WELCOME is what proves it's back.
-  clearTimeout(displayGoneTimer);
-  displayGoneTimer = null;
-  reconnectOverlay.classList.add('hidden');
-
-  playerName = data.playerName || playerName || t('player');
-  if (playerNameIsAuto) {
-    rememberAutoPlayerName(playerName);
-  }
-  playerNameEl.textContent = playerName;
-  touchArea.setAttribute('data-player-name', playerName);
-  if (data.startLevel != null) startLevel = data.startLevel;
-
-  if (data.roomState === 'playing' || data.roomState === 'countdown') {
-    // Late joiner (not in active game) — display omits alive field
-    if (data.alive === undefined) {
-      waitingForNextGame = true;
-      showLobbyUI();
-      startBtn.classList.add('hidden');
-      startBtn.disabled = true;
-      setWaitingActionMessage(t('game_in_progress'));
-      return;
-    }
-
-    gameScreen.classList.remove('dead');
-    gameScreen.classList.remove('paused');
-    gameScreen.classList.remove('countdown');
-    gameScreen.style.setProperty('--player-color', playerColor);
-    removeKoOverlay();
-    pauseBtn.classList.remove('hidden');
-    if (data.paused) {
-      onGamePaused();
-    } else {
-      pauseOverlay.classList.add('hidden');
-    }
-
-    if (data.alive === false) {
-      gameScreen.classList.add('dead');
-      showKoOverlay();
-    }
-
-    showScreen('game');
-    initTouchInput();
-    return;
-  }
-
-  if (data.roomState === 'results') {
-    var reconnectResults = data.results || lastGameResults;
-    if (reconnectResults) {
-      lastGameResults = reconnectResults;
-      renderGameResults(reconnectResults);
-      showScreen('gameover');
-      return;
-    }
-    // No results available (e.g. fresh controller joining mid-results) — fall through to lobby
-  }
-
-  showLobbyUI();
-}
-
-function onLobbyUpdate(data) {
-  playerCount = data.playerCount;
-  if (data.startLevel != null) startLevel = data.startLevel;
-  if (data.colorIndex != null && data.colorIndex !== playerColorIndex) {
-    playerColorIndex = data.colorIndex;
-    playerColor = PLAYER_COLORS[data.colorIndex] || playerColor;
-    document.body.style.setProperty('--player-color', playerColor);
-    playerIdentity.style.setProperty('--player-color', playerColor);
-    gameScreen.style.setProperty('--player-color', playerColor);
-    setAccentColorMeta(playerColor);
-    // Persist only user-initiated changes (see userPickedColor decl in
-    // ControllerState.js). Display-driven assignments — initial slot,
-    // reconnect-default, reclaim's own SET_COLOR confirmation — must
-    // not write here: in AC mode an early LOBBY_UPDATE landing before
-    // the persistent-data fetch resolves would clobber the previous-
-    // session preference in cache.
-    if (userPickedColor) persistColorIndex(data.colorIndex);
-  }
-  if (Array.isArray(data.takenColorIndices)) takenColorIndices = data.takenColorIndices;
-  applyHostInfo(data);
-  updateStartButton();
-  if (currentScreen === 'lobby') {
-    updateLevelDisplay();
-    renderColorPicker();
-  }
-}
-
-// Apply the display's retained room snapshot. The relay replays it right after
-// `joined` on (re)join and pushes it live on each host update, in place of the
-// old per-recipient LOBBY_UPDATE fanout. We derive the same global fields the
-// fanout used to carry and route them through onLobbyUpdate's tested apply
-// path. Per-recipient identity (own name, alive, results, screen routing) is
-// owned by WELCOME, which stays authoritative; onState never routes screens.
 function onState(snap) {
   if (!snap || typeof snap !== 'object' || !snap.players) return;
   var roster = snap.players;
+  var mine = (peerIndex != null) ? roster[peerIndex] : null;
+  // The display doesn't know us: it restarted with an empty roster, or our row
+  // is still the placeholder peer_joined created before our HELLO landed (name
+  // and colour guessed — rendering it would flash a wrong identity and correct
+  // itself a round trip later). Nothing here is ours yet, and crucially this is
+  // NOT proof our session survived — leave the display-gone bail timer armed
+  // and stay on whatever screen we're on.
+  if (!mine || mine.helloSeen === false) return;
+
+  noteDisplayAlive();
+  applyRoster(snap, roster);
+  applyOwnIdentity(mine);
+  if (typeof snap.displayMuted === 'boolean' && typeof onDisplayMuted === 'function') {
+    onDisplayMuted({ muted: snap.displayMuted });
+  }
+  routeToRoomState(snap, mine);
+  // After routing: every host-gated surface (Start button, results banner,
+  // pause-overlay Return-to-lobby, settings mute row) is screen-dependent.
+  updateHostVisibility();
+  if (typeof updateSettingsHostUI === 'function') updateSettingsHostUI();
+
+  if (!reclaimedPreferredColor) {
+    reclaimedPreferredColor = true;
+    // The display rejects a same-index or colliding request silently, and the
+    // next snapshot carries the truth either way.
+    reclaimPreferredColor();
+  }
+}
+
+// A snapshot that names us proves the display is alive AND still holds this
+// session — exactly what WELCOME used to prove, so it clears the same timers
+// and overlays. Nothing else does: an empty-roster snapshot is filtered out
+// above precisely so a restarted display can't cancel our bail.
+function noteDisplayAlive() {
+  gameCancelled = false;
+  if (party) party.resetReconnectCount();
+  clearTimeout(disconnectedTimer);
+  clearTimeout(displayGoneTimer);
+  displayGoneTimer = null;
+  reconnectOverlay.classList.add('hidden');
+  // onDisplayGone stops pings while the display's relay slot is empty; it's
+  // back, so resume. Guarded so an ordinary snapshot doesn't keep resetting
+  // the pong deadline and mask a genuinely bad link.
+  if (!pingTimer) startPing();
+}
+
+// Everything derived from the roster as a whole rather than from our own row.
+function applyRoster(snap, roster) {
   var ids = Object.keys(roster);
   var colors = [];
   for (var i = 0; i < ids.length; i++) {
@@ -621,46 +533,143 @@ function onState(snap) {
     if (typeof c === 'number') colors.push(c);
   }
   colors.sort(function(a, b) { return a - b; });
+  playerCount = ids.length;
+  takenColorIndices = colors;
+
   var hostIdx = snap.hostPeerIndex;
   var hostEntry = (hostIdx != null) ? roster[hostIdx] : null;
-  // Our own roster entry is absent until our HELLO lands on the display; until
-  // then colorIndex is undefined and onLobbyUpdate's `!= null` guard skips it,
-  // so WELCOME settles our identity. After that, the snapshot carries our
-  // display-accepted color (e.g. confirming a SET_COLOR pick).
-  var mine = (peerIndex != null) ? roster[peerIndex] : null;
-  onLobbyUpdate({
-    playerCount: ids.length,
-    colorIndex: mine ? mine.color : undefined,
-    takenColorIndices: colors,
-    // isHost is derived locally from the host pointer; WELCOME overrides with
-    // the authoritative value on (re)join. undefined (pre-join) leaves it.
-    isHost: (peerIndex != null && hostIdx != null) ? (peerIndex === hostIdx) : undefined,
-    hostName: hostEntry ? hostEntry.name : null,
-    hostColorIndex: hostEntry ? hostEntry.color : null
-  });
+  isHost = hostIdx != null && peerIndex === hostIdx;
+  hostName = hostEntry ? hostEntry.name : null;
+  hostColor = (hostEntry && hostEntry.color != null) ? PLAYER_COLORS[hostEntry.color] : null;
+  updateStartButton();
 }
 
-function onGameStart() {
-  ControllerAudio.tick();
-  lastLines = 0;
-  // Clear any stale pause-self state from the previous round. If GAME_END
-  // raced the relay's GAME_PAUSED echo, selfPausing could still be true
-  // here and wrongly suppress "Paused by X" in the next round.
-  selfPausing = false;
-  clearTimeout(selfPausingTimer);
-  gameScreen.classList.remove('dead');
-  gameScreen.classList.remove('paused');
-  gameScreen.classList.remove('countdown');
-  gameScreen.style.setProperty('--player-color', playerColor);
-  removeKoOverlay();
-  reconnectOverlay.classList.add('hidden');
-  pauseOverlay.classList.add('hidden');
-  pauseBtn.disabled = false;
-  pauseBtn.classList.remove('hidden');
-  touchArea.setAttribute('data-player-name', playerName);
-  showScreen('game');
-  initTouchInput();
+// Our own row: name, colour, start level.
+function applyOwnIdentity(mine) {
+  if (mine.name && mine.name !== playerName) {
+    playerName = mine.name;
+    if (playerNameIsAuto) rememberAutoPlayerName(playerName);
+    applyLocalPlayerName();
+  }
+  if (typeof mine.color === 'number' && mine.color !== playerColorIndex) {
+    playerColorIndex = mine.color;
+    playerColor = PLAYER_COLORS[mine.color] || PLAYER_COLORS[0];
+    document.body.style.setProperty('--player-color', playerColor);
+    playerIdentity.style.setProperty('--player-color', playerColor);
+    gameScreen.style.setProperty('--player-color', playerColor);
+    setAccentColorMeta(playerColor);
+    // Persist only user-initiated changes (see userPickedColor in
+    // ControllerState.js). Display-driven assignments — initial slot,
+    // reconnect default, reclaim's own confirmation — must not write here: in
+    // AC mode an early snapshot landing before the persistent-data fetch
+    // resolves would clobber the previous-session preference in cache.
+    if (userPickedColor) persistColorIndex(mine.color);
+  }
+  if (mine.startLevel != null) startLevel = mine.startLevel;
 }
+
+// The one place a screen is chosen.
+function routeToRoomState(snap, mine) {
+  var inGame = snap.roomState === 'playing' || snap.roomState === 'countdown';
+  var participant = inGame && Array.isArray(snap.participants)
+    && snap.participants.indexOf(peerIndex) >= 0;
+  // In the roster but not in the running game: we joined late and sit in the
+  // lobby behind the "game in progress" banner until the next round.
+  waitingForNextGame = inGame && !participant;
+
+  if (participant) return enterGameScreen(snap, mine);
+  // A fresh controller can land on RESULTS before the display has a ranking to
+  // show (it cleared one on the way to a new game) — the lobby is the honest
+  // fallback there.
+  if (snap.roomState === 'results' && snap.results) return enterResultsScreen(snap.results);
+  return enterLobbyScreen();
+}
+
+function enterGameScreen(snap, mine) {
+  var entering = currentScreen !== 'game';
+  var wasCounting = gameScreen.classList.contains('countdown');
+  var counting = snap.roomState === 'countdown';
+  var alive = mine.alive !== false;
+
+  if (entering) {
+    lastLines = 0;
+    // Stale pause-self state from a previous round would wrongly suppress
+    // "Paused by X" in this one.
+    selfPausing = false;
+    clearTimeout(selfPausingTimer);
+    gameScreen.classList.remove('dead');
+    gameScreen.classList.remove('paused');
+    removeKoOverlay();
+    pauseOverlay.classList.add('hidden');
+    reconnectOverlay.classList.add('hidden');
+    gameScreen.style.setProperty('--player-color', playerColor);
+    touchArea.setAttribute('data-player-name', playerName || t('player'));
+    pauseBtn.disabled = false;
+    pauseBtn.classList.remove('hidden');
+    showScreen('game');
+  }
+
+  gameScreen.classList.toggle('countdown', counting);
+
+  if (alive) {
+    gameScreen.classList.remove('dead');
+    removeKoOverlay();
+  } else if (!gameScreen.classList.contains('dead')) {
+    gameScreen.classList.add('dead');
+    showKoOverlay();
+  }
+
+  // Diffed against the DOM so an unrelated snapshot never replays the overlay
+  // animation, and so a reconnect straight into a paused game still gets it.
+  if (!!snap.paused !== gameScreen.classList.contains('paused')) {
+    if (snap.paused) onGamePaused();
+    else onGameResumed();
+  }
+
+  // Arm input when the game actually goes live — on the countdown -> playing
+  // transition, or on entry if we're already playing (mid-game reconnect).
+  // Never mid-game: initTouchInput destroys and rebuilds the handler.
+  if (!counting && (!touchInput || wasCounting)) {
+    if (wasCounting) ControllerAudio.tick();
+    initTouchInput();
+  }
+}
+
+function enterResultsScreen(results) {
+  lastGameResults = results;
+  // Re-rendering on every snapshot would restart the row animations; a host
+  // change only needs the banner, which updateHostVisibility refreshes.
+  if (currentScreen === 'gameover') return;
+  // Leaving settings open on top of the results would block them.
+  closeSettingsOverlay();
+  renderGameResults(results);
+  showScreen('gameover');
+}
+
+function enterLobbyScreen() {
+  if (currentScreen !== 'lobby') {
+    gameScreen.classList.remove('dead');
+    gameScreen.classList.remove('paused');
+    // Also clear 'countdown': a round abandoned mid-countdown would otherwise
+    // leave it set, and enterGameScreen reads it as "we were counting down"
+    // when deciding whether the game just went live.
+    gameScreen.classList.remove('countdown');
+    pauseOverlay.classList.add('hidden');
+    showLobbyUI();
+  } else {
+    updateLevelDisplay();
+    renderColorPicker();
+  }
+  if (waitingForNextGame) {
+    startBtn.classList.add('hidden');
+    startBtn.disabled = true;
+    setWaitingActionMessage(t('game_in_progress'));
+  }
+}
+
+// =====================================================================
+// Message Handlers — per-player game telemetry only
+// =====================================================================
 
 function onPlayerState(data) {
   if (!touchInput) {
@@ -677,15 +686,6 @@ function onPlayerState(data) {
     gameScreen.classList.add('dead');
     showKoOverlay();
   }
-}
-
-function onGameEnd(data) {
-  lastGameResults = data.results;
-  // Close the settings popup if it was open — leaving it visible on top of
-  // the gameover screen would block the results UI.
-  closeSettingsOverlay();
-  renderGameResults(data.results);
-  showScreen('gameover');
 }
 
 // =====================================================================

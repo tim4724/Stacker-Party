@@ -13,11 +13,10 @@ const { generateAutoPlayerName, sanitizePlayerName } = require('./auto-name-help
 //   1. relay peer_joined -> DisplayConnection.js#onPeerJoined registers the
 //      player with an HX fallback name and the default slot color.
 //   2. The controller's HELLO carries { name, colorIndex } (the persisted
-//      preferred color). DisplayInput.js#onHello applies both and broadcasts
-//      when the color changed.
-//   3. WELCOME already answers with the honored color, so the controller's
-//      reclaimPreferredColor SET_COLOR round trip no-ops and the controller
-//      never renders the default slot color.
+//      preferred color). DisplayInput.js#onHello applies both and publishes.
+//   3. The published snapshot already names the honored color, so the
+//      controller's reclaimPreferredColor SET_COLOR round trip no-ops and the
+//      controller never renders the default slot color.
 // =====================================================================
 
 const PALETTE_SIZE = PLAYER_COLORS.length;
@@ -29,21 +28,29 @@ function nextAvailableSlot(players) {
   return -1;
 }
 
-function broadcastLobbyUpdate(room) {
-  var taken = [];
-  for (const entry of room.players) taken.push(entry[1].playerIndex);
-  taken.sort(function(a, b) { return a - b; });
+// Mirrors DisplayConnection.js#publishRoomState — one retained snapshot every
+// controller reads, in place of the old per-recipient fanout.
+function publishRoomState(room) {
+  var roster = {};
   for (const entry of room.players) {
-    room.sent.push({
-      to: entry[0],
-      msg: {
-        type: MSG.LOBBY_UPDATE,
-        playerCount: room.players.size,
-        colorIndex: entry[1].playerIndex,
-        takenColorIndices: taken
-      }
-    });
+    roster[entry[0]] = {
+      name: entry[1].playerName,
+      color: entry[1].playerIndex,
+      helloSeen: entry[1].helloSeen !== false
+    };
   }
+  room.published.push(roster);
+}
+
+// The colour slots claimed in a published snapshot, sorted.
+function takenIn(roster) {
+  return Object.keys(roster)
+    .map(function(id) { return roster[id].color; })
+    .sort(function(a, b) { return a - b; });
+}
+
+function lastPublished(room) {
+  return room.published[room.published.length - 1];
 }
 
 // Mirrors DisplayConnection.js#onPeerJoined (roster registration only).
@@ -54,12 +61,13 @@ function onPeerJoined(room, clientId) {
   room.players.set(clientId, {
     playerName: generateAutoPlayerName(room.players, clientId),
     playerIndex: index,
-    startLevel: 1
+    startLevel: 1,
+    // Placeholder until the HELLO lands: the joiner's own controller ignores
+    // its row while this is false, so it never renders a guessed identity.
+    helloSeen: false
   });
-  if (room.roomState === ROOM_STATE.LOBBY) {
-    room.playerOrder.push(clientId);
-    broadcastLobbyUpdate(room);
-  }
+  if (room.roomState === ROOM_STATE.LOBBY) room.playerOrder.push(clientId);
+  publishRoomState(room);
 }
 
 // Mirrors DisplayInput.js#helloPreferredColor.
@@ -78,18 +86,18 @@ function onHello(room, fromId, msg) {
 
   if (room.players.has(fromId)) {
     var existing = room.players.get(fromId);
+    existing.helloSeen = true;
     if (name || msg.autoName === true) {
       existing.playerName = sanitizePlayerName(
         name || existing.playerName, room.players, fromId, msg.autoName === true);
     }
     var preferredColor = helloPreferredColor(room, fromId, msg);
-    var colorChanged = preferredColor != null && existing.playerIndex !== preferredColor;
-    if (colorChanged) existing.playerIndex = preferredColor;
-    room.sent.push({
-      to: fromId,
-      msg: { type: MSG.WELCOME, playerName: existing.playerName, colorIndex: existing.playerIndex }
-    });
-    if (colorChanged) broadcastLobbyUpdate(room);
+    if (preferredColor != null && existing.playerIndex !== preferredColor) {
+      existing.playerIndex = preferredColor;
+    }
+    // Unconditional: this publish is also what tells the joiner who they are,
+    // so it must go out even when the colour did not move.
+    publishRoomState(room);
     return;
   }
 
@@ -97,28 +105,17 @@ function onHello(room, fromId, msg) {
   var index = helloPreferredColor(room, fromId, msg);
   if (index == null) index = nextAvailableSlot(room.players);
   if (index < 0) {
-    room.sent.push({ to: fromId, msg: { type: MSG.ERROR, message: 'Room is full' } });
+    room.errors.push({ to: fromId, message: 'Room is full' });
     return;
   }
   room.players.set(fromId, {
     playerName: sanitizePlayerName(name, room.players, fromId, msg.autoName === true),
     playerIndex: index,
-    startLevel: 1
+    startLevel: 1,
+    helloSeen: true
   });
   if (room.roomState === ROOM_STATE.LOBBY) room.playerOrder.push(fromId);
-  room.sent.push({
-    to: fromId,
-    msg: { type: MSG.WELCOME, playerName: room.players.get(fromId).playerName, colorIndex: index }
-  });
-  broadcastLobbyUpdate(room);
-}
-
-function lobbyUpdatesTo(room, id) {
-  return room.sent.filter(function(s) { return s.to === id && s.msg.type === MSG.LOBBY_UPDATE; });
-}
-
-function welcomeTo(room, id) {
-  return room.sent.find(function(s) { return s.to === id && s.msg.type === MSG.WELCOME; });
+  publishRoomState(room);
 }
 
 describe('Display: preferred color on HELLO', () => {
@@ -129,65 +126,74 @@ describe('Display: preferred color on HELLO', () => {
       players: new Map(),
       playerOrder: [],
       roomState: ROOM_STATE.LOBBY,
-      sent: [],
+      published: [],
+      errors: [],
     };
   });
 
   test('preferred color replaces the default slot for a peer_joined-registered player', () => {
     onPeerJoined(room, 'p1');
     assert.strictEqual(room.players.get('p1').playerIndex, 0, 'default slot before HELLO');
-    room.sent = [];
+    // The placeholder publish is flagged, so p1's controller ignores it and
+    // never paints the default slot colour.
+    assert.strictEqual(lastPublished(room)['p1'].helloSeen, false);
+    room.published = [];
 
     onHello(room, 'p1', { type: MSG.HELLO, name: 'Alice', colorIndex: 5 });
     assert.strictEqual(room.players.get('p1').playerIndex, 5);
-    assert.strictEqual(welcomeTo(room, 'p1').msg.colorIndex, 5,
-      'WELCOME answers with the honored color, so the reclaim SET_COLOR no-ops');
+    const row = lastPublished(room)['p1'];
+    assert.strictEqual(row.helloSeen, true);
+    assert.strictEqual(row.color, 5,
+      'the first snapshot p1 acts on already has the honored color, so the reclaim SET_COLOR no-ops');
   });
 
   test('taken preferred color keeps the assigned slot', () => {
     room.players.set('a', { playerName: 'A', playerIndex: 5, startLevel: 1 });
     onPeerJoined(room, 'b');
-    room.sent = [];
+    room.published = [];
 
     onHello(room, 'b', { type: MSG.HELLO, name: 'Bob', colorIndex: 5 });
     assert.strictEqual(room.players.get('b').playerIndex, 0, 'collision falls back to the slot');
-    assert.strictEqual(welcomeTo(room, 'b').msg.colorIndex, 0);
-    assert.strictEqual(lobbyUpdatesTo(room, 'a').length, 0, 'no broadcast on rejection');
+    assert.strictEqual(lastPublished(room)['b'].color, 0);
+    assert.deepStrictEqual(takenIn(lastPublished(room)), [0, 5], 'a keeps slot 5');
   });
 
   test('invalid colorIndex values are ignored', () => {
     onPeerJoined(room, 'p1');
-    room.sent = [];
+    room.published = [];
 
     for (const bad of [-1, PALETTE_SIZE, 99, 'red', null, undefined]) {
       onHello(room, 'p1', { type: MSG.HELLO, name: 'Alice', colorIndex: bad });
     }
     assert.strictEqual(room.players.get('p1').playerIndex, 0);
-    assert.strictEqual(lobbyUpdatesTo(room, 'p1').length, 0, 'no broadcast without a change');
+    assert.deepStrictEqual(takenIn(lastPublished(room)), [0], 'slot unchanged');
   });
 
   test('HELLO-beats-peer_joined path assigns the preferred color directly', () => {
     onHello(room, 'p1', { type: MSG.HELLO, name: 'Alice', colorIndex: 3 });
     assert.strictEqual(room.players.get('p1').playerIndex, 3);
-    assert.strictEqual(welcomeTo(room, 'p1').msg.colorIndex, 3);
+    assert.strictEqual(lastPublished(room)['p1'].color, 3);
+    assert.strictEqual(lastPublished(room)['p1'].helloSeen, true);
   });
 
-  test('preferred color equal to the assigned slot produces no extra broadcast', () => {
+  // Every HELLO publishes, even when nothing about the colour moved: the
+  // snapshot is what flips helloSeen and hands the joiner its identity.
+  test('a HELLO whose preferred color matches the assigned slot still publishes', () => {
     onPeerJoined(room, 'p1');
-    room.sent = [];
+    room.published = [];
 
     onHello(room, 'p1', { type: MSG.HELLO, name: 'Alice', colorIndex: 0 });
-    assert.strictEqual(lobbyUpdatesTo(room, 'p1').length, 0);
+    assert.strictEqual(room.published.length, 1);
+    assert.strictEqual(lastPublished(room)['p1'].helloSeen, true);
   });
 
-  test('honored color broadcasts so existing controllers grey out the swatch', () => {
+  test('honored color is published so existing controllers grey out the swatch', () => {
     room.players.set('a', { playerName: 'A', playerIndex: 1, startLevel: 1 });
     onPeerJoined(room, 'b');
-    room.sent = [];
+    room.published = [];
 
     onHello(room, 'b', { type: MSG.HELLO, name: 'Bob', colorIndex: 6 });
-    const updates = lobbyUpdatesTo(room, 'a');
-    assert.strictEqual(updates.length, 1, 'a learns that slot 6 got claimed');
-    assert.deepStrictEqual(updates[0].msg.takenColorIndices, [1, 6]);
+    assert.strictEqual(room.published.length, 1, 'a learns that slot 6 got claimed');
+    assert.deepStrictEqual(takenIn(lastPublished(room)), [1, 6]);
   });
 });

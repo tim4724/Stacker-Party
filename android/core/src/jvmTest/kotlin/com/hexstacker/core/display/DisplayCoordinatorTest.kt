@@ -366,6 +366,135 @@ class DisplayCoordinatorTest {
         } finally { bridge.close() }
     }
 
+    /** The rejoin WELCOME is the controller's authority on pause state, so it must report
+     *  the state the display will actually be in — not a stale paused=true chased by a
+     *  GAME_RESUMED. A controller that latched the first and missed the second sat on a
+     *  pause overlay whose Continue did nothing: the display was no longer paused, so
+     *  resumeGame()'s manual-pause guard dropped the request and no GAME_RESUMED followed.
+     *  (Reported from a live Wi-Fi drop on tvOS; Android had the same ordering.) */
+    @Test
+    fun rejoinWelcomeReportsResumedNotStalePaused() = runBlocking {
+        val bridge = EngineBridge.create(bundle())
+        try {
+            val t = FakeTransport(); val out = FakeOutput()
+            val coord = DisplayCoordinator(t, out, realFactory(bridge), seedProvider = { 0xBADCAFEL })
+            coord.start()
+            toPlaying(coord, t, listOf(1))
+            assertEquals(RoomState.PLAYING, coord.state)
+
+            // Link drops mid-game: the sim freezes, nothing can be broadcast.
+            coord.onLinkStateChanged(RelayTransport.ConnectionState.RECONNECTING); coord.awaitIdle()
+            t.sent.clear()
+
+            // Link returns and the relay answers the rejoin.
+            coord.onLinkStateChanged(RelayTransport.ConnectionState.OPEN); coord.awaitIdle()
+            t.joined("R", listOf(1)); coord.awaitIdle()
+
+            val welcome = t.sent.last { it.first == 1 && type(it.second) == Msg.WELCOME }.second
+            assertEquals(
+                false,
+                (welcome["paused"] as? JsonPrimitive)?.content?.toBoolean(),
+                "WELCOME must not report the pause the display is lifting in the same breath",
+            )
+            coord.stop()
+        } finally { bridge.close() }
+    }
+
+    /** The display's OWN link being down is not the controllers' fault: their silence
+     *  must not expire them (and, with a late joiner waiting, grace-return the match). */
+    @Test
+    fun livenessSweepIsSuppressedWhileTheDisplayLinkIsDown() = runBlocking {
+        val bridge = EngineBridge.create(bundle())
+        try {
+            var now = 0.0
+            val t = FakeTransport(); val out = FakeOutput()
+            val coord = DisplayCoordinator(t, out, realFactory(bridge), seedProvider = { 0xBADCAFEL })
+            coord.clock = { now }
+            coord.start()
+            toPlaying(coord, t, listOf(1, 2))
+            t.deliver(1, simple(Msg.PING)); t.deliver(2, simple(Msg.PING)); coord.awaitIdle()
+            t.deliver(3, hello("Zoe")); coord.awaitIdle() // late joiner -> arms the grace path
+            assertTrue(coord.flow.hasLateJoiners())
+
+            // Our socket drops. No controller traffic can reach us for the whole reconnect
+            // budget (~13s of capped backoff), so every lastSeen goes stale.
+            coord.onLinkStateChanged(RelayTransport.ConnectionState.RECONNECTING); coord.awaitIdle()
+            now = 12_000.0
+            coord.tick(1100.0); coord.tick(1100.0)
+            assertFalse(coord.flow.isDisconnected(1), "our outage must not expire a controller")
+            assertFalse(coord.flow.isDisconnected(2), "our outage must not expire a controller")
+            assertEquals(RoomState.PLAYING, coord.state, "the match is not grace-returned to the lobby")
+
+            // Socket back, but the relay hasn't answered our join yet: it still drops
+            // everything addressed to us, so the sweep must STAY off. Re-arming here (and
+            // leaning on a re-stamp to cover the gap) only buys LIVENESS_TIMEOUT_MS, while
+            // the handshake deadline is twice that — a slow `joined` would expire the room.
+            coord.onLinkStateChanged(RelayTransport.ConnectionState.OPEN); coord.awaitIdle()
+            now = 24_000.0
+            coord.tick(1100.0); coord.tick(1100.0)
+            assertFalse(coord.flow.isDisconnected(1), "socket-open alone must not re-arm the sweep")
+            assertFalse(coord.flow.isDisconnected(2), "socket-open alone must not re-arm the sweep")
+            assertEquals(RoomState.PLAYING, coord.state)
+
+            // The `joined` reply reconciles the roster and re-stamps the survivors, so the
+            // sweep comes back on with clean presence.
+            t.joined("R", listOf(1, 2, 3)); coord.awaitIdle()
+            coord.tick(1100.0)
+            assertFalse(coord.flow.isDisconnected(1), "re-stamped by the roster reconcile")
+            assertFalse(coord.flow.isDisconnected(2), "re-stamped by the roster reconcile")
+
+            // ...and it really is on again: silence from here does expire a controller.
+            now = 30_000.0
+            coord.tick(1100.0)
+            assertTrue(coord.flow.isDisconnected(1), "the sweep is live once we are back in the room")
+
+            coord.stop()
+        } finally { bridge.close() }
+    }
+
+    /** An in-session controller reconnect lands on the SAME relay slot, so the relay
+     *  re-emits peer_joined for a peer we already know. Re-registering it would reset
+     *  the kept name/colour and, in a full room, bounce a legitimate player. */
+    @Test
+    fun duplicatePeerJoinedKeepsIdentityAndNeverBouncesRoomFull() = runBlocking {
+        val bridge = EngineBridge.create(bundle())
+        try {
+            val t = FakeTransport(); val out = FakeOutput()
+            val coord = DisplayCoordinator(t, out, realFactory(bridge), seedProvider = { 0xBADCAFEL })
+            coord.start()
+            t.created("R", null); coord.awaitIdle()
+            t.peerJoined(1); coord.awaitIdle()
+            t.deliver(1, hello("Alex")); coord.awaitIdle()
+            t.deliver(1, buildJsonObject { put("type", Msg.SET_COLOR); put("colorIndex", 5) })
+            coord.awaitIdle()
+            assertEquals("Alex", coord.flow.player(1)!!.playerName)
+            assertEquals(5, coord.flow.player(1)!!.colorSlot)
+
+            t.sent.clear()
+            t.peerJoined(1); coord.awaitIdle()
+            assertEquals(1, coord.flow.size, "no duplicate roster entry")
+            assertEquals("Alex", coord.flow.player(1)!!.playerName, "reconnect keeps the name")
+            assertEquals(5, coord.flow.player(1)!!.colorSlot, "reconnect keeps the colour slot")
+
+            // Fill the room (peer 1 holds slot 5; 2..8 take the remaining seven), then
+            // replay peer 1's join: with no free slot left, re-registering would answer
+            // the returning player "Room is full" and its controller would hard-bail.
+            for (i in 2..8) t.peerJoined(i)
+            coord.awaitIdle()
+            assertEquals(8, coord.flow.size)
+            t.sent.clear()
+            t.peerJoined(1); coord.awaitIdle()
+            assertEquals("Alex", coord.flow.player(1)!!.playerName)
+            assertEquals(5, coord.flow.player(1)!!.colorSlot)
+            assertFalse(
+                t.sent.any { type(it.second) == Msg.ERROR },
+                "a peer we already know is never told the room is full",
+            )
+
+            coord.stop()
+        } finally { bridge.close() }
+    }
+
     @Test
     fun remoteControlsDriveLifecycleAndMute() = runBlocking {
         val bridge = EngineBridge.create(bundle())

@@ -69,10 +69,12 @@ final class FakeTransport: RelayTransport {
     var recreatedRoomCount = 0
     var sent: [(to: Int, data: [String: Any])] = []
     var broadcasts: [[String: Any]] = []
+    var states: [[String: Any]] = []   // retained set_state snapshots
     func connect() { connected = true }
     func recreateRoom() { recreatedRoomCount += 1 }
     func sendTo(_ index: Int, _ data: [String: Any]) { sent.append((index, data)) }
     func broadcast(_ data: [String: Any]) { broadcasts.append(data) }
+    func setState(_ data: [String: Any]) { states.append(data) }
     func didBroadcast(_ type: String) -> Bool { broadcasts.contains { ($0["type"] as? String) == type } }
     func didSend(_ type: String, to: Int) -> Bool {
         sent.contains { $0.to == to && ($0.data["type"] as? String) == type }
