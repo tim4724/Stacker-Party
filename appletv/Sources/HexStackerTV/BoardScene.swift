@@ -32,14 +32,14 @@ final class BoardScene: SKScene {
     /// most a couple per frame, but every snapshot used to re-sync all eight — rebuilding
     /// ghost, preview, near-clear, piece, clearing and HUD nodes for seats that had not
     /// moved, on the main thread, which is also where JavaScriptCore runs. Android removed
-    /// the same waste from its renderer (PERF-INPUT-LATENCY.md §13.3); web never had it,
-    /// because its per-board tile cache is gated on exactly this comparison.
+    /// the same waste from its renderer (android/PERF-INPUT-LATENCY.md §13.3/§14.2); web
+    /// never had it, because its per-board tile cache is gated on exactly this comparison.
     ///
     /// The gate is `PlayerSnapshot` equality rather than a hand-listed signature — the type
     /// is already Equatable, so there is no field to forget. Sound because `update` is a
     /// pure function of the seat plus caches keyed on it: the animations (lock flash, line
     /// clear, shake, garbage, KO) are SKAction-driven and arrive through `handleGameEvent`,
-    /// which does not go through here.
+    /// which does not go through here. Invalidated in exactly one place, [ensureBoards].
     private var lastRenderedSeat: [Int: PlayerSnapshot] = [:]
     private var currentPlayerCount = -1
     private var currentGridRows = 1           // board-grid rows, for the timer size (web cachedGridRows)
@@ -166,12 +166,9 @@ final class BoardScene: SKScene {
         lastSnapshot = snapshot
         ensureBoards(for: snapshot)
         for p in snapshot.players {
-            // Unchanged seat: its node already shows exactly this. ensureBoards clears the
-            // ledger whenever it rebuilds, which is also how a relayout gets through —
-            // applySize() replays lastSnapshot precisely to re-apply geometry, and that
-            // replay must NOT be skipped.
-            if lastRenderedSeat[p.id] == p { continue }
-            boardNodes[p.id]?.update(with: p)
+            guard let node = boardNodes[p.id] else { continue }
+            if lastRenderedSeat[p.id] == p { continue } // its node already shows exactly this
+            node.update(with: p)
             lastRenderedSeat[p.id] = p
         }
         updateTimer(elapsedMs: snapshot.elapsed)
@@ -248,8 +245,10 @@ final class BoardScene: SKScene {
         gameLayer.removeChildren(in: boardNodes.values.map { $0 })
         boardNodes.removeAll()
         // Fresh nodes show nothing yet, so nothing may be skipped against them. This is the
-        // single invalidation point for the skip above: relayout(), showScreen(.game) and
-        // resetBoards() all clear lastBoardIds, so they all arrive back here.
+        // SINGLE invalidation point for renderSnapshot's per-seat skip, and it is what lets
+        // a relayout through: applySize() replays lastSnapshot precisely to re-apply
+        // geometry, and that replay must not be skipped. relayout(), showScreen(.game) and
+        // resetBoards() all clear lastBoardIds, so every one of them arrives back here.
         lastRenderedSeat.removeAll()
 
         let layout = LayoutEngine.layout(playerCount: snapshot.players.count,
