@@ -147,6 +147,17 @@ internal fun roundRectPath(x: Float, y: Float, w: Float, h: Float, r: Float): Pa
 internal enum class TextBaseline { TOP, MIDDLE, BOTTOM }
 
 /** Draw [text] so its [baseline] edge sits at (x,y) — mirrors `ctx.textBaseline`.
+ *
+ *  Canvas2D's top/middle/bottom are edges of the EM SQUARE, not of the font's raw
+ *  ascent/descent box. Chrome normalises the two so they sum to the font size and
+ *  puts the alphabetic baseline `descent / (ascent + descent)` of an em above the
+ *  bottom edge — measured at 0.333em for Baloo 2 and 0.200em for Orbitron, with
+ *  top + bottom == 1.000em and middle at 0.500em for both.
+ *
+ *  Offsetting by the raw ascent/descent instead (which exceed the em on both of our
+ *  faces: Baloo's box is 1.60em tall) pushes text away from its anchor — the board
+ *  name sat 0.18 cellSize too high, and TOP-anchored labels ~0.2em too low.
+ *
  *  Uses Paint.ascent()/descent() (primitive returns) rather than `paint.fontMetrics`,
  *  which allocates a fresh FontMetrics per call — this helper runs under all HUD text
  *  in the 60fps draw path. */
@@ -157,10 +168,15 @@ internal fun Canvas.drawTextB(
     paint: Paint,
     baseline: TextBaseline,
 ) {
+    val ascent = -paint.ascent()
+    val descent = paint.descent()
+    val box = ascent + descent
+    // Baseline offset from the em-square top, in px.
+    val fromTop = if (box > 0f) paint.textSize * (ascent / box) else 0f
     val dy = when (baseline) {
-        TextBaseline.TOP -> -paint.ascent()
-        TextBaseline.MIDDLE -> -(paint.ascent() + paint.descent()) / 2f
-        TextBaseline.BOTTOM -> -paint.descent()
+        TextBaseline.TOP -> fromTop
+        TextBaseline.MIDDLE -> fromTop - paint.textSize / 2f
+        TextBaseline.BOTTOM -> fromTop - paint.textSize
     }
     drawText(text, x, y + dy, paint)
 }

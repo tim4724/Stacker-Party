@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Baloo 2 pinned to the wght 700 instance (the web font-brand weight for the
+  in-game board name). The board renderer draws on a Canvas, where
+  Typeface.create(family, 700, false) does NOT move the wght axis of a variable
+  font: it leaves the advances at Regular and applies a synthetic bold instead.
+  Naming the axis here is the Canvas equivalent of the FontVariation.Settings
+  the Compose chrome passes in ui/AppType.kt.
+-->
+<font-family xmlns:android="http://schemas.android.com/apk/res/android">
+    <font
+        android:font="@font/baloo2"
+        android:fontStyle="normal"
+        android:fontWeight="700"
+        android:fontVariationSettings="'wght' 700" />
+</font-family>

@@ -94,11 +94,12 @@ object Theme {
         const val tvOverscan = 0.05 // TV title-safe margin per edge (Google/Apple ~5% overscan)
     }
 
+    // Mirrors web THEME.font (public/shared/Theme.js): cellScale + minPx.
     object Font {
-        const val nameScale = 0.7
+        const val nameScale = 0.9
         const val labelScale = 0.48
         const val miniScale = 0.6
-        const val nameMinPx = 18.0
+        const val nameMinPx = 24.0
         const val labelMinPx = 14.0
     }
 

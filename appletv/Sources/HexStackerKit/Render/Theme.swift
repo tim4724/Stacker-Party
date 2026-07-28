@@ -112,7 +112,7 @@ public enum LayoutEngine {
     /// marginally smaller/lower for the same viewport. Layout is not part of the
     /// byte-parity contract; keep the two visually close if either side changes.
     public static func textHeight(_ cs: Double) -> Double {
-        let nameSize = max(18.0, cs * 0.7)
+        let nameSize = max(24.0, cs * 0.9)
         let nameGap = cs * 0.6
         return nameSize + nameGap
     }

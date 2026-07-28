@@ -126,8 +126,10 @@ class BoardRenderer(
     private val clearingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val meterStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = gridLineWidth }
     private val meterFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    // Player name is the identity voice (Baloo 2), not the HUD face — same split
+    // as the web (UIRenderer `_fontName` uses getBrandFont()).
     private val namePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        typeface = fonts.bold; textSize = nameSizeF; textAlign = Paint.Align.LEFT
+        typeface = fonts.brandBold; textSize = nameSizeF; textAlign = Paint.Align.LEFT
     }
     // Labels: quiet uppercase metadata — cream at label alpha with the wide
     // 0.2em tracking of .card-level__heading (A2).

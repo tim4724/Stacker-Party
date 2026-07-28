@@ -31,7 +31,7 @@ object LayoutEngine {
 
     fun textHeight(cs: Double, override: ((Double) -> Double)? = null): Double {
         override?.let { return it(cs) }
-        val nameSize = max(Theme.Font.nameMinPx, cs * Theme.Font.nameScale) // max(18, cs*0.7)
+        val nameSize = max(Theme.Font.nameMinPx, cs * Theme.Font.nameScale) // max(24, cs*0.9)
         val nameGap = cs * 0.6
         return nameSize + nameGap
     }

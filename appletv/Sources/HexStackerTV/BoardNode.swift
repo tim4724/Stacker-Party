@@ -71,6 +71,10 @@ final class BoardNode: SKNode {
     private var boxSize: CGFloat { cs * 2.7 }           // miniSize * 4.5
     private var miniSize: CGFloat { cs * 0.6 }
     private var panelGap: CGFloat { cs * 0.25 }
+    // Web THEME.font: cellScale.name 0.9 / minPx.name 24, cellScale.label 0.48 /
+    // minPx.label 14 (public/shared/Theme.js). The name scale also sizes the
+    // disconnect overlay labels, as it does on the web.
+    private var nameSize: CGFloat { max(24, cs * 0.9) }
     private var labelSize: CGFloat { max(14, cs * 0.48) }
     private var valueSize: CGFloat { max(14, cs * 0.48 * 1.3) }
 
@@ -291,9 +295,10 @@ final class BoardNode: SKNode {
 
         let center = CGPoint(x: boardW / 2, y: boardH / 2)
         // Match web drawDisconnectedOverlay: a name-scale "scan to rejoin" label
-        // (cs·0.7, not the smaller label scale) below the QR, with the whole
-        // QR-plus-label group vertically centered on the board.
-        let rejoinLabelSize = max(16, cs * 0.7)
+        // (cs·0.9, not the smaller label scale) below the QR, with the whole
+        // QR-plus-label group vertically centered on the board. Web floors this
+        // at 10px rather than the name label's 24.
+        let rejoinLabelSize = max(10, cs * 0.9)
         if let qr = QRCode.image(for: url) {
             let side = min(boardW, boardH) * 0.5
             let pad = side * 0.06
@@ -324,7 +329,7 @@ final class BoardNode: SKNode {
         } else {
             let label = SKLabelNode()
             label.verticalAlignmentMode = .center
-            label.setStyledText(tr("disconnected"), font: AppFont.semibold, size: max(12, cs * 0.7),
+            label.setStyledText(tr("disconnected"), font: AppFont.semibold, size: max(10, cs * 0.9),
                                 color: UIColor(accent), tracking: 0.10)
             label.position = center
             disconnectLayer.addChild(label)
@@ -576,13 +581,20 @@ final class BoardNode: SKNode {
     // MARK: - HUD (name / hold / next / level / lines / garbage)
 
     private func buildName(_ name: String) {
-        nameLabel.fontName = AppFont.name
-        nameLabel.fontSize = max(18, cs * 0.7)
+        // Identity voice (Baloo 2), not the HUD face — same split as the web,
+        // where UIRenderer's `_fontName` uses getBrandFont() at weight 700.
+        nameLabel.fontName = AppFont.brandBold
+        nameLabel.fontSize = nameSize
         nameLabel.fontColor = UIColor(accent)
         nameLabel.text = name
         nameLabel.horizontalAlignmentMode = .left
-        nameLabel.verticalAlignmentMode = .bottom
-        nameLabel.position = CGPoint(x: cs * 0.07, y: CGFloat(geo.boardHeight) + cs * 0.2)
+        // Web anchors the em-square bottom (ctx.textBaseline = 'bottom') at cs*0.2
+        // above the board. SpriteKit's .bottom is the ink box, so drive the baseline
+        // directly and lift it by the em-box descent (see emBoxDescent).
+        nameLabel.verticalAlignmentMode = .baseline
+        nameLabel.position = CGPoint(
+            x: cs * 0.07,
+            y: CGFloat(geo.boardHeight) + cs * 0.2 + emBoxDescent(font: AppFont.brandBold, size: nameSize))
         nameLabel.zPosition = 1
         hudLayer.addChild(nameLabel)
     }
