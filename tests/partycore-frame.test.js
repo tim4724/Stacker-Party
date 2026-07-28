@@ -353,11 +353,11 @@ test('the web display drives its off-screen effects through the shared mapping',
 });
 
 test('PartyCore.js is wired into the served engine artifacts', () => {
-  const indexJs = fs.readFileSync(path.join(__dirname, '..', 'server', 'index.js'), 'utf8');
-  assert.match(indexJs, /'PartyCore\.js'/, 'server/index.js ENGINE_FILES must allow /engine/PartyCore.js');
-  // Display load order now lives in scripts/asset-manifest.js (the index.html
-  // files carry a <!--DISPLAY_SCRIPTS--> placeholder that the server and the
-  // bundle build expand), so assert against that canonical source.
+  // Display load order lives in scripts/asset-manifest.js (the index.html files
+  // carry a <!--DISPLAY_SCRIPTS--> placeholder that the server and the bundle
+  // build expand), so assert against that canonical source. server/index.js
+  // derives its /engine/ allowlist from these same lists, and that every entry
+  // is actually serveable is covered by tests/dev-asset-serving.test.js.
   const { DISPLAY_SCRIPTS } = require('../scripts/asset-manifest.js');
   assert.ok(DISPLAY_SCRIPTS.includes('/engine/PartyCore.js'),
     'display load order (asset-manifest.js) must include /engine/PartyCore.js');

@@ -137,17 +137,15 @@ const HTML_CACHE = (function () {
   return cache;
 })();
 
-// Explicit allowlist of engine modules serveable via /engine/ route
-const ENGINE_FILES = new Set([
-  'constants.js',
-  'Game.js',
-  'GarbageManager.js',
-  'Randomizer.js',
-  'Piece.js',
-  'PlayerBoard.js',
-  'PartyCore.js',
-  'GalleryFixtures.js',
-]);
+// Allowlist of engine modules serveable via the /engine/ route, derived from the
+// canonical script lists so it can't drift from them. A hand-kept copy did: when
+// RoomCore.js joined DISPLAY_SCRIPTS it was missing here, and dev mode (individual
+// tags) 404'd it while the prod bundle (which inlines the file) stayed fine.
+const ENGINE_FILES = new Set(
+  [].concat(CONTROLLER_SCRIPTS, DISPLAY_SCRIPTS, AC_CONTROLLER_SCRIPTS, AC_DISPLAY_SCRIPTS)
+    .filter((p) => p.startsWith('/engine/'))
+    .map((p) => p.slice('/engine/'.length))
+);
 
 const MIME_TYPES = {
   '.html': 'text/html',

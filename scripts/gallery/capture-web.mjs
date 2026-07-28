@@ -33,6 +33,17 @@ catch { console.error('playwright not installed — skipping web capture (run: n
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
+
+// Fail loudly rather than shipping a gallery of welcome screens. A missing
+// script leaves the harness init half-dead and every state falls back to the
+// welcome screen, which still screenshots fine, so without this the run stays
+// green and the gap review silently compares the wrong pixels.
+const problems = [];
+page.on('pageerror', (e) => problems.push(`uncaught: ${e.message}`));
+page.on('response', (r) => {
+  if (r.status() >= 400) problems.push(`HTTP ${r.status()} ${new URL(r.url()).pathname}`);
+});
+
 for (const s of states) {
   await page.goto(url(s), { waitUntil: 'networkidle' });
   // Animated states settle a touch slower; give them all a fixed beat.
@@ -41,4 +52,10 @@ for (const s of states) {
   console.log('  captured', s.key);
 }
 await browser.close();
+
+if (problems.length) {
+  console.error('web capture is not trustworthy; the display page reported:');
+  for (const p of [...new Set(problems)]) console.error('  ' + p);
+  process.exit(1);
+}
 console.log('done ->', outDir);
