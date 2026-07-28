@@ -172,8 +172,9 @@ class BoardSurfaceView @JvmOverloads constructor(
     private var renderThread: Thread? = null
 
     // Bumped whenever visible content changes; the render thread compares it against
-    // the last-drawn value to idle-skip identical frames. All writers are on the main
-    // thread (the coordinator runs on the main dispatcher), so `++` doesn't race.
+    // the last-drawn value to idle-skip identical frames. Writers span the game thread
+    // (snapshots, events, disconnects) AND Main (surface/config changes); the `++` is
+    // race-free because every write goes through bumpContent(), under contentLock.
     @Volatile private var contentVersion = 0L
 
     // What the idle render thread parks on. It used to poll with sleep(8), which put up
@@ -224,7 +225,15 @@ class BoardSurfaceView @JvmOverloads constructor(
 
     /** Per-board disconnect/rejoin overlay; null clears it. */
     fun setDisconnected(playerId: Int, joinUrl: String?) {
-        if (joinUrl == null) disconnects.remove(playerId) else disconnects[playerId] = joinUrl
+        if (joinUrl == null) {
+            disconnects.remove(playerId)
+        } else {
+            disconnects[playerId] = joinUrl
+            // Encode the QR here, on this (game) thread: it costs milliseconds once per
+            // URL, which has no place inline in the render thread's per-frame loop,
+            // where it used to run on first sight of the overlay.
+            qrCache.warm(joinUrl)
+        }
         bumpContent()
     }
 
@@ -326,26 +335,44 @@ class BoardSurfaceView @JvmOverloads constructor(
             val h = holder
             var lastDrawnVersion = -1L
             var animating = true
+            var lastDrawStartNs = 0L
+            // Pace animation-only redraws to the panel: one draw per refresh interval.
+            // Read once at thread start; a surface recreate (where a mode switch would
+            // land) starts a fresh thread.
+            val frameIntervalNs =
+                (1_000_000_000.0 / ((display?.refreshRate?.takeIf { it > 0f }) ?: 60f)).toLong()
             while (running) {
-                // Idle park: nothing pushed since the last draw and no wall-clock
-                // animation/pulse running — the frame would be identical, so wait to be
-                // woken instead of burning GPU on it (countdown, pause, and results
-                // screens spend nearly all their time here, and so does ordinary
-                // gameplay between grid steps).
-                //
-                // Re-checked INSIDE the monitor: a bumpContent() landing between the
-                // test and the lock would otherwise not be seen, and the thread would
-                // sit out the whole timeout with a fresh snapshot already waiting. The
-                // timeout is a belt-and-braces bound, not the wake mechanism.
-                if (contentVersion == lastDrawnVersion && !animating) {
-                    parkUntilContentChanges(lastDrawnVersion)
-                    continue
+                if (contentVersion == lastDrawnVersion) {
+                    // Idle park: nothing pushed since the last draw and no wall-clock
+                    // animation/pulse running — the frame would be identical, so wait to
+                    // be woken instead of burning GPU on it (countdown, pause, and
+                    // results screens spend nearly all their time here, and so does
+                    // ordinary gameplay between grid steps).
+                    //
+                    // Re-checked INSIDE the monitor: a bumpContent() landing between the
+                    // test and the lock would otherwise not be seen, and the thread would
+                    // sit out the whole timeout with a fresh snapshot already waiting.
+                    // The timeout is a belt-and-braces bound, not the wake mechanism.
+                    if (!animating) {
+                        parkUntilContentChanges(lastDrawnVersion)
+                        continue
+                    }
+                    // Animation-only redraw: pace it to the refresh interval. Unpaced,
+                    // this loop out-draws the display and dequeueBuffer backpressure
+                    // keeps the swap chain 1-2 buffers deep, so an input landing in an
+                    // effect window queues its frame BEHIND already-queued animation
+                    // frames — 1-2 extra vsyncs of latency exactly when the game is
+                    // busy. New content still interrupts the wait and draws immediately,
+                    // so the input path this view exists for is never delayed by it.
+                    val remainingNs = lastDrawStartNs + frameIntervalNs - System.nanoTime()
+                    if (remainingNs > 0) parkForAnimationFrame(lastDrawnVersion, remainingNs)
                 }
                 var canvas: Canvas? = null
                 try {
                     // Capture BEFORE drawing: content pushed mid-draw keeps the version
                     // ahead of lastDrawnVersion, so the next iteration re-renders it.
                     val version = contentVersion
+                    lastDrawStartNs = System.nanoTime()
                     canvas = h.lockHardwareCanvas()
                     if (canvas == null) {
                         sleep(8)
@@ -376,6 +403,16 @@ class BoardSurfaceView @JvmOverloads constructor(
             // An interrupt here means teardown; `running` is already false by then, so
             // returning simply lets the loop re-test and exit.
             runCatching { contentChanged.await(IDLE_PARK_MS, TimeUnit.MILLISECONDS) }
+        }
+    }
+
+    /** Wait out the remainder of the refresh interval before an animation-only redraw,
+     *  unless new content (or teardown) arrives first — those wake [contentChanged]
+     *  and the frame draws immediately. */
+    private fun parkForAnimationFrame(lastDrawnVersion: Long, remainingNs: Long) {
+        contentLock.withLock {
+            if (!running || contentVersion != lastDrawnVersion) return
+            runCatching { contentChanged.awaitNanos(remainingNs) }
         }
     }
 
@@ -498,9 +535,17 @@ class BoardSurfaceView @JvmOverloads constructor(
             // (whose alpha fades against nowMs, and which report nothing). A board that
             // STARTS pulsing is caught by the signature — every trigger (grid, piece
             // position, clearing cells, pending garbage) is in it.
-            val timeDependent = boardPulsing[j] ||
-                garbageIndicator[player.id]?.isNotEmpty() == true ||
+            //
+            // boardPulsing[j] therefore means "this recording contains wall-clock content",
+            // and it must include the fx too, not just the renderer's pulse flag: the last
+            // recording taken while a garbage flash was alive holds the flash at its final
+            // faint alpha, and once pruneGarbageFx empties the map the signature alone
+            // would replay that residue indefinitely. Carrying the fx in the flag forces
+            // one more re-record on the first fx-free frame, which captures the clean
+            // board (web does the same by nulling lastRenderSig while mustAnimate).
+            val fxLive = garbageIndicator[player.id]?.isNotEmpty() == true ||
                 garbageDefence[player.id]?.isNotEmpty() == true
+            val timeDependent = boardPulsing[j] || fxLive
             if (!node.hasDisplayList() || boardSigs[j] != sig || timeDependent) {
                 node.setPosition(0, 0, w, h)
                 val rec = node.beginRecording(w, h)
@@ -510,7 +555,7 @@ class BoardSurfaceView @JvmOverloads constructor(
                     node.endRecording()
                 }
                 boardSigs[j] = sig
-                boardPulsing[j] = boardPulse
+                boardPulsing[j] = boardPulse || fxLive
             }
             val shake = animations.shakeOffsetFor(r.boardX, r.boardY)
             node.translationX = shake.x
@@ -548,10 +593,15 @@ class BoardSurfaceView @JvmOverloads constructor(
             // 0/1/2 fragment).
             .append(':').append(disconnects[p.id]?.let { if (qrCache.get(it) != null) 2 else 1 } ?: 0)
             .append(':').append(p.clearingCells?.size ?: 0)
-            // Not in web's signature, and covered there transitively (a spawn also moves
-            // currentPiece), but drawNext reads it directly so it is named here rather
-            // than argued about.
-            .append(':').append(p.nextPieces.joinToString(","))
+            .append(':')
+        // Not in web's signature, and covered there transitively (a spawn also moves
+        // currentPiece), but drawNext reads it directly so it is named here rather
+        // than argued about. Appended in place: joinToString would allocate an extra
+        // builder and string per board per frame on the render thread.
+        for (i in p.nextPieces.indices) {
+            if (i > 0) sb.append(',')
+            sb.append(p.nextPieces[i])
+        }
         val cp = p.currentPiece
         if (cp != null) {
             // cells[0] uniquely identifies rotation for every hex piece type — the same

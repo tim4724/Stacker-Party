@@ -291,12 +291,17 @@ first prototype came back one character long, which is how this was found.
 
 The bias has a second edge, and it bites at the *other* end: `String.fromCharCode`
 takes its argument mod `0x10000`, so a raw `0xffff` biases to `0x10000` and comes back
-out as the very NUL the bias exists to avoid. The usable wire range is therefore
-`0..0xfffe`, and values wider than one code unit must cross as **15-bit** halves — a
-16-bit half is exactly the one that can land on `0xffff`. With 16-bit halves `elapsed`
-hit it 65.5s into every match (and every 65.5s after), truncating that frame on both
-TVs; roughly one four-minute match in five. `encodeInts` now asserts the range, so a
-future field that outgrows it fails in the packer rather than on a TV.
+out as the very NUL the bias exists to avoid. Values wider than one code unit must
+therefore cross as **15-bit** halves — a 16-bit half is exactly the one that can land
+on `0xffff`. With 16-bit halves `elapsed` hit it 65.5s into every match (and every
+65.5s after), truncating that frame on both TVs; roughly one four-minute match in five.
+`encodeInts` now asserts the range, so a future field that outgrows it fails in the
+packer rather than on a TV.
+
+The guard was later tightened again (§20): raw `0xd7ff..0xdffe` biases into lone UTF-16
+surrogates, which are not guaranteed to survive C-string marshalling either (JSC
+substitutes U+FFFD), so the asserted single-unit range is now `0..0xd7fe`. No real
+field gets anywhere near it; split halves max out at `0x7fff`.
 
 ## 9. The clean end state
 
@@ -1130,3 +1135,93 @@ Segment budget at four seats, warm:
 is the noisiest number here and has never responded to any change made in this document —
 if input ever feels *inconsistent* rather than slow, that is the thread to pull, and it
 wants a longer sampling run than this harness does before anyone optimises against it.
+
+## 20. Review pass: the §16 leftovers closed, and the tail hypothesis paced away
+
+A review of everything above surfaced that two of §16a's own warnings had shipped
+un-fixed, plus one real staleness bug in §13.3's cache. All addressed; each verified on
+the same device and harness.
+
+### 20.1 The game thread now owns a Looper and a Choreographer
+
+§16 said "the tick's hop comes back... unless the game thread gets its own Looper and
+Choreographer (which is the right answer)" — and §16a shipped without it, so every tick
+still paid a Main→game channel dispatch plus the ack dispatch back (~0.7-0.8 ms p50 per
+frame by §14/§16's own numbers), and tick cadence sat behind whatever Compose had queued
+on Main. `MainActivity`'s executor is now a `HandlerThread`; the tick loop runs ON the
+game thread, driven by that thread's own Choreographer (the stock `awaitFrame()` always
+resolves MAIN's Choreographer, so the loop uses its own await). A same-thread channel
+send/ack is a Handler post, an order of magnitude cheaper than the cross-thread wake
+(§13.2: 73 µs vs the 0.4-0.8 ms "Channel send -> consumer resume" row).
+
+Relay callbacks moved with it: `RelayClient`'s poster now posts to the game handler, so
+relay-fallback INPUT no longer queues behind Compose on Main (the fastlane path already
+skipped it; the fallback path was the §16a contention argument applied twice). And the
+lobby's 4 Hz tick throttle now covers RESULTS too, which can sit for minutes doing
+nothing but the snapshot throttle's trailing edge and 1 Hz liveness.
+
+Verified: `InputLatencyTest` reproduces the §19 table (8 seats 2.2-2.5 ms p50 shipping,
+4.0-4.4 legacy, both A/B passes, both directions), and a real match was driven on-device
+through lobby → join (web controller) → countdown → PLAYING → pause/resume → top-out →
+RESULTS with zero crashes. On RESULTS the game thread idles at ~6% of a core.
+
+### 20.2 Animation windows no longer saturate the swap chain
+
+§5.3's signal-based wake fixed the IDLE case, but while any wall-clock effect ran the
+render loop never parked: it drew as fast as `dequeueBuffer` backpressure allowed, which
+keeps the swap chain 1-2 buffers deep — so an input landing in an effect window queued
+its frame BEHIND already-queued animation frames, 1-2 extra vsyncs of photon latency
+exactly when the game is busy. This is a plausible mechanism for §19's "all-busy p99
+that never responded to anything": that number is measured to `renderSnapshot`, and the
+queue effect starts after it.
+
+Animation-only redraws are now paced to the panel's refresh interval by waiting out the
+remainder on the SAME content condition, so new content still interrupts the wait and
+draws immediately — the input path is never delayed by the pacing. Content-driven wakes
+are untouched.
+
+### 20.3 The cache could freeze an expired garbage flash (fixed, and now gated)
+
+§13.3's `boardPulsing[j]` recorded only what `render` reports back (pulse/glow), not the
+garbage-meter flashes, whose liveness the cache checks separately. Sequence: the last
+recording taken while a flash was alive holds it at its final faint alpha; next frame
+`pruneGarbageFx` empties the map, the signature is unchanged, nothing re-records, the
+thread parks — and the residue replays until the next signature change. The flag now
+means "this recording contains wall-clock content" and includes fx liveness, which
+forces one clean re-record on the first fx-free frame (web's equivalent: `lastRenderSig
+= null` while `mustAnimate`).
+
+Gated by `BoardCacheParityTest.garbageFxExpiryLeavesNoResidueInCachedBoards`, which
+drives both flash kinds through the real event path, lets them expire, and
+byte-compares a cached draw against a direct draw. Run against the pre-fix code it
+fails; with the fix the whole parity suite is green.
+
+### 20.4 Smaller items from the same review
+
+- **`QrCache` is off the render thread.** The disconnect-QR encode (multi-ms) ran
+  inline in the render loop on first sight of an overlay, and a failed encode re-ran
+  every frame. It now renders once on the game thread when the disconnect is recorded,
+  and failures are negative-cached.
+- **`TvDisplayOutput` races** (correctness, introduced by §16a): `_state` writers span
+  the game thread and Main, so every read-copy-write became `_state.update {}`, and the
+  roster/room fields shared across those threads are `@Volatile`.
+- **`boardSig` allocation trim** on the render thread (`joinToString` dropped), the
+  stale "coordinator runs on Main" comments corrected, and `EngineBridge.decode()`'s
+  dispatcher hop removed (its rationale predated the game thread; the method itself
+  stays — tests use it and the shim surface is parity-locked).
+- **Packed codec hardening** (§8 constraint updated): single-unit wire range tightened
+  to `0..0xd7fe` (surrogate band), Kotlin's reader now fails truncation with the same
+  typed error as Swift, the golden fixture grew from 53 to 65 steps (the hand-built
+  edge cases — clearing cells, absent piece/ghost, negative coords — are now replayed
+  by BOTH native ports), and the native golden tests compare the events/commands tail
+  field-by-field instead of by count.
+
+### 20.5 Declined from the same review, with reasons
+
+- **Pulse overlays as separate RenderNodes with animated node alpha** (would let a
+  near-clear board replay its base recording while pulsing, ~0.4 ms/board during pulse
+  windows). Declined: node-alpha compositing quantizes differently than paint alpha, so
+  the byte-for-byte parity gate would have to become approximate to accommodate it —
+  weakening the exact property that makes §13.3 trustworthy, for a saving on a thread
+  that is off the input path and now paced (§20.2).
+- **The ingress items stay declined** per §17, unchanged.

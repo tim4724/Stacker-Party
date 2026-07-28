@@ -7,7 +7,6 @@ import com.hexstacker.core.model.GameEvent
 import com.hexstacker.core.model.GameSnapshot
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExecutorCoroutineDispatcher
 import kotlinx.coroutines.newSingleThreadContext
 import kotlinx.coroutines.currentCoroutineContext
@@ -411,10 +410,11 @@ class EngineBridge private constructor(
             throw EngineException.wrap(label, e)
         }
         return try {
-            // Parse OFF the coordinator's (Main) dispatcher: the per-frame snapshot JSON (up
-            // to 8 boards) is pure to deserialize and touches no coordinator state, so moving
-            // it to Default keeps the frame parse from competing with UI/input on the main thread.
-            withContext(Dispatchers.Default) { EngineJson.json.decodeFromString<T>(json) }
+            // Inline, like decodePacked above: the coordinator no longer runs on Main, so
+            // there is no UI thread to protect, and a dispatcher round trip costs more
+            // than this parse (the production frame path is packed anyway; this JSON
+            // route only serves drainEvents, which nothing calls per frame).
+            EngineJson.json.decodeFromString<T>(json)
         } catch (e: Throwable) {
             throw EngineException.decode(label, e)
         }

@@ -4,8 +4,10 @@ import android.content.pm.ApplicationInfo
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
 import android.util.Log
+import android.view.Choreographer
 import android.view.KeyEvent
 import android.view.View
 import androidx.activity.ComponentActivity
@@ -68,18 +70,21 @@ import com.hexstacker.tv.ui.ResultCard
 import com.hexstacker.tv.ui.ResultsScreen
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.android.asCoroutineDispatcher
 import kotlinx.coroutines.android.awaitFrame
-import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import java.util.concurrent.Executors
+import kotlin.coroutines.resume
 import com.hexstacker.tv.ui.CountdownValue as UiCountdownValue
 
 /**
@@ -124,13 +129,36 @@ class MainActivity : ComponentActivity() {
      * not incidental: the C runtime calibrates its stack-overflow guard against the creating
      * thread's stack, so a call from anywhere else turns a catchable JS error into a SIGSEGV
      * (§14.1 — this was measured, on the device, by doing it).
+     *
+     * A HandlerThread rather than a bare executor so the thread has a Looper, which gives it
+     * its own Choreographer: the tick loop runs HERE, driven by this thread's vsync callback,
+     * so a tick no longer pays the Main-to-game channel dispatch plus the ack dispatch back
+     * that driving it from Main's Choreographer cost (§16 flagged that pair at ~0.7-0.8 ms
+     * per frame; a same-thread send/ack is a Handler post, an order of magnitude cheaper).
+     * Relay callbacks post here too, for the same reason fastlane input already lands here:
+     * fallback input must not queue behind Compose on Main.
      */
-    private val gameExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "hex-game") }
-    private val gameDispatcher = gameExecutor.asCoroutineDispatcher()
+    private val gameThread = HandlerThread("hex-game").apply { start() }
+    private val gameHandler = Handler(gameThread.looper)
+    private val gameDispatcher = gameHandler.asCoroutineDispatcher("hex-game")
 
     // The system "Remove animations" accessibility state, feeding LocalReduceMotion.
     // Compose state so a toggle picked up on resume recomposes the chrome.
     private var reduceMotion by mutableStateOf(false)
+
+    /**
+     * Await this thread's next Choreographer frame. The stock `awaitFrame()` always uses
+     * MAIN's Choreographer (it caches the first one it resolves), so the game thread's
+     * vsync callback needs its own await. Runs on the game thread by construction (the
+     * tick loop is inside `withContext(gameDispatcher)`), where `getInstance()` returns
+     * that thread's Choreographer.
+     */
+    private suspend fun awaitGameFrame(): Long = suspendCancellableCoroutine { cont ->
+        val choreographer = Choreographer.getInstance()
+        val cb = Choreographer.FrameCallback { nanos -> cont.resume(nanos) }
+        choreographer.postFrameCallback(cb)
+        cont.invokeOnCancellation { choreographer.removeFrameCallback(cb) }
+    }
 
     /** Get-or-start the runtime creation. Called only from the coordinator's
      *  bridgeProvider, i.e. only from the game thread, so no lock is needed. */
@@ -182,7 +210,12 @@ class MainActivity : ComponentActivity() {
         // The coordinator now calls DisplayOutput from the game thread, so the parts that
         // genuinely need Main (ExoPlayer, View lifecycle) get posted there.
         ui = TvDisplayOutput(board, music, runOnMain = { block -> mainHandler.post(block) })
-        relay = RelayClient(callbackPoster = { block -> mainHandler.post(block) })
+        // Relay callbacks land on the game thread, not Main: every consumer is thread-safe
+        // (coordinator actions are a channel send, UI state goes through _state.update),
+        // and relay-fallback INPUT otherwise queues behind Compose/Choreographer on Main,
+        // the exact contention moving the coordinator off Main was for. The single handler
+        // keeps the relay's in-order delivery guarantee.
+        relay = RelayClient(callbackPoster = { block -> gameHandler.post(block) })
         // Surface the display's own relay link state: drives the RECONNECTING / DISCONNECTED
         // overlay AND tells the coordinator to pause/resume the running game on link loss
         // (coordinator is assigned just below; the first callback can't fire before connect()).
@@ -238,32 +271,40 @@ class MainActivity : ComponentActivity() {
 
         coordinator.start()
 
-        // Render clock: drive coordinator.tick() once per frame on the main thread. Scoped to
-        // repeatOnLifecycle(STARTED) so it stops requesting frames (and ticking the QuickJS
-        // engine) while the app is backgrounded, and restarts with a fresh delta on return —
-        // mirroring the web freezing the game when the tab is hidden.
+        // Render clock: drive coordinator.tick() once per frame ON THE GAME THREAD, from
+        // that thread's own Choreographer (the HandlerThread's Looper hosts one). Driving
+        // it from Main's Choreographer cost two cross-thread dispatches per frame (the
+        // channel send in and the ack back) and put the tick cadence at the mercy of
+        // whatever Compose had queued on Main. Scoped to repeatOnLifecycle(STARTED) so it
+        // stops requesting frames (and ticking the QuickJS engine) while the app is
+        // backgrounded, and restarts with a fresh delta on return — mirroring the web
+        // freezing the game when the tab is hidden.
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                var last = 0L
-                var acc = 0.0
-                while (isActive) {
-                    val now = awaitFrame()
-                    val dt = if (last == 0L) 0.0 else (now - last) / 1_000_000.0
-                    last = now
-                    acc += dt
-                    // In the lobby the tick's only work is 1s-granularity liveness/grace
-                    // polling, so ~4Hz is plenty — skipping the other frames drops the
-                    // per-frame Action.Tick + ack allocation churn while the app idles.
-                    // Every other screen (countdown/gameplay/results) ticks per frame.
-                    if (ui.state.value.screen == DisplayScreen.LOBBY) {
-                        if (acc < LOBBY_TICK_MS) continue
-                    } else if (acc > dt) {
-                        // First tick after leaving the lobby: drop the skipped lobby
-                        // frames' time so it can't eat into the 3-2-1 countdown.
-                        acc = dt
+                withContext(gameDispatcher) {
+                    var last = 0L
+                    var acc = 0.0
+                    while (isActive) {
+                        val now = awaitGameFrame()
+                        val dt = if (last == 0L) 0.0 else (now - last) / 1_000_000.0
+                        last = now
+                        acc += dt
+                        // In the lobby and on results the tick's only work is the snapshot
+                        // throttle's trailing edge and 1s-granularity liveness polling, so
+                        // ~4Hz is plenty — skipping the other frames drops the per-frame
+                        // Action.Tick + ack churn while those screens sit idle (results can
+                        // sit for minutes). Countdown and gameplay tick per frame.
+                        val screen = ui.state.value.screen
+                        if (screen == DisplayScreen.LOBBY || screen == DisplayScreen.RESULTS) {
+                            if (acc < IDLE_TICK_MS) continue
+                        } else if (acc > dt) {
+                            // First tick after leaving a throttled screen: drop the skipped
+                            // frames' time so it can't eat into the 3-2-1 countdown.
+                            acc = dt
+                        }
+                        coordinator.tick(acc)
+                        acc = 0.0
                     }
-                    coordinator.tick(acc)
-                    acc = 0.0
                 }
             }
         }
@@ -451,9 +492,9 @@ class MainActivity : ComponentActivity() {
         runBlocking {
             engineDeferred?.let { d -> runCatching { withTimeout(1000) { d.await().close() } } }
         }
-        // Strictly AFTER the close above: close() hops to this executor, and a shutdown()
-        // first would reject that task and leak the runtime instead of freeing it.
-        gameExecutor.shutdown()
+        // Strictly AFTER the close above: close() hops to this thread, and quitting its
+        // Looper first would reject that task and leak the runtime instead of freeing it.
+        gameThread.quitSafely()
     }
 }
 
@@ -501,13 +542,20 @@ class TvDisplayOutput(
     private val runOnMain: (Runnable) -> Unit,
 ) : DisplayOutput {
 
+    // Writers span two threads (the game thread for coordinator callbacks, Main for the
+    // Activity's lifecycle hooks and relay link-state), so every write goes through
+    // _state.update {}: a plain read-copy-write pair racing from both sides would
+    // silently drop one side's field change.
     private val _state = MutableStateFlow(UiModel())
     val state: StateFlow<UiModel> get() = _state
 
-    private var room: String = ""
-    private var joinUrl: String = ""
-    private var roster: List<PlayerRecord> = emptyList()
-    private var hostSlot: Int? = null
+    // Written on the game thread (roomReady/updateLobby), read on Main (onStop's
+    // lobbyIsEmpty, clearRoom). @Volatile is the happens-before for those reads; the
+    // values are individually atomic and no reader needs them as a consistent set.
+    @Volatile private var room: String = ""
+    @Volatile private var joinUrl: String = ""
+    @Volatile private var roster: List<PlayerRecord> = emptyList()
+    @Volatile private var hostSlot: Int? = null
 
     override fun showScreen(screen: DisplayScreen) {
         // Board CONTENT inline, on the game thread. This has to stay inline: renderSnapshot
@@ -534,10 +582,12 @@ class TvDisplayOutput(
             // Mirrors the web wake lock (acquire on countdown, release on results/lobby).
             board.keepScreenOn = (screen == DisplayScreen.GAME)
         }
-        _state.value = _state.value.copy(
-            screen = screen,
-            countdown = if (screen == DisplayScreen.LOBBY) null else _state.value.countdown,
-        )
+        _state.update {
+            it.copy(
+                screen = screen,
+                countdown = if (screen == DisplayScreen.LOBBY) null else it.countdown,
+            )
+        }
     }
 
     override fun roomReady(room: String, joinUrl: String) {
@@ -545,13 +595,13 @@ class TvDisplayOutput(
         this.joinUrl = joinUrl
         // The relay confirmed the room (`created`, or `joined` after a rejoin), so the
         // QR is trustworthy again — this is the ONLY place that clears the pending dim.
-        _state.value = _state.value.copy(lobby = buildLobby(), qrPending = false)
+        _state.update { it.copy(lobby = buildLobby(), qrPending = false) }
     }
 
     override fun updateLobby(players: List<PlayerRecord>, hostPeerIndex: Int?) {
         roster = players
         hostSlot = hostPeerIndex?.let { players.firstOrNull { p -> p.peerIndex == it }?.colorSlot }
-        _state.value = _state.value.copy(lobby = buildLobby())
+        _state.update { it.copy(lobby = buildLobby()) }
     }
 
     override fun showCountdown(value: CountdownValue) {
@@ -559,7 +609,7 @@ class TvDisplayOutput(
             is CountdownValue.Number -> UiCountdownValue.Number(value.n)
             CountdownValue.Go -> UiCountdownValue.Go
         }
-        _state.value = _state.value.copy(countdown = ui)
+        _state.update { it.copy(countdown = ui) }
     }
 
     override fun renderSnapshot(snapshot: GameSnapshot) {
@@ -569,25 +619,27 @@ class TvDisplayOutput(
         // pushed is the one static frame at countdown start, which precedes the
         // first showCountdown — clearing a null/stale countdown there is harmless.)
         if (_state.value.countdown != null) {
-            _state.value = _state.value.copy(countdown = null)
+            _state.update { it.copy(countdown = null) }
         }
     }
 
     override fun showResults(results: List<ResultEntry>) {
-        _state.value = _state.value.copy(
-            results = results.map {
-                ResultCard(
-                    playerId = it.playerId,
-                    rank = it.rank,
-                    name = it.playerName ?: resources.getString(R.string.player),
-                    colorIndex = it.colorIndex,
-                    lines = it.lines,
-                    level = it.level,
-                    newPlayer = it.newPlayer,
-                )
-            },
-            countdown = null,
-        )
+        _state.update { model ->
+            model.copy(
+                results = results.map {
+                    ResultCard(
+                        playerId = it.playerId,
+                        rank = it.rank,
+                        name = it.playerName ?: resources.getString(R.string.player),
+                        colorIndex = it.colorIndex,
+                        lines = it.lines,
+                        level = it.level,
+                        newPlayer = it.newPlayer,
+                    )
+                },
+                countdown = null,
+            )
+        }
     }
 
     // ── Audio: ExoPlayer is single-threaded and belongs to Main ───────────────
@@ -620,18 +672,18 @@ class TvDisplayOutput(
         // `muted` comes from our own last-published value, not music.isMuted: reading
         // ExoPlayer from the game thread is exactly what runOnMain exists to avoid, and
         // setMuted keeps this field in step anyway.
-        _state.value = _state.value.copy(paused = paused)
+        _state.update { it.copy(paused = paused) }
     }
 
     /** Reflect a mute toggle (from the pause-overlay switch) in the UI immediately. */
     fun setMutedState(muted: Boolean) {
-        _state.value = _state.value.copy(muted = muted)
+        _state.update { it.copy(muted = muted) }
     }
 
     /** Direct QR-pending control for the Activity's pause/resume hooks (see
      *  MainActivity.onPause); link-state transitions set it via setConnectionState. */
     fun setQrPending(pending: Boolean) {
-        _state.value = _state.value.copy(qrPending = pending)
+        _state.update { it.copy(qrPending = pending) }
     }
 
     /** No players seated: the relay room is memberless and dies with our socket. */
@@ -647,27 +699,29 @@ class TvDisplayOutput(
         roster = emptyList()
         hostSlot = null
         // Blank card, not a dimmed stale one.
-        _state.value = _state.value.copy(lobby = buildLobby(), qrPending = false)
+        _state.update { it.copy(lobby = buildLobby(), qrPending = false) }
     }
 
     fun setConnectionState(state: RelayTransport.ConnectionState, reconnectAttempt: Int = 0) {
         // Any non-CLOSED transition (a fresh/re-established link) clears a stale terminal
         // "replaced" flag. onReplaced sets it right after this posts CLOSED, so a CLOSED
         // transition preserves whatever was there.
-        _state.value = _state.value.copy(
-            connection = state,
-            reconnectAttempt = reconnectAttempt,
-            replaced = if (state == RelayTransport.ConnectionState.CLOSED) _state.value.replaced else false,
-            // Any link loss makes the shown QR untrusted. OPEN does NOT clear it —
-            // the socket opens before the relay answers the join, and a "Room not
-            // found" bounce swaps the room; only roomReady re-confirms.
-            qrPending = if (state == RelayTransport.ConnectionState.OPEN) _state.value.qrPending else true,
-        )
+        _state.update {
+            it.copy(
+                connection = state,
+                reconnectAttempt = reconnectAttempt,
+                replaced = if (state == RelayTransport.ConnectionState.CLOSED) it.replaced else false,
+                // Any link loss makes the shown QR untrusted. OPEN does NOT clear it —
+                // the socket opens before the relay answers the join, and a "Room not
+                // found" bounce swaps the room; only roomReady re-confirms.
+                qrPending = if (state == RelayTransport.ConnectionState.OPEN) it.qrPending else true,
+            )
+        }
     }
 
     /** Terminal slot-0 eviction (relay close 4000): another display took over this room. */
     fun setReplaced() {
-        _state.value = _state.value.copy(replaced = true)
+        _state.update { it.copy(replaced = true) }
     }
 
     private fun configureBoards() {
@@ -695,7 +749,7 @@ class TvDisplayOutput(
 
 // Lobby-idle coordinator tick interval (the tick work there is 1s-granularity
 // liveness/grace polling; see the render-clock loop in MainActivity.onCreate).
-private const val LOBBY_TICK_MS = 250.0
+private const val IDLE_TICK_MS = 250.0
 
 // Post-entrance delay before warming the engine + audio (the lobby entrance
 // animation runs ~950ms; don't compete with it for CPU).

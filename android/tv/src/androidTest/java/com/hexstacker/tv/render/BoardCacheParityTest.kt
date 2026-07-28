@@ -8,6 +8,7 @@ import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.cash.zipline.QuickJs
+import com.hexstacker.core.model.GameEvent
 import com.hexstacker.core.model.GameSnapshot
 import com.hexstacker.tv.testing.evalAs
 import java.nio.ByteBuffer
@@ -230,6 +231,84 @@ class BoardCacheParityTest {
             )
         }
         assertTrue("cached steady frame should not be slower than the direct draw", cached1 <= uncached * 1.1)
+        reader.close()
+    }
+
+    /**
+     * The garbage-meter flashes fade against the wall clock and report nothing back
+     * from `render`, so the cache tracks their liveness itself. The failure mode this
+     * pins: the LAST recording taken while a flash was alive holds it at its final
+     * faint alpha, and once the fx window expires nothing in the signature changes,
+     * so without the fx feeding the time-dependence flag that residue would replay
+     * indefinitely. After expiry, a cached draw must be byte-identical to a direct
+     * draw of the same state.
+     */
+    @Test
+    fun garbageFxExpiryLeavesNoResidueInCachedBoards() = runBlocking {
+        val instr = InstrumentationRegistry.getInstrumentation()
+        val ctx = instr.targetContext
+        val bundleJs = ctx.assets.open("partycore.js").bufferedReader().use { it.readText() }
+        val exec = Executors.newSingleThreadExecutor { r -> Thread(r, "parity-qjs") }
+        val dispatcher = exec.asCoroutineDispatcher()
+        val players = 2
+
+        val raw = withContext(dispatcher) {
+            val qjs = QuickJs.create()
+            qjs.evalAs<Any?>(bundleJs)
+            qjs.evalAs<Any?>(SHIM + "\nvoid 0;")
+            qjs.evalAs<Any?>("P.create(${(0 until players).joinToString(",", "[", "]") { "[$it,1]" }}, 4242)")
+            var t = 0.0
+            repeat(600) { t += 16.667; qjs.evalAs<Any?>("P.frame($t)") }
+            val s = json.decodeFromString<GameSnapshot>(qjs.evalAs<String>("P.snap()"))
+            qjs.close()
+            s
+        }
+        exec.shutdown()
+        // Player 0 shows a pending-garbage meter, so the cancelled-flash path below has
+        // an old meter height to flash against (dispatch reads pendingByPlayer).
+        val snap = raw.copy(
+            players = raw.players.mapIndexed { i, p -> if (i == 0) p.copy(pendingGarbage = 2) else p },
+        )
+
+        lateinit var board: BoardSurfaceView
+        instr.runOnMainSync {
+            board = BoardSurfaceView(ctx)
+            board.setViewport(
+                W, H, players,
+                (0 until players).map { SeatMeta(playerId = it, name = "PLAYER $it", colorSlot = it) },
+            )
+            board.submitSnapshot(snap)
+        }
+        val reader = ImageReader.newInstance(
+            W, H, PixelFormat.RGBA_8888, 3,
+            HardwareBuffer.USAGE_GPU_COLOR_OUTPUT or HardwareBuffer.USAGE_COMPOSER_OVERLAY,
+        )
+        val surface = reader.surface
+
+        board.disableBoardCache = false
+        // Clean recording first, then both flash kinds land on player 0's board, then a
+        // handful of frames across the fx window so the final recording is a mid-fade one.
+        renderAndRead(surface, reader) { board.renderFrameForTest(it) }
+        board.onGameEvent(GameEvent(type = "garbage_sent", toId = 0, senderId = 1, lines = 1))
+        renderAndRead(surface, reader) { board.renderFrameForTest(it) }
+        board.onGameEvent(GameEvent(type = "garbage_cancelled", playerId = 0, lines = 1))
+        repeat(4) {
+            Thread.sleep(50)
+            renderAndRead(surface, reader) { board.renderFrameForTest(it) }
+        }
+        // Both windows expired (indicator 1000ms, defence 400ms, shake well under that):
+        // the state is time-independent again, so sequential draws are comparable.
+        Thread.sleep(1200)
+        val cachedAfterExpiry = renderAndRead(surface, reader) { board.renderFrameForTest(it) }
+        board.disableBoardCache = true
+        val direct = renderAndRead(surface, reader) { board.renderFrameForTest(it) }
+
+        val diff = firstDifference(direct, cachedAfterExpiry)
+        assertEquals(
+            "stale garbage-fx residue: cached draw after fx expiry differs from direct draw at byte $diff",
+            -1,
+            diff,
+        )
         reader.close()
     }
 
