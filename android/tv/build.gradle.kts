@@ -181,7 +181,14 @@ tasks.named("preBuild") {
 // test is hermetic regardless of the working directory.
 tasks.withType<Test>().configureEach {
     val repoRoot = rootProject.layout.projectDirectory.dir("..")
-    systemProperty("hexcore.bundle", repoRoot.file("dist/partycore.js").asFile.absolutePath)
+    val bundle = repoRoot.file("dist/partycore.js")
+    systemProperty("hexcore.bundle", bundle.asFile.absolutePath)
+    // A systemProperty is NOT a file input, so without this a rebuilt bundle leaves these
+    // tests UP-TO-DATE and they never re-run against it. Same reasoning as :core, including
+    // why this is `files` rather than `file` (dist/ is generated and untracked).
+    inputs.files(bundle)
+        .withPropertyName("hexcoreBundle")
+        .withPathSensitivity(PathSensitivity.NONE)
 }
 
 // :tv resolves the ANDROID variant of the QuickJS binding transitively through :core,
