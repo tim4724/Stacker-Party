@@ -1,14 +1,15 @@
 package com.hexstacker.core.parity
 
-import com.dokar.quickjs.quickJs
 import com.hexstacker.core.model.EngineConstants
-import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.Json
+import com.hexstacker.core.testing.evalAs
+import com.hexstacker.core.testing.quickJs
 import java.io.File
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
 
 /**
  * Cross-engine parity for [EngineConstants]. EngineConstants is a hand-maintained Kotlin
@@ -79,10 +80,10 @@ class EngineConstantsParityTest {
     fun maxFrameDeltaMatchesBundle() = runBlocking {
         val src = File(System.getProperty("hexcore.bundle") ?: error("hexcore.bundle not set by build")).readText()
         quickJs {
-            evaluate<Any?>(src)
+            evalAs<Any?>(src)
             // The only gameplay constant the bundle exposes as a static: the per-frame
             // delta clamp PartyCore.frame() applies. It must equal the Kotlin mirror.
-            val v = evaluate<String>("'' + HexCore.PartyCore.MAX_FRAME_DELTA_MS").toDouble()
+            val v = evalAs<String>("'' + HexCore.PartyCore.MAX_FRAME_DELTA_MS").toDouble()
             assertEquals(EngineConstants.MAX_FRAME_DELTA_MS, v, "HexCore.PartyCore.MAX_FRAME_DELTA_MS")
         }
         Unit

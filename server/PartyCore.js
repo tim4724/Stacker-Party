@@ -41,10 +41,18 @@ function clone(x) {
 // host that retains a snapshot across frames MUST copy every such ref. Scalars
 // are copied by value. cells {q,r} objects are deep-copied (like blocks) so a host
 // writing into a retained snapshot can never reach the engine's live Piece.
-function copyPlayer(s) {
-  return {
+// [skipGrid] omits the grid entirely rather than copying it — for a delivery caller that
+// already knows this seat's gridVersion is unchanged and would strip it straight back off.
+// The field is ABSENT, not empty, which is exactly what _stripUnchangedGrids leaves behind,
+// so both paths produce the same shape on the wire.
+function copyPlayer(s, skipGrid) {
+  var out = {
     id: s.id,
-    grid: s.grid.map(function(row) { return row.slice(); }),
+    // Built in place, then removed when unwanted, rather than appended at the end:
+    // the frame golden hashes JSON.stringify(player), so moving `grid` would drift the
+    // fixture for a change that alters no value. `delete` is what _stripUnchangedGrids
+    // does to the same field anyway.
+    grid: skipGrid ? null : s.grid.map(function(row) { return row.slice(); }),
     currentPiece: s.currentPiece ? {
       type: s.currentPiece.type,
       typeId: s.currentPiece.typeId,
@@ -73,6 +81,8 @@ function copyPlayer(s) {
       : null,
     gridVersion: s.gridVersion
   };
+  if (skipGrid) delete out.grid;
+  return out;
 }
 
 function PartyCore(players, seed) {
@@ -153,7 +163,10 @@ PartyCore.prototype.drainEvents = function() {
 PartyCore.prototype.snapshot = function() {
   var snap = this.game.getSnapshot();
   return {
-    players: snap.players.map(copyPlayer),
+    // NOT `.map(copyPlayer)`: map passes (element, index, array), and the index would
+    // land on copyPlayer's skipGrid parameter — dropping the grid for every seat but
+    // the first.
+    players: snap.players.map(function(p) { return copyPlayer(p); }),
     elapsed: snap.elapsed
   };
 };
@@ -164,12 +177,18 @@ PartyCore.prototype.snapshot = function() {
 // pull is ~9ms (copy + stringify + native decode) against ~2.7ms for one seat,
 // which at 60Hz is the difference between fitting in the frame and not.
 // Returns null when the id owns no board (a spectator, or a stale peer index).
-PartyCore.prototype.snapshotPlayer = function(playerId) {
+//
+// [sentGridVersions] is optional and is the delivery caller's grid ledger: when given, a
+// seat whose gridVersion it already holds is copied WITHOUT its grid, so the 135 cells are
+// never duplicated only for _stripUnchangedGrids to delete them a moment later. Callers
+// that want a complete value-copy (a host retaining a snapshot) pass nothing and get one.
+PartyCore.prototype.snapshotPlayer = function(playerId, sentGridVersions) {
   var snap = this.game.getSnapshot();
   for (var i = 0; i < snap.players.length; i++) {
-    if (snap.players[i].id === playerId) {
-      return { players: [copyPlayer(snap.players[i])], elapsed: snap.elapsed };
-    }
+    var live = snap.players[i];
+    if (live.id !== playerId) continue;
+    var skipGrid = !!sentGridVersions && sentGridVersions[live.id] === live.gridVersion;
+    return { players: [copyPlayer(live, skipGrid)], elapsed: snap.elapsed };
   }
   return null;
 };
@@ -438,10 +457,17 @@ PartyCore.prototype.deliverSnapshotPacked = function() {
 };
 
 /** One seat, packed — the render-on-input path. null when the id owns no board. */
+// Consults the grid ledger BEFORE copying rather than after. A render-on-input pull
+// happens between locks, so the seat's gridVersion has almost always not moved and
+// _stripUnchangedGrids would delete the grid again immediately — the old order
+// deep-copied 135 cells per input to throw them straight away. Measured on a Google TV
+// Streamer: ~0.13ms of every pull at two seats, ~0.08ms at eight.
 PartyCore.prototype.deliverSnapshotPlayerPacked = function(playerId) {
-  var snap = this.snapshotPlayer(playerId);
+  var snap = this.snapshotPlayer(playerId, this._sentGridVersions);
   if (!snap) return null;
-  return PartyCore.packFrame({ events: [], snapshot: this._stripUnchangedGrids(snap), commands: [] });
+  var p = snap.players[0];
+  if (p.grid) this._sentGridVersions[p.id] = p.gridVersion;
+  return PartyCore.packFrame({ events: [], snapshot: snap, commands: [] });
 };
 
 // Mirror DisplayRender prevFrameTime=0 on pause/results entry: the next frame()

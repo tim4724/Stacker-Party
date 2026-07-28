@@ -117,6 +117,20 @@ android {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
     }
+    // Controller/QR origin, chosen at BUILD time:
+    //   ./gradlew :tv:installRelease -PhexControllerHost=main.hexstacker.com
+    // Empty (the default) means production. This exists because the `--es hexHost` launch
+    // extra is deliberately debuggable-only — any app on the device can send an extra, and
+    // a shipped build must never let one repoint the QR — so it is unavailable in exactly
+    // the build you want when testing a branch WITH release optimisations on. A build-time
+    // value has no runtime attack surface at all.
+    defaultConfig {
+        resValue(
+            "string",
+            "controller_host_override",
+            (findProperty("hexControllerHost") as String?).orEmpty(),
+        )
+    }
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -135,6 +149,7 @@ android {
     buildFeatures {
         compose = true
         buildConfig = false
+        resValues = true // for controller_host_override above; off by default in AGP 9
     }
     // Robolectric-backed screenshot tests (Roborazzi) need the merged resources +
     // assets (Orbitron fonts, localized strings) on the JVM unit-test classpath.
@@ -143,6 +158,10 @@ android {
             isIncludeAndroidResources = true
         }
     }
+    // The QuickJS test shim is identical for the JVM unit tests and the instrumentation
+    // tests, so it lives in one place both source sets read rather than as two copies that
+    // drift. (:core needs its own — different module, and Kotlin has no cross-module test
+    // visibility without publishing a fixtures artifact.)
     // Plain File (not a Provider): AGP 9 disallows Provider in the legacy
     // SourceSet API. Ordering is carried by the preBuild dependency below.
     sourceSets["main"].assets.srcDir(engineBundleAssets.get().asFile)
@@ -165,13 +184,17 @@ tasks.withType<Test>().configureEach {
     systemProperty("hexcore.bundle", repoRoot.file("dist/partycore.js").asFile.absolutePath)
 }
 
-// :tv resolves the ANDROID variant of quickjs-kt transitively through :core, whose
-// AAR only bundles Android ELF .so files — those can't load on the host JVM the
+// :tv resolves the ANDROID variant of the QuickJS binding transitively through :core,
+// whose AAR only bundles Android ELF .so files — those can't load on the host JVM the
 // Robolectric unit tests run on. Drop it from the unit-test runtime classpath and
-// substitute the desktop-JVM variant (added as testImplementation below), which
-// ships the host natives and exposes the identical com.dokar.quickjs.* API.
+// substitute the desktop-JVM variant (added as testImplementation below), which ships the
+// host natives (libquickjs.dylib / .so / .dll) behind the identical API.
+//
+// The exclude is not optional hygiene: both variants install `jni/<abi>/libquickjs.so`, so
+// a classpath carrying two of them keeps one and the loser's JNI symbols go missing —
+// UnsatisfiedLinkError from a native method that plainly exists.
 configurations.matching { it.name.endsWith("UnitTestRuntimeClasspath") }.configureEach {
-    exclude(group = "io.github.dokar3", module = "quickjs-kt-android")
+    exclude(group = "app.cash.zipline", module = "zipline-android")
 }
 
 dependencies {
@@ -217,7 +240,7 @@ dependencies {
     // Runs the canonical engine bundle in QuickJS on the host JVM to source the
     // cross-platform gallery fixtures (see GalleryFixtures test helper). The -jvm
     // variant carries the desktop natives the android AAR lacks.
-    testImplementation(libs.quickjs.kt.jvm)
+    testImplementation(libs.zipline.jvm)
     testImplementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.robolectric)
     testImplementation(libs.roborazzi)
@@ -235,6 +258,6 @@ dependencies {
     // EnginePerfTest drives its own QuickJS with a measurement shim, to separate
     // engine compute from JSON.stringify (the shipping shim only ever returns JSON).
     // :core keeps quickjs-kt `implementation`, so it isn't on this classpath already.
-    androidTestImplementation(libs.quickjs.kt)
+    androidTestImplementation(libs.zipline)
     androidTestImplementation(libs.kotlinx.coroutines.core)
 }

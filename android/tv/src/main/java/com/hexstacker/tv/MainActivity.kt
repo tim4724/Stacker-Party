@@ -1,6 +1,7 @@
 package com.hexstacker.tv
 
 import android.content.pm.ApplicationInfo
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -68,6 +69,7 @@ import com.hexstacker.tv.ui.ResultsScreen
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.android.awaitFrame
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -77,14 +79,17 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import java.util.concurrent.Executors
 import com.hexstacker.tv.ui.CountdownValue as UiCountdownValue
 
 /**
  * Android TV entry point. Wires the headless [DisplayCoordinator] (which drives the
  * QuickJS engine + relay + room FSM) to the native renderer ([BoardSurfaceView]),
  * the Compose-for-TV chrome, and the Media3 [MusicPlayer], via a [TvDisplayOutput]
- * bridge. The coordinator runs on the main dispatcher (engine frame() still suspends
- * onto its own thread), so every output callback is main-thread-safe.
+ * bridge. The coordinator and the QuickJS engine share ONE dedicated game thread
+ * ([gameDispatcher]), so an engine call costs no thread handoff and input handling never
+ * queues behind Compose; [TvDisplayOutput] posts the few side-effects that do belong to
+ * Main (ExoPlayer, View lifecycle) back to it.
  */
 class MainActivity : ComponentActivity() {
 
@@ -100,18 +105,41 @@ class MainActivity : ComponentActivity() {
     // coordinator's consumer asks for it, because the room core has to exist before the
     // first relay room event is handled; everyone awaits the SAME deferred, so a START
     // that beats the bootstrap just joins it instead of racing a second runtime into being.
-    private var engineDeferred: Deferred<EngineBridge>? = null
+    // @Volatile because the writer is now the game thread and onDestroy reads it on Main.
+    @Volatile private var engineDeferred: Deferred<EngineBridge>? = null
+
+    /**
+     * THE game thread: the coordinator's dispatcher AND the engine's, one thread for both.
+     *
+     * An input used to cross three threads to be seen — the fastlane's executor, then the
+     * coordinator's action channel on Main, then the engine's own dispatcher and back.
+     * Sharing one dispatcher removes the last two: `withContext` to the dispatcher you are
+     * already on does not dispatch, so every engine call is a plain call. Measured at eight
+     * seats: 5.5-6.0ms -> 4.0ms p50 to the renderer (PERF-INPUT-LATENCY.md §16).
+     *
+     * It also takes input handling off the thread Compose and the Choreographer share,
+     * which is where the p95 tail was coming from.
+     *
+     * QuickJS is created on this thread and only ever entered from it. That is load-bearing,
+     * not incidental: the C runtime calibrates its stack-overflow guard against the creating
+     * thread's stack, so a call from anywhere else turns a catchable JS error into a SIGSEGV
+     * (§14.1 — this was measured, on the device, by doing it).
+     */
+    private val gameExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "hex-game") }
+    private val gameDispatcher = gameExecutor.asCoroutineDispatcher()
 
     // The system "Remove animations" accessibility state, feeding LocalReduceMotion.
     // Compose state so a toggle picked up on resume recomposes the chrome.
     private var reduceMotion by mutableStateOf(false)
 
-    /** Get-or-start the runtime creation. Main-thread only (no lock needed: the
-     *  warm-up launcher and the coordinator's bridgeProvider both run on Main). */
+    /** Get-or-start the runtime creation. Called only from the coordinator's
+     *  bridgeProvider, i.e. only from the game thread, so no lock is needed. */
     private fun engineAsync(): Deferred<EngineBridge> =
         engineDeferred ?: lifecycleScope.async(Dispatchers.IO) {
+            // The asset read stays off the game thread; create() hops to [gameDispatcher]
+            // itself, so the 168ms bundle parse — and every later call — happens there.
             val bundle = assets.open("partycore.js").bufferedReader().use { it.readText() }
-            EngineBridge.create(bundle) // bootstraps on its own serial dispatcher
+            EngineBridge.create(bundle, gameDispatcher)
         }.also { engineDeferred = it }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -124,9 +152,18 @@ class MainActivity : ComponentActivity() {
         // controller-URL template). Unset => production, so a launcher start is always
         // production. Debuggable builds only: any app on the device can send an extra,
         // and a release build must never let one repoint the QR.
+        // Build-time origin first (`-PhexControllerHost=...`), so a RELEASE build can point
+        // at a branch deploy: the launch extra below is debuggable-only on purpose, which
+        // makes it unavailable in exactly the build you want for testing with R8 and
+        // CheckJNI-off in play. Empty resource => production.
+        val buildHost = getString(R.string.controller_host_override)
+        if (buildHost.isNotEmpty()) RelayConfig.setControllerBase(buildHost)
+        // Debug launches can still override it, which is the faster loop while developing.
         if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
-            val base = RelayConfig.setControllerBase(intent?.getStringExtra("hexHost"))
-            if (base != RelayConfig.DEFAULT_CONTROLLER_BASE_URL) Log.i("MainActivity", "controller base: $base")
+            RelayConfig.setControllerBase(intent?.getStringExtra("hexHost"))
+        }
+        RelayConfig.controllerBaseUrl.let {
+            if (it != RelayConfig.DEFAULT_CONTROLLER_BASE_URL) Log.i("MainActivity", "controller base: $it")
         }
 
         board = BoardSurfaceView(this)
@@ -141,9 +178,10 @@ class MainActivity : ComponentActivity() {
         // recomposite right in the middle of the lobby entrance animation.
         board.visibility = View.GONE
         music = MusicPlayer(this)
-        ui = TvDisplayOutput(board, music)
-
         val mainHandler = Handler(Looper.getMainLooper())
+        // The coordinator now calls DisplayOutput from the game thread, so the parts that
+        // genuinely need Main (ExoPlayer, View lifecycle) get posted there.
+        ui = TvDisplayOutput(board, music, runOnMain = { block -> mainHandler.post(block) })
         relay = RelayClient(callbackPoster = { block -> mainHandler.post(block) })
         // Surface the display's own relay link state: drives the RECONNECTING / DISCONNECTED
         // overlay AND tells the coordinator to pause/resume the running game on link loss
@@ -174,8 +212,10 @@ class MainActivity : ComponentActivity() {
             // Surface boundary errors the coordinator swallows to keep its loop alive
             // (engine/parse failures would otherwise vanish without a trace).
             onError = { label, e -> Log.w("DisplayCoordinator", label, e) },
-            dispatcher = kotlinx.coroutines.Dispatchers.Main,
+            dispatcher = gameDispatcher,
         )
+
+        requestLowLatencyDisplayMode()
 
         reduceMotion = systemAnimationsRemoved(this)
         setContent {
@@ -265,6 +305,33 @@ class MainActivity : ComponentActivity() {
      *  still render, so a possibly-stale room code never presents as live on resume;
      *  by onStop it would miss the snapshot, and the happy-path rejoin clears the
      *  dim (roomReady) before the first live frame, making it invisible. */
+    /**
+     * Ask the display to switch into its low-latency mode (HDMI ALLM / "game mode"):
+     * drop motion interpolation, noise reduction and the rest of the picture pipeline,
+     * which on a TV sits between our buffer and the photons.
+     *
+     * This is very likely the largest single latency term left in the product, and it is
+     * not in our code: TV post-processing typically costs 10-40 ms, against the ~7 ms of
+     * app time the whole input path now takes (PERF-INPUT-LATENCY.md §14). It is also the
+     * cheapest thing on the list, which is why it goes first.
+     *
+     * Set once, for the whole Activity, rather than per screen: the flag makes the display
+     * renegotiate, and a TV that flashes or re-syncs on every lobby↔game transition would
+     * be far worse than the milliseconds it saves. A party is a game session end to end.
+     *
+     * Nothing to verify from adb — whether a panel honours it, and what it is worth, needs
+     * a camera or a latency tester on the real TV. The request is free either way: a
+     * display that does not support it ignores it, which is why there is no fallback path.
+     */
+    private fun requestLowLatencyDisplayMode() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return // API 30; minSdk is 28
+        // Log what the panel claims, so a "did this do anything?" question has an answer
+        // in logcat rather than needing a rebuild to find out.
+        val supported = runCatching { display?.isMinimalPostProcessingSupported }.getOrNull()
+        window.setPreferMinimalPostProcessing(true)
+        Log.i("MainActivity", "requested minimal post-processing (ALLM); display reports supported=$supported")
+    }
+
     override fun onPause() {
         super.onPause()
         if (!isFinishing) ui.setQrPending(true)
@@ -384,6 +451,9 @@ class MainActivity : ComponentActivity() {
         runBlocking {
             engineDeferred?.let { d -> runCatching { withTimeout(1000) { d.await().close() } } }
         }
+        // Strictly AFTER the close above: close() hops to this executor, and a shutdown()
+        // first would reject that task and leak the runtime instead of freeing it.
+        gameExecutor.shutdown()
     }
 }
 
@@ -410,11 +480,25 @@ data class UiModel(
 
 /**
  * Bridges the coordinator's [DisplayOutput] side-effects to the native renderer,
- * audio, and Compose state. All methods run on the coordinator's (main) dispatcher.
+ * audio, and Compose state.
+ *
+ * Every method here runs on the GAME thread (the coordinator's dispatcher), NOT Main.
+ * Most of it is fine there and must stay there — [renderSnapshot] and [handleGameEvent]
+ * are the input path, and posting them to Main would put back the hop the game thread
+ * exists to remove. [BoardSurfaceView]'s ingress is built for it (volatile fields,
+ * concurrent collections, `bumpContent` under a lock) and `MutableStateFlow` is
+ * thread-safe, with Compose collecting whatever it publishes.
+ *
+ * Two things are NOT: ExoPlayer asserts single-threaded access from where it was built,
+ * and View properties plus the render thread's lifecycle belong to Main. Those go through
+ * [runOnMain]. Note what that means for ORDER — a posted block runs after everything the
+ * game thread does inline, so anything that must be sequenced against a snapshot has to
+ * stay inline (see [showScreen]).
  */
 class TvDisplayOutput(
     private val board: BoardSurfaceView,
     private val music: MusicPlayer,
+    private val runOnMain: (Runnable) -> Unit,
 ) : DisplayOutput {
 
     private val _state = MutableStateFlow(UiModel())
@@ -426,23 +510,30 @@ class TvDisplayOutput(
     private var hostSlot: Int? = null
 
     override fun showScreen(screen: DisplayScreen) {
+        // Board CONTENT inline, on the game thread. This has to stay inline: renderSnapshot
+        // runs here too, and posting the clear to Main would let the countdown's first
+        // snapshot land BEFORE the clear that is supposed to precede it, wiping it.
+        //
+        // Entering GAME (at COUNTDOWN): reset the boards to empty first, so the previous
+        // match's frozen frame doesn't linger and no piece/ghost shows during the 3-2-1
+        // (web nulls its render state during countdown; pieces appear only once PLAYING ticks).
+        if (screen == DisplayScreen.GAME) { board.clear(); configureBoards() }
+        if (screen == DisplayScreen.LOBBY) board.clear()
+        // View + render-thread lifecycle on Main, in one block so their order holds.
         // Only render the board surface during GAME/RESULTS; hiding it in the lobby
         // stops its render thread (the surface is destroyed) and saves the GPU.
         //
         // Stop the render thread BEFORE hiding: tearing the SurfaceView down while the thread
         // still holds a dequeued buffer stalls the main thread on return-to-lobby (see
         // stopRenderThread), so the lobby wouldn't paint for ~1-2s.
-        if (screen == DisplayScreen.LOBBY) board.stopRenderThread()
-        board.visibility = if (screen == DisplayScreen.LOBBY) View.GONE else View.VISIBLE
-        // Keep the TV awake for the whole match (COUNTDOWN+PLAYING = DisplayScreen.GAME); the
-        // TV itself gets no input, so without this the screensaver can fire mid-game. Mirrors
-        // the web wake lock (acquire on countdown, release on results/lobby).
-        board.keepScreenOn = (screen == DisplayScreen.GAME)
-        // Entering GAME (at COUNTDOWN): reset the boards to empty first, so the previous
-        // match's frozen frame doesn't linger and no piece/ghost shows during the 3-2-1
-        // (web nulls its render state during countdown; pieces appear only once PLAYING ticks).
-        if (screen == DisplayScreen.GAME) { board.clear(); configureBoards() }
-        if (screen == DisplayScreen.LOBBY) board.clear()
+        runOnMain {
+            if (screen == DisplayScreen.LOBBY) board.stopRenderThread()
+            board.visibility = if (screen == DisplayScreen.LOBBY) View.GONE else View.VISIBLE
+            // Keep the TV awake for the whole match (COUNTDOWN+PLAYING = DisplayScreen.GAME);
+            // the TV itself gets no input, so without this the screensaver can fire mid-game.
+            // Mirrors the web wake lock (acquire on countdown, release on results/lobby).
+            board.keepScreenOn = (screen == DisplayScreen.GAME)
+        }
         _state.value = _state.value.copy(
             screen = screen,
             countdown = if (screen == DisplayScreen.LOBBY) null else _state.value.countdown,
@@ -499,17 +590,21 @@ class TvDisplayOutput(
         )
     }
 
+    // ── Audio: ExoPlayer is single-threaded and belongs to Main ───────────────
+
     override fun playCountdownBeep(go: Boolean) {
-        if (go) music.playGoTone() else music.playCountdownBeep()
+        runOnMain { if (go) music.playGoTone() else music.playCountdownBeep() }
     }
 
-    override fun startMusic() = music.start()
-    override fun stopMusic() = music.stop()
-    override fun pauseMusic() = music.pause()
-    override fun resumeMusic() = music.resume()
+    override fun startMusic() { runOnMain { music.start() } }
+    override fun stopMusic() { runOnMain { music.stop() } }
+    override fun pauseMusic() { runOnMain { music.pause() } }
+    override fun resumeMusic() { runOnMain { music.resume() } }
 
     override fun setMuted(muted: Boolean) {
-        music.setMuted(muted)
+        runOnMain { music.setMuted(muted) }
+        // The switch state is ours, not ExoPlayer's, so it publishes without waiting for
+        // Main — and it must not read music.isMuted, which is only valid over there.
         setMutedState(muted) // reflect in the pause-overlay switch
     }
 
@@ -522,7 +617,10 @@ class TvDisplayOutput(
     }
 
     override fun setPaused(paused: Boolean) {
-        _state.value = _state.value.copy(paused = paused, muted = music.isMuted)
+        // `muted` comes from our own last-published value, not music.isMuted: reading
+        // ExoPlayer from the game thread is exactly what runOnMain exists to avoid, and
+        // setMuted keeps this field in step anyway.
+        _state.value = _state.value.copy(paused = paused)
     }
 
     /** Reflect a mute toggle (from the pause-overlay switch) in the UI immediately. */

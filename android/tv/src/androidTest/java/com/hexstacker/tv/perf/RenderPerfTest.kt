@@ -6,18 +6,19 @@ import android.media.ImageReader
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.dokar.quickjs.QuickJs
+import app.cash.zipline.QuickJs
 import com.hexstacker.core.model.GameSnapshot
 import com.hexstacker.tv.render.BoardSurfaceView
 import com.hexstacker.tv.render.SeatMeta
+import com.hexstacker.tv.testing.evalAs
+import java.util.concurrent.Executors
+import kotlin.math.roundToLong
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.util.concurrent.Executors
-import kotlin.math.roundToLong
 
 /**
  * What one full-screen board repaint costs on the TV's GPU path. Draws through the
@@ -41,18 +42,18 @@ class RenderPerfTest {
         val exec = Executors.newSingleThreadExecutor { r -> Thread(r, "perf-qjs") }
         val dispatcher = exec.asCoroutineDispatcher()
 
-        for (players in intArrayOf(1, 4, 8)) {
+        for (players in intArrayOf(1, 2, 4, 8)) {
             // A snapshot with real content: tick a match far enough that the boards have
             // locked pieces in them (an empty board under-measures the per-cell work).
             val snap = withContext(dispatcher) {
-                val qjs = QuickJs.create(dispatcher)
-                qjs.evaluate<Any?>(bundleJs)
-                qjs.evaluate<Any?>(EnginePerfTest.MEASURE_SHIM + "\nvoid 0;")
+                val qjs = QuickJs.create()
+                qjs.evalAs<Any?>(bundleJs)
+                qjs.evalAs<Any?>(EnginePerfTest.MEASURE_SHIM + "\nvoid 0;")
                 val specs = (0 until players).joinToString(",", "[", "]") { "[$it,1]" }
-                qjs.evaluate<Any?>("B.create($specs, 12345)")
+                qjs.evalAs<Any?>("B.create($specs, 12345)")
                 var t = 0.0
-                repeat(1200) { t += 16.667; qjs.evaluate<Any?>("B.frameNoJson($t)") }
-                val js = qjs.evaluate<String>("B.snapJson()")
+                repeat(1200) { t += 16.667; qjs.evalAs<Any?>("B.frameNoJson($t)") }
+                val js = qjs.evalAs<String>("B.snapJson()")
                 qjs.close()
                 json.decodeFromString<GameSnapshot>(js)
             }

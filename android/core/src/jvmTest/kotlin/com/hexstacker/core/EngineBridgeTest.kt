@@ -1,6 +1,5 @@
 package com.hexstacker.core
 
-import com.dokar.quickjs.quickJs
 import com.hexstacker.core.engine.EngineBootstrap
 import com.hexstacker.core.engine.EngineBridge
 import com.hexstacker.core.engine.EngineBridge.PlayerSpec
@@ -9,7 +8,8 @@ import com.hexstacker.core.engine.PackedFrame
 import com.hexstacker.core.model.EngineConstants
 import com.hexstacker.core.model.GameEvent
 import com.hexstacker.core.model.GameSnapshot
-import kotlinx.coroutines.runBlocking
+import com.hexstacker.core.testing.evalAs
+import com.hexstacker.core.testing.quickJs
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -18,6 +18,7 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.runBlocking
 
 /**
  * Ports the appletv `EngineCheck/main.swift` checks through the typed Kotlin
@@ -91,21 +92,21 @@ class EngineBridgeTest {
     @Test
     fun shimStripsUnchangedGridsOnTheWire() = runBlocking {
         quickJs {
-            evaluate<Any?>(bundle())
-            evaluate<Any?>(EngineBootstrap.SHIM + "\nvoid 0;")
-            evaluate<Any?>("Bridge.create([[0,1],[1,1]], 7)")
+            evalAs<Any?>(bundle())
+            evalAs<Any?>(EngineBootstrap.SHIM + "\nvoid 0;")
+            evalAs<Any?>("Bridge.create([[0,1],[1,1]], 7)")
             // Frames cross packed, so assert on the DECODED payload rather than on
             // substrings of JSON. The reader substitutes cached rows as it reads, so
             // what proves a grid was stripped ON THE WIRE is that decoding the same
             // payload against an EMPTY cache has nothing to substitute.
             val cache = HashMap<Int, List<List<Int>>>()
-            val firstPacked = evaluate<String>("Bridge.framePacked(0)")
+            val firstPacked = evalAs<String>("Bridge.framePacked(0)")
             val first = PackedFrame.decode(firstPacked, cache)
             // HOLD changes the scene (so the snapshot is delivered at all — see the
             // scene-signature omission) without touching any grid: the delivered
             // snapshot strips every player's unchanged grid.
-            evaluate<Any?>("Bridge.processInput(0, 'hold')")
-            val secondPacked = evaluate<String>("Bridge.framePacked(16)")
+            evalAs<Any?>("Bridge.processInput(0, 'hold')")
+            val secondPacked = evalAs<String>("Bridge.framePacked(16)")
             val second = PackedFrame.decode(secondPacked, cache)
             val firstPlayers = assertNotNull(first.snapshot).players
             assertTrue(firstPlayers.all { it.grid.isNotEmpty() }, "first pull carries full grids")
@@ -125,8 +126,8 @@ class EngineBridgeTest {
                 secondPlayers.associate { it.id to it.gridVersion },
                 "gridVersion rides even on a frame whose grids were stripped",
             )
-            evaluate<Any?>("Bridge.processInput(0, 'hard_drop')") // lock bumps p0's gridVersion
-            val third = PackedFrame.decode(evaluate<String>("Bridge.snapshotPacked()"), cache)
+            evalAs<Any?>("Bridge.processInput(0, 'hard_drop')") // lock bumps p0's gridVersion
+            val third = PackedFrame.decode(evalAs<String>("Bridge.snapshotPacked()"), cache)
             val thirdPlayers = assertNotNull(third.snapshot).players
             assertTrue(
                 thirdPlayers.first { it.id == 0 }.grid != firstPlayers.first { it.id == 0 }.grid,
@@ -147,21 +148,21 @@ class EngineBridgeTest {
     @Test
     fun shimOmitsRenderIdenticalSnapshots() = runBlocking {
         quickJs {
-            evaluate<Any?>(bundle())
-            evaluate<Any?>(EngineBootstrap.SHIM + "\nvoid 0;")
-            evaluate<Any?>("Bridge.create([[0,1],[1,1]], 7)")
+            evalAs<Any?>(bundle())
+            evalAs<Any?>(EngineBootstrap.SHIM + "\nvoid 0;")
+            evalAs<Any?>("Bridge.create([[0,1],[1,1]], 7)")
             // One cache for the sequence, like the bridge keeps: the third pull below
             // has its grids stripped and would have nothing to substitute otherwise.
             val cache = HashMap<Int, List<List<Int>>>()
-            val first = PackedFrame.decode(evaluate<String>("Bridge.framePacked(0)"), cache)
+            val first = PackedFrame.decode(evalAs<String>("Bridge.framePacked(0)"), cache)
             assertNotNull(first.snapshot, "first pull delivers the snapshot")
             // 16ms later: no input, no gravity step, same timer second — omitted.
-            val second = PackedFrame.decode(evaluate<String>("Bridge.framePacked(16)"), cache)
+            val second = PackedFrame.decode(evalAs<String>("Bridge.framePacked(16)"), cache)
             assertEquals(null, second.snapshot, "a render-identical frame omits the snapshot")
             assertNotNull(second.events, "events stay on the wire")
             assertNotNull(second.commands, "commands stay on the wire")
-            evaluate<Any?>("Bridge.processInput(0, 'left')") // moves p0's piece
-            val third = PackedFrame.decode(evaluate<String>("Bridge.framePacked(33)"), cache)
+            evalAs<Any?>("Bridge.processInput(0, 'left')") // moves p0's piece
+            val third = PackedFrame.decode(evalAs<String>("Bridge.framePacked(33)"), cache)
             assertNotNull(third.snapshot, "a scene change re-delivers the snapshot")
         }
         Unit

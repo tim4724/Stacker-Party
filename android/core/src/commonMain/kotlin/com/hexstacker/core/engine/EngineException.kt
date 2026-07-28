@@ -3,7 +3,7 @@ package com.hexstacker.core.engine
 import kotlinx.coroutines.CancellationException
 
 /**
- * Typed engine failures. quickjs-kt throws a Kotlin exception when JS throws, so
+ * Typed engine failures. The QuickJS binding throws a Kotlin exception when JS throws, so
  * we just try/catch around `evaluate` and wrap (no Swift-style ExceptionBox).
  */
 sealed class EngineException(message: String, cause: Throwable? = null) : Exception(message, cause) {

@@ -25,7 +25,7 @@ data class LicenseEntry(
  * Builds the licenses list once. It is the AboutLibraries-collected dependencies
  * (parsed from res/raw/aboutlibraries.json, generated at build time by the Gradle
  * plugin) plus the non-dependency attributions this app ships that a dependency
- * scan can't see: the MIT QuickJS engine bundled inside quickjs-kt's native library,
+ * scan can't see: the MIT QuickJS engine bundled inside Zipline's native library,
  * the Orbitron font (OFL), and the lobby music (CC BY).
  *
  * The Apache-2.0 body — which nearly every dependency uses — is embedded in the
@@ -87,7 +87,7 @@ private fun buildLicenseEntries(context: Context): List<LicenseEntry> {
         name = "QuickJS",
         author = "Fabrice Bellard, Charlie Gordon et al.",
         license = "MIT License",
-        url = "https://github.com/quickjs-ng/quickjs",
+        url = "https://github.com/bellard/quickjs",
         body = rawText(context, R.raw.license_mit_quickjs),
     )
     return assembleLicenseList(deps, music, fonts, quickJs)

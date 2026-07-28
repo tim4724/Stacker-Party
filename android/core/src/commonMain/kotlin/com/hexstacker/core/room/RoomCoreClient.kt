@@ -24,7 +24,7 @@ import kotlinx.serialization.json.jsonObject
  * sanitizers, one platform with no blocklist at all) where a regex parity guard could
  * not see it.
  *
- * Marshalling: quickjs-kt has no call-with-arguments API, so every call is an
+ * Marshalling: the QuickJS binding has no call-with-arguments API, so every call is an
  * interpolated source string and everything crosses as JSON through the bridge's four
  * generic room entry points (see [EngineBridge.roomCallJson]). Arguments are built as
  * [JsonElement]s and escaped by `jsString`, never spliced raw — room payloads carry

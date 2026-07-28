@@ -1,9 +1,11 @@
 package com.hexstacker.tv.screenshot
 
-import com.dokar.quickjs.quickJs
 import com.hexstacker.core.model.GameSnapshot
 import com.hexstacker.core.render.Theme
+import com.hexstacker.tv.testing.evalAs
+import com.hexstacker.tv.testing.quickJs
 import com.hexstacker.tv.ui.FallingPiece
+import java.io.File
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -15,7 +17,6 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
-import java.io.File
 
 /** JOIN block: host + code compose the lobby pill; qrText is what the QR encodes. */
 data class Join(val host: String, val code: String, val qrText: String)
@@ -69,8 +70,8 @@ object GalleryFixtures {
     /** Load the bundle fresh and return `JSON.stringify(<expr>)`. */
     private fun evalJson(expr: String): String = runBlocking {
         quickJs {
-            evaluate<Any?>(bundleSrc)
-            evaluate<String>("JSON.stringify($expr)")
+            evalAs<Any?>(bundleSrc)
+            evalAs<String>("JSON.stringify($expr)")
         }
     }
 

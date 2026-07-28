@@ -1,14 +1,15 @@
 package com.hexstacker.core.parity
 
-import com.dokar.quickjs.quickJs
-import kotlinx.coroutines.runBlocking
+import com.hexstacker.core.testing.evalAs
+import com.hexstacker.core.testing.quickJs
 import java.io.File
+import kotlinx.coroutines.runBlocking
 
 /**
  * Loads the canonical web render math (server/constants.js, public/shared/theme.js,
  * public/shared/CanvasUtils.js) into QuickJS and exposes it typed, for cross-engine
  * parity vs the Kotlin ports. TEST-ONLY (jvmTest). Mirrors appletv RenderMathJS.swift
- * but uses quickjs-kt instead of JavaScriptCore.
+ * but uses the Android QuickJS binding instead of JavaScriptCore.
  */
 class RenderMathJs {
 
@@ -23,11 +24,11 @@ class RenderMathJs {
     fun <T> withContext(block: suspend (Eval) -> T): T = runBlocking {
         quickJs {
             // window shim BEFORE constants.js (its UMD tail resolves the window branch).
-            evaluate<Any?>("var window = {}; void 0;")
-            evaluate<Any?>(read("hexcore.web.constants") + "\nvoid 0;")
+            evalAs<Any?>("var window = {}; void 0;")
+            evalAs<Any?>(read("hexcore.web.constants") + "\nvoid 0;")
             // theme.js top-level consts are lexical; copy the names we need onto globalThis
             // in the SAME evaluate so a later evaluate() can see them.
-            evaluate<Any?>(
+            evalAs<Any?>(
                 read("hexcore.web.theme") + "\n" +
                     """
                     globalThis.__PIECE_COLORS = PIECE_COLORS;
@@ -36,7 +37,7 @@ class RenderMathJs {
                     void 0;
                     """.trimIndent(),
             )
-            evaluate<Any?>(
+            evalAs<Any?>(
                 read("hexcore.web.canvasutils") + "\n" +
                     """
                     globalThis.__lighten = lightenColor;
@@ -51,7 +52,7 @@ class RenderMathJs {
                     void 0;
                     """.trimIndent(),
             )
-            evaluate<Any?>(
+            evalAs<Any?>(
                 """
                 globalThis.__geom = function(cs){ return window.GameConstants.computeHexGeometry(9,15,cs); };
                 globalThis.__center = function(col,row,cs){
@@ -77,7 +78,7 @@ class RenderMathJs {
                 void 0;
                 """.trimIndent(),
             )
-            block(Eval { code -> evaluate<String>(code) })
+            block(Eval { code -> evalAs<String>(code) })
         }
     }
 }

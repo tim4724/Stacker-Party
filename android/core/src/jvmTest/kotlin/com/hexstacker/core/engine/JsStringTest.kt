@@ -1,20 +1,21 @@
 package com.hexstacker.core.engine
 
-import com.dokar.quickjs.quickJs
+import com.hexstacker.core.testing.evalAs
+import com.hexstacker.core.testing.quickJs
+import java.io.File
+import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
-import kotlinx.serialization.json.Json
-import java.io.File
-import kotlin.test.Test
-import kotlin.test.assertEquals
 
 /**
- * [jsString] is load-bearing: quickjs-kt has no call-with-arguments API, so every
+ * [jsString] is load-bearing: the QuickJS binding has no call-with-arguments API, so every
  * call into the engine context is a source string Kotlin interpolates. Until the
  * room core landed, everything spliced in was an Int or a fixed enum constant.
  * Room payloads carry PLAYER NAMES — arbitrary user text — so a raw splice would
@@ -48,13 +49,13 @@ class JsStringTest {
         quickJs {
             for (s in hostile) {
                 // Length first, and for every case: it proves the literal PARSED to the
-                // right string even where reading it back cannot. quickjs-kt marshals JS
+                // right string even where reading it back cannot. The bridge marshals JS
                 // strings out lossily: a NUL truncates, and the 4-byte UTF-8 of an astral
                 // character mis-decodes. That is why the room reads come back ASCII-escaped
                 // (EngineBridge.asciiJson, covered by emojiNamesSurviveTheReturnTrip below).
-                assertEquals(s.length, evaluate<Int>("(${jsString(s)}).length"), "literal length for $s")
+                assertEquals(s.length, evalAs<Int>("(${jsString(s)}).length"), "literal length for $s")
                 if (s.any { it.isSurrogate() } || s.contains('\u0000')) continue
-                assertEquals(s, evaluate<String>(jsString(s)), "literal for ${s.map { it.code }}")
+                assertEquals(s, evalAs<String>(jsString(s)), "literal for ${s.map { it.code }}")
             }
         }
     }
@@ -63,7 +64,7 @@ class JsStringTest {
     fun aCraftedNameCannotInjectAStatement() = runBlocking {
         quickJs {
             for (s in hostile) {
-                val pwned = evaluate<Int>(
+                val pwned = evalAs<Int>(
                     "globalThis.pwned = 0; var name = ${jsString(s)}; globalThis.pwned",
                 )
                 assertEquals(0, pwned, "injection escaped the literal for: $s")
@@ -92,7 +93,7 @@ class JsStringTest {
     }
 
     /**
-     * The other half of the crossing: quickjs-kt decodes an outbound JS string from
+     * The other half of the crossing: the bridge decodes an outbound JS string from
      * UTF-8 and mishandles the 4-byte sequences, so a name with an emoji used to come
      * back mangled — and could truncate the snapshot JSON into something that no longer
      * parses. EngineBridge re-encodes the room reads as pure ASCII for that reason.

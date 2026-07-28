@@ -3,16 +3,17 @@ package com.hexstacker.tv.perf
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.dokar.quickjs.QuickJs
+import app.cash.zipline.QuickJs
 import com.hexstacker.core.model.GameSnapshot
+import com.hexstacker.tv.testing.evalAs
+import java.util.concurrent.Executors
+import kotlin.math.roundToLong
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.util.concurrent.Executors
-import kotlin.math.roundToLong
 
 /**
  * Answers two questions the input-latency work raised but never measured directly:
@@ -39,49 +40,49 @@ class TransportPerfTest {
         val dispatcher = exec.asCoroutineDispatcher()
 
         withContext(dispatcher) {
-            val qjs = QuickJs.create(dispatcher)
-            qjs.evaluate<Any?>(bundle)
-            qjs.evaluate<Any?>(SHIM + "\nvoid 0;")
+            val qjs = QuickJs.create()
+            qjs.evalAs<Any?>(bundle)
+            qjs.evalAs<Any?>(SHIM + "\nvoid 0;")
 
             // Global JIT warmup so the first measured block doesn't carry everyone's cost.
-            qjs.evaluate<Any?>("T.create([[0,1],[1,1]], 12345)")
+            qjs.evalAs<Any?>("T.create([[0,1],[1,1]], 12345)")
             repeat(150) {
-                json.decodeFromString<GameSnapshot>(qjs.evaluate<String>("T.frameJson(${it * 16.667})"))
-                decodePacked(qjs.evaluate<String>("T.framePacked(${it * 16.667})"))
+                json.decodeFromString<GameSnapshot>(qjs.evalAs<String>("T.frameJson(${it * 16.667})"))
+                decodePacked(qjs.evalAs<String>("T.framePacked(${it * 16.667})"))
             }
 
             for (players in intArrayOf(1, 4, 8)) {
                 Log.i(TAG, "=== $players player(s) ===")
                 val specs = (0 until players).joinToString(",", "[", "]") { "[$it,1]" }
-                qjs.evaluate<Any?>("T.create($specs, 12345)")
+                qjs.evalAs<Any?>("T.create($specs, 12345)")
                 var now = 1000.0
 
                 // (1) Pure simulation: update + drainEvents + toCommands. NO snapshot copy,
                 //     no serialization. This is the irreducible game work per frame.
                 measure("sim only (update+drain+commands)", 40, 400) {
                     now += 16.667
-                    qjs.evaluate<Any?>("T.simOnly($now)")
+                    qjs.evalAs<Any?>("T.simOnly($now)")
                 }
                 // (2) + the value-copy snapshot every delivery path builds.
                 measure("+ copyPlayer deep copy", 40, 400) {
                     now += 16.667
-                    qjs.evaluate<Any?>("T.simCopy($now)")
+                    qjs.evalAs<Any?>("T.simCopy($now)")
                 }
                 // (3) + JSON.stringify, i.e. what crosses today.
                 measure("+ JSON.stringify (crosses today)", 40, 400) {
                     now += 16.667
-                    qjs.evaluate<String>("T.frameJson($now)")
+                    qjs.evalAs<String>("T.frameJson($now)")
                 }
                 // (4) The packed alternative: straight off the LIVE refs, no deep copy,
                 //     no JSON, one code unit per value.
                 measure("packed, live refs, no copy", 40, 400) {
                     now += 16.667
-                    qjs.evaluate<String>("T.framePacked($now)")
+                    qjs.evalAs<String>("T.framePacked($now)")
                 }
 
                 // Native-side decode of each, measured separately.
-                val js = qjs.evaluate<String>("T.frameJson(${now + 16.667})")
-                val packed = qjs.evaluate<String>("T.framePacked(${now + 33.3})")
+                val js = qjs.evalAs<String>("T.frameJson(${now + 16.667})")
+                val packed = qjs.evalAs<String>("T.framePacked(${now + 33.3})")
                 Log.i(TAG, "  payload: json=${js.length} chars  packed=${packed.length} chars")
                 measure("decode: kotlinx JSON -> objects", 40, 300) { json.decodeFromString<GameSnapshot>(js) }
                 measure("decode: packed -> objects", 40, 300) { decodePackedToObjects(packed) }
@@ -91,7 +92,7 @@ class TransportPerfTest {
                 // filter strips a grid whose gridVersion has not moved, so ~97% of live
                 // frames carry none. Measure that steady state separately, or the
                 // grid-flattening win looks far bigger than it is in practice.
-                val stripped = qjs.evaluate<String>("T.framePackedNoGrid(${now + 50.0})")
+                val stripped = qjs.evalAs<String>("T.framePackedNoGrid(${now + 50.0})")
                 Log.i(TAG, "  steady-state payload: packed-no-grid=${stripped.length} chars")
                 measure("steady: packed -> objects", 40, 300) { decodePackedNoGrid(stripped, boxed = true) }
                 measure("steady: packed -> flat ints", 40, 300) { decodePackedNoGrid(stripped, boxed = false) }

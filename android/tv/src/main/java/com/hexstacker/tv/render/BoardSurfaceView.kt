@@ -4,12 +4,16 @@ import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.RecordingCanvas
 import android.graphics.Rect
+import android.graphics.RenderNode
+import android.os.Build
 import android.os.SystemClock
 import android.util.AttributeSet
 import android.util.Log
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import androidx.annotation.RequiresApi
 import androidx.annotation.VisibleForTesting
 import com.hexstacker.core.model.EngineConstants
 import com.hexstacker.core.model.EventType
@@ -116,6 +120,31 @@ class BoardSurfaceView @JvmOverloads constructor(
     // Last-drawn pendingGarbage per player (pre-event), so a garbage_cancelled can place its
     // flash on the rows that were there before the engine reduced the count this frame.
     private val pendingByPlayer = HashMap<Int, Int>()
+
+    // ── Per-board display-list cache (render-thread-owned) ────────────────────
+    //
+    // One input moves exactly ONE board, and gravity steps at most a couple per frame,
+    // but the whole screen is repainted because lockHardwareCanvas hands back a
+    // swap-chain buffer with no preserved content. That canvas IS a RecordingCanvas
+    // though (HWUI records into a RenderNode internally), so a board whose render
+    // inputs are unchanged can be REPLAYED from its recorded display list instead of
+    // re-recording it. Measured on a Google TV Streamer at eight boards: recording all
+    // eight costs 6.48 ms, replaying all eight 3.16 ms — so ~0.41 ms per board is
+    // recording, and that is what a clean board now skips.
+    //
+    // Replay is not a pixel approximation: the display list is the same command stream
+    // a direct draw would have emitted. `BoardCacheParityTest` proves it byte-for-byte
+    // against the uncached path.
+    private var boardNodes: Array<RenderNode?> = emptyArray()
+    // The render inputs each cached node was recorded from; null = must record.
+    // Mirrors web's DisplayRender.playerRenderSig, which gates the same skip there.
+    private var boardSigs: Array<String?> = emptyArray()
+    // True when a board's last recording contained a wall-clock effect (near-clear
+    // pulse, clearing glow), so it animates and must re-record even with a stable sig.
+    private var boardPulsing = BooleanArray(0)
+    private val canCacheBoards = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+    // Test hook: forces every board to re-record, i.e. exactly the pre-cache path.
+    @Volatile @VisibleForTesting internal var disableBoardCache = false
 
     // textHeight override: real Orbitron 'Mg' glyph metrics so multi-board sizing/centering
     // matches the web's ctx.measureText path (LayoutEngine's default is a coarse Swift approx).
@@ -276,6 +305,7 @@ class BoardSurfaceView @JvmOverloads constructor(
         // initiate (backgrounding, config change). Either way the thread is dead before the
         // bitmaps are freed.
         stopRenderThread()
+        discardBoardNodes() // before recycle(): a cached list holds refs to these bitmaps
         for (r in renderers) r.recycle()
         renderers = emptyList()
         stampCache.clear()
@@ -359,6 +389,11 @@ class BoardSurfaceView @JvmOverloads constructor(
     @VisibleForTesting
     internal fun renderFrameForTest(canvas: Canvas) = drawFrame(canvas)
 
+    /** Test-only: is a submitted snapshot still held? Used to pin that `showScreen`'s
+     *  inline clear cannot land after a snapshot it was supposed to precede. */
+    @VisibleForTesting
+    internal fun hasSnapshotForTest(): Boolean = latestSnapshot != null
+
     /** Returns true while any wall-clock animation is live (board pulses, overlay
      *  anims, garbage fx) — the render thread must keep drawing frames for those even
      *  though no new content arrives; false lets it idle-skip. */
@@ -383,23 +418,15 @@ class BoardSurfaceView @JvmOverloads constructor(
             }
         } else {
             val players = snap.players
-            for (j in players.indices) {
-                val r = renderers.getOrNull(j) ?: continue
-                val player = players[j]
-                val shake = animations.shakeOffsetFor(r.boardX, r.boardY)
-                val shaking = shake.x != 0f || shake.y != 0f
-                if (shaking) {
-                    canvas.save()
-                    canvas.translate(shake.x, shake.y)
-                }
-                pulsing = r.render(canvas, player, nowMs) || pulsing
-                r.drawGarbageEffects(canvas, garbageIndicator[player.id], nowMs, 0.2) // incoming attack
-                r.drawGarbageEffects(canvas, garbageDefence[player.id], nowMs, 0.3)   // defence flash
-                disconnects[player.id]?.let { url ->
-                    r.drawDisconnectedOverlay(canvas, qrCache.get(url))
-                }
-                if (shaking) canvas.restore()
-            }
+            // Cache only when this canvas can replay a display list. `lockHardwareCanvas`
+            // returning a RecordingCanvas is an HWUI implementation detail, not a
+            // contract, so a platform that hands back something else just draws
+            // directly — same pixels, no saving.
+            pulsing = if (canCacheBoards && !disableBoardCache && canvas is RecordingCanvas) {
+                drawBoardsCached(canvas, players, nowMs)
+            } else {
+                drawBoardsDirect(canvas, players, nowMs)
+            } || pulsing
             // Remember this frame's pending as the "old" value for next frame's cancel rowStart.
             for (p in players) pendingByPlayer[p.id] = p.pendingGarbage
         }
@@ -413,6 +440,128 @@ class BoardSurfaceView @JvmOverloads constructor(
         // non-empty means a meter flash is still animating.
         return pulsing || !animations.isIdle() ||
             garbageIndicator.isNotEmpty() || garbageDefence.isNotEmpty()
+    }
+
+    /** One board, exactly as the pre-cache loop drew it. Returns its pulse flag. */
+    private fun drawBoard(canvas: Canvas, r: BoardRenderer, player: PlayerState, nowMs: Double): Boolean {
+        val pulsing = r.render(canvas, player, nowMs)
+        r.drawGarbageEffects(canvas, garbageIndicator[player.id], nowMs, 0.2) // incoming attack
+        r.drawGarbageEffects(canvas, garbageDefence[player.id], nowMs, 0.3)   // defence flash
+        disconnects[player.id]?.let { url ->
+            r.drawDisconnectedOverlay(canvas, qrCache.get(url))
+        }
+        return pulsing
+    }
+
+    /** Pre-cache path: every board re-drawn straight onto [canvas], shake as a translate. */
+    private fun drawBoardsDirect(canvas: Canvas, players: List<PlayerState>, nowMs: Double): Boolean {
+        var pulsing = false
+        for (j in players.indices) {
+            val r = renderers.getOrNull(j) ?: continue
+            val shake = animations.shakeOffsetFor(r.boardX, r.boardY)
+            val shaking = shake.x != 0f || shake.y != 0f
+            if (shaking) {
+                canvas.save()
+                canvas.translate(shake.x, shake.y)
+            }
+            pulsing = drawBoard(canvas, r, players[j], nowMs) || pulsing
+            if (shaking) canvas.restore()
+        }
+        return pulsing
+    }
+
+    /**
+     * Re-record only the boards whose render inputs moved; replay the rest from their
+     * cached display lists. Shake rides on the NODE rather than inside the recording:
+     * the offset changes every frame, so baking it in would invalidate every shaking
+     * board's recording on every frame — which is exactly when the saving matters.
+     */
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private fun drawBoardsCached(canvas: RecordingCanvas, players: List<PlayerState>, nowMs: Double): Boolean {
+        if (boardNodes.size != renderers.size) {
+            for (n in boardNodes) n?.discardDisplayList()
+            boardNodes = arrayOfNulls(renderers.size)
+            boardSigs = arrayOfNulls(renderers.size)
+            boardPulsing = BooleanArray(renderers.size)
+        }
+        val w = max(1, surfaceW)
+        val h = max(1, surfaceH)
+        var pulsing = false
+        for (j in players.indices) {
+            val r = renderers.getOrNull(j) ?: continue
+            val player = players[j]
+            val node = boardNodes[j] ?: RenderNode("board-$j").also { boardNodes[j] = it }
+            val sig = boardSig(player)
+            // A recording that contained a wall-clock effect is only valid for the instant
+            // it was taken, so those boards re-record until the effect ends: the pulse /
+            // clearing glow (which `render` reports back) and the garbage-meter flashes
+            // (whose alpha fades against nowMs, and which report nothing). A board that
+            // STARTS pulsing is caught by the signature — every trigger (grid, piece
+            // position, clearing cells, pending garbage) is in it.
+            val timeDependent = boardPulsing[j] ||
+                garbageIndicator[player.id]?.isNotEmpty() == true ||
+                garbageDefence[player.id]?.isNotEmpty() == true
+            if (!node.hasDisplayList() || boardSigs[j] != sig || timeDependent) {
+                node.setPosition(0, 0, w, h)
+                val rec = node.beginRecording(w, h)
+                val boardPulse = try {
+                    drawBoard(rec, r, player, nowMs)
+                } finally {
+                    node.endRecording()
+                }
+                boardSigs[j] = sig
+                boardPulsing[j] = boardPulse
+            }
+            val shake = animations.shakeOffsetFor(r.boardX, r.boardY)
+            node.translationX = shake.x
+            node.translationY = shake.y
+            canvas.drawRenderNode(node)
+            pulsing = boardPulsing[j] || pulsing
+        }
+        return pulsing
+    }
+
+    /** Release every cached display list (and the bitmap references it pins). */
+    private fun discardBoardNodes() {
+        if (!canCacheBoards) return
+        for (n in boardNodes) n?.discardDisplayList()
+        boardNodes = emptyArray()
+        boardSigs = emptyArray()
+        boardPulsing = BooleanArray(0)
+    }
+
+    /**
+     * Everything [drawBoard] reads off a board, as one key. A missed field means a stale
+     * board on screen, so this is the load-bearing part of the cache — it is the port of
+     * web's `DisplayRender.playerRenderSig`, which gates the same skip there, plus the
+     * two inputs web tracks outside its signature (`clearingCells`, which it treats as
+     * "must animate", and the garbage-meter effects, which it does too).
+     */
+    private fun boardSig(p: PlayerState): String {
+        val sb = StringBuilder(96)
+        sb.append(p.id).append(':').append(if (p.alive) 1 else 0)
+            .append(':').append(p.lines).append(':').append(p.level)
+            .append(':').append(p.pendingGarbage).append(':').append(p.gridVersion)
+            .append(':').append(p.holdPiece ?: "")
+            // The QR bitmap resolves asynchronously, so "overlay wanted" and "overlay
+            // has its code" are different states and both must repaint (web: the `qr`
+            // 0/1/2 fragment).
+            .append(':').append(disconnects[p.id]?.let { if (qrCache.get(it) != null) 2 else 1 } ?: 0)
+            .append(':').append(p.clearingCells?.size ?: 0)
+            // Not in web's signature, and covered there transitively (a spawn also moves
+            // currentPiece), but drawNext reads it directly so it is named here rather
+            // than argued about.
+            .append(':').append(p.nextPieces.joinToString(","))
+        val cp = p.currentPiece
+        if (cp != null) {
+            // cells[0] uniquely identifies rotation for every hex piece type — the same
+            // invariant BoardRenderer's clear-preview cache relies on.
+            sb.append(':').append(cp.typeId).append(':').append(cp.anchorCol)
+                .append(':').append(cp.anchorRow)
+                .append(':').append(cp.cells.firstOrNull()?.q).append(':')
+                .append(cp.cells.firstOrNull()?.r)
+        }
+        return sb.toString()
     }
 
     private fun drainEvents(nowMs: Double) {
@@ -514,6 +663,11 @@ class BoardSurfaceView @JvmOverloads constructor(
         val s = seats
         if (w <= 0 || h <= 0 || s.isEmpty()) { layoutDirty = true; return } // not ready; retry next frame
 
+        // Drop the cached display lists BEFORE recycling the bitmaps they reference:
+        // a surviving list replayed against a recycled bitmap throws. Also correct for
+        // a rebuild that keeps the same board COUNT (a rekey's new name/colour, a
+        // resize) — the size check in drawBoardsCached would not catch that one.
+        discardBoardNodes()
         for (r in renderers) r.recycle()
 
         val n = if (playerCount > 0) playerCount else s.size

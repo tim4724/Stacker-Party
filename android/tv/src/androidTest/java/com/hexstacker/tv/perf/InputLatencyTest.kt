@@ -15,7 +15,9 @@ import com.hexstacker.core.net.RelayTransport
 import com.hexstacker.core.room.PlayerRecord
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -37,9 +39,9 @@ import kotlin.math.roundToLong
  * would repaint.
  *
  * Everything but the radio and the pixels is the shipping code: the real
- * DisplayCoordinator on `Dispatchers.Main`, the real EngineBridge over the real
- * `partycore.js`, a real 60 Hz tick loop. What it does NOT include is the render
- * thread's own wake + draw + present, so treat the numbers as a floor.
+ * DisplayCoordinator and the real EngineBridge sharing one game thread as MainActivity
+ * wires them, over the real `partycore.js`, with a real 60 Hz tick loop. What it does NOT
+ * include is the render thread's own wake + draw + present, so treat the numbers as a floor.
  *
  * Correlation is by CONTENT, not by call order: a left/right input moves
  * `currentPiece.anchorCol`, so a sample only completes on a snapshot whose anchorCol
@@ -48,26 +50,77 @@ import kotlin.math.roundToLong
 @RunWith(AndroidJUnit4::class)
 class InputLatencyTest {
 
+    // The SHIPPING shape: MainActivity runs the coordinator and the engine on one game
+    // thread (§16), so these are the live numbers. 2-4 players is the ordinary party, so
+    // those are the ones that get quoted.
     @Test fun latency1Player() = runLatency(players = 1, busyPeers = 0)
+    @Test fun latency2Players() = runLatency(players = 2, busyPeers = 0)
+    @Test fun latency3PlayersAllBusy() = runLatency(players = 3, busyPeers = 2)
     @Test fun latency4Players() = runLatency(players = 4, busyPeers = 0)
+    @Test fun latency4PlayersAllBusy() = runLatency(players = 4, busyPeers = 3)
     @Test fun latency8Players() = runLatency(players = 8, busyPeers = 0)
 
     /** Every other seat hammering input too — the party case the TV is actually for. */
     @Test fun latency8PlayersAllBusy() = runLatency(players = 8, busyPeers = 7)
 
-    private fun runLatency(players: Int, busyPeers: Int) = runBlocking {
+    /**
+     * The one measurement that settles the §16 change, because it is the only one immune to
+     * run order. Each test above gets its own JUnit instance, so whichever runs first pays
+     * ART's JIT and the four-case ranking ends up reflecting order as much as cost (the
+     * first pass here showed 4-player "legacy" beating "shipping" purely by running 7th
+     * instead of 1st). This runs BOTH shapes inside ONE method, twice each, alternating —
+     * so a real difference shows as both passes agreeing, and warm-up shows as pass 2
+     * beating pass 1 in both shapes.
+     *
+     * legacy = the pre-§16 shape: coordinator on `Dispatchers.Main`, engine on its own
+     * dispatcher, so an input crossed the action channel to Main and then hopped to the
+     * engine thread and back.
+     */
+    @Test fun shapeComparison4Players() = runBlocking { compareShapes(players = 4, busyPeers = 0) }
+    @Test fun shapeComparison8Players() = runBlocking { compareShapes(players = 8, busyPeers = 0) }
+
+    private suspend fun compareShapes(players: Int, busyPeers: Int) {
+        Log.i(TAG, "=== shape A/B, $players player(s), alternating, 2 passes each ===")
+        for (pass in 1..2) {
+            for (oneThread in listOf(false, true)) {
+                measureLatency(players, busyPeers, oneThread, pass)
+            }
+        }
+    }
+
+    private fun runLatency(players: Int, busyPeers: Int, oneThread: Boolean = true) = runBlocking {
+        measureLatency(players, busyPeers, oneThread, pass = 0)
+    }
+
+    // coroutineScope: the 60 Hz ticker below is a child job, and `launch` needs a scope.
+    private suspend fun measureLatency(
+        players: Int,
+        busyPeers: Int,
+        oneThread: Boolean,
+        pass: Int,
+    ): Unit = coroutineScope {
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val bundleJs = ctx.assets.open("partycore.js").bufferedReader().use { it.readText() }
 
         val out = LatencyOutput()
         val transport = FakeTransport()
+        // One dedicated thread shared by the coordinator AND the bridge, or the shipping
+        // split (coordinator on Main, engine on its own dispatcher).
+        val gameExec = if (oneThread) Executors.newSingleThreadExecutor { r -> Thread(r, "game") } else null
+        val gameDispatcher = gameExec?.asCoroutineDispatcher()
+        val coordinatorDispatcher = gameDispatcher ?: Dispatchers.Main // what MainActivity uses
         val coordinator = DisplayCoordinator(
             transport = transport,
             output = out,
-            bridgeProvider = { bridge ?: EngineBridge.create(bundleJs).also { bridge = it } },
+            bridgeProvider = {
+                bridge ?: (
+                    if (gameDispatcher != null) EngineBridge.create(bundleJs, gameDispatcher)
+                    else EngineBridge.create(bundleJs)
+                    ).also { bridge = it }
+            },
             seedProvider = { SEED },
             onError = { label, e -> Log.w(TAG, "coordinator error: $label", e) },
-            dispatcher = Dispatchers.Main, // what MainActivity uses
+            dispatcher = coordinatorDispatcher,
         )
         coordinator.start()
         transport.onCreated?.invoke("TEST", null, null)
@@ -85,7 +138,7 @@ class InputLatencyTest {
         check(out.screen == DisplayScreen.GAME) { "expected GAME, got ${out.screen}" }
 
         // The 60 Hz render clock, exactly as MainActivity drives it.
-        val ticker = launch(Dispatchers.Main) {
+        val ticker = launch(coordinatorDispatcher) {
             while (true) {
                 coordinator.tick(16.667)
                 delay(16)
@@ -139,12 +192,15 @@ class InputLatencyTest {
         noise.shutdownNow()
         coordinator.awaitIdle()
 
-        val label = "$players player(s)" + if (busyPeers > 0) ", $busyPeers busy" else ""
+        val label = "$players player(s)" + (if (busyPeers > 0) ", $busyPeers busy" else "") +
+            (if (oneThread) " [shipping: one game thread]" else " [legacy: coordinator on Main]") +
+            if (pass > 0) " pass $pass" else ""
         Log.i(TAG, "=== input -> renderSnapshot, $label ===")
         report(samples, misses)
         Log.i(TAG, String.format("renderSnapshot rate during run: %.1f/s", out.renderRate()))
         bridge?.close()
         bridge = null
+        if (gameExec != null) gameExec.shutdown() // not `?.`: JUnit rejects a Unit? test method
     }
 
     private fun report(samples: List<Long>, misses: Int) {

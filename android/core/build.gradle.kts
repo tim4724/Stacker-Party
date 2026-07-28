@@ -1,7 +1,7 @@
 // :core — the platform-agnostic Kotlin port core, mirroring appletv/HexStackerKit.
 //
 // Kotlin Multiplatform (jvm + android targets) on purpose: the JS engine binding
-// (quickjs-kt) ships per-platform natives, so the jvm() target runs the golden
+// (Zipline's QuickJs) ships per-platform natives, so the jvm() target runs the golden
 // conformance tests on the desktop JVM (no emulator) while the android target
 // hands the app the correct .so files. A plain kotlin-jvm module would leak
 // desktop natives into the Android app.
@@ -30,7 +30,7 @@ kotlin {
 
         commonMain {
             dependencies {
-                implementation(libs.quickjs.kt)
+                implementation(libs.zipline)
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.serialization.json)
             }
@@ -52,6 +52,13 @@ kotlin {
 // will load into QuickJS from assets). Passed as an absolute path so the test is
 // hermetic regardless of the test working directory.
 tasks.withType<Test>().configureEach {
+    // QuickJS parses decimal LITERALS with a locale-dependent strtod, so a developer or CI
+    // shell in a comma-decimal locale makes `1.5` evaluate to 1 and silently corrupts every
+    // decimal constant in the engine bundle. Pin the C locale for the test JVM so the
+    // goldens do not depend on whoever is running them. EngineBridge asserts the same
+    // invariant at runtime, which is what protects a real device.
+    environment("LC_ALL", "C")
+    environment("LC_NUMERIC", "C")
     val repoRoot = rootProject.layout.projectDirectory.dir("..")
     systemProperty("hexcore.bundle", repoRoot.file("dist/partycore.js").asFile.absolutePath)
     // Cross-engine conformance: the frame() golden driver bundle + the V8-recorded

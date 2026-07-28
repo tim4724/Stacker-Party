@@ -1,10 +1,11 @@
 package com.hexstacker.core
 
-import com.dokar.quickjs.quickJs
-import kotlinx.coroutines.runBlocking
+import com.hexstacker.core.testing.evalAs
+import com.hexstacker.core.testing.quickJs
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlinx.coroutines.runBlocking
 
 /**
  * The core thesis of the Android port: the canonical game engine (the server JS
@@ -34,15 +35,15 @@ class EngineBundleTest {
         val src = bundleSource()
         quickJs {
             // 1. Load the bundle: defines globalThis.HexCore (PartyCore + RoomFlow).
-            evaluate<Any?>(src)
+            evalAs<Any?>(src)
             assertEquals(
                 "function",
-                evaluate<String>("typeof HexCore.PartyCore"),
+                evalAs<String>("typeof HexCore.PartyCore"),
                 "HexCore.PartyCore must be exposed by the bundle",
             )
 
             // 2. Construct + init a 2-player game with a fixed seed (deterministic).
-            evaluate<Any?>(
+            evalAs<Any?>(
                 """
                 globalThis.__pc = new HexCore.PartyCore(
                     new Map([[0, { startLevel: 1 }], [1, { startLevel: 1 }]]),
@@ -57,22 +58,22 @@ class EngineBundleTest {
             // in visible-row space: getSnapshot does grid.slice(BUFFER_ROWS), so the 4
             // hidden spawn-buffer rows are clipped and piece/ghost anchors are shifted
             // by -BUFFER_ROWS. The native renderer consumes these visible coordinates.
-            assertEquals(2, evaluate<Int>("__pc.snapshot().players.length"))
-            assertEquals(9, evaluate<Int>("__pc.snapshot().players[0].grid[0].length"))
-            assertEquals(15, evaluate<Int>("__pc.snapshot().players[0].grid.length"))
+            assertEquals(2, evalAs<Int>("__pc.snapshot().players.length"))
+            assertEquals(9, evalAs<Int>("__pc.snapshot().players[0].grid[0].length"))
+            assertEquals(15, evalAs<Int>("__pc.snapshot().players[0].grid.length"))
 
             // 4. Step ~2s of frames at 60Hz; a falling piece must be present.
-            evaluate<Any?>("for (var i = 0; i < 120; i++) { __now += 16.67; __pc.frame(__now); }")
+            evalAs<Any?>("for (var i = 0; i < 120; i++) { __now += 16.67; __pc.frame(__now); }")
             assertEquals(
                 1,
-                evaluate<Int>("__pc.snapshot().players[0].currentPiece ? 1 : 0"),
+                evalAs<Int>("__pc.snapshot().players[0].currentPiece ? 1 : 0"),
                 "a piece should be falling after 2s",
             )
 
             // 5. frame() honors the native contract: { events, snapshot, commands }.
             assertEquals(
                 "commands,events,snapshot",
-                evaluate<String>("Object.keys(__pc.frame(__now += 16.67)).sort().join(',')"),
+                evalAs<String>("Object.keys(__pc.frame(__now += 16.67)).sort().join(',')"),
             )
         }
         Unit

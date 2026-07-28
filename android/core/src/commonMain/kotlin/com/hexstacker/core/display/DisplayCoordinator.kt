@@ -1255,7 +1255,7 @@ class DisplayCoordinator(
      * one but the last describes a half-finished state no controller should ever render.
      *
      * Local rather than a RoomCore method because the block is a closure and the bridge is
-     * JSON-only (quickjs-kt has no call-with-arguments API), so a room-core version would
+     * JSON-only (the QuickJS binding has no call-with-arguments API), so a room-core version would
      * need begin/end as two extra interpolated `evaluate` calls per batch, around a frame
      * drain that runs every tick. The hints stay the room core's decision; only the
      * folding is here, and [publishAs] is already the one point every publish goes through.

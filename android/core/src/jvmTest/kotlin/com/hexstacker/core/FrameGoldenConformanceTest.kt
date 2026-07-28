@@ -1,10 +1,11 @@
 package com.hexstacker.core
 
-import com.dokar.quickjs.quickJs
-import kotlinx.coroutines.runBlocking
+import com.hexstacker.core.testing.evalAs
+import com.hexstacker.core.testing.quickJs
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.fail
+import kotlinx.coroutines.runBlocking
 
 /**
  * Cross-engine conformance: drives the EXACT deterministic timeline that produced
@@ -38,8 +39,8 @@ class FrameGoldenConformanceTest {
         val golden = fileFromProp("hexcore.frametest.golden").readText()
 
         val produced = quickJs {
-            evaluate<Any?>(driver)
-            evaluate<String>("JSON.stringify(HexFrameTest.runPartyCoreFrameScript(), null, 2)")
+            evalAs<Any?>(driver)
+            evalAs<String>("JSON.stringify(HexFrameTest.runPartyCoreFrameScript(), null, 2)")
         }
 
         val expected = golden.trimEnd('\n')

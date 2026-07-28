@@ -22,7 +22,7 @@ import kotlinx.serialization.Serializable
  * immediately flattens again. Every snapshot field is a small integer, so the
  * payload crosses as one integer per UTF-16 code unit instead.
  *
- * Every value is biased +1 on the wire: quickjs-kt hands JS strings over as C
+ * Every value is biased +1 on the wire: the JNI bridge hands JS strings over as C
  * strings, so a NUL code unit would truncate the payload — and 0 is the most
  * common raw value here (every empty grid cell). That same bias is why values
  * wider than one code unit cross as two FIFTEEN-bit halves rather than sixteen:
