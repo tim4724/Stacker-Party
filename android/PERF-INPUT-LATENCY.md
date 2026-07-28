@@ -716,7 +716,7 @@ per busy frame. The cost is that every `DisplayOutput` call then arrives off-mai
 `StateFlow`-backed, but ExoPlayer needs main and `stopRenderThread` must stay on main.
 That is the next real win on this platform, and it is a threading refactor, not a tweak.
 
-### 14.2 tvOS re-syncs all eight boards when one moved
+### 14.2 tvOS re-syncs all eight boards when one moved — SHIPPED, see below
 
 `BoardScene.renderSnapshot` calls `boardNodes[p.id]?.update(with: p)` for **every** seat
 on every snapshot. `update` guards the two expensive rebuilds internally (`lastTier`,
@@ -730,10 +730,36 @@ The fix is smaller than Android's, because `update` is a pure function of the
 added by `handleGameEvent`, not by `update`): skip the call when the seat's snapshot is
 unchanged from the one last rendered into that node.
 
-**Not done here, deliberately.** `BoardNode.swift` is a TV-only source outside SwiftPM, so
-`swift test` does not cover it, and there is no Apple TV on this bench — the change would
-ship unmeasured and unlooked-at, on the one platform whose renderer cannot be verified
-headlessly. It wants a device, a gallery pass and a before/after on `update`.
+**Done.** `BoardScene.renderSnapshot` now skips `BoardNode.update` for a seat whose
+`PlayerSnapshot` is unchanged from the one last rendered into that node.
+
+The gate is struct equality, not a hand-listed signature like Android's: `PlayerSnapshot` is
+already `Equatable`, so there is no field to forget. Sound because `update` is a pure
+function of the seat plus caches keyed on it — the animations (lock flash, line clear,
+shake, garbage, KO) are SKAction-driven and arrive via `handleGameEvent`, which does not go
+through it.
+
+The trap is invalidation, and it is not the obvious one. `applySize()` replays `lastSnapshot`
+*specifically* to re-apply geometry after a size or safe-area-inset change — a naive skip
+makes that replay a no-op and strands the boards on the inset-less layout forever. It is
+handled at a single point: `ensureBoards` clears the ledger whenever it rebuilds, and
+`relayout()`, `showScreen(.game)` and `resetBoards()` all clear `lastBoardIds`, so every one
+of them arrives back there.
+
+**Verification, and its limits.** There is still no Apple TV on this bench, and `swift test`
+(101 tests) covers HexStackerKit but not `BoardScene`. What was done instead: the tvOS
+target builds, and the Simulator gallery (`scripts/gallery/capture-tvos.sh`) captures all 24
+states through the real `renderSnapshot`. That path exercises the replay risk directly,
+because the safe-area insets land *after* the first render.
+
+A byte comparison against a pre-change capture is worthless here and the control proves it:
+capturing the SAME code twice leaves **the same 16 of 24 shots differing** — every state
+with live particles or a running clock. So the shots were judged visually instead: at four
+and eight boards every seat renders its stack, ghost, current piece, HOLD/NEXT, HUD and
+per-seat tier chrome, inside the title-safe area. A broken skip or a missed invalidation
+would show as a blank, stale or mis-laid-out board, and none appears.
+
+Still worth a device pass and a before/after on `update` cost, which needs an Apple TV.
 
 ## 15. Would a different JS engine help? No — but a different BINDING would
 

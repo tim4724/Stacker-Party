@@ -27,6 +27,20 @@ final class BoardScene: SKScene {
     private var timerGlyphs: [SKLabelNode] = []
 
     private var boardNodes: [Int: BoardNode] = [:]
+    /// The seat state each board node was last updated from, so an unchanged seat can skip
+    /// [BoardNode.update]. A controller input moves exactly ONE board and gravity steps at
+    /// most a couple per frame, but every snapshot used to re-sync all eight — rebuilding
+    /// ghost, preview, near-clear, piece, clearing and HUD nodes for seats that had not
+    /// moved, on the main thread, which is also where JavaScriptCore runs. Android removed
+    /// the same waste from its renderer (PERF-INPUT-LATENCY.md §13.3); web never had it,
+    /// because its per-board tile cache is gated on exactly this comparison.
+    ///
+    /// The gate is `PlayerSnapshot` equality rather than a hand-listed signature — the type
+    /// is already Equatable, so there is no field to forget. Sound because `update` is a
+    /// pure function of the seat plus caches keyed on it: the animations (lock flash, line
+    /// clear, shake, garbage, KO) are SKAction-driven and arrive through `handleGameEvent`,
+    /// which does not go through here.
+    private var lastRenderedSeat: [Int: PlayerSnapshot] = [:]
     private var currentPlayerCount = -1
     private var currentGridRows = 1           // board-grid rows, for the timer size (web cachedGridRows)
     private var lastBoardIds: [Int] = []      // the player-id set the boards were built for
@@ -152,7 +166,13 @@ final class BoardScene: SKScene {
         lastSnapshot = snapshot
         ensureBoards(for: snapshot)
         for p in snapshot.players {
+            // Unchanged seat: its node already shows exactly this. ensureBoards clears the
+            // ledger whenever it rebuilds, which is also how a relayout gets through —
+            // applySize() replays lastSnapshot precisely to re-apply geometry, and that
+            // replay must NOT be skipped.
+            if lastRenderedSeat[p.id] == p { continue }
             boardNodes[p.id]?.update(with: p)
+            lastRenderedSeat[p.id] = p
         }
         updateTimer(elapsedMs: snapshot.elapsed)
     }
@@ -227,6 +247,10 @@ final class BoardScene: SKScene {
         currentPlayerCount = snapshot.players.count
         gameLayer.removeChildren(in: boardNodes.values.map { $0 })
         boardNodes.removeAll()
+        // Fresh nodes show nothing yet, so nothing may be skipped against them. This is the
+        // single invalidation point for the skip above: relayout(), showScreen(.game) and
+        // resetBoards() all clear lastBoardIds, so they all arrive back here.
+        lastRenderedSeat.removeAll()
 
         let layout = LayoutEngine.layout(playerCount: snapshot.players.count,
                                          viewportW: playRect.width, viewportH: playRect.height)
