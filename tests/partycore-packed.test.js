@@ -75,6 +75,15 @@ test('pack -> unpack round-trips every delivered frame', () => {
   assert.ok(seen.ghost > 0, 'corpus never carried a ghost');
   assert.ok(seen.events > 0, 'corpus never carried events');
   assert.ok(seen.omitted > 0, 'corpus never omitted a render-identical snapshot');
+  // The driven corpus never completes a row: it hard-drops boards into KOs
+  // before any line fills (its whole event record is piece_lock, player_ko and
+  // game_end), so no delivered frame carries clearingCells. Pin that fact
+  // instead of faking coverage; the clearing branch is exercised by the
+  // EDGE_CASES below, which the golden fixture also records for the native
+  // ports. If the corpus ever starts clearing lines this fails, at which point
+  // strengthen it to seen.clearing > 0.
+  assert.equal(seen.clearing, 0,
+    'corpus now carries clearing cells: promote this to a positive guard');
 });
 
 // The driven corpus above reaches whatever the engine happens to emit, which does
@@ -184,6 +193,19 @@ test('a value outside the wire range is refused, not silently wrapped', () => {
   assert.throws(() => PartyCore.packFrame(frame), /outside wire range/);
   const negative = { events: [], snapshot: { players: [player({ level: -1 })], elapsed: 0 }, commands: [] };
   assert.throws(() => PartyCore.packFrame(negative), /outside wire range/);
+  // The range also stops under the UTF-16 surrogate block: a raw 0xd7ff biases
+  // into 0xd800..0xdfff, and a lone surrogate is not guaranteed to survive the
+  // JS-to-native string marshalling (JSC's C-string conversion substitutes
+  // U+FFFD). 0xd7fe is the last raw value whose biased code unit sits below the
+  // block; everything from 0xd7ff up to the old 0xfffe bound must throw.
+  const atCeiling = { events: [], snapshot: { players: [player({ level: 0xd7fe })], elapsed: 0 }, commands: [] };
+  assert.deepStrictEqual(decoded(PartyCore.packFrame(atCeiling)), normalize(atCeiling),
+    'the widest legal single-unit value must still round-trip');
+  for (const v of [0xd7ff, 0xdffe, 0xe000, 0xfffe]) {
+    const surrogate = { events: [], snapshot: { players: [player({ level: v })], elapsed: 0 }, commands: [] };
+    assert.throws(() => PartyCore.packFrame(surrogate), /outside wire range/,
+      'raw 0x' + v.toString(16) + ' must be refused');
+  }
   // A split field is checked before it is masked: masking an oversized value would
   // produce two legal-looking halves that sail past the range guard above and decode
   // as a different number.
@@ -237,6 +259,14 @@ function recordGolden() {
     if (i % 8 !== 0) return; // sample, so the fixture stays reviewable
     steps.push({ packed: PartyCore.packFrame(frame), frame: normalize(frame) });
   });
+  // The hand-built EDGE_CASES ride along too: the driven corpus never reaches
+  // some of the shapes the format has to carry (clearing cells, absent
+  // piece/ghost, empty next queue, negative coordinates), so without these
+  // steps the native ports would never replay those branches.
+  for (const p of Object.values(EDGE_CASES)) {
+    const frame = { events: [], snapshot: { players: [p], elapsed: 1234 }, commands: [] };
+    steps.push({ packed: PartyCore.packFrame(frame), frame: normalize(frame) });
+  }
   // A driven match never reaches a split value whose HIGH half is non-zero (a few
   // seconds of elapsed, single-digit gridVersions), and with a zero high half every
   // shift width decodes identically — a port using 16-bit halves replayed the

@@ -1,5 +1,7 @@
 package com.hexstacker.core.engine
 
+import com.hexstacker.core.model.Command
+import com.hexstacker.core.model.GameEvent
 import com.hexstacker.core.model.GameSnapshot
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -54,14 +56,18 @@ class PackedFrameTest {
 
             val actual = PackedFrame.decode(packed, gridCache)
 
-            // events / commands ride as JSON and must survive verbatim.
+            // events / commands ride as JSON and must survive verbatim: decode
+            // the fixture's arrays into the same models and compare whole values,
+            // so a dropped or mangled field fails, not just a lost element.
             assertEquals(
-                expected["events"]!!.jsonArray.size, actual.events.size,
-                "step $i: event count",
+                json.decodeFromString<List<GameEvent>>(expected["events"]!!.jsonArray.toString()),
+                actual.events,
+                "step $i: events",
             )
             assertEquals(
-                expected["commands"]!!.jsonArray.size, actual.commands.size,
-                "step $i: command count",
+                json.decodeFromString<List<Command>>(expected["commands"]!!.jsonArray.toString()),
+                actual.commands,
+                "step $i: commands",
             )
 
             val expectedSnap = expected["snapshot"]
@@ -101,6 +107,21 @@ class PackedFrameTest {
         assertTrue(withGrid > 0, "fixture never carried a grid")
         assertTrue(withStrippedGrid > 0, "fixture never stripped a grid, so re-attachment went untested")
         assertTrue(withEvents > 0, "fixture never carried events")
+    }
+
+    @Test
+    fun aTruncatedPayloadFailsTyped() {
+        val steps = golden["steps"]!!.jsonArray
+        // Pick a step that carries a snapshot, so the cut lands mid-body and the
+        // reader runs out of code units while decoding integers.
+        val step = steps.first { it.jsonObject["frame"]!!.jsonObject.containsKey("snapshot") }
+        val packed = step.jsonObject["packed"]!!.jsonPrimitive.content
+        val e = runCatching { PackedFrame.decode(packed.substring(0, 8), HashMap()) }.exceptionOrNull()
+        assertNotNull(e, "a truncated payload must fail loudly")
+        assertTrue(
+            e.message?.contains("payload ended early") == true,
+            "truncation must surface as the typed data error, got: $e",
+        )
     }
 
     @Test

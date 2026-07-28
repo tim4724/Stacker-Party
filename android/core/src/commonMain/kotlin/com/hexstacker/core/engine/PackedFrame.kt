@@ -68,7 +68,13 @@ internal object PackedFrame {
 
     private class Reader(val s: String) {
         var at = 0
-        fun next(): Int = s[at++].code - 1
+
+        /** Typed, like the Swift port: a truncated payload is a data error, not
+         *  an index bug, and must not surface as StringIndexOutOfBoundsException. */
+        fun next(): Int {
+            check(at < s.length) { "payload ended early" }
+            return s[at++].code - 1
+        }
 
         /** Reassemble a value the packer split into two 15-bit halves, high first. */
         fun split(): Int {

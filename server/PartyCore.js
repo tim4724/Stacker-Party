@@ -211,11 +211,14 @@ PartyCore.prototype.snapshotPlayer = function(playerId, sentGridVersions) {
 //   * EVERY value is biased +1 on the way out. Both native bridges hand JS
 //     strings over as C strings, so a NUL code unit TRUNCATES the payload — and 0
 //     is the most common value here (every empty grid cell).
-//   * That bias is also why the wire range STOPS at MAX_WIRE (0xfffe), not
-//     0xffff: String.fromCharCode takes its argument mod 0x10000, so a raw 0xffff
-//     biases to 0x10000 and comes back out as the very NUL the bias exists to
-//     avoid. Values wider than one code unit are therefore split into FIFTEEN-bit
-//     halves, not sixteen — a 16-bit half is exactly the one that can land on
+//   * That bias is also why the wire range STOPS at MAX_WIRE (0xd7fe), well
+//     short of 0xffff. Two cliffs sit above it. String.fromCharCode takes its
+//     argument mod 0x10000, so a raw 0xffff biases to 0x10000 and comes back out
+//     as the very NUL the bias exists to avoid. And biased values 0xd800..0xdfff
+//     are lone UTF-16 surrogates, which the JS-to-native string marshalling is
+//     not guaranteed to preserve (JSC's C-string conversion substitutes U+FFFD).
+//     Values wider than one code unit are therefore split into FIFTEEN-bit
+//     halves, not sixteen: a 16-bit half is exactly the one that can land on
 //     0xffff. `elapsed` reached it 65.5s into every match (and every 65.5s after),
 //     which truncated the frame on both TVs. encodeInts asserts the range so a
 //     future field that outgrows it fails here rather than on a TV.
@@ -240,8 +243,15 @@ PartyCore.prototype.snapshotPlayer = function(playerId, sentGridVersions) {
 
 var PACK_VERSION = 2;
 var COORD_BIAS = 256;
-// Widest value one code unit can carry, given the +1 bias (see above).
-var MAX_WIRE = 0xfffe;
+// Widest RAW value one code unit can carry: 0xd7fe biases to 0xd7ff, the last
+// code unit below the UTF-16 surrogate block (0xd800..0xdfff). A lone surrogate
+// is not guaranteed to survive the JS-to-native string marshalling (JSC's
+// C-string conversion substitutes U+FFFD), and past the block the +1 bias turns
+// a raw 0xffff into a NUL (see above), so the range stops under the block. No
+// real field gets close: split halves max out at 0x7fff and everything else is
+// small. This exists so a future field that outgrows the range fails in the
+// packer instead of corrupting a frame on a TV.
+var MAX_WIRE = 0xd7fe;
 // Values too wide for one code unit ride as two 15-bit halves — 30 bits, which is
 // 12 days of `elapsed` in ms and far past any reachable lines/gridVersion count.
 var SPLIT_SHIFT = 15;

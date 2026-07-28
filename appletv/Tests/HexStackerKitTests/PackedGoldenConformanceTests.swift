@@ -88,9 +88,11 @@ struct PackedGoldenConformanceTests {
         for (i, step) in golden.steps.enumerated() {
             let actual = try PackedFrame.frameResult(step.packed, gridCache: &gridCache)
 
-            // events / commands ride as JSON and must survive verbatim.
-            #expect(actual.events.count == step.frame.events.count, "step \(i): event count")
-            #expect(actual.commands.count == step.frame.commands.count, "step \(i): command count")
+            // events / commands ride as JSON and must survive verbatim: compare
+            // whole decoded values against the fixture's, so a dropped or mangled
+            // field fails, not just a lost element.
+            #expect(actual.events == step.frame.events, "step \(i): events")
+            #expect(actual.commands == step.frame.commands, "step \(i): commands")
             if !actual.events.isEmpty { withEvents += 1 }
 
             guard let wantSnap = step.frame.snapshot else {
