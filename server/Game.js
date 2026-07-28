@@ -192,17 +192,27 @@ class Game {
 
   getSnapshot() {
     const playerArr = [];
-    for (const [id, board] of this.boards) {
-      const state = board.getState();
-      state.id = id;
-      state.pendingGarbage += this.garbageManager.getPendingLines(id);
-      playerArr.push(state);
-    }
+    for (const id of this.boards.keys()) playerArr.push(this.getPlayerState(id));
 
     return {
       players: playerArr,
       elapsed: this.elapsed
     };
+  }
+
+  // One seat's live state, the per-board half of getSnapshot(). Split out for the
+  // render-on-input pull, which needs a single board: getState() is real work per
+  // board (ghost solve, visible-grid slice, block arrays), so building all eight and
+  // discarding seven cost ~0.3ms of every input at a full party. Null when the id
+  // owns no board. Live refs, exactly like getSnapshot — callers that retain it
+  // across frames must copy (PartyCore.copyPlayer).
+  getPlayerState(id) {
+    const board = this.boards.get(id);
+    if (!board) return null;
+    const state = board.getState();
+    state.id = id;
+    state.pendingGarbage += this.garbageManager.getPendingLines(id);
+    return state;
   }
 
   handleLineClear(playerId, clearResult) {

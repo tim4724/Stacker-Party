@@ -183,14 +183,13 @@ PartyCore.prototype.snapshot = function() {
 // never duplicated only for _stripUnchangedGrids to delete them a moment later. Callers
 // that want a complete value-copy (a host retaining a snapshot) pass nothing and get one.
 PartyCore.prototype.snapshotPlayer = function(playerId, sentGridVersions) {
-  var snap = this.game.getSnapshot();
-  for (var i = 0; i < snap.players.length; i++) {
-    var live = snap.players[i];
-    if (live.id !== playerId) continue;
-    var skipGrid = !!sentGridVersions && sentGridVersions[live.id] === live.gridVersion;
-    return { players: [copyPlayer(live, skipGrid)], elapsed: snap.elapsed };
-  }
-  return null;
+  // getPlayerState, not getSnapshot: the whole point is to touch ONE board, and
+  // getSnapshot builds every seat's state (ghost solve and all) before this could
+  // pick one out of it.
+  var live = this.game.getPlayerState(playerId);
+  if (!live) return null;
+  var skipGrid = !!sentGridVersions && sentGridVersions[live.id] === live.gridVersion;
+  return { players: [copyPlayer(live, skipGrid)], elapsed: this.game.elapsed };
 };
 
 // =====================================================================
@@ -493,6 +492,16 @@ PartyCore.prototype.resetFrameClock = function() {
 // while playing && !paused, matching the web rAF loop) and calls
 // resetFrameClock() when leaving the active loop.
 PartyCore.prototype.frame = function(nowMs) {
+  var events = this._advance(nowMs);
+  var snapshot = this.snapshot();
+  var commands = PartyCore.toCommands(events, snapshot);
+  return { events: events, snapshot: snapshot, commands: commands };
+};
+
+// The clock advance and event drain shared by frame() and deliverFrame(). Split out
+// so deliverFrame can decide whether a value copy is needed at all. It is the copy,
+// not the tick, that costs (~1.8ms of a 3.7ms eight-seat frame on a Google TV Streamer).
+PartyCore.prototype._advance = function(nowMs) {
   // Clamp to [0, cap]: Math.max guards a backward nowMs (a native clock reset or
   // app-resume hiccup) so a glitch can't produce a negative or oversized step.
   var deltaMs = this._prevNowMs == null
@@ -500,10 +509,7 @@ PartyCore.prototype.frame = function(nowMs) {
     : Math.min(Math.max(0, nowMs - this._prevNowMs), MAX_FRAME_DELTA_MS);
   this._prevNowMs = nowMs;
   if (deltaMs > 0) this.game.update(deltaMs);
-  var events = this.drainEvents();
-  var snapshot = this.snapshot();
-  var commands = PartyCore.toCommands(events, snapshot);
-  return { events: events, snapshot: snapshot, commands: commands };
+  return this.drainEvents();
 };
 
 // =====================================================================
@@ -573,16 +579,35 @@ PartyCore.prototype.deliverSnapshot = function() {
 // delivered one, and grid-stripped otherwise. On omission both ledgers are left
 // untouched: the host never saw this snapshot, so the next delivered one must
 // still strip against what it did see.
+// Deliberately does NOT go through frame(): that returns a value copy of every seat,
+// and this discards it on the ~74% of eight-seat frames whose signature matches. Both
+// sceneSig and toCommands read only scalars (never `grid`), which is why the web can
+// already hand toCommands its zero-copy live snapshot, so both run on the live refs
+// here too and the copy is made only on a frame that is actually delivered.
 PartyCore.prototype.deliverFrame = function(nowMs) {
-  var f = this.frame(nowMs);
-  var sig = PartyCore.sceneSig(f.snapshot);
-  if (sig === this._lastSceneSig) {
-    delete f.snapshot;
-  } else {
-    this._lastSceneSig = sig;
-    this._stripUnchangedGrids(f.snapshot);
+  var events = this._advance(nowMs);
+  var live = this.game.getSnapshot();
+  var commands = PartyCore.toCommands(events, live);
+  var sig = PartyCore.sceneSig(live);
+  if (sig === this._lastSceneSig) return { events: events, commands: commands };
+  this._lastSceneSig = sig;
+  // Consults the grid ledger BEFORE copying rather than after, so a seat whose
+  // gridVersion has not moved never duplicates its 135 cells only for
+  // _stripUnchangedGrids to delete them again. Same order fix, and the same
+  // resulting shape (copyPlayer's skipGrid leaves the field ABSENT), as
+  // deliverSnapshotPlayerPacked already carries on the per-seat path.
+  var players = [];
+  for (var i = 0; i < live.players.length; i++) {
+    var p = live.players[i];
+    var skipGrid = this._sentGridVersions[p.id] === p.gridVersion;
+    if (!skipGrid) this._sentGridVersions[p.id] = p.gridVersion;
+    players.push(copyPlayer(p, skipGrid));
   }
-  return f;
+  return {
+    events: events,
+    snapshot: { players: players, elapsed: live.elapsed },
+    commands: commands
+  };
 };
 
 // Normalize a frame's events + snapshot into a serializable host-effect list:

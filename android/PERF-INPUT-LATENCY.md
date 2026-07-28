@@ -1225,3 +1225,118 @@ fails; with the fix the whole parity suite is green.
   weakening the exact property that makes §13.3 trustworthy, for a saving on a thread
   that is off the input path and now paced (§20.2).
 - **The ingress items stay declined** per §17, unchanged.
+
+## 21. Shipped: the engine stops building snapshots nobody reads
+
+> Provenance: written and measured in an earlier session on the pre-§20 tree (its
+> companion fix, the goldens-as-task-inputs change, landed separately as
+> `d0440d3d`), then found uncommitted in the primary checkout and landed after §20.
+> The A/B tables below are that session's measurements; the landing run re-verified
+> the suites and re-ran the device benchmarks on the current tree (see the closing
+> note).
+
+Two changes in the SHARED JS (`server/PartyCore.js`, `server/Game.js`), so both TVs get
+them and web is unaffected in either direction. Neither touches a bridge, a shim or a
+renderer. §5 through §19 had squeezed the boundary and the draw; this is the first
+session to find that the JS side was doing work that was thrown away.
+
+### 21.1 `deliverFrame` no longer deep-copies a frame it discards
+
+§6 flagged this and it was still open. `deliverFrame` called `frame()`, which value-copies
+every seat through `copyPlayer`, then computed the scene signature and dropped the whole
+copy when the frame was render-identical to the last delivered one. §10 measured that as
+668 of 900 frames at eight seats, so roughly three quarters of the copies were pure waste.
+
+`sceneSig` and `toCommands` read only scalars (`alive`, `lines`, `level`,
+`pendingGarbage`, `gridVersion`, `holdPiece`, and the current piece's anchor plus
+`cells[0]`). Neither touches `grid`. That is already established, and is why `toCommands`
+is documented as pure and the web hands it its zero-copy live snapshot. So `deliverFrame`
+now runs both on the live refs from `game.getSnapshot()` and copies only on a frame it
+actually delivers. On the delivered ones it consults the grid ledger BEFORE copying rather
+than after, the same order fix `deliverSnapshotPlayerPacked` already carried, so a seat
+whose `gridVersion` has not moved never duplicates 135 cells for `_stripUnchangedGrids` to
+delete a moment later.
+
+`frame()` keeps its old contract for the gallery, the tests and the goldens; the clock
+advance and event drain both paths share moved into `_advance`.
+
+### 21.2 A per-seat pull touches one seat
+
+`PartyCore.snapshotPlayer` called `game.getSnapshot()`, which runs `board.getState()` for
+every board (ghost solve, visible-grid slice, block arrays), then picked one player out of
+the result and discarded the other seven. `Game.getPlayerState(id)` is that loop body
+extracted; `getSnapshot` now calls it per board, so there is still one implementation.
+
+### Measured, same device and harness, before and after in the same session
+
+`BrainPerfTest`, p50, eleven minutes apart on a warm Google TV Streamer:
+
+| | 2 seats | 4 seats | 8 seats |
+| --- | --- | --- | --- |
+| `bridge.frame(now, batch)` before | 1830 us | 2157 | 3697 |
+| **after** | **1141** | **1131** | **1593** |
+| | -38% | -48% | **-57%** |
+| `bridge.snapshotPlayer(id, batch)` before | 1612 us | 1356 | 1147 |
+| **after** | **1308** | **908** | **839** |
+
+`whereTheSeatPullTimeGoes`, the JS-only split at eight seats (includes the ~78 us Zipline
+floor):
+
+| stage | before | after |
+| --- | --- | --- |
+| `js: game.getSnapshot()` [live refs] | 426 us | 388 |
+| `js: snapshotPlayer()` [copyPlayer] | 665 | **291** |
+| `js: + strip + pack` | 662 | **310** |
+| `js: payload crosses to Kotlin` | 700 | **334** |
+
+The telling row is the last one across seat counts: **334.0 us at two seats and 334.3 us
+at eight**, where before it scaled 381 -> 700. A per-seat pull that does not grow with room
+size is the whole point of the call, and it now does not. `snapshotPlayer` is also cheaper
+than `getSnapshot` now, which is the direct proof: it used to be `getSnapshot` plus a copy.
+
+The `getSnapshot` row moving 426 -> 388 is noise, and is the check that mattered for web:
+routing it through `getPlayerState` adds a `Map.get` per board per frame on the one
+platform with no boundary, and that cost nothing measurable.
+
+### End to end
+
+`InputLatencyTest`, against §19's table. Cross-session, so read it as corroboration and
+the component A/B above as the evidence:
+
+| case | §19 p50 / p95 / p99 | now |
+| --- | --- | --- |
+| 1 seat | 2.22 / 3.81 / 5.57 ms | 1.83 / 3.94 / 4.28 |
+| 2 seats | 2.72 / 5.42 / 6.43 | 2.17 / 4.61 / 6.51 |
+| 4 seats | 2.45 / 4.68 / 6.06 | 2.38-2.47 / 4.78-5.10 / 5.33-6.04 |
+| 4, 3 busy | 2.64 / 7.55 / 18.73 | 1.90 / 9.23 / 17.29 |
+| 8 seats | 2.58 / 5.22 / 8.73 | **1.78-1.91 / 3.92-4.51 / 5.19-5.84** |
+| 8, 7 busy | 2.78 / 13.69 / 25.43 | 1.78 / **7.11** / 25.20 |
+
+The 4-seat standalone row read 3.48 because it runs FIRST in the suite and pays the JIT;
+the alternating A/B passes are the honest ones, exactly as §16a warns. The legacy shape,
+still in the suite as a control, improved by the same shape (8-seat p50 4.71/4.49 in §16a
+against 2.64/2.61 now), which is what a shared-engine change should do to both shapes.
+
+**The 8-busy p95 halved, 13.69 -> 7.11 ms.** §19 closed by saying the all-busy tail "has
+never responded to any change made in this document". It responds to this one: the tick is
+2.1 ms cheaper at eight seats, so the game thread stops being the thing an input queues
+behind. The p99 (25.20 against 25.43) did not move and remains the open number.
+
+### Correctness
+
+622 JS tests, 83 Kotlin `:core` tests and 34 Playwright E2E specs, all unchanged and all
+passing, including `FrameGoldenConformanceTest`, `PackedFrameTest` (the cross-port packed
+golden), `RenderMathParityTest` and `tests/partycore-packed.test.js`, which round-trips
+every delivered frame of a 1200-frame corpus at 1/2/8 seats. No fixture was regenerated:
+the output is byte-identical, which is the claim, since `copyPlayer`'s `skipGrid` leaves
+the field ABSENT exactly as `_stripUnchangedGrids` did.
+
+### Re-verified at landing, on the post-§20 tree
+
+Same device, same day as §20's run, so directly comparable to that morning's numbers
+rather than across sessions: `bridge.frame(now, batch)` at 8 seats went **3.56 -> 1.39 ms
+p50** (-61%; 2 seats 1.45 -> 1.05, 4 seats 2.42 -> 1.35), `snapshotPlayer(id, batch)`
+2.01/1.04/1.61 -> 1.23/0.92/0.74 at 2/4/8, and the packed seat payload crosses in ~0.33 ms
+at BOTH 2 and 8 seats (was 0.42 -> 0.74 scaling). All suites above re-run green on the
+landed tree, plus the fresh `:core:jvmTest --rerun-tasks` (84) and the full E2E suite.
+End to end, 8 seats now reads 2.71 ms p50 / 4.34 p95 in the same alternating harness.
