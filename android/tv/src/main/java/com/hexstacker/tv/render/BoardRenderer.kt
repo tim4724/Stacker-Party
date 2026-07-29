@@ -227,6 +227,35 @@ class BoardRenderer(
     fun outlineAbsPath(outset: Double): Path =
         outlinePath(geometry.outlineVertices(outset), boardX, boardY)
 
+    /**
+     * Absolute screen-space bounds of EVERYTHING [render], [drawGarbageEffects] and
+     * [drawDisconnectedOverlay] can touch: the well, the HOLD panel and garbage meter
+     * to its left, the NEXT panel and level/lines block to its right, and the name
+     * above it. The surface view sizes each board's cache layer to this, so it must
+     * never under-cover — anything outside would be silently clipped.
+     *
+     * Deliberately generous (a [cellSize] margin on every side): an oversized layer
+     * costs a little texture memory, an undersized one drops pixels. All inputs are
+     * construction-fixed, so this is computed once. Shake is excluded on purpose — it
+     * rides on the layer's translation, not its contents.
+     */
+    val contentBounds: RectF = run {
+        val margin = cellSize
+        // Left: whichever of the HOLD panel / garbage meter reaches further out.
+        val holdLeft = boardX - panelGapF - boxSizeF - chromePad
+        val meterLeft = meterXF - sCell
+        // Bottom: the level/lines block hangs below the well on some layouts.
+        val linesBottom = nextStartYF + nextBoxHF + cellSize * 0.5f + rowHeightF +
+            labelSizeF + cellSize * 0.1f + valueSizeF
+        RectF(
+            min(holdLeft, meterLeft) - margin,
+            // The name is BOTTOM-anchored just above the well; its box climbs ~1 em.
+            boardY - cellSize * 0.2f - nameSizeF - margin,
+            boardX + boardWidth + panelGapF + boxSizeF + chromePad + margin,
+            max(boardY + boardHeight + bgPad, linesBottom) + margin,
+        )
+    }
+
     // ──────────────────────────────────────────────────────────────────────────
     /** Returns true while a wall-clock pulse (near-clear / clearing glow) is on screen,
      *  so the surface view keeps rendering frames even though the snapshot is unchanged. */

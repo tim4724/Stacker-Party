@@ -29,10 +29,20 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
+import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+
+/**
+ * Test hook: when false, board cache nodes are built WITHOUT a compositing layer — the
+ * display-list-only cache this replaced (see the block comment in [BoardSurfaceView]).
+ *
+ * Read once per node, AT CREATION, so a benchmark can stand up one surface of each
+ * shape and interleave them within a single process rather than comparing two runs.
+ */
+@Volatile @VisibleForTesting internal var boardLayersEnabled = true
 
 /** Per-seat presentation metadata supplied by the coordinator (NOT engine state). */
 data class SeatMeta(
@@ -127,14 +137,32 @@ class BoardSurfaceView @JvmOverloads constructor(
     // but the whole screen is repainted because lockHardwareCanvas hands back a
     // swap-chain buffer with no preserved content. That canvas IS a RecordingCanvas
     // though (HWUI records into a RenderNode internally), so a board whose render
-    // inputs are unchanged can be REPLAYED from its recorded display list instead of
-    // re-recording it. Measured on a Google TV Streamer at eight boards: recording all
-    // eight costs 6.48 ms, replaying all eight 3.16 ms — so ~0.41 ms per board is
-    // recording, and that is what a clean board now skips.
+    // inputs are unchanged is served from its cached node instead of being rebuilt.
     //
-    // Replay is not a pixel approximation: the display list is the same command stream
-    // a direct draw would have emitted. `BoardCacheParityTest` proves it byte-for-byte
-    // against the uncached path.
+    // Each node also renders into its OWN texture (`setUseCompositingLayer`), which is
+    // what makes the saving big. A display list alone only skips re-RECORDING; every
+    // frame still re-RASTERISED ~35 draw calls per board — the AA hex paths for
+    // ghost/preview/near-clear, ~20 stamp blits, 5 text runs — to reproduce pixels that
+    // had not changed. Measured at eight boards on a Google TV Streamer, both shapes
+    // interleaved in one process: 8.35 ms a frame from display lists alone, 5.54 ms
+    // from compositing layers (RenderThroughputTest.compositingLayerSaving). Rendering
+    // fewer pixels does NOT substitute for it (720p saves only 15% —
+    // RenderThroughputTest.resolutionScaling) because the cost is per-draw, not
+    // per-pixel, which is precisely what a slower TV box is worst at. Layers are sized
+    // to each board's `contentBounds`, so eight cost a few MB; sizing them to the
+    // surface would have meant eight full-screen textures.
+    //
+    // It buys THROUGHPUT, not input latency: the board an input moved is the one that
+    // has to be re-recorded anyway, and it now also renders to a texture before being
+    // composited, so input-to-frame is unchanged (InputToDisplayLatencyTest measures
+    // both shapes). The win is the boards that did NOT move.
+    //
+    // Replay is therefore NOT byte-identical to a direct draw, unlike the display-list
+    // cache that preceded it: rasterising into a layer and compositing quantises AA
+    // coverage twice, so hex-path edges land within a level or two of the direct path
+    // on a fraction of a percent of pixels. `BoardCacheParityTest` bounds that drift
+    // instead of forbidding it — tightly enough that a stale, clipped or missing board
+    // still fails loudly.
     private var boardNodes: Array<RenderNode?> = emptyArray()
     // The render inputs each cached node was recorded from; null = must record.
     // Mirrors web's DisplayRender.playerRenderSig, which gates the same skip there.
@@ -521,13 +549,14 @@ class BoardSurfaceView @JvmOverloads constructor(
             boardSigs = arrayOfNulls(renderers.size)
             boardPulsing = BooleanArray(renderers.size)
         }
-        val w = max(1, surfaceW)
-        val h = max(1, surfaceH)
         var pulsing = false
         for (j in players.indices) {
             val r = renderers.getOrNull(j) ?: continue
             val player = players[j]
-            val node = boardNodes[j] ?: RenderNode("board-$j").also { boardNodes[j] = it }
+            val node = boardNodes[j] ?: RenderNode("board-$j").also {
+                boardNodes[j] = it
+                it.setUseCompositingLayer(boardLayersEnabled, null) // see the block comment above
+            }
             val sig = boardSig(player)
             // A recording that contained a wall-clock effect is only valid for the instant
             // it was taken, so those boards re-record until the effect ends: the pulse /
@@ -547,9 +576,18 @@ class BoardSurfaceView @JvmOverloads constructor(
                 garbageDefence[player.id]?.isNotEmpty() == true
             val timeDependent = boardPulsing[j] || fxLive
             if (!node.hasDisplayList() || boardSigs[j] != sig || timeDependent) {
-                node.setPosition(0, 0, w, h)
-                val rec = node.beginRecording(w, h)
+                // Position the node at the board's own bounds rather than the whole
+                // surface, then shift the recording so the renderer keeps drawing in
+                // absolute screen coordinates.
+                val b = r.contentBounds
+                val left = floor(b.left).toInt()
+                val top = floor(b.top).toInt()
+                val right = ceil(b.right).toInt()
+                val bottom = ceil(b.bottom).toInt()
+                node.setPosition(left, top, right, bottom)
+                val rec = node.beginRecording(right - left, bottom - top)
                 val boardPulse = try {
+                    rec.translate(-left.toFloat(), -top.toFloat())
                     drawBoard(rec, r, player, nowMs)
                 } finally {
                     node.endRecording()

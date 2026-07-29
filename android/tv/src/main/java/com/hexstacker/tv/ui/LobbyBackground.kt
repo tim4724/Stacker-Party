@@ -16,12 +16,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import com.hexstacker.core.render.HexGeometry
 import com.hexstacker.tv.render.addRoundedHex
@@ -41,11 +42,14 @@ private val SQRT3 = sqrt(3f)
  * `withFrameNanos` loop only while [active] (mirror tvOS `if !lobbyLayer.isHidden`);
  * the loop cancels when [active] flips false or the composable leaves.
  *
- * Two layers: the accent glow is its own static Canvas (re-recorded only on size
- * change), so the per-frame invalidation covers just the piece stamps — not a
- * full-screen gradient fill. Cells are drawn from pre-rendered bitmap stamps
- * ([PieceStampCache], the web `getHexStamp` cache) with the piece opacity applied
- * at draw time (web `globalAlpha`), so the frame loop allocates nothing.
+ * Two layers, and BOTH have to be cheap per frame. Giving the accent glow its own
+ * Canvas keeps it out of the piece layer's re-RECORDING, but recording was never the
+ * cost: the piece Canvas damages the full screen every frame, and HWUI re-RASTERISES
+ * everything under a damaged region, so the glow was re-shaded 60 times a second
+ * regardless of which Canvas it lived on. It is blitted from [GlowCache] now. Cells
+ * likewise come from pre-rendered bitmap stamps ([PieceStampCache], the web
+ * `getHexStamp` cache) with the piece opacity applied at draw time (web
+ * `globalAlpha`), so the frame loop allocates nothing and shades nothing.
  *
  * The piece field lives in a 1920-wide reference space (the web/tvOS coordinate
  * space; height follows the canvas aspect) and is scaled to the canvas at draw
@@ -93,8 +97,10 @@ fun LobbyBackground(
         }
     }
 
+    val glow = remember { GlowCache() }
+
     Box(modifier) {
-        Canvas(Modifier.fillMaxSize()) { drawLobbyGlow() }
+        Canvas(Modifier.fillMaxSize()) { drawLobbyGlow(glow) }
         Canvas(
             Modifier
                 .fillMaxSize()
@@ -112,23 +118,82 @@ private const val REF_W = 1920f
 
 /** Accent-red radial glow baked behind the falling pieces (web `display.js`:
  *  cx 0.5, cy 0.3, alpha 0.06, stop end 0.55), painted over the parent's
- *  bgPrimary fill. */
-private fun DrawScope.drawLobbyGlow() {
-    val cx = size.width * 0.5f
-    val cy = size.height * 0.3f
-    // Max distance from the (0.5w, 0.3h) center to the four corners.
-    val maxCornerDistance = maxOf(
-        maxOf(hypot(cx, cy), hypot(size.width - cx, cy)),
-        maxOf(hypot(cx, size.height - cy), hypot(size.width - cx, size.height - cy)),
-    )
-    drawRect(
-        brush = Brush.radialGradient(
-            colors = listOf(Tokens.accentPrimary.copy(alpha = 0.06f), Color.Transparent),
-            center = Offset(cx, cy),
-            radius = 0.55f * maxCornerDistance,
-        ),
+ *  bgPrimary fill — blitted from [GlowCache] rather than shaded per frame. */
+private fun DrawScope.drawLobbyGlow(cache: GlowCache) {
+    val w = size.width.roundToInt()
+    val h = size.height.roundToInt()
+    val glow = cache.get(w, h) ?: return
+    drawImage(
+        image = glow,
+        srcOffset = IntOffset.Zero,
+        srcSize = IntSize(glow.width, glow.height),
+        dstOffset = IntOffset.Zero,
+        dstSize = IntSize(w, h),
+        filterQuality = FilterQuality.Low, // bilinear upscale
     )
 }
+
+/**
+ * The accent vignette, rasterised ONCE per surface size instead of once per frame.
+ *
+ * It used to be a full-screen `drawRect` with a `Brush.radialGradient`. The gradient
+ * only depends on the canvas size, but the falling-piece Canvas above it invalidates
+ * the whole screen every frame, and HWUI re-rasterises whatever is under a damaged
+ * region — so the GPU re-shaded 2M pixels of identical gradient 60 times a second.
+ * Measured on a Google TV Streamer (PowerVR Rogue GE9215) that was 6.25 ms of the
+ * lobby's 10.2 ms GPU frame: more than the rest of the lobby put together, spent
+ * redrawing a still image. Blitting a cached bitmap keeps the per-frame work a
+ * texture fetch instead of a per-pixel radial-gradient evaluation.
+ *
+ * The source is rendered at [GLOW_DOWNSCALE] and upsampled bilinearly: a two-stop
+ * radial is low-frequency, so the result is indistinguishable at TV viewing distance
+ * — and slightly SMOOTHER than the full-res original, since interpolating between
+ * eighth-scale texels dithers the 8-bit steps that make low-alpha radials band (the
+ * banding the results screen has to paper over with a noise overlay).
+ */
+private class GlowCache {
+    private var cached: ImageBitmap? = null
+    private var cachedW = 0
+    private var cachedH = 0
+
+    fun get(w: Int, h: Int): ImageBitmap? {
+        if (w <= 0 || h <= 0) return null
+        cached?.let { if (w == cachedW && h == cachedH) return it }
+        cachedW = w
+        cachedH = h
+        return render(w, h).also { cached = it }
+    }
+
+    private fun render(w: Int, h: Int): ImageBitmap {
+        // Derive the geometry in the SCALED space (it is all linear in the scale, so
+        // this matches the full-res gradient the web/tvOS lobbies paint).
+        val sw = max(2, ceil(w / GLOW_DOWNSCALE).toInt())
+        val sh = max(2, ceil(h / GLOW_DOWNSCALE).toInt())
+        val bmp = Bitmap.createBitmap(sw, sh, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bmp)
+        val cx = sw * 0.5f
+        val cy = sh * 0.3f
+        // Max distance from the (0.5w, 0.3h) center to the four corners.
+        val maxCornerDistance = maxOf(
+            maxOf(hypot(cx, cy), hypot(sw - cx, cy)),
+            maxOf(hypot(cx, sh - cy), hypot(sw - cx, sh - cy)),
+        )
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        paint.shader = RadialGradient(
+            cx, cy, 0.55f * maxCornerDistance,
+            // Transparent BLACK as the end stop, exactly what `Color.Transparent`
+            // gave the Compose brush — Skia interpolates gradient stops unpremultiplied,
+            // so an end stop of a different hue would tint the falloff.
+            Tokens.accentPrimary.copy(alpha = 0.06f).toArgb(), 0x00000000,
+            Shader.TileMode.CLAMP,
+        )
+        canvas.drawRect(0f, 0f, sw.toFloat(), sh.toFloat(), paint)
+        return bmp.asImageBitmap()
+    }
+}
+
+/** Linear downscale of the cached glow source (see [GlowCache]). */
+private const val GLOW_DOWNSCALE = 8f
 
 /** Draw one particle's hex cells by stamping the cached pillow bitmap at each cell,
  *  weighted by the particle opacity (web `globalAlpha` over a `getHexStamp` stamp).

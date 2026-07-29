@@ -28,15 +28,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.ImageShader
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.focus.FocusRequester
@@ -49,6 +54,7 @@ import com.hexstacker.tv.R
 import kotlinx.coroutines.delay
 import kotlin.math.hypot
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 /**
  * 180px tile of grayscale noise (the web bakes the equivalent from an SVG
@@ -68,6 +74,76 @@ private val noiseBrush: ShaderBrush by lazy {
     }
     val bitmap = Bitmap.createBitmap(pixels, side, side, Bitmap.Config.ARGB_8888)
     ShaderBrush(ImageShader(bitmap.asImageBitmap(), TileMode.Repeated, TileMode.Repeated))
+}
+
+/**
+ * The results backdrop (scrim + winner glow + dither), rasterised ONCE per
+ * (size, winner colour) instead of once per frame.
+ *
+ * All three layers are constant for as long as the screen is up, but every entrance
+ * frame and every D-pad focus change damages the full screen, and HWUI re-rasterises
+ * whatever sits under a damaged region — so the whole recipe was re-shaded per frame.
+ * On a Google TV Streamer (PowerVR Rogue GE9215) that measured **19.3 ms per frame**,
+ * over the entire 16.67 ms budget on its own, before a single row was drawn: the
+ * radial costs ~4 ms and the tiled-noise OVERLAY pass ~13 ms, because a separable
+ * blend mode against a full-screen shader is the worst case for a tile-based deferred
+ * GPU. Blitting the baked result instead costs 2.7 ms (`BackdropPerfTest`), which is
+ * what turns the results entrance and its focus moves back into 60 fps frames.
+ *
+ * Baked at 1:1 — unlike the lobby vignette ([LobbyBackground]'s GlowCache, which
+ * downsamples 8x) this one cannot be cached at reduced resolution, because the noise
+ * only breaks up banding while it stays exactly one texel per pixel.
+ *
+ * The one divergence: the OVERLAY blend is baked against the scrim alone, whereas it
+ * used to blend against the scrim already composited over the frozen board showing
+ * through the scrim's 12% transparency. That shifts the dither by a fraction of a
+ * level at 5% alpha, and leaves its de-banding job over the gradient untouched.
+ */
+private class BackdropCache {
+    private var cached: ImageBitmap? = null
+    private var cachedW = 0
+    private var cachedH = 0
+    private var cachedGlow: Color = Color.Unspecified
+
+    fun get(scope: DrawScope, winnerGlow: Color): ImageBitmap? {
+        val w = scope.size.width.roundToInt()
+        val h = scope.size.height.roundToInt()
+        if (w <= 0 || h <= 0) return null
+        cached?.let { if (w == cachedW && h == cachedH && winnerGlow == cachedGlow) return it }
+        cachedW = w
+        cachedH = h
+        cachedGlow = winnerGlow
+        return render(scope, w, h, winnerGlow).also { cached = it }
+    }
+
+    /** Replays the ORIGINAL draw calls into an offscreen bitmap, so the recipe stays
+     *  single-sourced rather than re-derived against a second graphics API. */
+    private fun render(scope: DrawScope, w: Int, h: Int, winnerGlow: Color): ImageBitmap {
+        val image = ImageBitmap(w, h)
+        CanvasDrawScope().draw(
+            density = Density(scope.density, scope.fontScale),
+            layoutDirection = scope.layoutDirection,
+            canvas = androidx.compose.ui.graphics.Canvas(image),
+            size = Size(w.toFloat(), h.toFloat()),
+        ) {
+            drawRect(Tokens.overlayBg)
+            val cx = size.width * 0.5f
+            val cy = size.height * 0.3f
+            drawRect(
+                Brush.radialGradient(
+                    colors = listOf(winnerGlow, Color.Transparent),
+                    center = Offset(cx, cy),
+                    // web: 60% of the farthest-corner distance from the glow center
+                    radius = 0.6f * hypot(max(cx, size.width - cx), max(cy, size.height - cy)),
+                ),
+            )
+            // Anti-banding dither (web #results-screen::before): the low-alpha
+            // radial above bands visibly on 8-bit panels; tiled grayscale noise
+            // at 0.05 with overlay blending breaks the bands perceptually.
+            drawRect(noiseBrush, alpha = 0.05f, blendMode = BlendMode.Overlay)
+        }
+        return image
+    }
 }
 
 /**
@@ -108,25 +184,14 @@ fun ResultsScreen(
     val buttonsEnter = remember { Animatable(if (reduceMotion) 1f else 0f) }
     if (!reduceMotion) LaunchedEffect(Unit) { buttonsEnter.animateTo(1f, tween(400)) }
 
+    val backdrop = remember { BackdropCache() }
+
     BoxWithConstraints(
         modifier
             .fillMaxSize()
             .drawBehind {
-                drawRect(Tokens.overlayBg)
-                val cx = size.width * 0.5f
-                val cy = size.height * 0.3f
-                drawRect(
-                    Brush.radialGradient(
-                        colors = listOf(winnerGlow, Color.Transparent),
-                        center = Offset(cx, cy),
-                        // web: 60% of the farthest-corner distance from the glow center
-                        radius = 0.6f * hypot(max(cx, size.width - cx), max(cy, size.height - cy)),
-                    ),
-                )
-                // Anti-banding dither (web #results-screen::before): the low-alpha
-                // radial above bands visibly on 8-bit panels; tiled grayscale noise
-                // at 0.05 with overlay blending breaks the bands perceptually.
-                drawRect(noiseBrush, alpha = 0.05f, blendMode = BlendMode.Overlay)
+                val image = backdrop.get(this, winnerGlow) ?: return@drawBehind
+                drawImage(image)
             },
     ) {
         val vp = Vp(maxWidth.value, maxHeight.value)
