@@ -361,11 +361,23 @@ declare namespace PartyCore {
     lines: number;
   }
   /**
-   * The per-player facts a controller acts on the instant they change, rather
-   * than on the next retained-snapshot push. Emitted in two forms:
+   * Per-player facts for the host to act on. Emitted in two forms:
    *   - after `line_clear`: `{ lines, alive }` (alive can be false, when the same
    *     frame's clear also topped the player out).
    *   - after `player_ko`: only `{ alive: false }`.
+   *
+   * The two fields have DIFFERENT destinations, which is why both forms exist:
+   *   - `lines` is forwarded to that player's controller as the `player_state`
+   *     message. It is the one figure the room snapshot does not carry.
+   *   - `alive` is not forwarded anywhere. It tells the host to record the KO in
+   *     the room (`RoomCore.setAlive`), and the resulting snapshot is what every
+   *     controller reads, on the KO itself and again on reconnect. A `player_ko`
+   *     form therefore sends no message at all.
+   *
+   * `alive` used to ride the message too, defended as reaching the controller
+   * before the next retained-snapshot push. There is no push to beat: setAlive
+   * returns the 'now' hint, and the throttle only ever gates 'soon'. It was a
+   * second source of truth for liveness that could only agree with the first.
    *
    * Deliberately NOT the player's whole HUD: `level` and a pre-resolved
    * `garbageIncoming` used to ride along here and no controller ever read either,

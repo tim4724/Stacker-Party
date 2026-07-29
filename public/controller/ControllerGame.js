@@ -686,10 +686,8 @@ function onPlayerState(data) {
     ControllerAudio.lineClear(data.lines - lastLines);
   }
   if (data.lines !== undefined) lastLines = data.lines;
-  if (data.alive === false && !gameScreen.classList.contains('dead')) {
-    gameScreen.classList.add('dead');
-    showKoOverlay();
-  }
+  // No liveness here on purpose: enterGameScreen raises the KO overlay off the
+  // room snapshot, which is the only thing that carries `alive`.
 }
 
 // =====================================================================

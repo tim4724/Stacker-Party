@@ -73,16 +73,12 @@ class ProtocolCodecTest {
 
     @Test
     fun outboundBuilderShapes() {
-        val ps = OutboundMessage.playerState(lines = 12, alive = true)
+        // Pure telemetry: `lines` only. Liveness rides the room snapshot, so no
+        // `alive` here and no second alive-only form.
+        val ps = OutboundMessage.playerState(lines = 12)
         assertEquals(Msg.PLAYER_STATE, type(ps))
         assertEquals(12, ps["lines"]?.jsonPrimitive?.intOrNull)
-        assertEquals(setOf("type", "lines", "alive"), ps.keys)
-
-        // Short KO form omits lines.
-        val dead = OutboundMessage.playerDead()
-        assertEquals(Msg.PLAYER_STATE, type(dead))
-        assertEquals(false, dead["alive"]?.jsonPrimitive?.contentOrNull?.toBoolean())
-        assertNull(dead["level"])
+        assertEquals(setOf("type", "lines"), ps.keys)
     }
 
     @Test

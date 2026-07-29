@@ -504,22 +504,12 @@
           {
             "playerId": 6,
             "rank": 1,
-            "lines": 20,
-            "playerName": "Ann",
-            "colorIndex": 5
+            "lines": 20
           },
           {
             "playerId": 2,
             "rank": 2,
-            "lines": 10,
-            "playerName": "Bo",
-            "colorIndex": 3
-          },
-          {
-            "playerId": 5,
-            "playerName": "Late",
-            "colorIndex": 2,
-            "newPlayer": true
+            "lines": 10
           }
         ]
       ]
@@ -539,6 +529,20 @@
             "lines": 10
           }
         ]
+      ]
+    },
+    {
+      "m": "setName",
+      "a": [
+        6,
+        "Zoe"
+      ]
+    },
+    {
+      "m": "setColor",
+      "a": [
+        6,
+        7
       ]
     },
     {
@@ -3632,6 +3636,136 @@
     },
     {
       "result": {
+        "changed": true,
+        "name": "Zoe",
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "results",
+        "hostPeerIndex": null,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          6,
+          2,
+          3,
+          4711
+        ],
+        "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3,
+            "alive": false
+          },
+          "3": {
+            "name": "HX-7",
+            "color": 0
+          },
+          "5": {
+            "name": "Late",
+            "color": 2
+          },
+          "6": {
+            "name": "Zoe",
+            "color": 5,
+            "startLevel": 9
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1
+          }
+        },
+        "results": [
+          {
+            "playerId": 6,
+            "rank": 1,
+            "lines": 20,
+            "playerName": "Zoe",
+            "colorIndex": 5
+          },
+          {
+            "playerId": 2,
+            "rank": 2,
+            "lines": 10,
+            "playerName": "Bo",
+            "colorIndex": 3
+          },
+          {
+            "playerId": 5,
+            "playerName": "Late",
+            "colorIndex": 2,
+            "newPlayer": true
+          }
+        ]
+      }
+    },
+    {
+      "result": {
+        "changed": true,
+        "colorIndex": 7,
+        "publish": "soon"
+      },
+      "snapshot": {
+        "roomState": "results",
+        "hostPeerIndex": null,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          6,
+          2,
+          3,
+          4711
+        ],
+        "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3,
+            "alive": false
+          },
+          "3": {
+            "name": "HX-7",
+            "color": 0
+          },
+          "5": {
+            "name": "Late",
+            "color": 2
+          },
+          "6": {
+            "name": "Zoe",
+            "color": 7,
+            "startLevel": 9
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1
+          }
+        },
+        "results": [
+          {
+            "playerId": 6,
+            "rank": 1,
+            "lines": 20,
+            "playerName": "Zoe",
+            "colorIndex": 7
+          },
+          {
+            "playerId": 2,
+            "rank": 2,
+            "lines": 10,
+            "playerName": "Bo",
+            "colorIndex": 3
+          },
+          {
+            "playerId": 5,
+            "playerName": "Late",
+            "colorIndex": 2,
+            "newPlayer": true
+          }
+        ]
+      }
+    },
+    {
+      "result": {
         "known": true,
         "action": "removed",
         "returnedToLobby": false,
@@ -3658,8 +3792,8 @@
             "color": 2
           },
           "6": {
-            "name": "Ann",
-            "color": 5,
+            "name": "Zoe",
+            "color": 7,
             "startLevel": 9
           },
           "4711": {
@@ -3671,12 +3805,22 @@
           {
             "playerId": 6,
             "rank": 1,
-            "lines": 20
+            "lines": 20,
+            "playerName": "Zoe",
+            "colorIndex": 7
           },
           {
             "playerId": 2,
             "rank": 2,
-            "lines": 10
+            "lines": 10,
+            "playerName": "Bo",
+            "colorIndex": 3
+          },
+          {
+            "playerId": 5,
+            "playerName": "Late",
+            "colorIndex": 2,
+            "newPlayer": true
           }
         ]
       }
@@ -3707,8 +3851,8 @@
             "color": 2
           },
           "6": {
-            "name": "Ann",
-            "color": 5,
+            "name": "Zoe",
+            "color": 7,
             "startLevel": 9
           },
           "4711": {

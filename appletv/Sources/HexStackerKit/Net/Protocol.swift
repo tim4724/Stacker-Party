@@ -227,10 +227,7 @@ public enum OutboundMessage {
         ["type": MSG.error, "message": message]
     }
 
-    public static func playerState(lines: Int, alive: Bool) -> [String: Any] {
-        ["type": MSG.playerState, "lines": lines, "alive": alive]
-    }
-    public static func playerDead() -> [String: Any] {
-        ["type": MSG.playerState, "alive": false]
+    public static func playerState(lines: Int) -> [String: Any] {
+        ["type": MSG.playerState, "lines": lines]
     }
 }

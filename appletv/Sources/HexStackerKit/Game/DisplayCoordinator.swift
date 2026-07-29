@@ -1028,16 +1028,11 @@ public final class DisplayCoordinator {
                     // surfaces as a `playerEliminated` command we no longer need).
                     publishAs(roomDo("setAlive", [pid, false]).publish)
                 }
-                if let lines = c.lines, let alive = c.alive {
-                    // Full form (after a line clear): the new line count, plus alive,
-                    // which is false when the same frame's clear also topped this
-                    // player out.
-                    transport.sendTo(pid, OutboundMessage.playerState(lines: lines, alive: alive))
-                } else if c.alive == false {
-                    // Short form (after a KO): just alive:false. Kept alongside the
-                    // snapshot because it is what fires the KO overlay the instant it
-                    // happens, rather than on the next retained-state push.
-                    transport.sendTo(pid, OutboundMessage.playerDead())
+                // Pure telemetry: `lines` is the one figure the room snapshot does not
+                // carry. Liveness is the snapshot's alone, so a `player_ko` form sends
+                // nothing here (PlayerStateCommand in server/PartyCore.d.ts has why).
+                if let lines = c.lines {
+                    transport.sendTo(pid, OutboundMessage.playerState(lines: lines))
                 }
             case "gameEnd":
                 endGame(results: c.results ?? [], elapsed: c.elapsed ?? 0)

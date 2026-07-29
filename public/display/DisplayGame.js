@@ -430,20 +430,16 @@ function dispatchCommands(commands) {
   for (var i = 0; i < commands.length; i++) {
     var c = commands[i];
     if (c.type === 'playerState') {
-      // Record the KO in the room: the snapshot's per-player `alive` is what a
-      // reconnecting eliminated phone reads.
+      // Liveness is the SNAPSHOT's job, and only the snapshot's. setAlive returns
+      // the 'now' hint and stepEngine runs inside publishBatch, so the room state
+      // carrying alive:false ships from the same frame's fold. That is what a
+      // reconnecting eliminated phone reads and what raises the KO overlay
+      // (ControllerGame.enterGameScreen, the same two lines the message used to run).
       if (c.alive === false) publishAs(roomCore.setAlive(c.playerId, false).publish);
+      // Pure telemetry: `lines` is the one figure the snapshot does not carry, so a
+      // `player_ko` form sends nothing (PlayerStateCommand in PartyCore.d.ts has why).
       if (c.lines != null) {
-        // Full form (after a line clear): the new line count, plus alive, which
-        // is false when the same frame's clear also topped this player out.
-        party.sendTo(c.playerId, {
-          type: MSG.PLAYER_STATE, lines: c.lines, alive: c.alive
-        });
-      } else if (c.alive === false) {
-        // Short form (after a KO). Kept alongside the snapshot because it is what
-        // fires the KO overlay the instant it happens, rather than on the next
-        // retained-state push.
-        party.sendTo(c.playerId, { type: MSG.PLAYER_STATE, alive: false });
+        party.sendTo(c.playerId, { type: MSG.PLAYER_STATE, lines: c.lines });
       }
     } else if (c.type === 'gameEnd') {
       endMatch(c);

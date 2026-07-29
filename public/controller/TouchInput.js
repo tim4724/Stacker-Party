@@ -32,7 +32,15 @@ class TouchInput {
       : 48;
     this._applySensitivity(initial);
 
-    this.SOFT_DROP_INTERVAL_MS = 50;
+    // Keepalive cadence while a drop is held. The message is state-shaped
+    // ("keep dropping at speed X"), not an event: the engine re-arms its
+    // SOFT_DROP_TIMEOUT_MS (300 ms) deadline on each one and auto-ends when they
+    // stop, so the only hard requirement is arriving comfortably inside that
+    // window. 100 ms leaves 3x margin and halves the packet rate on the fastlane
+    // (and with it the display's ack rate), which is what actually costs on a
+    // congested Wi-Fi with eight phones. It also puts web on the same cadence AC
+    // mode was already coalescing to.
+    this.SOFT_DROP_INTERVAL_MS = 100;
 
     // Pointer tracking state
     this.activeId = null;

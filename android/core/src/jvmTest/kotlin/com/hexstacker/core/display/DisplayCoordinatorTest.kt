@@ -139,9 +139,17 @@ class DisplayCoordinatorTest {
             assertEquals(DisplayScreen.RESULTS, out.screens.last())
             assertTrue(out.musicStopped)
             assertTrue(out.setPausedCalls.last() == false, "setPaused(false) runs before showResults")
+            // Liveness rides the room SNAPSHOT, and nothing else. This used to assert a
+            // unicast player_state on KO, which only held because of an alive-only form
+            // that no longer exists: player_state is pure telemetry (`lines`) now, and
+            // this run tops out by hard-dropping without ever clearing, so it sends none.
             assertTrue(
-                t.sent.any { it.first >= 0 && type(it.second) == Msg.PLAYER_STATE },
-                "a KO still unicasts player_state (the controller's own HUD, not room state)",
+                t.sent.none { type(it.second) == Msg.PLAYER_STATE && "alive" in it.second },
+                "player_state must not carry alive",
+            )
+            assertTrue(
+                t.lastState().players.values.any { !it.alive },
+                "the retained snapshot is what records the KO",
             )
             val results = assertNotNull(out.lastResults)
             assertTrue(results.isNotEmpty())

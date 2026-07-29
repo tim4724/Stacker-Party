@@ -256,11 +256,9 @@ object OutboundMessage {
     }
 
     fun error(message: String): JsonObject = buildJsonObject { put("type", Msg.ERROR); put("message", message) }
-    fun playerState(lines: Int, alive: Boolean): JsonObject = buildJsonObject {
-        put("type", Msg.PLAYER_STATE); put("lines", lines); put("alive", alive)
+    fun playerState(lines: Int): JsonObject = buildJsonObject {
+        put("type", Msg.PLAYER_STATE); put("lines", lines)
     }
-
-    fun playerDead(): JsonObject = buildJsonObject { put("type", Msg.PLAYER_STATE); put("alive", false) }
 }
 
 /** The relay transport the DisplayCoordinator drives (mirror Protocol.swift RelayTransport). */

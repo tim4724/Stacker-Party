@@ -148,6 +148,13 @@ const OPS = [
   { m: 'transitionTo', a: ['results'] },
   { m: 'enrichResults', a: [[{ playerId: 6, rank: 1, lines: 20 }, { playerId: 2, rank: 2, lines: 10 }]] },
   { m: 'setResults', a: [[{ playerId: 6, rank: 1, lines: 20 }, { playerId: 2, rank: 2, lines: 10 }]] },
+  // A rename and a colour pick ON the results screen. Both are allowed there, and
+  // the ranking duplicates the roster's name/colour, so each must re-label the
+  // stored ranking rather than leave the results rows showing the old label beside
+  // a roster showing the new one. Every setName/setColor op above runs in the
+  // lobby, where _results is null, so this is the only step that covers it.
+  { m: 'setName', a: [6, 'Zoe'] },
+  { m: 'setColor', a: [6, 7] },
   { m: 'peerLeft', a: [3] },
 
   // --- back to the lobby, pruning and admitting ---------------------------

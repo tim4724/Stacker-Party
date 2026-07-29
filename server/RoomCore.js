@@ -709,6 +709,7 @@ RoomCore.prototype.setColor = function (peerIndex, rawColorIndex) {
   }
 
   player.playerIndex = idx;
+  this._relabelResults();
   // Throttled like the level stepper: the picker overlay closes on the echoed
   // colour, so the leading edge keeps a deliberate pick feeling instant while a
   // flurry of picks still collapses to the last one.
@@ -728,7 +729,21 @@ RoomCore.prototype.setName = function (peerIndex, rawName) {
   // resolve to an HX name via resolveName's !name branch.
   player.playerName = this.resolveName(cleanInboundName(rawName), peerIndex, false);
   if (player.playerName === prevName) return { changed: false, publish: 'none' };
+  this._relabelResults();
   return { changed: true, name: player.playerName, publish: 'now' };
+};
+
+// A finished ranking carries each row's name and colour, copied off the roster by
+// enrichResults. The RESULTS snapshot replays that ranking, so a rename or colour
+// pick ON the results screen (both are allowed there) otherwise leaves the ranking
+// showing the old label while the roster beside it shows the new one. Re-labelling
+// is just enrichResults again: it is idempotent (its `played` map is built from the
+// ranking it is handed, so the sit-out rows it appended the first time suppress a
+// second append) and it rewrites every row's name and colour from the roster.
+// Same reason claimReconnect remaps _results[].playerId: whatever the ranking
+// duplicates from the roster has to be re-derived when the roster moves.
+RoomCore.prototype._relabelResults = function () {
+  if (this._results) this.enrichResults(this._results);
 };
 
 // =====================================================================

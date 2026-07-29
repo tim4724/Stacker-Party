@@ -91,9 +91,12 @@ import Foundation
         let types = Set((ft.sent.map { $0.data } + ft.broadcasts).compactMap { $0["type"] as? String })
         #expect(types.intersection(retired).isEmpty,
                 "these retired types are still being sent: \(types.intersection(retired).sorted())")
-        // ...and what SURVIVES is still sent: the targeted player_state is what fires
-        // a controller's KO overlay the instant it happens.
-        #expect(types.contains(MSG.playerState))
+        // Guard against passing vacuously. This used to assert a player_state, which
+        // only held because a KO sent an alive-only one; that form is gone (liveness
+        // rides the snapshot), and this run clears no lines, so it now sends no
+        // targeted message at all. The retained snapshots are what prove the scenario
+        // actually drove the coordinator through every state above.
+        #expect(!ft.states.isEmpty, "no snapshots published, so the scenario never ran")
     }
 
     /// Every room change publishes ONE retained `set_state` snapshot; the relay pushes
@@ -436,7 +439,11 @@ import Foundation
         }
         #expect(aliveInSnapshot(1) == false, "player 1 topped out and the snapshot says so")
         #expect(coord.state == .playing, "two players still alive → match continues")
-        #expect(ft.didSend(MSG.playerState, to: 1), "the targeted KO message still fires the overlay")
+        // The snapshot above is the ONLY thing that carries liveness. player_state is
+        // pure telemetry now, so no message may reintroduce `alive` as a second source
+        // of truth (there used to be an alive-only form sent on exactly this path).
+        #expect(ft.sent.allSatisfy { $0.data["type"] as? String != MSG.playerState || $0.data["alive"] == nil },
+                "player_state must not carry alive")
 
         // Player 1 drops and reconnects on the same slot.
         ft.onPeerLeft?(1)

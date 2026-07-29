@@ -1037,12 +1037,13 @@ class DisplayCoordinator(
             when (c.type) {
                 CommandType.PLAYER_STATE -> {
                     val pid = c.playerId ?: continue
-                    // Targeted, and NOT room state: it is what fires a controller's own
-                    // line-clear feedback and its KO overlay the instant either happens.
-                    if (c.lines != null && c.alive != null) {
-                        transport.sendTo(pid, OutboundMessage.playerState(c.lines, c.alive))
-                    } else if (c.alive == false) {
-                        transport.sendTo(pid, OutboundMessage.playerDead()) // short form after KO
+                    // Targeted, and NOT room state: pure per-player telemetry. `lines`
+                    // is the one figure the room snapshot does not carry. Liveness is
+                    // the snapshot's alone, recorded by PLAYER_ELIMINATED below, so a
+                    // `player_ko` form sends nothing here (PlayerStateCommand in
+                    // server/PartyCore.d.ts has why).
+                    if (c.lines != null) {
+                        transport.sendTo(pid, OutboundMessage.playerState(c.lines))
                     }
                 }
                 CommandType.PLAYER_ELIMINATED -> c.playerId?.let {

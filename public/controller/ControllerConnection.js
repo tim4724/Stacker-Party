@@ -343,13 +343,15 @@ function updateLatencyDisplay(ms) {
 var FASTLANE_TYPES = { [MSG.INPUT]: true, [MSG.SOFT_DROP]: true, [MSG.SOFT_DROP_END]: true };
 
 // AirConsole caps a device's outbound messages at ~10/sec; sustained overage
-// trips a platform-side rate-limit error. TouchInput emits SOFT_DROP at 20 Hz
-// (SOFT_DROP_INTERVAL_MS=50) while a drop is held, which alone blows the cap.
-// Web mode rides the WebRTC fastlane (its own pacing), but AC mode has no
-// fastlane, so coalesce SOFT_DROP to <=100 ms (10 Hz) here. The 1 Hz relay
-// PING is dropped in AC mode (see startPing), so soft-drop is the only
-// sustained sender and 10 Hz sits at the cap, leaving the odd move tap as the
-// only extra traffic.
+// trips a platform-side rate-limit error. TouchInput's held-drop keepalive is
+// already 10 Hz (SOFT_DROP_INTERVAL_MS=100) and setInterval never fires early,
+// so the steady state no longer needs coalescing. This stays as the hard bound
+// on the case the interval doesn't govern: a finger resting on the dead-zone
+// boundary re-enters soft drop on successive pointermove events (see
+// TouchInput._onPointerMove), and each re-entry emits an immediate SOFT_DROP at
+// pointer rate rather than interval rate. The 1 Hz relay PING is dropped in AC
+// mode (see startPing), so soft-drop is the only sustained sender and 10 Hz sits
+// at the cap, leaving the odd move tap as the only extra traffic.
 // SOFT_DROP carries no state the display accumulates — it's "keep dropping at
 // speed X" and auto-ends after SOFT_DROP_TIMEOUT_MS (300 ms) — so dropping
 // intermediate ticks just updates the speed slightly less often, which is
