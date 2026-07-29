@@ -4,7 +4,7 @@ const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { THEME } = require('../public/shared/Theme.js');
+const { THEME } = require('../public/shared/theme.js');
 
 // The board renderers on all three platforms size their HUD text off the same
 // cellSize multipliers with the same px floors (web THEME.font). Each TV port
