@@ -52,14 +52,17 @@ graph LR
 ## Quick Start
 
 ```bash
-npm install
-node server/index.js          # dev: serves individual scripts, no build needed
+npm install                   # required once — the test suite needs esbuild too
+npm run dev                   # serves individual scripts + restarts on change
 ```
+
+`npm run dev` is the inner loop: no bundling step, and `node --watch` restarts the
+server on every edit, so a browser reload is enough to see a change.
 
 For a production-style run, build the bundles first and start in production mode:
 
 ```bash
-npm run build                 # esbuild: one hashed bundle per app + dist/partycore.js
+npm run build                 # esbuild: one hashed bundle per app + dist/partycore.js (~0.3s)
 APP_ENV=production node server/index.js
 ```
 
@@ -154,23 +157,34 @@ The display and controllers connect to a [Party-Sockets](https://github.com/tim4
 | `SERVE_BUNDLES` | – | `1` forces bundle serving without full production mode (used by e2e; keeps the dev CSP the AirConsole mock needs) |
 | `GIT_SHA` | – | Git commit SHA shown in version endpoint |
 
+Build-time only:
+
+| Environment Variable | Default | Description |
+|---|---|---|
+| `BUILD_COMPRESSION` | fast | `max` spends brotli quality 11 on the precompressed `.br` siblings: ~9% smaller, for roughly double the build wall time. Set by the Dockerfile, since the image's bundles are the ones users download; every other build takes the fast tier |
+
 ## Testing
 
 ```bash
-# Unit tests
+# Unit tests (~2s, no build needed)
 npm test
+npm run test:watch              # same suite, re-run on save
 
-# E2E lifecycle tests
-npm run test:e2e
+# Both E2E projects — prefer this over running the two separately, which
+# rebuilds and re-boots the test server twice
+npm run test:e2e:all
 
-# AirConsole E2E tests
-npm run test:e2e:airconsole
+# ...or one project at a time
+npm run test:e2e                # lifecycle
+npm run test:e2e:airconsole     # AirConsole (mock SDK)
 
 # Relay load test (k6 — requires k6 installed)
 k6 run scripts/relay-loadtest.k6.js
 ```
 
-Unit tests use Node.js's built-in `node:test` runner with `node:assert/strict` — no test framework dependency. E2E tests use Playwright against a live server on port 4100. UI regressions are caught via the live gallery at `/gallery`. The relay load test models 5-client rooms (1 display + 4 controllers) against the configured relay URL; see the script header for environment knobs.
+Unit tests use Node.js's built-in `node:test` runner with `node:assert/strict` — no test framework dependency, and no build step: the couple of tests that need a bundle build it in-memory. They do need `npm install`, since that bundling goes through esbuild.
+
+E2E tests use Playwright against a live server on port 4100, which the Playwright config builds and boots itself (`PW_PORT` moves it if the port is taken). Both projects share that one server, which is why `test:e2e:all` is meaningfully faster than two separate runs. UI regressions are caught via the live gallery at `/gallery`. The relay load test models 5-client rooms (1 display + 4 controllers) against the configured relay URL; see the script header for environment knobs.
 
 ## Tech Stack
 

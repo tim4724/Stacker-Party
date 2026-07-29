@@ -25,10 +25,22 @@ part. `InputLatencyTest` stops at `renderSnapshot`, so it excludes the render th
 wake, its draw, and SurfaceFlinger present — it is a **floor**, not the full photon path.
 
 **Sections 1-12 are the JS↔native boundary.** They start where a decoded INPUT reaches
-the coordinator and stop where a snapshot reaches the renderer. **Part II (sections
-13-14)** covers the two segments outside that — the network path in, and the pixels out —
+the coordinator and stop where a snapshot reaches the renderer. **Part II (sections 13
+onward)** covers the two segments outside that — the network path in, and the pixels out —
 and compares web, tvOS and Android TV across the whole thing. Read part II first if the
 question is "why does one platform feel different from another".
+
+This is a running record, appended to as work shipped, so the numbering is chronological
+rather than sorted — §15a sits after §17 because that is when it was written. Where to
+start, by question:
+
+| question | section |
+| --- | --- |
+| Where does the app stand today? | §19, then §17 for the ranked list |
+| What is the current end-to-end number? | §11 (after), §1 (before) |
+| Why is this platform different from that one? | §13 |
+| Is idea X already tried? | §14, and the dead ends called out in §17 |
+| Would a different JS engine help? | §15 → §15b (shipped) → §15a (the locale trap) |
 
 ---
 

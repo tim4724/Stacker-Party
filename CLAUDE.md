@@ -5,12 +5,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm test                       # Unit tests (node:test)
+npm test                       # Unit tests (node:test) — ~2s, needs no build
+npm run test:watch             # Same suite, re-run on save
 node --test tests/hex-board.test.js  # Single unit test
+npm run dev                    # Inner loop: individual scripts + node --watch restart
 npm run build                  # esbuild: web app bundles + dist/partycore.js (native core)
+npm run test:e2e:all           # BOTH Playwright projects on one shared webServer — prefer this
 npm run test:e2e               # Playwright E2E lifecycle tests (runs against the prod bundle)
 npm run test:e2e:airconsole    # Playwright E2E AirConsole tests
 ```
+
+Running `test:e2e` and `test:e2e:airconsole` back to back rebuilds and re-boots the
+test server twice; `test:e2e:all` shares one. Brotli quality on the precompressed
+bundle siblings is tiered by `BUILD_COMPRESSION` (fast by default, `max` only in
+the Dockerfile) — `max` roughly doubles build wall time for ~9% smaller bundles,
+so leave it to the deploy path.
 
 ## Key Rules
 

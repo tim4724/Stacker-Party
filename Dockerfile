@@ -12,7 +12,12 @@ COPY scripts/ ./scripts/
 # chains both. Prod serves the bundles, so this MUST run or the server falls back
 # to ~20 no-store script tags. (The prod HTML pages are rendered + cached at
 # server boot, so there's no separate HTML build step.)
-RUN npm run build
+#
+# BUILD_COMPRESSION=max is the ONLY place brotli quality 11 is paid for: this
+# image's bundles are the ones real users download, so ~9% off the wire is worth
+# the extra build seconds. Dev/e2e/AirConsole builds use the fast tier — see
+# scripts/write-compressed.js. Guarded by tests/build-compression.test.js.
+RUN BUILD_COMPRESSION=max npm run build
 # Drop devDeps so the runtime node_modules carries only production deps.
 RUN npm prune --omit=dev
 

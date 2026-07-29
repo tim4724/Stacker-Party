@@ -203,7 +203,17 @@ async function createLiveSession(screenCtx, ctrlCtx) {
 // Tests
 // ---------------------------------------------------------------------------
 
-test.describe.serial('AirConsole Integration', () => {
+// Live mode drives ONE real AirConsole pairing session through a single shared
+// browser (see beforeAll), so those tests must stay in order on one worker.
+//
+// Mock mode shares nothing: beforeAll no-ops, and every test gets its own
+// Playwright context — its own storage partition, so the mock's fixed
+// BroadcastChannel name ('__airconsole_mock__') cannot leak between tests.
+// Serializing it anyway put ~105s of work on one worker and made this file the
+// critical path of the whole e2e run; in parallel it overlaps with the rest.
+test.describe.configure({ mode: USE_MOCK ? 'parallel' : 'serial' });
+
+test.describe('AirConsole Integration', () => {
   test.setTimeout(USE_MOCK ? 90000 : 180000);
 
   let browser;
@@ -269,7 +279,10 @@ test.describe.serial('AirConsole Integration', () => {
     await leaverPage.setViewportSize({ width: 390, height: 844 });
     await leaverPage.goto('/controller.html');
     await waitForFont(leaverPage);
-    await leaverPage.waitForSelector('#lobby-screen:not(.hidden)', { timeout: 10000 });
+    // 15s, matching every other wait in this helper: these are liveness waits, not
+    // latency assertions, and this one is the second full controller booting while
+    // the other mock AC tests run their own games on neighbouring workers.
+    await leaverPage.waitForSelector('#lobby-screen:not(.hidden)', { timeout: 15000 });
     await s.screenFrame.waitForFunction(() => players.size === 2, null, { timeout: 15000 });
 
     // High start level on both boards so the game tops out quickly.
@@ -285,7 +298,7 @@ test.describe.serial('AirConsole Integration', () => {
     await s.ctrlFrame.locator('#start-btn').click();
     await s.screenFrame.waitForFunction(() => roomState === 'countdown', null, { timeout: 15000 });
     await leaverPage.evaluate(() => window.airconsole.triggerDisconnect());
-    await s.screenFrame.waitForFunction(() => disconnectedQRs.has(102), null, { timeout: 10000 });
+    await s.screenFrame.waitForFunction(() => disconnectedQRs.has(102), null, { timeout: 15000 });
 
     // Game plays out with the host and reaches RESULTS.
     await s.screenFrame.waitForSelector('#results-screen:not(.hidden)', { timeout: 60000 });

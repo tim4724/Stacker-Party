@@ -1,12 +1,18 @@
 #!/usr/bin/env node
 'use strict';
 
-// Build step (esbuild). Currently bundles the portable native core; the web
-// controller/display app bundles are added here as those shells are modularized.
+// Build step (esbuild). Emits the portable native core (dist/partycore.js), one
+// content-hashed JS bundle per app (controller/display, plus their AirConsole
+// variants), one hashed CSS bundle per app, and dist/web-manifest.json naming
+// them all.
 //
 // Run directly (`npm run build`) to write artifacts to disk. The build options
 // are also required() by tests so the runtime gate bundles with the exact same
 // config the artifact ships with, and can't drift.
+//
+// Speed: emitting the artifacts costs ~200ms; compressing them used to cost far
+// more than that. See scripts/write-compressed.js for the BUILD_COMPRESSION tier
+// that keeps max-effort brotli on the deploy path only.
 
 const path = require('path');
 const fs = require('fs');
@@ -87,14 +93,14 @@ async function buildApp(appDir, name, scripts) {
   }
   const js = result.code + '\n//# sourceMappingURL=' + file + '.map\n';
   const jsPath = path.join(dir, file);
-  // writeCompressed emits the .js plus `.br`/`.gz` siblings (brotli 11 / gzip 9
-  // — a build-time one-shot on a content-hashed artifact). server/index.js
+  // writeCompressed emits the .js plus `.br`/`.gz` siblings. server/index.js
   // negotiates the siblings via Accept-Encoding, so a browser downloads ~1/4
   // the bytes with zero per-request CPU. Only the .js is compressed — the .map
   // is a rare, devtools-only fetch. The stale-sweep regex above already matches
   // the siblings (they share the `<name>.<hash>.js` prefix), so old ones are
-  // cleaned on rebuild alongside the .js/.map.
-  writeCompressed(jsPath, Buffer.from(js));
+  // cleaned on rebuild alongside the .js/.map. Brotli quality is tiered by
+  // BUILD_COMPRESSION (see write-compressed.js); max is a deploy-only cost.
+  await writeCompressed(jsPath, Buffer.from(js));
   fs.writeFileSync(jsPath + '.map', result.map);
   return file;
 }
@@ -127,7 +133,7 @@ async function buildStyles(name, styles) {
   for (const f of fs.readdirSync(dir)) {
     if (stale.test(f)) fs.rmSync(path.join(dir, f));
   }
-  writeCompressed(path.join(dir, file), Buffer.from(result.code));
+  await writeCompressed(path.join(dir, file), Buffer.from(result.code));
   return file;
 }
 
