@@ -51,8 +51,8 @@ import kotlin.math.roundToLong
 class InputLatencyTest {
 
     // The SHIPPING shape: MainActivity runs the coordinator and the engine on one game
-    // thread (§16), so these are the live numbers. 2-4 players is the ordinary party, so
-    // those are the ones that get quoted.
+    // thread, so these are the live numbers. 2-4 players is the ordinary party, so those
+    // are the ones that get quoted.
     @Test fun latency1Player() = runLatency(players = 1, busyPeers = 0)
     @Test fun latency2Players() = runLatency(players = 2, busyPeers = 0)
     @Test fun latency3PlayersAllBusy() = runLatency(players = 3, busyPeers = 2)
@@ -64,16 +64,17 @@ class InputLatencyTest {
     @Test fun latency8PlayersAllBusy() = runLatency(players = 8, busyPeers = 7)
 
     /**
-     * The one measurement that settles the §16 change, because it is the only one immune to
-     * run order. Each test above gets its own JUnit instance, so whichever runs first pays
-     * ART's JIT and the four-case ranking ends up reflecting order as much as cost (the
-     * first pass here showed 4-player "legacy" beating "shipping" purely by running 7th
-     * instead of 1st). This runs BOTH shapes inside ONE method, twice each, alternating —
+     * The one measurement that settles the one-game-thread change, because it is the only
+     * one immune to run order. Each test above gets its own JUnit instance, so whichever
+     * runs first pays ART's JIT and the four-case ranking ends up reflecting order as much
+     * as cost (the first pass here showed 4-player "legacy" beating "shipping" purely by
+     * running 7th instead of 1st). This runs BOTH shapes inside ONE method, twice each,
+     * alternating —
      * so a real difference shows as both passes agreeing, and warm-up shows as pass 2
      * beating pass 1 in both shapes.
      *
-     * legacy = the pre-§16 shape: coordinator on `Dispatchers.Main`, engine on its own
-     * dispatcher, so an input crossed the action channel to Main and then hopped to the
+     * legacy = the pre-game-thread shape: coordinator on `Dispatchers.Main`, engine on its
+     * own dispatcher, so an input crossed the action channel to Main and then hopped to the
      * engine thread and back.
      */
     @Test fun shapeComparison4Players() = runBlocking { compareShapes(players = 4, busyPeers = 0) }

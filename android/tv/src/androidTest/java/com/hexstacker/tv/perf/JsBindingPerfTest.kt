@@ -16,12 +16,12 @@ import org.junit.runner.RunWith
 /**
  * What one engine call costs, and how much of it is reachable.
  *
- * This is the test that produced §15's finding: the ~776 us floor the shipping binding used
+ * This is the test that produced the finding: the ~776 us floor the shipping binding used
  * to carry was NOT QuickJS re-parsing the source, it was quickjs-kt's `evalInSession`
  * wrapper (a session allocation, `loadModules`, four suspending mutex acquisitions and ~5
  * JNI calls, for async/Promise semantics `EngineBootstrap.SHIM` never uses). Cost did not
  * grow with source length, and precompiling saved ~6%. That is what justified moving to
- * Zipline's synchronous binding (§15b), which does the same call in ~78 us.
+ * Zipline's synchronous binding, which does the same call in ~78 us.
  *
  * Kept pointed at the SHIPPING binding so the floor stays honest, and so a future binding
  * change has the same three separations to run:

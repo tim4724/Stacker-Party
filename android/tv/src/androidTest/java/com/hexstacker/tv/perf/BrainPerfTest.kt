@@ -24,7 +24,7 @@ import kotlin.math.roundToLong
 
 /**
  * Splits the "brain" — the ~2.4 ms between an input reaching the coordinator and a snapshot
- * reaching the renderer (§19) — into its stages.
+ * reaching the renderer, as `InputLatencyTest` measures it — into its stages.
  *
  * It exists because that number had become a residual: the JS binding is now ~0.08 ms and
  * the packed decode ~0.15 ms, which together account for a fraction of it, and the rest was
@@ -94,7 +94,7 @@ class BrainPerfTest {
                 }
             }
             // For contrast: the same call made from OFF the engine thread, i.e. what the
-            // pre-§16a split shape paid on every input.
+            // pre-game-thread split shape paid on every input.
             measureSuspend("bridge.snapshotPlayer, off-thread caller", 200) {
                 bridge.snapshotPlayer(0, batch)
             }

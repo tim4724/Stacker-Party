@@ -26,9 +26,9 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
- * The coordinator drives [TvDisplayOutput] from the game thread, not Main
- * (PERF-INPUT-LATENCY.md §16), so every method here has to be safe there. Two things are
- * not, and both fail LOUDLY rather than subtly, which is what makes this test worth having:
+ * The coordinator drives [TvDisplayOutput] from the game thread, not Main, so every method
+ * here has to be safe there. Two things are not, and both fail LOUDLY rather than subtly,
+ * which is what makes this test worth having:
  * ExoPlayer throws when touched off the thread that built it, and a View throws
  * `CalledFromWrongThreadException`. `TvDisplayOutput` routes exactly those through
  * `runOnMain`; this calls the whole `DisplayOutput` surface from a foreign thread and fails

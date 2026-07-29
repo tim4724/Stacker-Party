@@ -23,13 +23,13 @@ import kotlin.coroutines.ContinuationInterceptor
  *
  * Threading: the QuickJS C runtime is not thread-safe, and it calibrates its
  * stack-overflow guard against the stack of the thread that CREATED it — entering it from
- * any other thread turns a catchable JS error into a SIGSEGV, measured on device
- * (PERF-INPUT-LATENCY.md §14.1). So the runtime is created on [dispatcher] and every call
- * hops there, and [dispatcher] MUST be serial. On Android it is the app's one game thread,
- * which the coordinator runs on too, so [onEngineThread] calls straight through. The
- * [Mutex] additionally guarantees two calls never overlap on the one shared mutable `Game`.
- * Route the frame loop and controller input through the same coordinator coroutine so input
- * accumulates between frames exactly as the web does.
+ * any other thread turns a catchable JS error into a SIGSEGV, measured on device. So the
+ * runtime is created on [dispatcher] and every call hops there, and [dispatcher] MUST be
+ * serial. On Android it is the app's one game thread, which the coordinator runs on too,
+ * so [onEngineThread] calls straight through. The [Mutex] additionally guarantees two calls
+ * never overlap on the one shared mutable `Game`. Route the frame loop and controller input
+ * through the same coordinator coroutine so input accumulates between frames exactly as the
+ * web does.
  *
  * The binding is Zipline's `QuickJs` (Cash App), not quickjs-kt, and that is a measured
  * choice: quickjs-kt routes every `evaluate` through `evalInSession` — a session

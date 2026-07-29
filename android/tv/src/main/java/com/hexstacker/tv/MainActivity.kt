@@ -120,7 +120,8 @@ class MainActivity : ComponentActivity() {
      * coordinator's action channel on Main, then the engine's own dispatcher and back.
      * Sharing one dispatcher removes the last two: `withContext` to the dispatcher you are
      * already on does not dispatch, so every engine call is a plain call. Measured at eight
-     * seats: 5.5-6.0ms -> 4.0ms p50 to the renderer (PERF-INPUT-LATENCY.md §16).
+     * seats: 5.5-6.0ms -> 4.0ms p50 to the renderer (`InputLatencyTest.shapeComparison*`
+     * measures both shapes against each other on device).
      *
      * It also takes input handling off the thread Compose and the Choreographer share,
      * which is where the p95 tail was coming from.
@@ -128,13 +129,13 @@ class MainActivity : ComponentActivity() {
      * QuickJS is created on this thread and only ever entered from it. That is load-bearing,
      * not incidental: the C runtime calibrates its stack-overflow guard against the creating
      * thread's stack, so a call from anywhere else turns a catchable JS error into a SIGSEGV
-     * (§14.1 — this was measured, on the device, by doing it).
+     * (measured, on the device, by doing it — see EngineBridge's threading note).
      *
      * A HandlerThread rather than a bare executor so the thread has a Looper, which gives it
      * its own Choreographer: the tick loop runs HERE, driven by this thread's vsync callback,
      * so a tick no longer pays the Main-to-game channel dispatch plus the ack dispatch back
-     * that driving it from Main's Choreographer cost (§16 flagged that pair at ~0.7-0.8 ms
-     * per frame; a same-thread send/ack is a Handler post, an order of magnitude cheaper).
+     * that driving it from Main's Choreographer cost (that pair measured ~0.7-0.8 ms per
+     * frame; a same-thread send/ack is a Handler post, an order of magnitude cheaper).
      * Relay callbacks post here too, for the same reason fastlane input already lands here:
      * fallback input must not queue behind Compose on Main.
      */
@@ -353,8 +354,8 @@ class MainActivity : ComponentActivity() {
      *
      * This is very likely the largest single latency term left in the product, and it is
      * not in our code: TV post-processing typically costs 10-40 ms, against the ~7 ms of
-     * app time the whole input path now takes (PERF-INPUT-LATENCY.md §14). It is also the
-     * cheapest thing on the list, which is why it goes first.
+     * app time the whole input path now takes. It is also the cheapest thing on the list,
+     * which is why it goes first.
      *
      * Set once, for the whole Activity, rather than per screen: the flag makes the display
      * renegotiate, and a TV that flashes or re-syncs on every lobby↔game transition would

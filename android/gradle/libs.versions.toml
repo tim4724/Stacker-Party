@@ -20,8 +20,7 @@ okhttp = "5.4.0"
 profileinstaller = "1.4.1"
 # QuickJS binding. Zipline rather than quickjs-kt: SAME engine, but a synchronous JNI call
 # instead of a suspend/Promise wrapper that cost ~776us per call on TV hardware against
-# ~78us (android/PERF-INPUT-LATENCY.md §15b). See EngineBridge for the locale guard this
-# requires — it is not optional.
+# ~78us. See EngineBridge for the locale guard this requires — it is not optional.
 zipline = "1.27.0"
 robolectric = "4.16.1"
 roborazzi = "1.70.0"

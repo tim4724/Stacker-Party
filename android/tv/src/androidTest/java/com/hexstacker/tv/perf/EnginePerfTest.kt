@@ -246,11 +246,11 @@ class EnginePerfTest {
         exec.shutdown()
     }
 
-    // Two A/Bs used to live here — `proposedFixes` (the three §5 changes against the
-    // shapes they replaced) and `inputPathBeforeAfter` (old per-input shape vs shipped).
-    // Both are gone: their findings are §5.1/§5.2, all three changes shipped, and
-    // `BrainPerfTest` now measures `snapshotPlayer` better than either did — ON the engine
-    // thread, where production calls it, rather than through a hop that inflated it by
+    // Two A/Bs used to live here — `proposedFixes` (the per-seat pull, input batching and
+    // the signalled render thread, against the shapes they replaced) and
+    // `inputPathBeforeAfter` (old per-input shape vs shipped). Both are gone: all three
+    // changes shipped, and `BrainPerfTest` now measures `snapshotPlayer` better — ON the
+    // engine thread, where production calls it, rather than through a hop that inflated it by
     // ~0.6ms. A benchmark that cannot catch a regression is just device time.
 
     // ── 4. what a coroutine hop costs on this CPU ────────────────────────────

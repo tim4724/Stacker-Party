@@ -32,8 +32,8 @@ final class BoardScene: SKScene {
     /// most a couple per frame, but every snapshot used to re-sync all eight — rebuilding
     /// ghost, preview, near-clear, piece, clearing and HUD nodes for seats that had not
     /// moved, on the main thread, which is also where JavaScriptCore runs. Android removed
-    /// the same waste from its renderer (android/PERF-INPUT-LATENCY.md §13.3/§14.2); web
-    /// never had it, because its per-board tile cache is gated on exactly this comparison.
+    /// the same waste from its renderer (`BoardSurfaceView`'s per-board display-list cache);
+    /// web never had it, because its per-board tile cache is gated on exactly this comparison.
     ///
     /// The gate is `PlayerSnapshot` equality rather than a hand-listed signature — the type
     /// is already Equatable, so there is no field to forget. Sound because `update` is a

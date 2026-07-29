@@ -78,7 +78,7 @@ class IngressPerfTest {
 
     // `engineHopByPriority` used to sit here, pricing a dedicated engine thread at each
     // priority against `Dispatchers.Default.limitedParallelism(1)`. Its premise is gone
-    // twice over: the coordinator now shares the engine's thread (§16a) and EngineBridge
+    // twice over: the coordinator now shares the engine's thread and EngineBridge
     // short-circuits the wrapper when the caller is already on it, so no engine call
     // dispatches at all in production. The finding it existed to record — that thread
     // priority is NOT the lever on this SoC — is kept by `wakeLatencyByPriority` and by
@@ -142,11 +142,11 @@ class IngressPerfTest {
     }
 
     /**
-     * The same ingress, but with the consumer WARM — because since §16a it is the game
-     * thread, which ticks at 60 Hz and is therefore never parked for long. The variant
-     * above parks every thread between samples, which was right when the consumer was
-     * Main-dispatched behind Compose and wrong now. This says how much of that 0.92 ms
-     * was the consumer being cold, i.e. how much is actually left to win here.
+     * The same ingress, but with the consumer WARM — because it is now the game thread,
+     * which ticks at 60 Hz and is therefore never parked for long. The variant above parks
+     * every thread between samples, which was right when the consumer was Main-dispatched
+     * behind Compose and wrong now. This says how much of that 0.92 ms was the consumer
+     * being cold, i.e. how much is actually left to win here.
      */
     @Test
     fun ingressPathWarmConsumer() {
