@@ -41,6 +41,10 @@ var waitingForNextGame = false;
 var lastLines = 0;
 var lastGameResults = null;
 var startLevel = 1;
+// The level we last sent and are still waiting for the display to echo back in
+// the room snapshot. While non-null, applyOwnIdentity keeps the local value
+// rather than adopting the snapshot's. See the comment there for why.
+var pendingLevel = null;
 var takenColorIndices = [];   // indices currently claimed by other players (incl. self)
 // Becomes true the first time the user taps a swatch in the picker. Gates
 // persistColorIndex in applyOwnIdentity so we only persist *user-initiated*

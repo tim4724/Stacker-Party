@@ -641,23 +641,22 @@ bindTap(startBtn, function () {
   sendToDisplay(MSG.START_GAME);
 });
 
-bindTap(levelMinusBtn, function () {
-  if (startLevel <= 1) return;
+// Both steppers, already clamped by the caller: a clamp that changed nothing
+// means the end of the range, so there is nothing to feel, draw or send. The
+// readout is optimistic, and pendingLevel is what keeps the throttled echo of
+// the PREVIOUS level from reverting it (see applyOwnIdentity).
+function stepStartLevel(next) {
+  if (next === startLevel) return;
   vibrate(15);
-  startLevel = Math.max(1, startLevel - 1);
+  startLevel = next;
+  pendingLevel = next;
   updateLevelDisplay();
   renderColorPicker();
-  sendToDisplay(MSG.SET_LEVEL, { level: startLevel });
-});
+  sendToDisplay(MSG.SET_LEVEL, { level: next });
+}
 
-bindTap(levelPlusBtn, function () {
-  if (startLevel >= 15) return;
-  vibrate(15);
-  startLevel = Math.min(15, startLevel + 1);
-  updateLevelDisplay();
-  renderColorPicker();
-  sendToDisplay(MSG.SET_LEVEL, { level: startLevel });
-});
+bindTap(levelMinusBtn, function () { stepStartLevel(Math.max(1, startLevel - 1)); });
+bindTap(levelPlusBtn, function () { stepStartLevel(Math.min(15, startLevel + 1)); });
 
 // Color picker — the rose lives in #color-picker-overlay (a .game-overlay
 // dialog). Two pieces of wiring:

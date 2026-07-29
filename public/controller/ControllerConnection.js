@@ -405,6 +405,10 @@ function performDisconnect() {
   // default instead of their persisted favorite.
   userPickedColor = false;
   pendingColorPick = null;
+  // The rejoin builds a fresh player record at level 1, which would never match
+  // a level left unacked by the bail, so applyOwnIdentity would go on ignoring
+  // every snapshot for the rest of the session.
+  pendingLevel = null;
   reclaimedPreferredColor = false;
   // If the picker is open when the user bails (e.g. tap "back" before the
   // 350ms backdrop-enable timer fires), the overlay would never get

@@ -178,6 +178,16 @@ function renderColorPicker() {
     if (typeof closeColorPicker === 'function') closeColorPicker();
   }
 
+  // 1b. Still pending, but the roster now shows the slot claimed. Since the
+  //     check above already cleared the case where it became ours, this is a
+  //     collision the display rejected: setColor drops those silently, so the
+  //     winner's snapshot is the only news of it and nothing else would ever
+  //     retire the flag. Left set, it outlives the overlay and would close a
+  //     later deliberate open if that slot ever came back to us.
+  if (pendingColorPick != null && (takenColorIndices || []).indexOf(pendingColorPick) >= 0) {
+    pendingColorPick = null;
+  }
+
   // 2. Skip rose repaint while the overlay is hidden (closed or fading
   //    out). Repainting during the close fade would shuffle the
   //    alternatives mid-animation as the player's new color drops out of
@@ -568,8 +578,19 @@ function applyOwnIdentity(mine) {
   // Absent means 1: the snapshot omits the three per-player fields at their
   // defaults (see RoomCore.snapshot). Coalescing rather than skipping matters —
   // a stepper wound up to 9 and then reset by a new room must fall back to 1,
-  // not keep the value the last snapshot happened to carry.
-  startLevel = mine.startLevel != null ? mine.startLevel : 1;
+  // not keep the value the last snapshot happened to carry. Coalescing is also
+  // what lets a step back DOWN to 1 ack, since that field is omitted entirely.
+  var level = mine.startLevel != null ? mine.startLevel : 1;
+  // The stepper renders optimistically and the display throttles level
+  // publishes (RoomCore's 'soon' hint), so every snapshot between a tap and its
+  // echo still describes the pre-tap level. Adopting one reverts the number
+  // under the user's finger, and since the next tap counts from startLevel, it
+  // silently loses increments too. An unacked tap therefore defers adoption
+  // without ever overriding the display: with nothing pending the snapshot is
+  // still the only truth. Waiting for the ack is safe because SET_LEVEL rides
+  // the reliable, ordered relay socket, not the lossy fastlane (FASTLANE_TYPES).
+  if (level === pendingLevel) pendingLevel = null;
+  if (pendingLevel === null) startLevel = level;
 }
 
 // The one place a screen is chosen.

@@ -12,10 +12,12 @@ const {
 /**
  * The retained room snapshot is the controller's single source of truth: the
  * display publishes one object via party.setState() and the controller derives
- * its whole UI from it, screen routing included. These tests pin the two
+ * its whole UI from it, screen routing included. These tests pin the three
  * properties that make that claim real — nothing else carries room state over
- * the wire, and the +/- level and colour controls are throttled so a mashed
- * finger can't turn into a message storm.
+ * the wire, the +/- level and colour controls are throttled so a mashed
+ * finger can't turn into a message storm, and the local state those two
+ * controls own reconciles against the snapshot without losing a tap to an
+ * echo the throttle has left stale.
  */
 
 // Room-state message types the snapshot replaced (values from
@@ -55,6 +57,26 @@ async function instrumentDisplay(page) {
       return setState(snap);
     };
   });
+}
+
+/**
+ * A lobby snapshot for this controller carrying `level`, shaped like
+ * RoomCore.snapshot(), including the omit-at-default encoding, which is what
+ * makes level 1 indistinguishable from an absent field on the wire.
+ */
+async function lobbySnapshot(controller, level) {
+  return controller.evaluate((lvl) => {
+    const row = { name: playerName, color: playerColorIndex || 0 };
+    if (lvl !== 1) row.startLevel = lvl;
+    return {
+      roomState: 'lobby',
+      hostPeerIndex: peerIndex,
+      paused: false,
+      displayMuted: false,
+      participants: [],
+      players: { [peerIndex]: row },
+    };
+  }, level);
 }
 
 /** Crank the host's start level so a solo game tops out within seconds. */
@@ -148,6 +170,50 @@ test.describe('Room snapshot as the single source of truth', () => {
     await expect(page.locator('#player-list .player-card:not(.empty)').first()).toContainText('9');
   });
 
+  test('a stale level echo never reverts an unacked tap, and the snapshot wins again once acked', async ({ page, context }) => {
+    const { roomCode } = await createRoom(page);
+    const controller = await joinController(context, roomCode, 'Alice');
+    await waitForDisplayPlayers(page, 1);
+    await expect(controller.locator('#level-display')).toHaveText('1');
+
+    // The leading-edge echo as it would land after a second tap: it describes
+    // level 2, already stale, and the throttle holds the truth back for up to
+    // 500ms more. Adopting it reverts the readout under the finger AND makes
+    // the next tap count from 2, silently losing a step.
+    const stale = await lobbySnapshot(controller, 2);
+
+    // Tap, tap, and deliver the stale echo in ONE synchronous block. A real
+    // network stages this whenever RTT outruns the tap interval, but localhost
+    // is far too fast, and the live display keeps republishing the truth, so
+    // any awaited assertion here just races a real snapshot into passing.
+    // Single-threaded page, no awaits: nothing can be processed in between.
+    const readouts = await controller.evaluate((snap) => {
+      const plus = document.getElementById('level-plus-btn');
+      const readout = () => document.getElementById('level-display').textContent;
+      plus.click();
+      plus.click();
+      const optimistic = readout();
+      onState(snap);
+      return { optimistic, afterStale: readout() };
+    }, stale);
+    expect(readouts.optimistic).toBe('3');
+    expect(readouts.afterStale).toBe('3');
+
+    // Let the real trailing publish land and ack the tap for real.
+    await expect(controller.locator('#level-display')).toHaveText('3');
+    await page.waitForTimeout(700);
+
+    // Acked, so the snapshot is authoritative again: a level the controller
+    // never asked for IS adopted. The pending tap defers to the display, it
+    // never overrides it. Level 1 also covers the omitted-at-default encoding,
+    // which the ack has to survive when the stepper walks back down.
+    const afterReset = await controller.evaluate((snap) => {
+      onState(snap);
+      return document.getElementById('level-display').textContent;
+    }, await lobbySnapshot(controller, 1));
+    expect(afterReset).toBe('1');
+  });
+
   test('a colour pick closes the picker on the leading-edge publish, not the trailing one', async ({ page, context }) => {
     const { roomCode } = await createRoom(page);
     const controller = await joinController(context, roomCode, 'Alice');
@@ -177,6 +243,42 @@ test.describe('Room snapshot as the single source of truth', () => {
 
     expect(await controller.evaluate(() => playerColorIndex)).not.toBe(before);
     expect(elapsed, 'colour pick echoed on the throttle trailing edge').toBeLessThan(450);
+  });
+
+  test('a rejected colour pick retires the pending flag instead of outliving the overlay', async ({ page, context }) => {
+    const { roomCode } = await createRoom(page);
+    const controller = await joinController(context, roomCode, 'Alice');
+    await waitForDisplayPlayers(page, 1);
+
+    // Tap a free cell, then deliver the winner's snapshot, in ONE synchronous
+    // block. The collision only exists in the window before that snapshot
+    // lands, and the display answers a rejected SET_COLOR with silence
+    // (publish: 'none'), so there is nothing of its own to wait for. The real
+    // display accepts this pick a round trip later, which is why every
+    // assertion reads state captured inside the block.
+    const state = await controller.evaluate((base) => {
+      openColorPicker();
+      const free = colorPickerEl.querySelector('.rose-cell:not(.taken)');
+      const idx = parseInt(free.dataset.idx, 10);
+      free.click();
+      const afterTap = pendingColorPick;
+      // Another player claimed the same slot a moment earlier: their pick was
+      // accepted and published, ours was dropped on the floor.
+      base.players[99] = { name: 'Bob', color: idx };
+      onState(base);
+      return {
+        idx,
+        afterTap,
+        afterEcho: pendingColorPick,
+        stillOpen: !colorPickerOverlay.classList.contains('hidden'),
+      };
+    }, await lobbySnapshot(controller, 1));
+
+    expect(state.afterTap, 'the tap should arm pendingColorPick').toBe(state.idx);
+    expect(state.afterEcho, 'a rejected pick must not stay pending').toBeNull();
+    // Deliberate: the user picks again from the still-open rose, which now
+    // paints that cell as taken.
+    expect(state.stillOpen).toBe(true);
   });
 
   test('a late joiner is routed by the snapshot: lobby banner while playing, results when the round ends', async ({ page, context }) => {
