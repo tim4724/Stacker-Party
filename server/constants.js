@@ -68,6 +68,14 @@ const BUFFER_ROWS = 4;
 const VISIBLE_ROWS = 15;
 const TOTAL_ROWS = BUFFER_ROWS + VISIBLE_ROWS;
 
+// Upper bound on the `n` an INPUT message may carry. A drag can cross several
+// ratchet steps inside one pointermove and ships them as one counted message
+// (TouchInput._onPointerMove), so every display expands `n` into that many engine
+// inputs; the count comes off the wire, so it needs a ceiling.
+// COLS - 1 is the most moves that can do anything (a piece any further along is
+// already against the wall), so clamping here costs no reachable input.
+const INPUT_MAX_REPEAT = COLS - 1;
+
 // 6-piece casual bag (1-indexed to match grid cell values): 3 trominoes for
 // low spatial-planning load + 3 small-footprint tetrominoes to keep the game
 // from going trivial. d/b are starter geometries — iterate once playtested.
@@ -313,6 +321,7 @@ exports.COLS = COLS;
 exports.TOTAL_ROWS = TOTAL_ROWS;
 exports.BUFFER_ROWS = BUFFER_ROWS;
 exports.VISIBLE_ROWS = VISIBLE_ROWS;
+exports.INPUT_MAX_REPEAT = INPUT_MAX_REPEAT;
 exports.PIECE_TYPES = PIECE_TYPES;
 exports.PIECE_TYPE_TO_ID = PIECE_TYPE_TO_ID;
 exports.GARBAGE_CELL = GARBAGE_CELL;

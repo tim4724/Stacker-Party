@@ -120,8 +120,14 @@ function onInput(fromId, msg) {
   if (!displayGame) return;
   if (!VALID_ACTIONS.has(msg.action)) return;
 
+  // A drag fast enough to cross several ratchet steps inside one pointermove
+  // arrives as ONE message carrying the step count (TouchInput._onPointerMove),
+  // because AirConsole caps a controller at 25 messages/sec and the steps can't
+  // each get their own. Absent, malformed or hostile n means one step; the clamp
+  // keeps an off-wire number out of the loop bound.
+  var n = Math.min(Math.max(Math.trunc(msg.n) || 1, 1), GameConstants.INPUT_MAX_REPEAT);
   // The engine owns hard-drop rate-limiting and soft-drop supersede.
-  displayGame.processInput(fromId, msg.action);
+  for (var i = 0; i < n; i++) displayGame.processInput(fromId, msg.action);
 }
 
 function onSoftDrop(fromId, speed) {

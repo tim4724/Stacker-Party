@@ -23,6 +23,13 @@ object RelayConfig {
     /** Slot 0 (display) + MAX_PLAYERS(8) controllers. */
     const val MAX_CLIENTS = 9
 
+    /**
+     * Ceiling on an input message's repeat count (INPUT_MAX_REPEAT = COLS - 1). A
+     * controller ships a multi-step ratchet drag as one counted message; the count is
+     * off the wire, and beyond this the piece is already against the wall.
+     */
+    const val INPUT_MAX_REPEAT = 8
+
     /** Where phones load the controller (QR target) in a shipped build. Join URL = "<base>/<room>#<instance>". */
     const val DEFAULT_CONTROLLER_BASE_URL = "https://hexstacker.com"
 
@@ -210,6 +217,8 @@ data class ErrorFrame(val message: String = "unknown relay error")
 data class ControllerMessage(
     val type: String,
     val action: String? = null,
+    /** input repeat count; absent = 1 (see RelayConfig.INPUT_MAX_REPEAT). */
+    val n: Int? = null,
     val speed: Double? = null,
     val name: String? = null,
     val autoName: Boolean? = null,
@@ -226,6 +235,7 @@ data class ControllerMessage(
             return ControllerMessage(
                 type = type,
                 action = obj.str("action"),
+                n = obj.int("n"),
                 speed = obj.dbl("speed"),
                 name = obj.str("name"),
                 autoName = obj.bool("autoName"),

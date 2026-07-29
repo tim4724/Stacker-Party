@@ -100,6 +100,12 @@ test('relay endpoints and limits mirror the web', () => {
   const maxClients = SWIFT.match(/static let maxClients = (\d+)/);
   assert.ok(maxClients, 'Swift const maxClients not found');
   assert.strictEqual(Number(maxClients[1]), constants.MAX_PLAYERS + 1);
+  // Bound on the input message's repeat count. Drift here is silent both ways: too
+  // low and a fast drag loses steps on this platform only, too high and an off-wire
+  // count sets the loop bound.
+  const inputMaxRepeat = SWIFT.match(/static let inputMaxRepeat = (\d+)/);
+  assert.ok(inputMaxRepeat, 'Swift const inputMaxRepeat not found');
+  assert.strictEqual(Number(inputMaxRepeat[1]), constants.INPUT_MAX_REPEAT);
 });
 
 test('the controller base URL matches the Android mirror', () => {

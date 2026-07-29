@@ -127,11 +127,28 @@ describe('TouchInput gesture sessions', () => {
     // Then horizontal catches up → ratchet fires, soft drop continues
     touchInput._onPointerMove(pointerEvent({ clientX: 120, clientY: 130, timeStamp: 360 }));
 
-    assert.deepEqual(actions.map(entry => entry.action), [
-      'soft_drop',
-      INPUT.RIGHT,
-      INPUT.RIGHT,
-    ]);
+    // Two ratchet steps crossed inside ONE pointermove, so ONE counted emit:
+    // the AirConsole budget is spent per message, not per step.
+    assert.deepEqual(actions.map(entry => entry.action), ['soft_drop', INPUT.RIGHT]);
+    assert.equal(actions[1].data.n, 2);
+  });
+
+  test('a multi-step ratchet crossing emits once, carrying the count', () => {
+    touchInput._onPointerDown(pointerEvent({ clientX: 0, clientY: 0, timeStamp: 0 }));
+    // 200px in one event = 4 x RATCHET_THRESHOLD(48), the shape a fast drag (or an
+    // ordinary one across a stalled frame) produces once pointermove coalesces.
+    touchInput._onPointerMove(pointerEvent({ clientX: 200, clientY: 10, timeStamp: 32 }));
+
+    assert.deepEqual(actions, [{ action: INPUT.RIGHT, data: { n: 4 } }]);
+    // The remainder carries: the anchor lands on the lattice, not on the finger.
+    assert.equal(touchInput.anchorX, 4 * touchInput.RATCHET_THRESHOLD);
+  });
+
+  test('a single-step crossing still reports n = 1', () => {
+    touchInput._onPointerDown(pointerEvent({ clientX: 0, clientY: 0, timeStamp: 0 }));
+    touchInput._onPointerMove(pointerEvent({ clientX: -60, clientY: 10, timeStamp: 40 }));
+
+    assert.deepEqual(actions, [{ action: INPUT.LEFT, data: { n: 1 } }]);
   });
 
   test('horizontal movement first prevents soft drop from activating', () => {

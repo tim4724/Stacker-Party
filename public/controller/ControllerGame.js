@@ -942,7 +942,12 @@ function initTouchInput() {
         sendToDisplay(MSG.SOFT_DROP_END);
       }
     } else {
-      sendToDisplay(MSG.INPUT, { action: action });
+      // n rides along only when the ratchet actually produced more than one step
+      // (see TouchInput._onPointerMove), so the common single-step message keeps
+      // its exact old shape and a display that predates n still reads it.
+      var input = { action: action };
+      if (data && data.n > 1) input.n = data.n;
+      sendToDisplay(MSG.INPUT, input);
     }
   }, null);
 }

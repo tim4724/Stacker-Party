@@ -763,7 +763,12 @@ class DisplayCoordinator(
         val action = msg.action ?: return
         val input = InputAction.fromWire(action) ?: return
         if (engine == null) return
-        pendingInputs.add(from to input)
+        // A ratchet drag that crossed several steps inside one pointermove arrives as
+        // ONE counted message (the controller is capped at 25 msg/sec on AirConsole),
+        // so expand it back into that many engine inputs. Absent or malformed n is a
+        // single step; the clamp keeps an off-wire count bounded.
+        val repeats = (msg.n ?: 1).coerceIn(1, RelayConfig.INPUT_MAX_REPEAT)
+        repeat(repeats) { pendingInputs.add(from to input) }
         // Render-on-input: reflect the applied input on the very next vsync instead of
         // waiting for the next frame() tick. The pull is a pure read (no time advance),
         // so this only front-runs the VISUAL; this frame's events/commands (lock flash,

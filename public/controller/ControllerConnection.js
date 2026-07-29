@@ -259,7 +259,7 @@ function startPing() {
   stopPing();
   // AirConsole owns connection liveness via the SDK (onConnect/onDisconnect is
   // the authoritative disconnect signal), so the relay PING is redundant in AC
-  // mode — and dropping it keeps the controller under AirConsole's ~10 msg/sec
+  // mode — and dropping it keeps the controller under AirConsole's 25 msg/sec
   // cap (see sendToDisplay). No PING also means no PONG RTT and no fastlane, so
   // there is no latency to show; the chip is hidden via CSS (body.airconsole
   // #latency-display).
@@ -342,16 +342,20 @@ function updateLatencyDisplay(ms) {
 // constants so a rename in protocol.js is caught automatically.
 var FASTLANE_TYPES = { [MSG.INPUT]: true, [MSG.SOFT_DROP]: true, [MSG.SOFT_DROP_END]: true };
 
-// AirConsole caps a device's outbound messages at ~10/sec; sustained overage
-// trips a platform-side rate-limit error. TouchInput's held-drop keepalive is
+// AirConsole caps a device's outbound messages at 25/sec; overage trips a
+// platform-side rate-limit error, reported only in the AC developer console
+// (System-Rate-Limiter). The SDK itself carries no limiter, so there is nothing
+// to detect client-side. Left/right stay uncoalesced here because the burst is
+// removed at the source: a multi-step ratchet crossing ships as ONE counted
+// message (TouchInput._onPointerMove). TouchInput's held-drop keepalive is
 // already 10 Hz (SOFT_DROP_INTERVAL_MS=100) and setInterval never fires early,
 // so the steady state no longer needs coalescing. This stays as the hard bound
 // on the case the interval doesn't govern: a finger resting on the dead-zone
 // boundary re-enters soft drop on successive pointermove events (see
 // TouchInput._onPointerMove), and each re-entry emits an immediate SOFT_DROP at
 // pointer rate rather than interval rate. The 1 Hz relay PING is dropped in AC
-// mode (see startPing), so soft-drop is the only sustained sender and 10 Hz sits
-// at the cap, leaving the odd move tap as the only extra traffic.
+// mode (see startPing), so soft-drop is the only sustained sender and its 10 Hz
+// leaves most of the 25/sec budget for moves.
 // SOFT_DROP carries no state the display accumulates — it's "keep dropping at
 // speed X" and auto-ends after SOFT_DROP_TIMEOUT_MS (300 ms) — so dropping
 // intermediate ticks just updates the speed slightly less often, which is

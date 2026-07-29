@@ -727,7 +727,12 @@ public final class DisplayCoordinator {
         guard state == .playing, !paused, let action = msg.action,
               InputAction(rawValue: action) != nil else { return }
         guard engine != nil else { return }
-        pendingInputs.append((playerId: from, action: action))
+        // A ratchet drag that crossed several steps inside one pointermove arrives
+        // as ONE counted message (the controller is capped at 25 msg/sec on
+        // AirConsole), so expand it back into that many engine inputs. Absent or
+        // malformed n is a single step; the clamp keeps an off-wire count bounded.
+        let repeats = min(max(msg.n ?? 1, 1), Protocol.inputMaxRepeat)
+        for _ in 0..<repeats { pendingInputs.append((playerId: from, action: action)) }
         // Render-on-input: reflect the applied input on the very next display frame
         // instead of waiting for the next tick(). The pull is a pure read (no time
         // advance), so it only front-runs the VISUAL; this frame's events/commands

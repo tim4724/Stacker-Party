@@ -260,9 +260,13 @@ class TouchInput {
       || Math.abs(segDx) >= Math.abs(segDy);
     if (steps !== 0 && horizontallyDominant) {
       const action = steps > 0 ? INPUT.RIGHT : INPUT.LEFT;
-      for (let i = 0, n = Math.abs(steps); i < n; i++) {
-        this.onInput(action);
-      }
+      // One emit carrying the step COUNT, not one emit per step. The ratchet is
+      // distance-quantized while pointermove is capped at one event per frame
+      // (the rest go to getCoalescedEvents, which we don't read), so a fast drag,
+      // or an ordinary one across a stalled frame, crosses several thresholds
+      // in a single event. Emitting each one separately put that burst on the
+      // wire as N messages, which is what trips AirConsole's 25 msg/sec cap.
+      this.onInput(action, { n: Math.abs(steps) });
       this._haptic(15);
       this.anchorX += steps * this.RATCHET_THRESHOLD;
       this.hasMovedHorizontally = true;
@@ -395,10 +399,7 @@ class TouchInput {
     const hSteps = Math.trunc(this._wheelAccumX / this.WHEEL_H_THRESHOLD);
     if (hSteps !== 0) {
       const action = hSteps > 0 ? INPUT.RIGHT : INPUT.LEFT;
-      const count = Math.abs(hSteps);
-      for (let i = 0; i < count; i++) {
-        this.onInput(action);
-      }
+      this.onInput(action, { n: Math.abs(hSteps) });
       this._wheelAccumX -= hSteps * this.WHEEL_H_THRESHOLD;
     }
 

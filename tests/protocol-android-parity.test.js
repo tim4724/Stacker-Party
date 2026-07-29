@@ -121,6 +121,10 @@ test('relay endpoints and limits mirror the web', () => {
     read('public/display/DisplayConnection.js').includes(`party.create(${constants.MAX_PLAYERS + 1},`),
     'web display create() no longer matches MAX_PLAYERS + 1',
   );
+  // Bound on the input message's repeat count. Drift here is silent both ways: too
+  // low and a fast drag loses steps on this platform only, too high and an off-wire
+  // count sets the loop bound.
+  assert.strictEqual(kotlinConst(KOTLIN.protocol, 'INPUT_MAX_REPEAT'), constants.INPUT_MAX_REPEAT);
 });
 
 test('the controller-URL template registered on create mirrors the web shape', () => {

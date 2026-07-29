@@ -14,6 +14,11 @@ public enum Protocol {
     /// Slot 0 (display) + up to 8 players (MAX_PLAYERS).
     public static let maxClients = 9
 
+    /// Ceiling on an input message's repeat count (INPUT_MAX_REPEAT = COLS - 1).
+    /// A controller ships a multi-step ratchet drag as one counted message; the
+    /// count is off the wire, and beyond this the piece is against the wall.
+    public static let inputMaxRepeat = 8
+
     /// Where phone controllers load the web controller (the QR target) in a
     /// shipped build. The join URL is `<base>/<room>#<instance>`, matching the
     /// web display.
@@ -166,6 +171,7 @@ public enum PauseReason: String {
 public struct ControllerMessage {
     public let type: String
     public let action: String?      // input
+    public let n: Int?              // input (repeat count; absent = 1)
     public let speed: Double?       // soft_drop
     public let name: String?        // hello / set_name
     public let autoName: Bool?      // hello
@@ -180,6 +186,7 @@ public struct ControllerMessage {
         guard let type = dict["type"] as? String else { return nil }
         self.type = type
         self.action = dict["action"] as? String
+        self.n = ControllerMessage.int(dict["n"])
         self.speed = ControllerMessage.double(dict["speed"])
         self.name = dict["name"] as? String
         self.autoName = dict["autoName"] as? Bool
