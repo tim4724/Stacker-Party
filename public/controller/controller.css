@@ -679,16 +679,21 @@ html, body {
   background: var(--bg-primary);
 }
 
-/* A player's name is the identity voice, so it carries the brand face here
-   just as it does on the lobby card (.identity-name), the results row
-   (.result-name) and the display's in-game name above each board
-   (UIRenderer's _fontName). Only the HUD numbers stay Orbitron. Weight,
-   tracking and the line-box trim come from .identity-name; the size is
-   .result-name's scale, so a name reads at the same size in-game as it does
-   on the results row. Sized to stay under the 52px pause button that sets
-   the bar's height, so the row does not grow. Keep the type in step with
-   the landscape twin (#touch-area::after in the orientation block below). */
-.game-name-label {
+/* The in-game player name, on both the surfaces that carry it: the portrait
+   top-bar label, and the ::after the landscape block below positions over the
+   pad (a pseudo-element can't wear the class, so it joins the rule here
+   rather than restating the type; in portrait it declares no content, so no
+   box is generated and these declarations paint nothing).
+
+   A player's name is the identity voice, so it takes the brand face just as
+   it does on the lobby card (.identity-name), the results row (.result-name)
+   and the display's name above each board (UIRenderer's _fontName); only the
+   HUD numbers stay Orbitron. Weight, tracking and the line-box trim come from
+   .identity-name, the size from .result-name, so one name reads at one size
+   from game to results. The line box stays under the 52px pause button that
+   sets the top bar's height, so the row doesn't grow with it. */
+.game-name-label,
+#touch-area::after {
   font-family: var(--font-brand);
   font-weight: 800;
   font-size: clamp(1.35rem, 6.5vw, 1.8rem);
@@ -698,6 +703,12 @@ html, body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Box properties the label needs and the overlay must not inherit: the
+   overlay centres itself by translating its own box, so a left padding would
+   push the glyphs off that centre. */
+.game-name-label {
   min-width: 0;
   padding-left: 4px;
 }
@@ -1751,25 +1762,15 @@ body.airconsole #ac-status-overlay.hidden { display: none; }
 
   /* Player name: shown center-top inside touch area via data attribute.
      Can't use position:fixed on the original because filter on dead/paused
-     states creates a containing block for fixed children. A pseudo-element
-     can't share .game-name-label's class, so the type is restated here and
-     the two must be changed together. */
+     states creates a containing block for fixed children. Type comes from
+     the shared .game-name-label rule; this is placement only. */
   #touch-area::after {
     content: attr(data-player-name);
     position: absolute;
     top: 16px;
     left: 50%;
     transform: translateX(-50%);
-    font-family: var(--font-brand);
-    font-weight: 800;
-    font-size: clamp(1.35rem, 6.5vw, 1.8rem);
-    letter-spacing: 0.04em;
-    line-height: 1.15;
-    color: var(--player-color, var(--text-primary));
-    white-space: nowrap;
     max-width: calc(100% - 32px);
-    overflow: hidden;
-    text-overflow: ellipsis;
     z-index: 1;
     pointer-events: none;
   }
