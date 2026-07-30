@@ -71,12 +71,42 @@ function connectAndCreateRoom() {
     }
   };
 
-  party.onClose = function(attempt, maxAttempts) {
+  party.onClose = function(attempt, maxAttempts, meta) {
     preCreatedRoom = null;
     clearTimeout(createTimeout);
     // We are out of the room until the relay answers the next create/join. Set
     // before the welcome-screen early-return: the sweep must be gated in every screen.
     joinedRoom = false;
+
+    // The two TERMINAL closes, where PartyConnection has already stopped
+    // reconnecting on its own. Neither can be waited out, so both are taken
+    // before the reconnect overlay below — which is handed attempt 0 of 0, and so
+    // would paint a counter that counts nothing while never reaching the
+    // escalation that reveals its RECONNECT button: a dead end. tvOS and Android
+    // split these two the same way (RelayClient#handleDrop on both).
+    if (meta && meta.roomClosed) {
+      // 4001: the ROOM is gone, not just this socket, so the pinned code is dead
+      // and a rejoin would only bounce off "Room not found". resetToWelcome
+      // unpins it (lastRoomCode/lastInstance) and creates a fresh one, which is
+      // both what the native clients do and what the equivalent terminal relay
+      // errors already do here (see onProtocol below).
+      resetToWelcome();
+      return;
+    }
+    if (meta && meta.replaced) {
+      // 4000: another client claimed our slot. Terminal on purpose and with no
+      // button — rejoining under the same clientId would just evict them right
+      // back and start a takeover war. Nothing to report on the welcome screen,
+      // where there is no session and New Game re-creates from scratch.
+      if (currentScreen === SCREEN.WELCOME) return;
+      clearTimeout(disconnectedTimer);
+      cancelFadeHide(reconnectOverlay);
+      reconnectOverlay.classList.remove('hidden');
+      reconnectHeading.textContent = t('disconnected');
+      reconnectStatus.textContent = '';
+      reconnectBtn.classList.add('hidden');
+      return;
+    }
     // Welcome-screen pre-creates keep retrying silently until the user lands
     // on the lobby. From there a failed *create* (no room yet) and a lost room
     // both drive the same overlay: RECONNECTING with the attempt counter while
