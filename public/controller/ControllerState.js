@@ -66,6 +66,21 @@ var pingTimer = null;
 var lastPongTime = 0;
 var disconnectedTimer = null;
 
+// When the last fastlane ack landed (onRtt). The latency chip claims P2P off
+// THIS, not off the channel's readyState: an open-but-silent DataChannel is a
+// real state (its own watchdog needs 3 s to give up on one), and while it lasts
+// nothing feeds the chip — the WS pong path stands down for it — so the chip
+// would sit frozen on a stale reading with the bolt still lit. See fastlaneLive().
+var lastFastlaneRttAt = 0;
+// Newest WS-relay one-way sample, kept even while the fastlane owns the chip so
+// dropping the P2P claim can repaint a relay reading immediately instead of
+// leaving a P2P number up until the next 1 Hz pong. null until the first pong.
+var lastPongRttHalf = null;
+// Ack silence that retires the P2P claim. 3x the sender's 500 ms idle heartbeat,
+// so a couple of lost acks don't flicker the bolt, and below the fastlane
+// watchdog's 3 s so the chip gives up before the channel does.
+var FASTLANE_RTT_STALE_MS = 1500;
+
 // Display absence (relay peer_left for slot 0). The display may be coming
 // right back (relay blip, tvOS app backgrounded and reopened), so the
 // controller waits on the reconnect overlay; if it stays gone this long,

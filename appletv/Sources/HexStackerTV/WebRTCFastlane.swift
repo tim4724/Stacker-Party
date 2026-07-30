@@ -121,6 +121,20 @@ final class WebRTCFastlane: NSObject, InputFastlane {
         for idx in Array(peers.keys) { removePeerConn(idx) }
     }
 
+    /// HEXPERF only: per-controller transport + netcode state, so a device run
+    /// can tell "the channel is up and input is flowing" from "packets arrive
+    /// and the netcode drops them" — indistinguishable from the render side.
+    func perfSummary() -> String {
+        guard !peers.isEmpty else { return "none" }
+        return peers.keys.sorted().map { idx in
+            let ch = peers[idx]?.channel?.readyState
+            let chName = ch.map { "\($0.rawValue)" } ?? "nil"
+            let st = netcode.peerState(idx)
+            return "p\(idx)[ch=\(chName) open=\(st?.open ?? false) "
+                + "rx=\(st?.received ?? 0) ack=\(st?.out ?? 0) es=\(st?.lastAppliedEs ?? 0)]"
+        }.joined(separator: " ")
+    }
+
     // MARK: Signaling
 
     private func ensurePeer(_ peerIdx: Int) -> PeerConn? {
@@ -231,6 +245,7 @@ final class WebRTCFastlane: NSObject, InputFastlane {
     }
 
     fileprivate func onChannelMessage(_ peerIdx: Int, _ buffer: LKRTCDataBuffer) {
+        PerfProbe.shared?.inputArrived()
         netcode.peerReceived(peerIdx, buffer.data)
     }
 

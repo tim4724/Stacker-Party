@@ -37,14 +37,17 @@ function handleMessage(data) {
         break;
       case MSG.PONG:
         lastPongTime = Date.now();
-        // Only drive the chip from WS when fastlane isn't already feeding it
+        // Only drive the chip from WS when the fastlane isn't already feeding it
         // higher-fidelity P2P samples via onRtt. Without this gate the
         // 1 Hz WS RTT (~12 ms via relay) clobbers the fastlane chip every
         // second, visibly bouncing the number — and lights the bolt icon
-        // over a non-fastlane reading.
-        if (data.t && !(fastlane && fastlane.isOpen(0))) {
-          var rtt = Date.now() - data.t;
-          updateLatencyDisplay(Math.round(rtt / 2));
+        // over a non-fastlane reading. The sample is kept either way, so
+        // dropping the P2P claim can repaint a relay number at once.
+        // fastlaneLive(), not isOpen(0): a channel that stopped acking has
+        // stopped measuring, and stood this path down forever when it did.
+        if (data.t) {
+          lastPongRttHalf = Math.round((Date.now() - data.t) / 2);
+          if (!fastlaneLive()) updateLatencyDisplay(lastPongRttHalf);
         }
         if (party) party.resetReconnectCount();
         clearTimeout(disconnectedTimer);

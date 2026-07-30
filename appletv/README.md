@@ -98,13 +98,14 @@ screenshot gallery that the `TV Gallery` workflow assembles.
 
 | Variable | Effect |
 | --- | --- |
-| `HEXDEMO=1` | Self-playing game (synthetic input, no relay) |
+| `HEXDEMO=1` | Self-playing game (synthetic input, no relay); `HEXPLAYERS=<n>` sets the board count |
 | `HEXLOBBY=1` | Lobby with fake players (no relay) |
 | `HEXSNAP=1` | Static fixture render for visual parity (`scripts/parity/`) |
 | `HEXSHOT=<state>` | One display state frozen with fake data; `HEXPLAYERS=<n>` sets the roster |
 | `HEXLICENSES=1` | Opens straight to the licenses page (the Simulator has no Siri-Remote CLI to navigate there) |
 | `HEXGALLERY=1` | All gallery states in one launch, Play/Pause advances (drives `ScreenshotTests`) |
 | `HEXFPS=1` | Debug FPS/node overlay |
+| `HEXPERF=1` | Frame/input timing to stdout every 2 s (see "Profiling on real hardware") |
 | `HEXHOST=<origin>` | Point the QR / join URL at another origin, e.g. `preview-<branch>.hexstacker.com` (see below) |
 
 ### Testing against a branch preview
@@ -145,8 +146,51 @@ committed in `project.yml` (see the comment there; local archives need the
 bare-semver tag runs `.github/workflows/release.yml`, which archives and
 uploads straight to TestFlight.
 
+## Profiling on real hardware
+
+`HEXPERF=1` prints a line every 2 s (the tvOS counterpart of Android's `HexPerf`
+instrumentation). The Simulator's numbers mean nothing here — run it on a device:
+
+```bash
+xcrun devicectl device install app --device <udid> \
+  build/dd-device/Build/Products/Release-appletvos/HexStackerTV.app
+xcrun devicectl device process launch --device <udid> --terminate-existing --console \
+  --environment-variables '{"HEXDEMO":"1","HEXPLAYERS":"8","HEXPERF":"1"}' com.hexstacker.tv
+```
+
+```
+[HEXPERF] bounds=1920x1080 scale=1.0 nativeScale=1.0 native=1920x1080 maxFps=50 scene=1920x1080
+[HEXPERF] fps=50.0 frames=101 drops=0 nodes=739  dt p50=20.00 p95=20.00 max=20.00 \
+          work p50=2.20 p95=2.62 max=8.27  in→frame p50=9.8 p95=17.9 max=19.1 n=4  fastlane p1[...]
+```
+
+* **dt** — achieved frame interval; a frame past 1.5 vsyncs counts as a drop.
+  Note `maxFps` follows the TV's output mode: a 50 Hz set gives a 20 ms budget
+  and a 20 ms input quantum, not 16.7.
+* **work** — main-thread time in OUR per-frame code (ambient tick, engine frame
+  through JavaScriptCore, snapshot → SKNode sync). The budget a render change
+  moves; `dt` is what the user sees.
+* **in→frame** — controller packet arrival to the first frame that can show it.
+  Uniform over one frame interval by construction, so a p50 near half the vsync
+  is the floor, not a finding.
+* **fastlane** — per controller: channel state, netcode peer, packets received,
+  acks sent, last applied event seq. `rx` climbing while `ack` stays at 0 means
+  packets are arriving and being dropped, which is invisible from the render side.
+
+Baselines measured on an Apple TV 4K (A10X, 1080p50), Release build:
+8-board offline demo holds 50.0 fps / 0 drops at 2.2 ms work; a live relay-backed
+match holds 1.5 ms work but loses 3–5 vsyncs per 2 s, which offline gameplay with
+the identical board rendering does not — so it is the live room/publish path, not
+the renderer. Not yet attributed to a specific call; a Time Profiler trace of a
+live match is the next step.
+
 ## Remaining validation (needs real hardware)
 
-- [ ] Full match on a real Apple TV (live relay + phone controllers).
-- [ ] Render profiling on real hardware (Simulator GPU numbers aren't representative).
-- [ ] WebRTC fastlane handshake with a real phone (the relay fallback covers input if it fails).
+- [x] Full match on a real Apple TV (live relay + controller).
+- [x] Render profiling on real hardware (Simulator GPU numbers aren't representative).
+- [x] WebRTC fastlane handshake against the real device (found and fixed the `ps`
+      decode bug in `Net/Fastlane.swift`'s `number()`).
+- [ ] One pass from an actual phone on Wi-Fi. The two above were driven from a
+      LAN browser controller, which exercises the same relay, netcode and ICE
+      code but not a handset's candidate set or radio latency.
+- [ ] Attribute the live-match frame drops above (offline is clean; live is not).

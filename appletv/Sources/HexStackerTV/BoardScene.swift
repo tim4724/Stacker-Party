@@ -1,3 +1,4 @@
+import QuartzCore
 import SpriteKit
 import HexStackerKit
 
@@ -125,6 +126,7 @@ final class BoardScene: SKScene {
     override func update(_ currentTime: TimeInterval) {
         let deltaMs = lastTime == 0 ? 0 : (currentTime - lastTime) * 1000.0
         lastTime = currentTime
+        let workStart = PerfProbe.shared != nil ? CACurrentMediaTime() : 0
         if let insets = view?.safeAreaInsets, insets != safe { safe = insets; applySize() }
         // Reduce Motion parks the ambient drift: the pool stays seeded across
         // the screen (buildRandomPool), so the lobby keeps its scattered piece
@@ -133,6 +135,7 @@ final class BoardScene: SKScene {
             lobbyBg.tick(dt: CGFloat(min(deltaMs, 50.0) / 1000.0))
         }
         onTick?(deltaMs)
+        PerfProbe.shared?.frame(deltaMs: deltaMs, frameStart: workStart, scene: self)
     }
 
     /// Screen change: LOBBY shows the ambient background, GAME/RESULTS the

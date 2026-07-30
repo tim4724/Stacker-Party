@@ -310,15 +310,20 @@ public final class FastlaneNetcode {
 
     /// Lenient JSON-number read: returns nil for strings/bools/missing so a packet
     /// carrying `ps: "bogus"` is rejected exactly as the web's `typeof === 'number'`.
+    ///
+    /// A real boolean is identified by its CoreFoundation type, and that has to be
+    /// the ONLY test. Swift bridges an NSNumber to `Bool` whenever its value is 0 or
+    /// 1, so an `if v is Bool` guard ahead of this also swallowed the JSON number
+    /// `0` — which is `ps` on every idle heartbeat before the first input, and `1` on
+    /// the first input itself. Both were dropped un-acked, which broke the whole
+    /// pre-first-input window: the sender's 3 s silence watchdog tore the channel
+    /// down and re-negotiated on a loop through the lobby and countdown, and the
+    /// first input landed only when the next packet resent it (`es = ps - i` covers
+    /// it once `ps >= 2`). From two inputs on, heartbeats carry `ps = eventSeq` and
+    /// it looked healthy. Only JSON-decoded values take the NSNumber path, which is
+    /// why it reproduced solely against a real controller.
     private static func number(_ v: Any?) -> Double? {
-        if v is Bool { return nil }
-        if let d = v as? Double { return d }
-        if let i = v as? Int { return Double(i) }
-        if let n = v as? NSNumber {
-            // NSNumber bridges booleans too; exclude them.
-            if CFGetTypeID(n) == CFBooleanGetTypeID() { return nil }
-            return n.doubleValue
-        }
-        return nil
+        guard let n = v as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID() else { return nil }
+        return n.doubleValue
     }
 }

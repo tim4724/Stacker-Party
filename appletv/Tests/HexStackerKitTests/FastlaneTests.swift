@@ -109,6 +109,35 @@ private final class Harness {
         #expect(h.sent[1].packet["t"] as? Double == 200, "heartbeat ack echoes the new t")
     }
 
+    /// `ps` 0 and 1 are the two values Swift's NSNumber bridge also reports as
+    /// `Bool`, and they are exactly the ones a live session opens with: every idle
+    /// heartbeat carries `ps: 0` until the first input, which itself carries
+    /// `ps: 1`. A guard that mistook them for booleans dropped both un-acked, so
+    /// the sender's silence watchdog tore the channel down every 3 s for the whole
+    /// pre-first-input window — while the display's own counters showed packets
+    /// arriving, which is why it only ever showed up against a real controller.
+    /// The rest of the suite starts at `ps: 2` and never touched it.
+    @Test func acceptsZeroAndOneSequenceNumbers() {
+        let h = Harness()
+        h.net.peerChannelOpened(1)
+        h.recv(1, ["ps": 0, "t": 100, "h": [[String: Any]]()])   // pre-input idle heartbeat
+        #expect(h.sent.count == 1, "a ps:0 heartbeat is acked, or the sender's watchdog fires")
+        #expect(h.sent[0].packet["pa"] as? Int == 0)
+        h.recv(1, ["ps": 1, "t": 200, "h": [["a": 1]]])          // the FIRST input
+        #expect(h.input.map { $0.ev["a"] as? Int } == [1], "the first input is applied, not dropped")
+        #expect(h.sent.count == 2)
+        #expect(h.sent[1].packet["pa"] as? Int == 1)
+    }
+
+    /// The truthiness guard still has to hold: a JSON boolean is not a sequence.
+    @Test func rejectsBooleanSequenceNumbers() {
+        let h = Harness()
+        h.net.peerChannelOpened(1)
+        h.recv(1, ["ps": true, "t": 0, "h": [["a": 1]]])
+        #expect(h.input.isEmpty)
+        #expect(h.sent.isEmpty, "an undecodable packet is dropped without an ack")
+    }
+
     @Test func statsTrackOutReceivedAndMaxPs() {
         let h = Harness()
         h.net.peerChannelOpened(1)

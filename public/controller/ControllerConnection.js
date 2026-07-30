@@ -95,10 +95,12 @@ function connect() {
       // doesn't reciprocate — it only emits acks in response to data.
       emitIdleHeartbeat: true,
       // onRtt fires on every inbound ack, carrying smoothed one-way latency
-      // (srtt/2). Reuses updateLatencyDisplay, which also handles the bolt
-      // icon visibility based on fastlane.isOpen.
+      // (srtt/2). This is the ONLY source of a P2P chip reading, and stamping
+      // its arrival is what keeps fastlaneLive() honest: no acks, no claim.
       onRtt: function (peerIdx, rttHalf) {
-        if (peerIdx === 0) updateLatencyDisplay(Math.round(rttHalf));
+        if (peerIdx !== 0) return;
+        lastFastlaneRttAt = Date.now();
+        updateLatencyDisplay(Math.round(rttHalf));
       },
       // Clean reconnect → reset backoff so the next failure starts fresh.
       onPeerReady: function (peerIdx) {
@@ -107,7 +109,14 @@ function connect() {
       // Watchdog teardown / connection failure → schedule a reopen with
       // exponential backoff. WS path takes over for inputs in the meantime.
       onPeerClosed: function (peerIdx) {
-        if (peerIdx === 0) scheduleFastlaneReopen();
+        if (peerIdx !== 0) return;
+        // Input has ALREADY fallen back to the relay, so drop the P2P claim in
+        // the same turn. Waiting for the next 1 Hz pong to repaint the chip left
+        // the bolt lit over relay-routed input for up to a second (measured).
+        lastFastlaneRttAt = 0;
+        if (lastPongRttHalf != null) updateLatencyDisplay(lastPongRttHalf);
+        else refreshFastlaneBadge();
+        scheduleFastlaneReopen();
       },
     });
   }
@@ -271,12 +280,13 @@ function startPing() {
     // its own liveness check (LIVENESS_TIMEOUT_MS), so this must keep firing
     // at 1 Hz unconditionally.
     sendToDisplay(MSG.PING, { t: Date.now() });
-    // Surface "Bad Connection" when PONG is overdue. Skip when fastlane is
-    // open — its own watchdog handles input-path health, and we don't want
+    // Surface "Bad Connection" when PONG is overdue. Skip while the fastlane is
+    // LIVE — its own watchdog handles input-path health, and we don't want
     // WS-relay weather to nuke a chip currently showing real P2P RTT from
-    // onRtt. Actual reconnect is handled by party.onClose.
-    if (Date.now() - lastPongTime > PONG_TIMEOUT_MS &&
-        !(fastlane && fastlane.isOpen(0))) {
+    // onRtt. A merely-open fastlane no longer counts: gating on readyState left
+    // an open-but-silent channel suppressing this warning indefinitely.
+    // Actual reconnect is handled by party.onClose.
+    if (Date.now() - lastPongTime > PONG_TIMEOUT_MS && !fastlaneLive()) {
       updateLatencyDisplay(-1);
     }
   }, PING_INTERVAL_MS);
@@ -314,13 +324,31 @@ function onDisplayGone() {
   }
 }
 
+// Is the fastlane actually carrying input AND reporting its own latency? Both
+// halves matter, and the transport's readyState only answers the first: an open
+// channel whose acks have stopped still routes input into it (enqueue and
+// isOpen test the same thing), but nothing is measuring that path any more, so
+// the chip must stop claiming a P2P number for it. Everything the chip does —
+// the bolt, the pong stand-down, the bad-connection suppression — keys on this
+// rather than isOpen(0), so the claim and the evidence can't drift apart.
+function fastlaneLive() {
+  return !!(fastlane && fastlane.isOpen(0) &&
+            Date.now() - lastFastlaneRttAt < FASTLANE_RTT_STALE_MS);
+}
+
+// The bolt alone, for the edges that change the P2P claim without producing a
+// new latency sample (peer teardown).
+function refreshFastlaneBadge() {
+  if (!latencyDisplay) return;
+  // The icon element is added at startup by ensureLatencyMarkup(); leaving it
+  // always-present in the DOM avoids re-creating it on every ping tick.
+  latencyDisplay.classList.toggle('latency-display--fastlane', fastlaneLive());
+}
+
 function updateLatencyDisplay(ms) {
   if (!latencyDisplay) return;
   latencyDisplay.classList.remove('ping-good', 'ping-ok', 'ping-bad');
-  // Toggle the fastlane bolt indicator. The icon element is added at startup
-  // by ensureLatencyMarkup(); leaving it always-present in the DOM avoids
-  // re-creating it on every ping tick.
-  latencyDisplay.classList.toggle('latency-display--fastlane', !!(fastlane && fastlane.isOpen(0)));
+  refreshFastlaneBadge();
   var textEl = latencyDisplay.querySelector('.latency-display__text') || latencyDisplay;
   if (ms < 0) {
     textEl.textContent = t('bad_connection');

@@ -58,6 +58,7 @@ final class DisplayModel: ObservableObject {
     // MARK: - Boot
 
     func start() {
+        PerfProbe.shared?.logEnvironment(sceneSize: boardScene.size)
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
         try? AVAudioSession.sharedInstance().setActive(true)
 
@@ -108,7 +109,11 @@ final class DisplayModel: ObservableObject {
             makeCoordinator(relayBacked: false)
             startTickPump()
             showScreen(.lobby)
-            coordinator?.startLocalDemo(playerCount: 2)
+            // HEXPLAYERS as everywhere else (HEXSHOT, the gallery): render
+            // profiling needs the 8-board worst case, which is where the
+            // per-frame snapshot sync and the draw-call count actually bite.
+            let pc = ProcessInfo.processInfo.environment["HEXPLAYERS"].flatMap { Int($0) } ?? 2
+            coordinator?.startLocalDemo(playerCount: max(1, min(pc, 8)))
             return
         }
 
@@ -143,8 +148,10 @@ final class DisplayModel: ObservableObject {
         // all input flows over the relay (the v1 behavior).
         let fastlane: InputFastlane?
         #if canImport(LiveKitWebRTC)
-        fastlane = WebRTCFastlane.make(stunURL: HexStackerKit.Protocol.stunURL,
-                                       sendSignal: { [weak self] idx, data in self?.relay?.sendTo(idx, data) })
+        let rtc = WebRTCFastlane.make(stunURL: HexStackerKit.Protocol.stunURL,
+                                      sendSignal: { [weak self] idx, data in self?.relay?.sendTo(idx, data) })
+        PerfProbe.shared?.fastlaneSummary = { [weak rtc] in rtc?.perfSummary() ?? "none" }
+        fastlane = rtc
         #else
         fastlane = nil
         #endif
@@ -546,6 +553,7 @@ extension DisplayModel: DisplayOutput {
         self.room = room
         self.joinURL = joinURL
         self.qrText = qrText
+        PerfProbe.shared?.logRoom(joinURL)
         // One transaction for the room-confirm reveal: the QR pattern and
         // join line fade in (their opacities key on the new lobby data) and
         // the pending dim lifts. Scoped .animation(value:) modifiers in the
