@@ -139,6 +139,21 @@ const AC_DEAD = [
   '/display/DisplayTestHarness.js',
 ];
 
+// AC_DEAD only ever FILTERS, so a path that matches nothing fails silently: rename
+// a file without updating this list and it stops excluding anything, shipping the
+// module into the AC bundles and the ZIP with no error anywhere. The CouchPad
+// rename (controller-couchgames.js -> controller-couchpad.js) was that near-miss.
+// Checked at load rather than in a test so no build can produce a bundle from a
+// stale list; the suite gets it too, through the modules that import this one. An
+// entry lives in one list or the other, so being in neither is the failure.
+const staleAcDead = AC_DEAD.filter(function (s) {
+  return CONTROLLER_SCRIPTS.indexOf(s) === -1 && DISPLAY_SCRIPTS.indexOf(s) === -1;
+});
+if (staleAcDead.length) {
+  throw new Error('asset-manifest: AC_DEAD lists scripts that are in neither load '
+    + 'order, so they exclude nothing (renamed or deleted?): ' + staleAcDead.join(', '));
+}
+
 function airconsoleVariant(scripts, bootstrap, entry) {
   const out = scripts.filter(function (s) { return AC_DEAD.indexOf(s) === -1; });
   const at = out.indexOf(entry);

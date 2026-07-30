@@ -258,11 +258,11 @@ function connect() {
 function startPing() {
   stopPing();
   // AirConsole owns connection liveness via the SDK (onConnect/onDisconnect is
-  // the authoritative disconnect signal), so the relay PING is redundant in AC
-  // mode — and dropping it keeps the controller under AirConsole's 25 msg/sec
-  // cap (see sendToDisplay). No PING also means no PONG RTT and no fastlane, so
-  // there is no latency to show; the chip is hidden via CSS (body.airconsole
-  // #latency-display).
+  // the authoritative disconnect signal), and the display's own liveness sweep
+  // is a no-op there (the enabledProvider closure in DisplayState.js), so a PING
+  // in AC mode would have no consumer at either end. No PING also means no PONG
+  // RTT and no fastlane, so there is no latency to show; the chip is hidden via
+  // CSS (body.airconsole #latency-display).
   if (window.airconsole) return;
   lastPongTime = Date.now();
   pingTimer = setInterval(function () {
@@ -342,39 +342,30 @@ function updateLatencyDisplay(ms) {
 // constants so a rename in protocol.js is caught automatically.
 var FASTLANE_TYPES = { [MSG.INPUT]: true, [MSG.SOFT_DROP]: true, [MSG.SOFT_DROP_END]: true };
 
-// AirConsole caps a device's outbound messages at 25/sec; overage trips a
-// platform-side rate-limit error, reported only in the AC developer console
-// (System-Rate-Limiter). The SDK itself carries no limiter, so there is nothing
-// to detect client-side. Left/right stay uncoalesced here because the burst is
-// removed at the source: a multi-step ratchet crossing ships as ONE counted
-// message (TouchInput._onPointerMove). TouchInput's held-drop keepalive is
-// already 10 Hz (SOFT_DROP_INTERVAL_MS=100) and setInterval never fires early,
-// so the steady state no longer needs coalescing. This stays as the hard bound
-// on the case the interval doesn't govern: a finger resting on the dead-zone
-// boundary re-enters soft drop on successive pointermove events (see
-// TouchInput._onPointerMove), and each re-entry emits an immediate SOFT_DROP at
-// pointer rate rather than interval rate. The 1 Hz relay PING is dropped in AC
-// mode (see startPing), so soft-drop is the only sustained sender and its 10 Hz
-// leaves most of the 25/sec budget for moves.
-// SOFT_DROP carries no state the display accumulates — it's "keep dropping at
-// speed X" and auto-ends after SOFT_DROP_TIMEOUT_MS (300 ms) — so dropping
-// intermediate ticks just updates the speed slightly less often, which is
-// imperceptible and well within the auto-end window. The latest speed always
-// lands on the next tick.
-var AC_SOFT_DROP_MIN_INTERVAL_MS = 100;
-var lastAcSoftDropTime = 0;
-
-// Note: mutates payload by adding .type — callers must pass a fresh object.
+// AirConsole caps a device's outbound messages at 25/sec, enforced entirely
+// platform-side: the SDK carries no limiter, so overage never blocks or reports
+// back, and surfaces only in the AC developer console (System-Rate-Limiter),
+// after the fact. Nothing here diverges to stay under that, because both senders
+// are bounded at their source and AC mode has no other sustained traffic (its
+// 1 Hz relay PING is dropped, see startPing):
+//   soft drop  TouchInput's held-drop keepalive runs at 10 Hz
+//              (SOFT_DROP_INTERVAL_MS), which is the whole steady-state rate.
+//   left/right a multi-step ratchet crossing ships as ONE counted message
+//              (TouchInput._onPointerMove).
+// Known gap: a finger rubbing the dead-zone boundary re-enters soft drop per
+// pointermove, and each crossing also emits a SOFT_DROP_END, so that burst can
+// exceed the cap. It belongs to the gesture, so the fix would be hysteresis in
+// TouchInput. A send-path limiter is the wrong shape for it, and specifically
+// must never be set at the keepalive interval: one at exactly that value used to
+// live here and silently dropped the ticks setInterval fired a hair early,
+// doubling the worst-case wire gap against SOFT_DROP_TIMEOUT_MS.
+//
+// Note: mutates payload by adding .type, so callers must pass a fresh object.
 function sendToDisplay(type, payload) {
   if (!party) return;
   var msg = payload || {};
   msg.type = type;
   if (fastlane && FASTLANE_TYPES[type] && fastlane.enqueue(0, msg) === 'p2p') return;
-  if (window.airconsole && type === MSG.SOFT_DROP) {
-    var now = Date.now();
-    if (now - lastAcSoftDropTime < AC_SOFT_DROP_MIN_INTERVAL_MS) return;
-    lastAcSoftDropTime = now;
-  }
   party.sendTo(0, msg);
 }
 

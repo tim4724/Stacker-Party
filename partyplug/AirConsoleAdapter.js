@@ -168,12 +168,11 @@ class AirConsoleAdapter {
       return;
     }
     if (to === 0) {
-      if (this.role === 'display') {
-        // Async self-echo for heartbeat compatibility.
-        var self = this;
-        setTimeout(function() { if (self.onMessage) self.onMessage(0, data); }, 0);
-        return;
-      }
+      // Peer 0 is the screen, so this is a controller talking to the display.
+      // A display addressing itself has no meaning on this transport, and the one
+      // caller that did it on the relay (the display's own link check) does not
+      // run in AC mode, so there is nothing to route (DisplayLiveness.selfLinkDead).
+      if (this.role === 'display') return;
       this.airconsole.message(AirConsole.SCREEN, data);
     } else {
       this.airconsole.message(to, data);
@@ -218,7 +217,10 @@ class AirConsoleAdapter {
 
   close() {
     this._ready = false;
-    // Clear adapter callbacks (prevents stale setTimeout self-echo from firing)
+    // Drop this adapter's references to the app's callbacks: close() is followed
+    // by the app wiring up a fresh adapter, and a stale one must not be able to
+    // drive it. The SDK's own callbacks are handled separately below, and
+    // deliberately differently.
     this.onOpen = this.onClose = this.onError = this.onMessage = this.onProtocol = this.onState = null;
     // Neutralize SDK callbacks without nulling them — the AirConsole SDK
     // invokes these on its own schedule (e.g. queued postMessage events that

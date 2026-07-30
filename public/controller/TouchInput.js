@@ -38,8 +38,9 @@ class TouchInput {
     // stop, so the only hard requirement is arriving comfortably inside that
     // window. 100 ms leaves 3x margin and halves the packet rate on the fastlane
     // (and with it the display's ack rate), which is what actually costs on a
-    // congested Wi-Fi with eight phones. It also puts web on the same cadence AC
-    // mode was already coalescing to.
+    // congested Wi-Fi with eight phones. It is also the only thing pacing soft
+    // drop, on either transport, so this margin is what reaches the display:
+    // nothing downstream of here may discard a tick (see sendToDisplay).
     this.SOFT_DROP_INTERVAL_MS = 100;
 
     // Pointer tracking state
