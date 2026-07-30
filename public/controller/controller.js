@@ -23,6 +23,14 @@ function handleMessage(data) {
     // re-admit us (AC mode survives the bail), and it clears the flag.
     if (gameCancelled) return;
 
+    // --- LEGACY DISPLAY COMPAT (delete with ControllerLegacyDisplay.js) ---
+    // A pre-4.7 display (Apple TV 4.6.0) publishes no room snapshot and says
+    // all of this in messages instead. The shim folds them into a snapshot and
+    // feeds onState, so the switch below never has to grow a legacy case.
+    if (typeof ControllerLegacyDisplay !== 'undefined'
+        && ControllerLegacyDisplay.observe(data)) return;
+    // --- end LEGACY DISPLAY COMPAT ---
+
     switch (data.type) {
       case MSG.PLAYER_STATE:
         onPlayerState(data);

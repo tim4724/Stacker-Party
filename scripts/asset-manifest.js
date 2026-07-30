@@ -45,6 +45,11 @@ const CONTROLLER_SCRIPTS = [
   '/controller/ControllerState.js',
   '/controller/ControllerConnection.js',
   '/controller/ControllerGame.js',
+  // Temporary compat for displays older than the room snapshot (Apple TV
+  // 4.6.0). Reads the page globals and calls onState, so it must follow
+  // ControllerGame.js and precede controller.js, whose dispatcher calls it.
+  // Removal steps are in the file header.
+  '/controller/ControllerLegacyDisplay.js',
   // Couch Games shell bootstrap (Android TV launcher WebView). Self-gated on
   // ?cgv=1 so it's inert everywhere else. Must follow ControllerConnection/
   // ControllerGame (wraps connect/bailToWelcome at load time) and precede
@@ -126,6 +131,9 @@ const AC_DEAD = [
   '/shared/qrcode-generator.js',
   // Couch Games shell bootstrap, self-gated on ?cgv=1 — never set in AC.
   '/controller/controller-couchgames.js',
+  // An AC display ships in the same ZIP as its controller, so it can never be
+  // older than it: there is no version skew for the legacy shim to cover.
+  '/controller/ControllerLegacyDisplay.js',
   // Gallery/Playwright-only harnesses, gated on URL params AC never carries.
   '/controller/ControllerTestHarness.js',
   '/display/DisplayTestHarness.js',
