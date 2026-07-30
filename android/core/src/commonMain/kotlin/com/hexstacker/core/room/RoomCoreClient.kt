@@ -156,9 +156,10 @@ class RoomCoreClient private constructor(private val bridge: EngineBridge) {
     /** Board-layout order for the round about to start (join order, first joiner leftmost). */
     suspend fun freezeParticipantOrder(): List<Int> = mutate(call("freezeParticipantOrder"))
 
-    /** Drop everyone who went missing; returns the peers removed. */
-    suspend fun pruneDisconnected(nowMs: Double): List<Int> =
-        mutate(call("pruneDisconnected", num(nowMs)))
+    /** Drop the players the RELAY reported gone (peer_left), whose rows were held so a
+     *  reconnect could reclaim the pinned colour slot; returns the peers removed. Takes
+     *  no clock: membership is the relay's call, never a local liveness verdict. */
+    suspend fun pruneDeparted(): List<Int> = mutate(call("pruneDeparted"))
 
     /** Fold the late joiners of the round that just ended into the participant list. */
     suspend fun admitWaiting(): List<Int> = mutate(call("admitWaiting"))

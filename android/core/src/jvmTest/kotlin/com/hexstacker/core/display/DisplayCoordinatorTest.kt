@@ -939,9 +939,11 @@ class DisplayCoordinatorTest {
     }
 
     @Test
-    fun returnToLobbyPrunesJustExpiredController() = runBlocking {
-        // pruneDisconnected must also drop a controller whose silence hasn't yet been
-        // flagged by the 1 Hz liveness sweep (it prunes on isDisconnected || isExpired).
+    fun returnToLobbyKeepsASilentButConnectedController() = runBlocking {
+        // Membership is the relay's call. A controller that has gone silent past the
+        // liveness window is NOT gone — a locked phone freezes its 1 Hz PING timer
+        // while its socket stays open — so returning to the lobby must keep its seat.
+        // Only peer_left may remove one. See RoomCore#pruneDeparted.
         val bridge = EngineBridge.create(bundle())
         try {
             var now = 0.0
@@ -954,12 +956,17 @@ class DisplayCoordinatorTest {
             t.deliver(1, simple(Msg.PING)); t.deliver(2, simple(Msg.PING)); coord.awaitIdle()
             coord.tick(1100.0) // fold the batched `seen` set into the room core
 
-            // Host returns to lobby >3s later, BEFORE any liveness sweep flagged peer 2.
+            // Host returns to lobby >3s later, with peer 2 silent past the window.
             now = 3500.0
             t.deliver(1, simple(Msg.RETURN_TO_LOBBY)); coord.awaitIdle()
             assertEquals(RoomState.LOBBY, coord.state)
-            assertTrue(coord.room.has(1), "the just-seen host survives the prune")
-            assertFalse(coord.room.has(2), "a silent-past-timeout controller is pruned without waiting for the sweep")
+            assertTrue(coord.room.has(1), "the just-seen host keeps its seat")
+            assertTrue(coord.room.has(2), "a silent-but-still-connected controller keeps its seat")
+
+            // A relay peer_left, on the other hand, IS removal — that is the one
+            // signal that takes a player out of the room.
+            t.peerLeft(2); coord.awaitIdle()
+            assertFalse(coord.room.has(2), "a peer the relay reported gone is removed")
             coord.stop()
         } finally { bridge.close() }
     }

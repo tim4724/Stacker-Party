@@ -845,16 +845,16 @@ public final class DisplayCoordinator {
         assertOwningThread()
         guard state == .lobby || state == .results else { return }
         // Web startNewGame, in its order: lift any pause and clear the previous
-        // match's ranking / KO flags, drop everyone who went missing (AirConsole flags
-        // without expiring; relay mode can expire one before a QR flag was set), then
-        // decide whether there is still a game to start.
+        // match's ranking / KO flags, drop the players the relay reported gone (a
+        // still-connected one keeps their seat, however quiet), then decide whether
+        // there is still a game to start.
         clearPause()
         roomDo("setResults", [NSNull()])
         roomDo("clearAlive")
-        roomDo("pruneDisconnected", [nowProvider()])
+        roomDo("pruneDeparted")
         rejoinQRs.removeAll()
         roomDo("clearDisconnected", [nowProvider()])
-        // Everyone who remained was disconnected — don't launch an empty game. From
+        // The prune emptied the roster — don't launch an empty game. From
         // RESULTS this returns to the lobby; from LOBBY returnToLobby no-ops and the
         // publish below refreshes the (now empty) lobby controls.
         guard playerCount >= 1 else {
@@ -1074,9 +1074,9 @@ public final class DisplayCoordinator {
     private func returnToLobby() {
         guard state != .lobby else { return }
         clearPause()   // the LOBBY transition below publishes, so the lift rides it
-        // Remove disconnected players, then fold in the late joiners who were waiting
-        // out the round (web returnToLobby).
-        roomDo("pruneDisconnected", [nowProvider()])
+        // Remove the players the relay reported gone, then fold in the late joiners
+        // who were waiting out the round (web returnToLobby).
+        roomDo("pruneDeparted")
         roomDo("admitWaiting")
         roomDo("setResults", [NSNull()])
         roomDo("clearAlive")

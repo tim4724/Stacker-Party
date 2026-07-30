@@ -133,7 +133,7 @@ function RoomCore(opts) {
   // this core. Native shells cannot alias a JS Map and read the snapshot
   // instead, which is the same data by construction.
   // peerIndex -> { playerName, playerIndex (colour slot), startLevel, helloSeen,
-  //                joinedAt, connected, peerIndex }
+  //                joinedAt, connected, peerIndex, relayGone? }
   this.players = this.flow.players;
 
   // Active participants, in board-layout order. Deliberately NOT the same thing
@@ -468,7 +468,7 @@ RoomCore.prototype.peerJoined = function (peerIndex, nowMs) {
     startLevel: 1,
     helloSeen: false,
   });
-  this.flow.onSeen(peerIndex, nowMs);
+  this.onSeen(peerIndex, nowMs);
 
   // Only join the participant list in the lobby; late joiners wait out the round.
   var joinedLobby = this.flow.state === RoomFlow.STATES.LOBBY;
@@ -537,7 +537,7 @@ RoomCore.prototype.hello = function (peerIndex, msg, nowMs) {
     startLevel: 1,
     helloSeen: true,
   });
-  this.flow.onSeen(peerIndex, nowMs);
+  this.onSeen(peerIndex, nowMs);
   if (this.flow.state === RoomFlow.STATES.LOBBY) this._participants.push(peerIndex);
 
   // Publishes in every room state: the joiner needs the snapshot to learn who
@@ -579,6 +579,11 @@ RoomCore.prototype.peerLeft = function (peerIndex) {
       // reconnect can reclaim it. The shell marks them disconnected when it
       // raises the rejoin QR, which keeps that pair of writes in one place.
       action = 'disconnected';
+      // The relay's word that they are gone, and so the only thing that may
+      // later drop this row (see pruneDeparted). It rides the player record
+      // rather than a map beside it, so it dies with the row and follows it
+      // through a rekey; absent means present, as everywhere else here.
+      this.players.get(peerIndex).relayGone = true;
     } else {
       // A late joiner who was never in the game: remove silently.
       this.flow.removePlayer(peerIndex);
@@ -649,7 +654,9 @@ RoomCore.prototype.claimReconnect = function (peerIndex, msg, nowMs) {
   // placeholder row peerIndex got when it joined), and reclaims the sticky host
   // slot and last-seen stamp for the returning peer.
   this.flow.rekey(oldId, peerIndex);
-  this.flow.onSeen(peerIndex, nowMs);
+  // Through onSeen, not flow's: the rekey just moved the departed record onto
+  // this index, relayGone and all, and their HELLO is proof it is stale.
+  this.onSeen(peerIndex, nowMs);
 
   for (var i = 0; i < this._participants.length; i++) {
     if (this._participants[i] === oldId) this._participants[i] = peerIndex;
@@ -819,16 +826,29 @@ RoomCore.prototype.freezeParticipantOrder = function () {
   return this._participants.slice();
 };
 
-// Drop everyone who went missing while we were away. isDisconnected catches
-// AirConsole mode (where isExpired is always false); isExpired catches a
-// relay-mode peer that dropped without peer_left or a liveness tick ever
-// flagging it. Reconnects clear the flag, so present players survive.
-RoomCore.prototype.pruneDisconnected = function (nowMs) {
+// Drop the players the RELAY told us had left, whose rows peerLeft kept so a
+// reconnect could reclaim the pinned colour slot. Called when a round starts or
+// ends, which is when holding a departed player's seat stops being worth it.
+//
+// Membership has exactly one authority: the relay. It broadcasts peer_left the
+// moment a socket closes, including one it closed itself because the peer stopped
+// answering its pings, so a peer absent from this list is a peer the relay still
+// holds — and they keep their seat, in the lobby and in the game.
+//
+// The display's own 3s ping sweep is deliberately NOT that authority, even
+// though it used to be half of it. It fires on a phone that merely stopped
+// running JavaScript: a locked screen freezes the 1 Hz PING timer while the
+// socket stays open, because the browser answers the relay's pings below the JS
+// layer. Removing a row on that verdict took a still-connected player out of the
+// room, and nothing could tell them — a controller ignores any snapshot it is not
+// named in, and the display goes on answering its PINGs, so the phone sat on a
+// live-looking screen with dead buttons until the page was reloaded. The sweep
+// now only raises the rejoin QR, which is recoverable and clears itself the
+// moment that phone speaks again.
+RoomCore.prototype.pruneDeparted = function () {
   var gone = [];
   for (var entry of this.players) {
-    if (this.flow.isDisconnected(entry[0]) || this.flow.isExpired(entry[0], nowMs)) {
-      gone.push(entry[0]);
-    }
+    if (entry[1].relayGone) gone.push(entry[0]);
   }
   for (var i = 0; i < gone.length; i++) {
     this.flow.removePlayer(gone[i]);
@@ -901,7 +921,18 @@ RoomCore.prototype.reset = function () {
 // the shell, which owns the QR canvases, the pause and the lobby return)
 // =====================================================================
 
-RoomCore.prototype.onSeen = function (peerIndex, nowMs) { this.flow.onSeen(peerIndex, nowMs); };
+// The one chokepoint every "we heard from this peer" goes through, on all three
+// platforms: per inbound message on web, and per batched tick() on the TVs.
+// Hearing from a peer at all proves the relay still holds them, so this is where
+// a relay-gone flag from an earlier drop stops being true (see pruneDeparted).
+RoomCore.prototype.onSeen = function (peerIndex, nowMs) {
+  var player = this.players.get(peerIndex);
+  // Guarded rather than unconditional: this runs per inbound packet, and
+  // churning a key on and off the record every time would be a deopt for the
+  // sake of a flag that is set at most once per departure.
+  if (player && player.relayGone) delete player.relayGone;
+  this.flow.onSeen(peerIndex, nowMs);
+};
 RoomCore.prototype.isExpired = function (peerIndex, nowMs) { return this.flow.isExpired(peerIndex, nowMs); };
 RoomCore.prototype.expiredPeers = function (nowMs) { return this.flow.expiredPeers(nowMs); };
 RoomCore.prototype.markDisconnected = function (peerIndex) { this.flow.markDisconnected(peerIndex); };
@@ -918,7 +949,7 @@ RoomCore.prototype.graceTick = function (nowMs) { return this.flow.graceTick(now
 // the caller signals by simply not calling it.
 RoomCore.prototype.tick = function (nowMs, seen) {
   if (seen) {
-    for (var i = 0; i < seen.length; i++) this.flow.onSeen(seen[i], nowMs);
+    for (var i = 0; i < seen.length; i++) this.onSeen(seen[i], nowMs);
   }
   return {
     expired: this.flow.expiredPeers(nowMs),

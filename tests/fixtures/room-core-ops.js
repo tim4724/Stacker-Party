@@ -159,7 +159,7 @@ const OPS = [
 
   // --- back to the lobby, pruning and admitting ---------------------------
   { m: 'transitionTo', a: ['lobby'] },
-  { m: 'pruneDisconnected', a: [20000] },
+  { m: 'pruneDeparted', a: [] },
   { m: 'admitWaiting', a: [] },
   { m: 'clearAlive', a: [] },
   { m: 'setResults', a: [null] },
@@ -186,6 +186,31 @@ const OPS = [
   { m: 'reset', a: [] },
   { g: 'state' },
   { g: 'host' },
+
+  // --- membership is the relay's call, never a local liveness verdict ------
+  // A phone whose screen locks stops sending its 1 Hz PING, so the sweep expires
+  // it and the display raises a rejoin QR — but its socket is still open, so the
+  // relay still holds it and it is still a player. Only a peer_left may remove
+  // one. RoomCore#pruneDeparted has the failure mode this replaced.
+  { m: 'peerJoined', a: [20, 40000] },
+  { m: 'hello', a: [20, { name: 'Quiet' }, 40000] },
+  { m: 'peerJoined', a: [21, 40000] },
+  { m: 'hello', a: [21, { name: 'Dropped' }, 40000] },
+  { m: 'freezeParticipantOrder', a: [] },
+  { m: 'transitionTo', a: ['countdown'] },
+  { m: 'transitionTo', a: ['playing'] },
+  { m: 'tick', a: [50000, []] },                // neither has pinged: both expire
+  { m: 'markDisconnected', a: [20] },           // what raising the rejoin QR does
+  { m: 'peerLeft', a: [21] },                   // the relay's word, and only its word
+  { m: 'isExpired', a: [20, 50000] },           // expired AND flagged...
+  { m: 'transitionTo', a: ['results'] },
+  { m: 'transitionTo', a: ['lobby'] },
+  { m: 'pruneDeparted', a: [] },
+  { m: 'has', a: [20] },                        // ...yet still a player
+  { m: 'has', a: [21] },                        // gone, because the relay said so
+  // And their seat comes back the moment they speak, QR flag and all.
+  { m: 'onSeen', a: [20, 51000] },
+  { m: 'isExpired', a: [20, 51000] },
 ];
 
 module.exports = { INIT, OPS };

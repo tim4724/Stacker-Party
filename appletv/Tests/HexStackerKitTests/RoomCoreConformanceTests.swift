@@ -21,7 +21,8 @@ import Foundation
 /// auto-naming with a blocklisted preference (the tvOS auto-namer used to have no
 /// blocklist at all, so an Apple TV really could seat HX-4 and HX-13), the three
 /// pause flags, suspend-and-rejoin via a cross-device claim, batched liveness
-/// ticks, late-joiner grace, results enrichment, and a full room rejecting one more.
+/// ticks, late-joiner grace, results enrichment, a full room rejecting one more, and
+/// a peer the liveness sweep expired keeping its seat because the relay still holds it.
 @Suite struct RoomCoreConformanceTests {
 
     private struct Golden {

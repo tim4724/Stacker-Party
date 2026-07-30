@@ -558,10 +558,8 @@
       ]
     },
     {
-      "m": "pruneDisconnected",
-      "a": [
-        20000
-      ]
+      "m": "pruneDeparted",
+      "a": []
     },
     {
       "m": "admitWaiting",
@@ -672,6 +670,124 @@
     },
     {
       "g": "host"
+    },
+    {
+      "m": "peerJoined",
+      "a": [
+        20,
+        40000
+      ]
+    },
+    {
+      "m": "hello",
+      "a": [
+        20,
+        {
+          "name": "Quiet"
+        },
+        40000
+      ]
+    },
+    {
+      "m": "peerJoined",
+      "a": [
+        21,
+        40000
+      ]
+    },
+    {
+      "m": "hello",
+      "a": [
+        21,
+        {
+          "name": "Dropped"
+        },
+        40000
+      ]
+    },
+    {
+      "m": "freezeParticipantOrder",
+      "a": []
+    },
+    {
+      "m": "transitionTo",
+      "a": [
+        "countdown"
+      ]
+    },
+    {
+      "m": "transitionTo",
+      "a": [
+        "playing"
+      ]
+    },
+    {
+      "m": "tick",
+      "a": [
+        50000,
+        []
+      ]
+    },
+    {
+      "m": "markDisconnected",
+      "a": [
+        20
+      ]
+    },
+    {
+      "m": "peerLeft",
+      "a": [
+        21
+      ]
+    },
+    {
+      "m": "isExpired",
+      "a": [
+        20,
+        50000
+      ]
+    },
+    {
+      "m": "transitionTo",
+      "a": [
+        "results"
+      ]
+    },
+    {
+      "m": "transitionTo",
+      "a": [
+        "lobby"
+      ]
+    },
+    {
+      "m": "pruneDeparted",
+      "a": []
+    },
+    {
+      "m": "has",
+      "a": [
+        20
+      ]
+    },
+    {
+      "m": "has",
+      "a": [
+        21
+      ]
+    },
+    {
+      "m": "onSeen",
+      "a": [
+        20,
+        51000
+      ]
+    },
+    {
+      "m": "isExpired",
+      "a": [
+        20,
+        51000
+      ]
     }
   ],
   "steps": [
@@ -3863,74 +3979,249 @@
       }
     },
     {
+      "result": [],
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 5,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          6,
+          2,
+          4711
+        ],
+        "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3,
+            "alive": false
+          },
+          "5": {
+            "name": "Late",
+            "color": 2
+          },
+          "6": {
+            "name": "Zoe",
+            "color": 7,
+            "startLevel": 9
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
       "result": [
-        2,
-        4711,
-        5,
-        6
+        5
       ],
       "snapshot": {
         "roomState": "lobby",
-        "hostPeerIndex": null,
+        "hostPeerIndex": 5,
         "paused": false,
         "displayMuted": true,
-        "participants": [],
-        "players": {}
-      }
-    },
-    {
-      "result": [],
-      "snapshot": {
-        "roomState": "lobby",
-        "hostPeerIndex": null,
-        "paused": false,
-        "displayMuted": true,
-        "participants": [],
-        "players": {}
+        "participants": [
+          6,
+          2,
+          4711,
+          5
+        ],
+        "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3,
+            "alive": false
+          },
+          "5": {
+            "name": "Late",
+            "color": 2
+          },
+          "6": {
+            "name": "Zoe",
+            "color": 7,
+            "startLevel": 9
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1
+          }
+        }
       }
     },
     {
       "result": null,
       "snapshot": {
         "roomState": "lobby",
-        "hostPeerIndex": null,
+        "hostPeerIndex": 5,
         "paused": false,
         "displayMuted": true,
-        "participants": [],
-        "players": {}
+        "participants": [
+          6,
+          2,
+          4711,
+          5
+        ],
+        "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3
+          },
+          "5": {
+            "name": "Late",
+            "color": 2
+          },
+          "6": {
+            "name": "Zoe",
+            "color": 7,
+            "startLevel": 9
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1
+          }
+        }
       }
     },
     {
       "result": null,
       "snapshot": {
         "roomState": "lobby",
-        "hostPeerIndex": null,
+        "hostPeerIndex": 5,
         "paused": false,
         "displayMuted": true,
-        "participants": [],
-        "players": {}
+        "participants": [
+          6,
+          2,
+          4711,
+          5
+        ],
+        "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3
+          },
+          "5": {
+            "name": "Late",
+            "color": 2
+          },
+          "6": {
+            "name": "Zoe",
+            "color": 7,
+            "startLevel": 9
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1
+          }
+        }
       }
     },
     {
-      "result": [],
+      "result": [
+        6,
+        2,
+        4711,
+        5
+      ],
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 5,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          6,
+          2,
+          4711,
+          5
+        ],
+        "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3
+          },
+          "5": {
+            "name": "Late",
+            "color": 2
+          },
+          "6": {
+            "name": "Zoe",
+            "color": 7,
+            "startLevel": 9
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": 1,
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 5,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          6,
+          2,
+          4711,
+          5
+        ],
+        "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3
+          },
+          "5": {
+            "name": "Late",
+            "color": 2
+          },
+          "6": {
+            "name": "Zoe",
+            "color": 7,
+            "startLevel": 9
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "known": true,
+        "action": "removed",
+        "returnedToLobby": false,
+        "publish": "now"
+      },
       "snapshot": {
         "roomState": "lobby",
         "hostPeerIndex": null,
         "paused": false,
         "displayMuted": true,
-        "participants": [],
-        "players": {}
-      }
-    },
-    {
-      "result": 0,
-      "snapshot": {
-        "roomState": "lobby",
-        "hostPeerIndex": null,
-        "paused": false,
-        "displayMuted": true,
-        "participants": [],
-        "players": {}
+        "participants": [
+          6,
+          2,
+          4711
+        ],
+        "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3
+          },
+          "6": {
+            "name": "Zoe",
+            "color": 7,
+            "startLevel": 9
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1
+          }
+        }
       }
     },
     {
@@ -3944,38 +4235,55 @@
         "hostPeerIndex": null,
         "paused": false,
         "displayMuted": true,
-        "participants": [],
-        "players": {}
+        "participants": [
+          6,
+          2,
+          4711
+        ],
+        "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3
+          },
+          "6": {
+            "name": "Zoe",
+            "color": 7,
+            "startLevel": 9
+          },
+          "4711": {
+            "name": "Sparse",
+            "color": 1
+          }
+        }
       }
     },
     {
       "result": {
-        "known": false,
-        "action": "none",
-        "publish": "none"
+        "known": true,
+        "action": "removed",
+        "returnedToLobby": false,
+        "publish": "now"
       },
       "snapshot": {
         "roomState": "lobby",
         "hostPeerIndex": null,
         "paused": false,
         "displayMuted": true,
-        "participants": [],
-        "players": {}
-      }
-    },
-    {
-      "result": {
-        "known": false,
-        "action": "none",
-        "publish": "none"
-      },
-      "snapshot": {
-        "roomState": "lobby",
-        "hostPeerIndex": null,
-        "paused": false,
-        "displayMuted": true,
-        "participants": [],
-        "players": {}
+        "participants": [
+          6,
+          2
+        ],
+        "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3
+          },
+          "6": {
+            "name": "Zoe",
+            "color": 7,
+            "startLevel": 9
+          }
+        }
       }
     },
     {
@@ -3991,9 +4299,20 @@
         "paused": false,
         "displayMuted": true,
         "participants": [
+          6,
+          2,
           10
         ],
         "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3
+          },
+          "6": {
+            "name": "Zoe",
+            "color": 7,
+            "startLevel": 9
+          },
           "10": {
             "name": "HX-34",
             "color": 0,
@@ -4015,10 +4334,21 @@
         "paused": false,
         "displayMuted": true,
         "participants": [
+          6,
+          2,
           10,
           11
         ],
         "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3
+          },
+          "6": {
+            "name": "Zoe",
+            "color": 7,
+            "startLevel": 9
+          },
           "10": {
             "name": "HX-34",
             "color": 0,
@@ -4045,11 +4375,22 @@
         "paused": false,
         "displayMuted": true,
         "participants": [
+          6,
+          2,
           10,
           11,
           12
         ],
         "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3
+          },
+          "6": {
+            "name": "Zoe",
+            "color": 7,
+            "startLevel": 9
+          },
           "10": {
             "name": "HX-34",
             "color": 0,
@@ -4063,48 +4404,6 @@
           "12": {
             "name": "HX-28",
             "color": 2,
-            "helloSeen": false
-          }
-        }
-      }
-    },
-    {
-      "result": {
-        "added": true,
-        "colorIndex": 3,
-        "joinedLobby": true,
-        "publish": "now"
-      },
-      "snapshot": {
-        "roomState": "lobby",
-        "hostPeerIndex": 10,
-        "paused": false,
-        "displayMuted": true,
-        "participants": [
-          10,
-          11,
-          12,
-          13
-        ],
-        "players": {
-          "10": {
-            "name": "HX-34",
-            "color": 0,
-            "helloSeen": false
-          },
-          "11": {
-            "name": "HX-74",
-            "color": 1,
-            "helloSeen": false
-          },
-          "12": {
-            "name": "HX-28",
-            "color": 2,
-            "helloSeen": false
-          },
-          "13": {
-            "name": "HX-57",
-            "color": 3,
             "helloSeen": false
           }
         }
@@ -4123,13 +4422,23 @@
         "paused": false,
         "displayMuted": true,
         "participants": [
+          6,
+          2,
           10,
           11,
           12,
-          13,
-          14
+          13
         ],
         "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3
+          },
+          "6": {
+            "name": "Zoe",
+            "color": 7,
+            "startLevel": 9
+          },
           "10": {
             "name": "HX-34",
             "color": 0,
@@ -4147,11 +4456,6 @@
           },
           "13": {
             "name": "HX-57",
-            "color": 3,
-            "helloSeen": false
-          },
-          "14": {
-            "name": "HX-2",
             "color": 4,
             "helloSeen": false
           }
@@ -4171,14 +4475,24 @@
         "paused": false,
         "displayMuted": true,
         "participants": [
+          6,
+          2,
           10,
           11,
           12,
           13,
-          14,
-          15
+          14
         ],
         "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3
+          },
+          "6": {
+            "name": "Zoe",
+            "color": 7,
+            "startLevel": 9
+          },
           "10": {
             "name": "HX-34",
             "color": 0,
@@ -4196,16 +4510,11 @@
           },
           "13": {
             "name": "HX-57",
-            "color": 3,
+            "color": 4,
             "helloSeen": false
           },
           "14": {
             "name": "HX-2",
-            "color": 4,
-            "helloSeen": false
-          },
-          "15": {
-            "name": "HX-77",
             "color": 5,
             "helloSeen": false
           }
@@ -4225,15 +4534,25 @@
         "paused": false,
         "displayMuted": true,
         "participants": [
+          6,
+          2,
           10,
           11,
           12,
           13,
           14,
-          15,
-          16
+          15
         ],
         "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3
+          },
+          "6": {
+            "name": "Zoe",
+            "color": 7,
+            "startLevel": 9
+          },
           "10": {
             "name": "HX-34",
             "color": 0,
@@ -4251,21 +4570,16 @@
           },
           "13": {
             "name": "HX-57",
-            "color": 3,
+            "color": 4,
             "helloSeen": false
           },
           "14": {
             "name": "HX-2",
-            "color": 4,
+            "color": 5,
             "helloSeen": false
           },
           "15": {
             "name": "HX-77",
-            "color": 5,
-            "helloSeen": false
-          },
-          "16": {
-            "name": "HX-81",
             "color": 6,
             "helloSeen": false
           }
@@ -4274,12 +4588,8 @@
     },
     {
       "result": {
-        "accepted": true,
-        "isNew": true,
-        "colorIndex": 7,
-        "claimed": false,
-        "oldPeerIndex": null,
-        "publish": "now"
+        "added": false,
+        "publish": "none"
       },
       "snapshot": {
         "roomState": "lobby",
@@ -4287,16 +4597,25 @@
         "paused": false,
         "displayMuted": true,
         "participants": [
+          6,
+          2,
           10,
           11,
           12,
           13,
           14,
-          15,
-          16,
-          17
+          15
         ],
         "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3
+          },
+          "6": {
+            "name": "Zoe",
+            "color": 7,
+            "startLevel": 9
+          },
           "10": {
             "name": "HX-34",
             "color": 0,
@@ -4314,49 +4633,56 @@
           },
           "13": {
             "name": "HX-57",
-            "color": 3,
+            "color": 4,
             "helloSeen": false
           },
           "14": {
             "name": "HX-2",
-            "color": 4,
+            "color": 5,
             "helloSeen": false
           },
           "15": {
             "name": "HX-77",
-            "color": 5,
-            "helloSeen": false
-          },
-          "16": {
-            "name": "HX-81",
             "color": 6,
             "helloSeen": false
-          },
-          "17": {
-            "name": "Nope",
-            "color": 7
           }
         }
       }
     },
     {
-      "result": 8,
+      "result": {
+        "accepted": false,
+        "roomFull": true,
+        "isNew": true,
+        "claimed": false,
+        "oldPeerIndex": null,
+        "publish": "none"
+      },
       "snapshot": {
         "roomState": "lobby",
         "hostPeerIndex": 10,
         "paused": false,
         "displayMuted": true,
         "participants": [
+          6,
+          2,
           10,
           11,
           12,
           13,
           14,
-          15,
-          16,
-          17
+          15
         ],
         "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3
+          },
+          "6": {
+            "name": "Zoe",
+            "color": 7,
+            "startLevel": 9
+          },
           "10": {
             "name": "HX-34",
             "color": 0,
@@ -4374,27 +4700,78 @@
           },
           "13": {
             "name": "HX-57",
-            "color": 3,
+            "color": 4,
             "helloSeen": false
           },
           "14": {
             "name": "HX-2",
-            "color": 4,
+            "color": 5,
             "helloSeen": false
           },
           "15": {
             "name": "HX-77",
+            "color": 6,
+            "helloSeen": false
+          }
+        }
+      }
+    },
+    {
+      "result": 6,
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 10,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          6,
+          2,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ],
+        "players": {
+          "2": {
+            "name": "Bo",
+            "color": 3
+          },
+          "6": {
+            "name": "Zoe",
+            "color": 7,
+            "startLevel": 9
+          },
+          "10": {
+            "name": "HX-34",
+            "color": 0,
+            "helloSeen": false
+          },
+          "11": {
+            "name": "HX-74",
+            "color": 1,
+            "helloSeen": false
+          },
+          "12": {
+            "name": "HX-28",
+            "color": 2,
+            "helloSeen": false
+          },
+          "13": {
+            "name": "HX-57",
+            "color": 4,
+            "helloSeen": false
+          },
+          "14": {
+            "name": "HX-2",
             "color": 5,
             "helloSeen": false
           },
-          "16": {
-            "name": "HX-81",
+          "15": {
+            "name": "HX-77",
             "color": 6,
             "helloSeen": false
-          },
-          "17": {
-            "name": "Nope",
-            "color": 7
           }
         }
       }
@@ -4430,6 +4807,437 @@
         "displayMuted": true,
         "participants": [],
         "players": {}
+      }
+    },
+    {
+      "result": {
+        "added": true,
+        "colorIndex": 0,
+        "joinedLobby": true,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 20,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20
+        ],
+        "players": {
+          "20": {
+            "name": "HX-80",
+            "color": 0,
+            "helloSeen": false
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "accepted": true,
+        "isNew": false,
+        "claimed": false,
+        "oldPeerIndex": null,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 20,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "added": true,
+        "colorIndex": 1,
+        "joinedLobby": true,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 20,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20,
+          21
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0
+          },
+          "21": {
+            "name": "HX-9",
+            "color": 1,
+            "helloSeen": false
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "accepted": true,
+        "isNew": false,
+        "claimed": false,
+        "oldPeerIndex": null,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 20,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20,
+          21
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0
+          },
+          "21": {
+            "name": "Dropped",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": [
+        20,
+        21
+      ],
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 20,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20,
+          21
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0
+          },
+          "21": {
+            "name": "Dropped",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "changed": true,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "countdown",
+        "hostPeerIndex": 20,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20,
+          21
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0
+          },
+          "21": {
+            "name": "Dropped",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "changed": true,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": 20,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20,
+          21
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0
+          },
+          "21": {
+            "name": "Dropped",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "expired": [
+          20,
+          21
+        ],
+        "graceFired": false
+      },
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": 20,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20,
+          21
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0
+          },
+          "21": {
+            "name": "Dropped",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": null,
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": 21,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20,
+          21
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0
+          },
+          "21": {
+            "name": "Dropped",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "known": true,
+        "action": "disconnected",
+        "returnedToLobby": false,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": 21,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20,
+          21
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0
+          },
+          "21": {
+            "name": "Dropped",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": true,
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": 21,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20,
+          21
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0
+          },
+          "21": {
+            "name": "Dropped",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "changed": true,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "results",
+        "hostPeerIndex": 21,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20,
+          21
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0
+          },
+          "21": {
+            "name": "Dropped",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "changed": true,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 21,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20,
+          21
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0
+          },
+          "21": {
+            "name": "Dropped",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": [
+        21
+      ],
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": null,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0
+          }
+        }
+      }
+    },
+    {
+      "result": true,
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": null,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0
+          }
+        }
+      }
+    },
+    {
+      "result": false,
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": null,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0
+          }
+        }
+      }
+    },
+    {
+      "result": null,
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": null,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0
+          }
+        }
+      }
+    },
+    {
+      "result": false,
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": null,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0
+          }
+        }
       }
     }
   ]

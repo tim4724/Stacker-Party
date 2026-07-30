@@ -894,16 +894,16 @@ class DisplayCoordinator(
 
     private suspend fun beginCountdown() {
         if (state != RoomState.LOBBY && state != RoomState.RESULTS) return
-        // Mirrors startNewGame's ordering: drop everyone who went missing (including a peer
-        // that dropped right as RESULTS appeared, before peer_left or the sweep flagged it),
-        // clear the overlays, then re-stamp presence on this "everyone present" transition
-        // so a controller that went quiet just before the match isn't instantly flagged.
+        // Mirrors startNewGame's ordering: drop the players the relay reported gone (a
+        // still-connected one keeps their seat, however quiet), clear the overlays, then
+        // re-stamp presence on this "everyone present" transition so a controller that
+        // went quiet just before the match isn't instantly flagged.
         flushSeen()
         roomCore.clearAlive()
-        roomCore.pruneDisconnected(nowWallMs())
+        roomCore.pruneDeparted()
         disconnectedBoards.clear()
         roomCore.clearDisconnected(nowWallMs())
-        // Everyone who remained was disconnected: don't build a zero-player engine.
+        // The prune emptied the roster: don't build a zero-player engine.
         if (room.size == 0) {
             // The prune changed the roster controllers render, so publish either way.
             if (state == RoomState.RESULTS) returnToLobby() else publishAs(RoomCoreClient.PUBLISH_NOW)
@@ -1091,10 +1091,10 @@ class DisplayCoordinator(
         discardEngineState()
         output.stopMusic()
         setPauseOverlay(false)
-        // Remove the players who went missing, then fold in the late joiners who were
-        // waiting out the round.
+        // Remove the players the relay reported gone, then fold in the late joiners who
+        // were waiting out the round.
         flushSeen()
-        roomCore.pruneDisconnected(nowWallMs())
+        roomCore.pruneDeparted()
         roomCore.admitWaiting()
         roomCore.clearAlive()
         roomCore.setResults(null)

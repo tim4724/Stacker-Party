@@ -270,6 +270,43 @@ import Foundation
         #expect(fo.renderCount > frozen, "auto-resumed: engine advancing again")
     }
 
+    /// Membership is the RELAY's call, never a local liveness verdict. A controller
+    /// that has gone silent past the liveness window is not gone — a locked phone
+    /// freezes its 1 Hz PING timer while its socket stays open, and the relay keeps
+    /// answering its own pings below that — so returning to the lobby has to keep its
+    /// seat. Only `peer_left` removes anyone.
+    ///
+    /// RoomCoreConformanceTests already pins the RULE (RoomCore#pruneDeparted, via the
+    /// shared golden). What this pins is the tvOS WIRING, which the golden cannot see:
+    /// that returnToLobby drops players through the room core rather than deciding for
+    /// itself. Twin of DisplayCoordinatorTest#returnToLobbyKeepsASilentButConnectedController
+    /// on Android.
+    @Test func returnToLobbyKeepsASilentButConnectedController() {
+        let clock = Clock()
+        let (coord, ft, _) = makeLobby(players: 2, clock: clock)
+        coord.remoteStartMatch(); runCountdown(coord)
+        #expect(coord.state == .playing)
+
+        // Both go quiet past the 3s window, so the sweep flags them and raises their
+        // rejoin QRs — but neither socket ever closed.
+        clock.ms = 10_000
+        coord.tick(deltaMs: 16)
+        #expect(coord.allParticipantsDisconnected)
+
+        // Peer 1 speaks again (which is also what un-flags it) and sends us home.
+        ft.onMessage?(1, ["type": "return_to_lobby"])
+        #expect(coord.state == .lobby)
+        let roster = ft.states.last?["players"] as? [String: Any]
+        #expect(roster?["1"] != nil, "the controller that spoke keeps its seat")
+        #expect(roster?["2"] != nil, "and so does the silent-but-still-connected one")
+
+        // A relay peer_left, on the other hand, IS removal — the one signal that
+        // takes a player out of the room.
+        ft.onPeerLeft?(2)
+        #expect((ft.states.last?["players"] as? [String: Any])?["2"] == nil,
+                "a peer the relay reported gone is removed")
+    }
+
     @Test func pauseKeyRaisesTheOverlayWhileAutoPausedWithoutTouchingTheFreeze() {
         // Every controller gone mid-game: the overlay is the ONLY route to New Game
         // (nobody is left to send RETURN_TO_LOBBY), so the pause key must raise it — as

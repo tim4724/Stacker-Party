@@ -162,20 +162,20 @@ function startNewGame() {
   clearPause();
   lastResults = null;
   roomCore.clearAlive();
-  // Drop players still flagged as disconnected from the previous game so they
-  // don't carry into the new one, including a relay peer that dropped right as
-  // RESULTS appeared, before peer_left or the liveness tick flagged it.
-  // Reconnects clear the flag, so present players survive.
-  roomCore.pruneDisconnected(Date.now());
+  // Drop the players the RELAY reported gone during the previous game, whose
+  // rows were held so a reconnect could reclaim the pinned colour slot. A player
+  // the relay still holds keeps their seat even while the liveness sweep has them
+  // flagged quiet: their rejoin QR is up and clears itself when they speak again.
+  roomCore.pruneDeparted();
   // Clear stale disconnected-QR flags from the previous game so they don't
   // suppress host eligibility here. (onGameEnd no longer clears them — we
   // keep the disconnected state through RESULTS so the host role hands off
   // correctly; see getHostPeerIndex().)
   disconnectedQRs.clear();
   roomCore.clearDisconnected(Date.now());
-  // Everyone who remained was disconnected — don't launch an empty game.
+  // The prune emptied the roster — don't launch an empty game.
   // Both callers (startGame, playAgain) check players.size before this prune,
-  // so neither catches the all-disconnected case. From RESULTS, returnToLobby()
+  // so neither catches the everybody-gone case. From RESULTS, returnToLobby()
   // resets the UI; from a LOBBY start it would no-op (already in LOBBY), so
   // refresh the lobby controls directly.
   if (players.size < 1) {
@@ -300,10 +300,9 @@ function returnToLobby() {
   if (music) music.stop();
   stopDisplayGame(); // also calls clearCountdownTimers()
 
-  // Remove disconnected players (AirConsole mode flags them without ever
-  // expiring; relay mode can expire one before a QR flag was set), then fold in
-  // the late joiners who were waiting out the round.
-  roomCore.pruneDisconnected(Date.now());
+  // Remove the players the relay reported gone, then fold in the late joiners
+  // who were waiting out the round.
+  roomCore.pruneDeparted();
   roomCore.admitWaiting();
 
   lastResults = null;

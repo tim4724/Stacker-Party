@@ -16,7 +16,7 @@ import kotlin.test.assertEquals
  * RoomCore conformance: the Android TV leg.
  *
  * `tests/fixtures/room-core-golden.json` is a self-contained artifact — the
- * constructor options, an 88-step op log, and the expected return value plus full
+ * constructor options, a 123-step op log, and the expected return value plus full
  * snapshot after every step. Node replays it (tests/room-core-conformance.test.js),
  * JavaScriptCore replays it on tvOS, and QuickJS replays it here.
  *
@@ -28,7 +28,8 @@ import kotlin.test.assertEquals
  * with a blocklisted preference, name sanitizing (control chars, a zero-width
  * joiner, overlong, whitespace-only, legacy P-names), sparse AirConsole-style peer
  * indices, the three pause flags, suspend + cross-device rejoin, batched liveness
- * ticks, late-joiner grace, results enrichment, and a full room rejecting one more.
+ * ticks, late-joiner grace, results enrichment, a full room rejecting one more, and
+ * a peer the liveness sweep expired keeping its seat because the relay still holds it.
  */
 class RoomCoreConformanceTest {
 
