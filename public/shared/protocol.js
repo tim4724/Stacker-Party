@@ -42,8 +42,12 @@ var MSG = {
   // (they ship together), and leaving the constants around invites a new send.
   PONG: 'pong',
   PLAYER_STATE: 'player_state',
-
-  // Display -> All Controllers (broadcast)
+  // Unicast as well, not a broadcast. The only sender is the room-full rejection
+  // answering one HELLO (DisplayInput.js#onHello, and the same line on tvOS and
+  // Android TV); broadcasting it would tell seven seated players that somebody
+  // else's join bounced. Distinct from the RELAY's own `error` frame, which is
+  // not a game message at all and arrives on the protocol channel instead
+  // (ControllerConnection.js#onProtocol).
   ERROR: 'error'
 };
 
