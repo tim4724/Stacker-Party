@@ -59,6 +59,15 @@ test.describe('Game Lifecycle', () => {
     await waitForDisplayGame(page);
     await waitForControllerGame(controller);
 
+    // Counterpart to couchpad.spec.js's "name is hidden": outside the launcher
+    // BOTH in-game name surfaces must carry it, the portrait top-bar label and
+    // the landscape touch-area overlay. Text, not visibility: this project's
+    // viewport is landscape, where CSS hides the label by design.
+    expect(await controller.evaluate(() => [
+      document.getElementById('player-name').textContent,
+      document.getElementById('touch-area').getAttribute('data-player-name'),
+    ])).toEqual(['Alice', 'Alice']);
+
     // Wait for game to end (high level should top out within 60s)
     await waitForDisplayResults(page);
     await waitForControllerResults(controller);

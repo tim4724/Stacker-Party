@@ -628,7 +628,11 @@ function enterGameScreen(snap, mine) {
     pauseOverlay.classList.add('hidden');
     reconnectOverlay.classList.add('hidden');
     gameScreen.style.setProperty('--player-color', playerColor);
-    touchArea.setAttribute('data-player-name', playerName || t('player'));
+    // Paints both in-game name surfaces: #player-name (portrait top bar) and
+    // the data-player-name attribute the landscape overlay reads. The snapshot
+    // path doesn't cover it: applyOwnIdentity repaints only on a name CHANGE,
+    // and the snapshot that put us here just echoes the name we already had.
+    applyLocalPlayerName();
     pauseBtn.disabled = false;
     pauseBtn.classList.remove('hidden');
     showScreen('game');
