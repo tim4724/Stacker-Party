@@ -372,7 +372,10 @@ describe('legacy display shim', () => {
 
     test('snapshot-era traffic is left to the normal dispatcher', () => {
       const shim = new LegacyDisplayRoom();
-      shim.apply({ type: 'welcome', playerName: 'Ann', colorIndex: 0, roomState: 'lobby', playerCount: 1, isHost: true, takenColorIndices: [0], displayMuted: false, alive: true, paused: false });
+      assert.equal(
+        shim.apply({ type: 'welcome', playerName: 'Ann', colorIndex: 0, roomState: 'lobby', playerCount: 1, isHost: true, takenColorIndices: [0], displayMuted: false, alive: true, paused: false }),
+        LegacyDisplayRoom.OWNED
+      );
       assert.equal(shim.apply({ type: 'pong', t: 1 }), null);
       assert.equal(shim.apply({ type: 'error', message: 'Room is full' }), null);
       assert.equal(shim.apply(null), null);

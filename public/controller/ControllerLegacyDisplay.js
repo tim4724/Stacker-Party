@@ -35,11 +35,26 @@
 
 (function (root, factory) {
   var LegacyDisplayRoom = factory();
+  // Under node --test the model IS the unit (tests/legacy-display-shim.test.js
+  // drives it directly), so the page glue below never runs there.
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = LegacyDisplayRoom;
-  } else {
-    root.LegacyDisplayRoom = LegacyDisplayRoom;
+    return;
   }
+  // The page's one instance, and the only name the controller knows. It reads
+  // the page globals (peerIndex, onState) at call time, which is why the glue
+  // lives out here rather than inside the model.
+  var room = new LegacyDisplayRoom();
+  root.ControllerLegacyDisplay = {
+    // True when this shim owns the message outright and the caller should stop
+    // dispatching it.
+    observe: function (data) {
+      var verdict = room.apply(data);
+      if (!verdict) return false;
+      if (peerIndex != null) onState(room.snapshot(peerIndex));
+      return verdict === LegacyDisplayRoom.OWNED;
+    },
+  };
 })(typeof self !== 'undefined' ? self : this, function () {
 
   // Roster key for the host when it is somebody else. The synthetic roster
@@ -90,18 +105,21 @@
   // legacy room state and the caller should just carry on dispatching it.
   LegacyDisplayRoom.prototype.apply = function (msg) {
     if (!msg || typeof msg !== 'object') return null;
-    switch (msg.type) {
-      case 'welcome':
-        this._applyWelcome(msg);
-        return LegacyDisplayRoom.OWNED;
+    // welcome is the only message that can start a session, and it carries
+    // everything, so it runs before the latch it sets.
+    if (msg.type === 'welcome') {
+      this._applyWelcome(msg);
+      return LegacyDisplayRoom.OWNED;
+    }
+    // Everything below is a partial update to a room we must already know.
+    if (!this.active) return null;
 
+    switch (msg.type) {
       case 'lobby_update':
-        if (!this.active) return null;
         this._applyLobby(msg);
         return LegacyDisplayRoom.OWNED;
 
       case 'countdown':
-        if (!this.active) return null;
         // A round is starting: 'GO' is the beat the game goes live on, which is
         // where the pre-snapshot controller armed its input too.
         this.roomState = msg.value === 'GO' ? 'playing' : 'countdown';
@@ -110,7 +128,6 @@
         return LegacyDisplayRoom.OWNED;
 
       case 'game_start':
-        if (!this.active) return null;
         // Deliberately does NOT clear `waiting`: the legacy display broadcasts
         // this to the whole room, late joiners included, and promoting them here
         // would drop a phone the display isn't simulating onto the game screen.
@@ -121,22 +138,18 @@
         return LegacyDisplayRoom.OWNED;
 
       case 'game_paused':
-        if (!this.active) return null;
         this.paused = true;
         return LegacyDisplayRoom.OWNED;
 
       case 'game_resumed':
-        if (!this.active) return null;
         this.paused = false;
         return LegacyDisplayRoom.OWNED;
 
       case 'display_muted':
-        if (!this.active) return null;
         if (typeof msg.muted === 'boolean') this.displayMuted = msg.muted;
         return LegacyDisplayRoom.OWNED;
 
       case 'game_end':
-        if (!this.active) return null;
         this.roomState = 'results';
         this.results = Array.isArray(msg.results) ? msg.results : null;
         this.paused = false;
@@ -144,7 +157,6 @@
         return LegacyDisplayRoom.OWNED;
 
       case 'return_to_lobby':
-        if (!this.active) return null;
         this.roomState = 'lobby';
         this.results = null;
         this.paused = false;
@@ -159,14 +171,13 @@
 
       case 'game_over':
         // Sent to the player who was just knocked out.
-        if (!this.active) return null;
         this.alive = false;
         return LegacyDisplayRoom.OWNED;
 
       case 'player_state':
         // Only the KO matters here, and only as a change: republishing on every
         // line clear would re-apply an otherwise identical snapshot.
-        if (!this.active || msg.alive !== false || !this.alive) return null;
+        if (msg.alive !== false || !this.alive) return null;
         this.alive = false;
         return LegacyDisplayRoom.SHARED;
     }
@@ -269,25 +280,3 @@
 
   return LegacyDisplayRoom;
 });
-
-// ---------------------------------------------------------------------
-// Page glue. Skipped under node --test (the model above is what the unit test
-// drives), which is also why it reads the page globals here rather than
-// inside the module.
-// ---------------------------------------------------------------------
-if (typeof module === 'undefined' || !module.exports) {
-  var ControllerLegacyDisplay = (function () {
-    var room = new LegacyDisplayRoom();
-    return {
-      // True when this shim owns the message outright and the caller should
-      // stop dispatching it.
-      observe: function (data) {
-        var verdict = room.apply(data);
-        if (!verdict) return false;
-        if (peerIndex != null) onState(room.snapshot(peerIndex));
-        return verdict === LegacyDisplayRoom.OWNED;
-      },
-    };
-  })();
-  window.ControllerLegacyDisplay = ControllerLegacyDisplay;
-}
