@@ -52,7 +52,7 @@ var JOIN = {
 // Slot order == color index order. Levels are the lobby-badge variety; game
 // board levels come from the variant spec instead.
 var NAMES = ['Emma', 'Jake', 'Sofia', 'Liam', 'Mia', 'Noah', 'Ava', 'Leo'];
-// Couch-Games-style auto names at/near the 16-char cap (the controller
+// CouchPad-style auto names at/near the 16-char cap (the controller
 // input's maxlength), for the long-names gallery rows: every platform
 // renders its shrink-to-fit name path against the same worst case.
 var LONG_NAMES = ['Fabulous Chicken', 'Grumpy Flamingo', 'Majestic Warthog', 'Sneaky Capybara',

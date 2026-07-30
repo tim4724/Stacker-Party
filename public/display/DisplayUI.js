@@ -415,7 +415,7 @@ function buildRelayReportMailto() {
     '',
     'Notes (optional): '
   ];
-  return 'mailto:info@couch-games.com'
+  return 'mailto:info@couchpad.games'
     + '?subject=' + encodeURIComponent(subject)
     + '&body=' + encodeURIComponent(bodyLines.join('\n'));
 }

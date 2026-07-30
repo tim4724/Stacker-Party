@@ -48,7 +48,7 @@ import com.hexstacker.tv.R
 // The pages exist in only two languages: German at the root (/privacy) and English
 // under /en/. A German-locale TV links the German pages; every other locale links
 // the English ones, mirroring the website's own footer routing. See [legalUrl].
-private const val LEGAL_HOST = "https://couch-games.com"
+private const val LEGAL_HOST = "https://couchpad.games"
 
 // Builds a legal-page URL from a locale prefix ("" for German → root pages,
 // "en/" for everything else) supplied by the caller, which reads it from the same

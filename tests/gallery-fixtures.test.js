@@ -26,7 +26,7 @@ test('roster is stable and slot == colorIndex == id', () => {
 test('long-name roster stresses the 16-char cap without exceeding it', () => {
   const r = GalleryFixtures.roster(8, true);
   assert.deepEqual(r.map((p) => p.name), GalleryFixtures.LONG_NAMES);
-  // 16 is the platform-wide cap (controller input maxlength / Couch Games
+  // 16 is the platform-wide cap (controller input maxlength / CouchPad
   // sanitizer); the fixture must hit it to exercise shrink-to-fit, never pass it.
   for (const name of GalleryFixtures.LONG_NAMES) {
     assert.ok(name.length <= 16, `${name} exceeds the 16-char cap`);

@@ -335,7 +335,7 @@ test.describe('Reconnection', () => {
     // The lobby reacts instead of silently hosting a ghost...
     await controller.waitForSelector('#reconnect-overlay:not(.hidden)', { timeout: 10000 });
     // ...and once the display stays gone, bails with the party-over reason
-    // (the Couch Games shell maps this to returning home).
+    // (the CouchPad shell maps this to returning home).
     await controller.waitForURL(/bail=game_ended/, { timeout: 10000 });
   });
 
@@ -345,7 +345,7 @@ test.describe('Reconnection', () => {
     await waitForDisplayPlayers(page, 1);
 
     // The room resolves while the party is live (this is what feeds the
-    // Couch Games launcher's rejoin card).
+    // CouchPad launcher's rejoin card).
     const probe = 'https://ws.hexstacker.com/room/' + encodeURIComponent(roomCode);
     expect((await fetch(probe)).status).toBe(200);
 

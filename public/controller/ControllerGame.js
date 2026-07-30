@@ -88,7 +88,7 @@ if (document.fonts && document.fonts.ready) {
 }
 
 // Shell-driven live rename, shared by the AirConsole profile-change path and
-// the Couch Games setName bridge. SET_NAME is a lightweight rename the display
+// the CouchPad setName bridge. SET_NAME is a lightweight rename the display
 // accepts in any state (including mid-game). The display relabels the roster
 // and republishes, so the other controllers' "Waiting for <host>" banner
 // updates without this controller re-announcing itself.
@@ -287,7 +287,7 @@ function readStoredColorIndex() {
   return idx;
 }
 
-// Keep the Couch Games accent hint (CONTRACT §4) in step with the player's
+// Keep the CouchPad accent hint (CONTRACT §4) in step with the player's
 // color: the launcher tints its own chrome accents (name-chip icon, join
 // spinner, rename controls) from this <head> meta. It's read only at page-
 // load, so live updates matter for a WebView reload mid-session, where
@@ -296,7 +296,7 @@ function readStoredColorIndex() {
 // where nothing reads the meta.
 function setAccentColorMeta(color) {
   if (!color) return;
-  var meta = document.querySelector('meta[name="cg-accent-color"]');
+  var meta = document.querySelector('meta[name="cp-accent-color"]');
   if (meta) meta.setAttribute('content', color);
 }
 

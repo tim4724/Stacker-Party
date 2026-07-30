@@ -1,37 +1,37 @@
 'use strict';
 
 // =====================================================================
-// Couch Games Controller Bootstrap — Contract v1
+// CouchPad Controller Bootstrap — Contract v1
 // Loaded after ControllerConnection.js / ControllerGame.js (it wraps their
-// globals at load time) but BEFORE controller.js init. Self-gated on ?cgv=1,
-// the Couch Games shell's contract-version param, so this file is inert in
+// globals at load time) but BEFORE controller.js init. Self-gated on ?cpv=1,
+// the CouchPad shell's contract-version param, so this file is inert in
 // plain browsers, gallery iframes, and the AirConsole build (which also
 // strips it).
 //
 // Contract touchpoints:
-//   launcher -> game   ?cgv=1&cgName=<name>                join URL params
-//   launcher -> game   window.CouchGames.setName(name)     live rename
-//   game -> launcher   window.CouchGamesHost.gameEnded(r)  terminal end
+//   launcher -> game   ?cpv=1&cpName=<name>              join URL params
+//   launcher -> game   window.CouchPad.setName(name)     live rename
+//   game -> launcher   window.CouchPadHost.gameEnded(r)  terminal end
 //     r: 'game_ended' | 'room_not_found' | 'game_full' | 'replaced'
 // The launcher is the identity authority: the name screen is skipped (CSS
-// hides it via body.couchgames), the injected name is never persisted as the
+// hides it via body.couchpad), the injected name is never persisted as the
 // user's own typed name, and the shell owns back navigation and leaving.
 // =====================================================================
 
 (function () {
   var params = new URLSearchParams(location.search);
-  if (params.get('cgv') !== '1') return;
+  if (params.get('cpv') !== '1') return;
 
   // The launcher guarantees a non-blank name of at most 16 chars; sanitize
   // anyway (same trim + length cap the name input's maxlength enforces).
   function sanitizeName(raw) {
     return String(raw == null ? '' : raw).trim().slice(0, 16);
   }
-  var couchName = sanitizeName(params.get('cgName'));
+  var shellName = sanitizeName(params.get('cpName'));
 
   // CSS hooks — hides #name-screen and #lobby-back-btn (see the
-  // body.couchgames rules in controller.css).
-  document.body.classList.add('couchgames');
+  // body.couchpad rules in controller.css).
+  document.body.classList.add('couchpad');
 
   // Take the auto-connect branch in controller.js init.
   skipNameScreen = true;
@@ -39,7 +39,7 @@
   // Inject the launcher-provided name right before each (re)connect — the
   // auto-connect init branch prefills playerName from localStorage first,
   // and a later reconnect must HELLO with the current shell name (setName
-  // below keeps couchName up to date). The injected name is deliberately
+  // below keeps shellName up to date). The injected name is deliberately
   // NOT written to stacker_player_name: that key is the user's own typed
   // name for standalone web sessions. clientId IS persisted (mirroring
   // submitName, which the skipped name screen never runs) so a WebView
@@ -47,8 +47,8 @@
   // joining as a fresh player.
   var _originalConnect = connect;
   connect = function () {
-    if (couchName) {
-      playerName = couchName;
+    if (shellName) {
+      playerName = shellName;
       playerNameIsAuto = false;
     }
     try {
@@ -67,13 +67,13 @@
   // Live rename, called by the launcher when the user edits their name in
   // the shell. Shares applyShellRename (ControllerGame.js) with the
   // AirConsole profile-change path.
-  window.CouchGames = {
+  window.CouchPad = {
     setName: function (name) {
       var next = sanitizeName(name);
       if (!next) return;
-      // Keep couchName current even when the rename itself no-ops, so a
+      // Keep shellName current even when the rename itself no-ops, so a
       // later reconnect HELLOs with the shell's latest name.
-      couchName = next;
+      shellName = next;
       applyShellRename(next);
     }
   };
@@ -82,12 +82,12 @@
   // location.replace('/?bail=…') — the display root is meaningless inside
   // the shell's WebView. Feature-detected so the same deployed controller
   // falls back to normal web behavior when the bridge is absent (plain
-  // browser opening a ?cgv=1 URL). Connection cleanup mirrors the original:
+  // browser opening a ?cpv=1 URL). Connection cleanup mirrors the original:
   // the launcher pops the WebView on gameEnded, but until it does this page
   // must not keep pinging a room it considers dead.
   var _originalBailToWelcome = bailToWelcome;
   bailToWelcome = function (toastKey, keepClientId) {
-    var host = window.CouchGamesHost;
+    var host = window.CouchPadHost;
     if (!host || typeof host.gameEnded !== 'function') {
       _originalBailToWelcome(toastKey, keepClientId);
       return;

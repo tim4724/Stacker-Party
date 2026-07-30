@@ -7,23 +7,23 @@ const {
 } = require('./helpers');
 
 /**
- * Couch Games Controller Contract v1 (?cgv=1) against a stubbed launcher
+ * CouchPad Controller Contract v1 (?cpv=1) against a stubbed launcher
  * bridge: the join URL injects the player name, the shell drives live
- * renames via window.CouchGames.setName(), and terminal session ends
- * surface through window.CouchGamesHost.gameEnded(reason) instead of a
+ * renames via window.CouchPad.setName(), and terminal session ends
+ * surface through window.CouchPadHost.gameEnded(reason) instead of a
  * navigation to the display root.
  */
 
-async function joinCouchController(context, roomCode, name) {
+async function joinCouchPadController(context, roomCode, name) {
   const page = await context.newPage();
   await page.addInitScript((rc) => {
     localStorage.removeItem('clientId_' + rc);
-    window.__cgEnded = [];
-    window.CouchGamesHost = {
-      gameEnded: (reason) => window.__cgEnded.push(reason),
+    window.__cpEnded = [];
+    window.CouchPadHost = {
+      gameEnded: (reason) => window.__cpEnded.push(reason),
     };
   }, roomCode);
-  await page.goto(`/${roomCode}?test=1&cgv=1&cgName=${encodeURIComponent(name)}`);
+  await page.goto(`/${roomCode}?test=1&cpv=1&cpName=${encodeURIComponent(name)}`);
   await waitForFont(page);
   return page;
 }
@@ -38,10 +38,10 @@ async function fakeRoomNotFound(page) {
   });
 }
 
-test.describe('Couch Games shell contract', () => {
-  test('join with cgName, live rename, and display close → gameEnded', async ({ page, context }) => {
+test.describe('CouchPad shell contract', () => {
+  test('join with cpName, live rename, and display close → gameEnded', async ({ page, context }) => {
     const { roomCode } = await createRoom(page);
-    const controller = await joinCouchController(context, roomCode, 'Zoë');
+    const controller = await joinCouchPadController(context, roomCode, 'Zoë');
 
     // Name screen skipped: the injected name lands in the lobby directly.
     await controller.waitForSelector('#player-identity:not(.hidden)', { timeout: 10000 });
@@ -64,7 +64,7 @@ test.describe('Couch Games shell contract', () => {
     await expect(controller.locator('#settings-overlay')).toBeHidden();
 
     // Live rename from the shell propagates to controller UI and display.
-    await controller.evaluate(() => window.CouchGames.setName('Maxi'));
+    await controller.evaluate(() => window.CouchPad.setName('Maxi'));
     await expect(controller.locator('#player-identity-name')).toHaveText('Maxi');
     await expect(page.locator('#player-list')).toContainText('Maxi');
 
@@ -72,22 +72,22 @@ test.describe('Couch Games shell contract', () => {
     // close is the controller's terminal end and goes to the launcher
     // bridge, with no navigation off the controller page.
     await page.goto('about:blank');
-    await controller.waitForFunction(() => window.__cgEnded.length > 0, null, { timeout: 10000 });
-    expect(await controller.evaluate(() => window.__cgEnded)).toEqual(['game_ended']);
+    await controller.waitForFunction(() => window.__cpEnded.length > 0, null, { timeout: 10000 });
+    expect(await controller.evaluate(() => window.__cpEnded)).toEqual(['game_ended']);
     expect(controller.url()).toContain(`/${roomCode}`);
   });
 
-  test('cg-accent-color meta tracks the player color (CONTRACT §4)', async ({ page, context }) => {
+  test('cp-accent-color meta tracks the player color (CONTRACT §4)', async ({ page, context }) => {
     const { roomCode } = await createRoom(page);
-    const controller = await joinCouchController(context, roomCode, 'Iris');
+    const controller = await joinCouchPadController(context, roomCode, 'Iris');
     await controller.waitForSelector('#player-identity:not(.hidden)', { timeout: 10000 });
 
     const accentMeta = () => controller.evaluate(() =>
-      document.querySelector('meta[name="cg-accent-color"]').getAttribute('content'));
+      document.querySelector('meta[name="cp-accent-color"]').getAttribute('content'));
     // The meta and the body's --player-color read from the same PLAYER_COLORS
     // entry, so a confirmed color always leaves them exactly equal.
     const metaMatchesPlayerColor = () => controller.evaluate(() => {
-      const meta = document.querySelector('meta[name="cg-accent-color"]').getAttribute('content');
+      const meta = document.querySelector('meta[name="cp-accent-color"]').getAttribute('content');
       const playerColor = getComputedStyle(document.body).getPropertyValue('--player-color').trim();
       return !!playerColor && meta === playerColor;
     });
@@ -106,9 +106,9 @@ test.describe('Couch Games shell contract', () => {
     await expect.poll(metaMatchesPlayerColor).toBe(true);
   });
 
-  test('safe zone honors the launcher --cg-safe-* vars (CONTRACT §5)', async ({ page, context }) => {
+  test('safe zone honors the launcher --cp-safe-* vars (CONTRACT §5)', async ({ page, context }) => {
     const { roomCode } = await createRoom(page);
-    const controller = await joinCouchController(context, roomCode, 'Uma');
+    const controller = await joinCouchPadController(context, roomCode, 'Uma');
     await controller.waitForSelector('#player-identity:not(.hidden)', { timeout: 10000 });
 
     // The lobby's top chrome (#lobby-top-bar) folds the authoritative launcher
@@ -122,7 +122,7 @@ test.describe('Couch Games shell contract', () => {
     // chrome must expand to clear it (covers the split-screen case where the
     // synthetic display cutout bails and only the vars carry the extent).
     await controller.evaluate(() =>
-      document.documentElement.style.setProperty('--cg-safe-top', '60px'));
+      document.documentElement.style.setProperty('--cp-safe-top', '60px'));
     await expect.poll(barPadTop).toBeGreaterThanOrEqual(60);
 
     // Same for the horizontal edges: launcher chrome can float on the right
@@ -134,13 +134,13 @@ test.describe('Couch Games shell contract', () => {
       parseFloat(getComputedStyle(document.querySelector('#lobby-top-bar')).paddingRight));
     expect(await barPadRight()).toBeLessThan(60);
     await controller.evaluate(() =>
-      document.documentElement.style.setProperty('--cg-safe-right', '60px'));
+      document.documentElement.style.setProperty('--cp-safe-right', '60px'));
     await expect.poll(barPadRight).toBeGreaterThanOrEqual(60);
   });
 
   test('in-game player name is hidden (the launcher renders it)', async ({ page, context }) => {
     const { roomCode } = await createRoom(page);
-    const controller = await joinCouchController(context, roomCode, 'Ada');
+    const controller = await joinCouchPadController(context, roomCode, 'Ada');
     await controller.waitForSelector('#player-identity:not(.hidden)', { timeout: 10000 });
 
     // The launcher owns the name in its own chrome, so both in-game surfaces
@@ -162,22 +162,22 @@ test.describe('Couch Games shell contract', () => {
   test('unknown room surfaces room_not_found through gameEnded', async ({ context }) => {
     const controller = await context.newPage();
     await controller.addInitScript(() => {
-      window.__cgEnded = [];
-      window.CouchGamesHost = {
-        gameEnded: (reason) => window.__cgEnded.push(reason),
+      window.__cpEnded = [];
+      window.CouchPadHost = {
+        gameEnded: (reason) => window.__cpEnded.push(reason),
       };
     });
     await fakeRoomNotFound(controller);
-    await controller.goto('/ZZZZ?test=1&cgv=1&cgName=Ada');
-    await controller.waitForFunction(() => window.__cgEnded.length > 0, null, { timeout: 10000 });
-    expect(await controller.evaluate(() => window.__cgEnded)).toEqual(['room_not_found']);
+    await controller.goto('/ZZZZ?test=1&cpv=1&cpName=Ada');
+    await controller.waitForFunction(() => window.__cpEnded.length > 0, null, { timeout: 10000 });
+    expect(await controller.evaluate(() => window.__cpEnded)).toEqual(['room_not_found']);
     expect(controller.url()).toContain('/ZZZZ');
   });
 
-  test('without the host bridge, ?cgv=1 falls back to the normal web bail', async ({ context }) => {
+  test('without the host bridge, ?cpv=1 falls back to the normal web bail', async ({ context }) => {
     const controller = await context.newPage();
     await fakeRoomNotFound(controller);
-    await controller.goto('/ZZZZ?test=1&cgv=1&cgName=Ada');
+    await controller.goto('/ZZZZ?test=1&cpv=1&cpName=Ada');
     await controller.waitForURL(/\?bail=room_not_found/, { timeout: 10000 });
   });
 });

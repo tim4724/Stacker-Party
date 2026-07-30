@@ -1364,21 +1364,21 @@ html, body {
   filter: grayscale(0.7);
 }
 
-/* --- Shell overrides (AirConsole iframe, Couch Games ?cgv=1) --- */
+/* --- Shell overrides (AirConsole iframe, CouchPad ?cpv=1) --- */
 /* Both shells own identity and leaving, so name entry and the lobby back
    button are dead surfaces. See controller-airconsole.js and
-   controller-couchgames.js. */
+   controller-couchpad.js. */
 body.airconsole #name-screen,
-body.couchgames #name-screen { display: none !important; }
+body.couchpad #name-screen { display: none !important; }
 body.airconsole #lobby-back-btn,
-body.couchgames #lobby-back-btn { display: none !important; }
+body.couchpad #lobby-back-btn { display: none !important; }
 
-/* --- Couch Games-only overrides --- */
-/* The Couch Games launcher renders the player's name in its own chrome, so
+/* --- CouchPad-only overrides --- */
+/* The CouchPad launcher renders the player's name in its own chrome, so
    suppress the in-game name on both surfaces (portrait top-bar label and the
    landscape center-top touch-area overlay) to avoid showing it twice. */
-body.couchgames .game-name-label { display: none !important; }
-body.couchgames #touch-area::after { content: none !important; }
+body.couchpad .game-name-label { display: none !important; }
+body.couchpad #touch-area::after { content: none !important; }
 
 /* --- AirConsole-only overrides --- */
 body.airconsole #lobby-join-url { display: none !important; }
