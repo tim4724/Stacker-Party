@@ -73,10 +73,9 @@ window.addEventListener('resize', function() {
 // --- Re-acquire Wake Lock on tab focus (browser releases it on visibility change) ---
 document.addEventListener('visibilitychange', function() {
   if (document.visibilityState !== 'visible') return;
-  if (!wakeLock &&
-      (roomState === ROOM_STATE.PLAYING || roomState === ROOM_STATE.COUNTDOWN)) {
-    acquireWakeLock();
-  }
+  // The browser drops the lock whenever the tab hides, so re-take it for any
+  // open room (not just a running match; the lobby needs it just as much).
+  if (!wakeLock && roomCode) acquireWakeLock();
   // If returning to an already-shown results screen, skip replaying the
   // button fade — see the .results-screen--ready CSS rule.
   if (currentScreen === SCREEN.RESULTS && resultsScreen) {

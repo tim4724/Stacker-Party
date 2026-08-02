@@ -347,6 +347,12 @@ function applyRoomCreated(partyRoomCode, newJoinUrl) {
   // Reset local state
   resetRoomData();
 
+  // Held for as long as the room exists, lobby included: a screensaver over the
+  // lobby hides the QR and the room code, and on a display that gets no input of
+  // its own that is a state the phones cannot recover from. Released only when
+  // the room is torn down (resetToWelcome). Mirrors tvOS isIdleTimerDisabled and
+  // Android FLAG_KEEP_SCREEN_ON, which hold for the same span.
+  acquireWakeLock();
   showScreen(SCREEN.LOBBY);
   updateStartButton();
   startLivenessCheck();

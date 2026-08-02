@@ -61,6 +61,18 @@ final class DisplayModel: ObservableObject {
         PerfProbe.shared?.logEnvironment(sceneSize: boardScene.size)
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
         try? AVAudioSession.sharedInstance().setActive(true)
+        // Hold the screensaver off for the whole session, lobby included, not just
+        // during a match. A lobby that screensavers over hides the QR and the room
+        // code, and it is not merely cosmetic: the screensaver stops the app
+        // rendering, our engine tick is pumped by the scene's update, and the
+        // countdown is a frame accumulator, so a match started from a phone behind
+        // it never advances (input stays gated, no sound) until someone presses the
+        // remote. Prevention is the only lever: tvOS has no API to dismiss a
+        // screensaver that is already up (measured on device), so there is no state
+        // in which letting one start is recoverable from the phone side. The cost is
+        // an idle TV staying awake while the app is open. Mirrors Android's
+        // FLAG_KEEP_SCREEN_ON and the web wake lock, which hold for the same span.
+        UIApplication.shared.isIdleTimerDisabled = true
 
         // Debug-only QR retarget, for testing a branch preview of the controller:
         // set HEXHOST=preview-<branch>.hexstacker.com in the Run scheme. Applied
@@ -524,11 +536,6 @@ extension DisplayModel: DisplayOutput {
 
     func showScreen(_ screen: DisplayScreen) {
         guard screen != state.screen else { return }
-        // Keep the TV awake for the whole match (the display is driven by the
-        // phones, so tvOS would otherwise fire the screensaver mid-game); the
-        // lobby and results let the idle timer run. Mirrors Android's
-        // keepScreenOn == GAME and the web wake lock (countdown -> results).
-        UIApplication.shared.isIdleTimerDisabled = (screen == .game)
         // The scene cross-fades its own layers (boards/ambient) in step with
         // the chrome fade. On match start the coordinator sends the first
         // countdown value in the same call stack, so the scrim and the boards

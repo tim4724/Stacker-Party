@@ -10,6 +10,7 @@ import android.util.Log
 import android.view.Choreographer
 import android.view.KeyEvent
 import android.view.View
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -194,6 +195,14 @@ class MainActivity : ComponentActivity() {
         RelayConfig.controllerBaseUrl.let {
             if (it != RelayConfig.DEFAULT_CONTROLLER_BASE_URL) Log.i("MainActivity", "controller base: $it")
         }
+        // Hold the screensaver off for the whole session, lobby included. A lobby
+        // that screensavers over hides the QR and the room code, and on the TV it is
+        // worse than cosmetic: nothing here gets remote input during a match, and a
+        // covered app stops rendering, which stalls the engine tick the render loop
+        // pumps. On the window, not the board view: the board is GONE in the lobby,
+        // so a view-level flag could never have held there. Mirrors tvOS's
+        // isIdleTimerDisabled and the web wake lock, which hold for the same span.
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         board = BoardSurfaceView(this)
         // The board must NOT grab D-pad focus, or the Compose lobby/results buttons
@@ -578,10 +587,6 @@ class TvDisplayOutput(
         runOnMain {
             if (screen == DisplayScreen.LOBBY) board.stopRenderThread()
             board.visibility = if (screen == DisplayScreen.LOBBY) View.GONE else View.VISIBLE
-            // Keep the TV awake for the whole match (COUNTDOWN+PLAYING = DisplayScreen.GAME);
-            // the TV itself gets no input, so without this the screensaver can fire mid-game.
-            // Mirrors the web wake lock (acquire on countdown, release on results/lobby).
-            board.keepScreenOn = (screen == DisplayScreen.GAME)
         }
         _state.update {
             it.copy(

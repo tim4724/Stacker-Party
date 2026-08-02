@@ -6,7 +6,8 @@
 // Called by: display.js (message handlers and UI buttons)
 // =====================================================================
 
-// Wake Lock — prevent screen sleep during active games
+// Wake Lock: held for as long as the room is open, lobby included (acquired in
+// DisplayConnection.js, released in resetToWelcome), not just during a match.
 function acquireWakeLock() {
   if (!navigator.wakeLock) return;
   navigator.wakeLock.request('screen').then(function(lock) {
@@ -190,7 +191,6 @@ function startNewGame() {
   // Fold in the late joiners who sat out the previous round.
   roomCore.admitWaiting();
   setRoomState(ROOM_STATE.COUNTDOWN);
-  acquireWakeLock();
 
   startCountdown(function() {
     // The transition publishes; that is what moves controllers off the
@@ -295,7 +295,6 @@ function returnToLobby() {
   countdown.remaining = 0;
   // The LOBBY transition below publishes, so the lifted pause rides that.
   clearPause();
-  releaseWakeLock();
 
   if (music) music.stop();
   stopDisplayGame(); // also calls clearCountdownTimers()
@@ -591,7 +590,6 @@ function onPlayerKO(msg) {
 
 function onGameEnd(msg) {
   if (music) music.stop();
-  releaseWakeLock();
   stopDisplayGame();
   prevFrameTime = 0;
   // Intentionally do NOT clear disconnectedQRs here: the set is what keeps
