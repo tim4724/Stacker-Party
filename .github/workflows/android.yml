@@ -60,9 +60,19 @@ jobs:
       #                              screens + Canvas board to PNGs (Robolectric
       #                              native-graphics, no emulator)
       #   :tv:assembleDebug        — the installable TV APK compiles
-      - name: Test, render screenshots, assemble APK
+      #   :tv:assembleRelease      — the SHIPPING variant: R8 + the resource shrinker.
+      #                              Debug exercises neither, and both have broken this
+      #                              app in release only before (WebRTC's JNI entry points
+      #                              stripped as unreachable; the licenses screen's raw
+      #                              resources shrunk away after R8 inlined their R ids —
+      #                              see tv/proguard-rules.pro and res/raw/keep.xml). Those
+      #                              are compile/package-time outcomes, so assembling is
+      #                              enough to catch a keep rule that stops covering.
+      #                              Unsigned-config safe: with no keystore.properties on
+      #                              CI the release build falls back to debug signing.
+      - name: Test, render screenshots, assemble APKs
         working-directory: android
-        run: ./gradlew :core:jvmTest :tv:recordRoborazziDebug :tv:assembleDebug --continue --console=plain --stacktrace
+        run: ./gradlew :core:jvmTest :tv:recordRoborazziDebug :tv:assembleDebug :tv:assembleRelease --continue --console=plain --stacktrace
 
       - name: Upload TV screenshots
         id: screenshots

@@ -33,6 +33,14 @@ import java.net.ServerSocket
  * API 37, and this app targets 36. Re-check when targetSdk moves: if registration needs
  * ACCESS_LOCAL_NETWORK there, discovery of this display stops with nothing but the log line
  * below to say so.
+ *
+ * Threading: unlike the tvOS twin, whose caller is @MainActor throughout, this one is driven
+ * from TWO threads — the game thread (roster/room changes via TvDisplayOutput.syncAdvertisement,
+ * and the relay's onReplaced) and Main (the Activity's onStop/onDestroy). So both entry points
+ * are synchronized: a withdraw() racing an advertise() could otherwise interleave so the
+ * registration lands AFTER the unregister, leaving a record (and its socket) alive for a room
+ * the display has already backgrounded away from — and `advertisedRoom` would then make the
+ * next advertise() a no-op, so nothing would ever take it down.
  */
 class RoomAdvertiser(private val context: Context) {
 
@@ -45,6 +53,7 @@ class RoomAdvertiser(private val context: Context) {
      * Publish [room], replacing any live record. Idempotent: every relay rejoin re-confirms
      * the same room, and re-registering on each one would churn the network for nothing.
      */
+    @Synchronized
     fun advertise(room: String) {
         if (room == advertisedRoom && listener != null) return
         withdraw()
@@ -86,6 +95,7 @@ class RoomAdvertiser(private val context: Context) {
      * player a wasted tap (the code then resolves to nothing and no card appears), but there
      * is no reason to leave one up.
      */
+    @Synchronized
     fun withdraw() {
         listener?.let { runCatching { nsd?.unregisterService(it) } }
         listener = null

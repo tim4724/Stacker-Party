@@ -7,7 +7,6 @@ import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -17,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -32,6 +32,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -94,15 +95,26 @@ fun MusicSwitch(
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(shape)
             .background(if (focused) Tokens.white.copy(alpha = 0.06f) else Color.Transparent, shape)
-            .then(if (focused) Modifier.border(4.dp, Tokens.white, shape) else Modifier)
+            .then(if (focused) Modifier.border(2.dp, Tokens.white, shape) else Modifier)
             // `|| focusedForShot`: the headless host still emits an initial
             // isFocused=false, which would clobber the seeded shot state.
             .onFocusChanged { focused = it.isFocused || focusedForShot }
-            // clickable provides the focus target (see ChromeButton): a separate
-            // Modifier.focusable would steal D-pad focus from the click handler.
-            // The explicit interaction source feeds the press-sink visual above,
-            // which is why indication is null (see ChromeButton).
-            .clickable(interactionSource = interaction, indication = null) { onToggle() }
+            // toggleable, not clickable: it provides the same focus target and press
+            // interactions (it IS clickable underneath, so D-pad focus and activation
+            // are unchanged) and additionally publishes the on/off state to the
+            // accessibility tree — the web control this mirrors carries
+            // `role="switch" aria-checked`, and Role.Switch is how a screen reader
+            // hears the same thing here. The state is announced from the framework's
+            // own localized strings, so nothing is added to strings.xml. The explicit
+            // interaction source feeds the press-sink visual above, which is why
+            // indication is null (see ChromeButton).
+            .toggleable(
+                value = isOn,
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Switch,
+                onValueChange = { onToggle() },
+            )
             .padding(horizontal = rowHeight * 0.5f),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(rowHeight * 0.75f),
