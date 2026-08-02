@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
+import android.provider.Settings
 import android.util.Log
 import android.view.Choreographer
 import android.view.KeyEvent
@@ -317,7 +318,16 @@ class MainActivity : ComponentActivity() {
                             // frames' time so it can't eat into the 3-2-1 countdown.
                             acc = dt
                         }
-                        coordinator.tick(acc)
+                        // Branch rather than time unconditionally: the tick path is the
+                        // one this app spends its effort defending, and a disabled HUD
+                        // should cost it a volatile read, not two clock calls a frame.
+                        if (board.perfHudEnabled) {
+                            val t0 = System.nanoTime()
+                            coordinator.tick(acc)
+                            board.recordTick(System.nanoTime() - t0)
+                        } else {
+                            coordinator.tick(acc)
+                        }
                         acc = 0.0
                     }
                 }
@@ -388,6 +398,37 @@ class MainActivity : ComponentActivity() {
         Log.i("MainActivity", "requested minimal post-processing (ALLM); display reports supported=$supported")
     }
 
+    /**
+     * Pick up the debug frame-cost HUD switch (see [com.hexstacker.tv.render.PerfHud]):
+     *
+     *   adb shell settings put global hexstacker_perf 1   # 0 (or delete) turns it off
+     *
+     * `Settings.Global` rather than a system property: an app can read it with no
+     * permission and no hidden API (RoomAdvertiser already reads DEVICE_NAME the same
+     * way), whereas reaching a `debug.*` prop means either the @hide SystemProperties
+     * class or shelling out to `getprop` — one is a platform-version gamble, the other
+     * spawns a process from an app SELinux keeps on a short leash.
+     *
+     * Deliberately NOT the `hexHost` launch extra used above: that one is debuggable-only
+     * by design, and the point of this HUD is measuring the RELEASE build — R8 on,
+     * baseline profile installed — which is the only build whose numbers describe what a
+     * player actually gets.
+     *
+     * Re-read on every foreground, so toggling it is settings-put + Home + back rather
+     * than a reinstall. One cached provider read per onStart, off the main thread.
+     */
+    private fun refreshPerfHudSetting() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val on = runCatching {
+                Settings.Global.getInt(contentResolver, "hexstacker_perf", 0) != 0
+            }.getOrDefault(false)
+            if (on != board.perfHudEnabled) {
+                board.perfHudEnabled = on
+                Log.i("MainActivity", "perf HUD ${if (on) "enabled" else "disabled"}")
+            }
+        }
+    }
+
     override fun onPause() {
         super.onPause()
         if (!isFinishing) ui.setQrPending(true)
@@ -441,6 +482,7 @@ class MainActivity : ComponentActivity() {
      *  retired the room), and restore music only if a match is actively running. */
     override fun onStart() {
         super.onStart()
+        refreshPerfHudSetting()
         // Every foreground entry (launch included): hold the audio output out of
         // standby so the countdown "3" — the first real sound of a session — doesn't
         // play over the output path's cold start (audible as a distorted first tick).

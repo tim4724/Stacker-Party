@@ -77,7 +77,14 @@ class RenderThroughputTest {
             json.decodeFromString<GameSnapshot>(js)
         }
 
-        val sizes = listOf(1920 to 1080, 1600 to 900, 1280 to 720)
+        // 4K first: it is the case a 1080p desk monitor cannot show you. Forcing the
+        // logical display up with `wm size` is refused above the panel's own resolution,
+        // and a simulated 4K overlay display measures SurfaceFlinger's downscale as much
+        // as our raster — whereas this rig renders offscreen into an ImageReader, so the
+        // panel is irrelevant and the GPU cost is the real one. 3 buffers at 4K is ~100 MB
+        // of graphics memory on top of the smaller rigs, which is why this stays a
+        // local-only test on real hardware (it is not in CI).
+        val sizes = listOf(3840 to 2160, 1920 to 1080, 1600 to 900, 1280 to 720)
         val rigs = sizes.map { (w, h) ->
             lateinit var board: BoardSurfaceView
             instr.runOnMainSync {

@@ -199,6 +199,14 @@ class BoardSurfaceView @JvmOverloads constructor(
     @Volatile private var running = false
     private var renderThread: Thread? = null
 
+    /** Debug frame-cost HUD (see [PerfHud]). Enabled from the `hexstacker_perf` global
+     *  setting on every foreground; off costs one volatile read per frame. */
+    @Volatile var perfHudEnabled = false
+    private val perfHud = PerfHud()
+
+    /** Game thread: feed one coordinator-tick duration to the HUD. */
+    fun recordTick(ns: Long) = perfHud.recordTick(ns)
+
     // Bumped whenever visible content changes; the render thread compares it against
     // the last-drawn value to idle-skip identical frames. Writers span the game thread
     // (snapshots, events, disconnects) AND Main (surface/config changes); the `++` is
@@ -406,7 +414,21 @@ class BoardSurfaceView @JvmOverloads constructor(
                         sleep(8)
                         continue
                     }
+                    // Time the dequeue and the record separately: blocked-in-lock is the
+                    // GPU-backpressure signal, drawFrame is the CPU cost (see PerfHud).
+                    val lockedNs = if (perfHudEnabled) System.nanoTime() else 0L
                     animating = drawFrame(canvas)
+                    if (perfHudEnabled) {
+                        val drawnNs = System.nanoTime()
+                        // Record BEFORE painting, so the HUD is not in its own numbers.
+                        perfHud.recordFrame(lockedNs - lastDrawStartNs, drawnNs - lockedNs)
+                        perfHud.draw(
+                            canvas,
+                            surfaceH,
+                            (surfaceW * Theme.Size.tvOverscan).toFloat(),
+                            (surfaceH * Theme.Size.tvOverscan).toFloat(),
+                        )
+                    }
                     lastDrawnVersion = version
                 } catch (t: Throwable) {
                     // Surface-teardown races land here benignly (running flips false first);
