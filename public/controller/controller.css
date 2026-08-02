@@ -1385,7 +1385,7 @@ html, body {
   filter: grayscale(0.7);
 }
 
-/* --- Shell overrides (AirConsole iframe, CouchPad ?cpv=1) --- */
+/* --- Shell overrides (AirConsole iframe, CouchPad ?cpName) --- */
 /* Both shells own identity and leaving, so name entry and the lobby back
    button are dead surfaces. See controller-airconsole.js and
    controller-couchpad.js. */

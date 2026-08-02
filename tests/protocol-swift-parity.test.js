@@ -187,16 +187,18 @@ test('the countdown beat matches the canonical constants', () => {
 
 test('the controller-URL template registered on create mirrors the web shape', () => {
   // Same guard as tests/protocol-android-parity.test.js: every display flavor
-  // registers <base>/{room}#{instance} on create so a code-only join resolves
-  // to the same controller page regardless of which display hosts the room.
+  // registers <base>/{room}?cpp=<platform>#{instance} on create so a code-only
+  // join resolves to the same controller page regardless of which display hosts
+  // the room. `cpp` is a fixed vocabulary with no free-text companion: the
+  // launcher renders its own localized wording for the platform.
   //
   // Derived from the LIVE base (not the prod literal) on purpose: a debug launch
   // pointed at a branch preview must register the preview template too, so the QR
   // and a code-only join resolve to the same origin.
   assert.match(
     swiftEnum('Protocol'),
-    /controllerURLTemplate: String \{ "\\\(controllerBaseURL\)\/\{room\}#\{instance\}" \}/,
-    'Swift controllerURLTemplate no longer derives <base>/{room}#{instance} from controllerBaseURL',
+    /controllerURLTemplate: String \{ "\\\(controllerBaseURL\)\/\{room\}\?cpp=tvos#\{instance\}" \}/,
+    'Swift controllerURLTemplate no longer derives <base>/{room}?cpp=tvos#{instance} from controllerBaseURL',
   );
   assert.strictEqual(swiftStringConsts(swiftEnum('Protocol')).defaultControllerBaseURL, 'https://hexstacker.com');
 });

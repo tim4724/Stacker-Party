@@ -1,15 +1,16 @@
 'use strict';
 
 // =====================================================================
-// CouchPad Controller Bootstrap — Contract v1
+// CouchPad Controller Bootstrap
 // Loaded after ControllerConnection.js / ControllerGame.js (it wraps their
-// globals at load time) but BEFORE controller.js init. Self-gated on ?cpv=1,
-// the CouchPad shell's contract-version param, so this file is inert in
+// globals at load time) but BEFORE controller.js init. Self-gated on ?cpName,
+// which the launcher is the only thing to send, so this file is inert in
 // plain browsers, gallery iframes, and the AirConsole build (which also
-// strips it).
+// strips it). There is no version param: every touchpoint is feature-detected,
+// which is how the launcher adds capabilities without a coordinated release.
 //
 // Contract touchpoints:
-//   launcher -> game   ?cpv=1&cpName=<name>              join URL params
+//   launcher -> game   ?cpName=<name>                    join URL param
 //   launcher -> game   window.CouchPad.setName(name)     live rename
 //   game -> launcher   window.CouchPadHost.gameEnded(r)  terminal end
 //     r: 'game_ended' | 'room_not_found' | 'game_full' | 'replaced'
@@ -20,14 +21,16 @@
 
 (function () {
   var params = new URLSearchParams(location.search);
-  if (params.get('cpv') !== '1') return;
 
   // The launcher guarantees a non-blank name of at most 16 chars; sanitize
   // anyway (same trim + length cap the name input's maxlength enforces).
   function sanitizeName(raw) {
     return String(raw == null ? '' : raw).trim().slice(0, 16);
   }
+  // A usable cpName IS the gate: the launcher is the only thing that sends it,
+  // and the shell can't run without the identity it carries.
   var shellName = sanitizeName(params.get('cpName'));
+  if (!shellName) return;
 
   // CSS hooks — hides #name-screen and #lobby-back-btn (see the
   // body.couchpad rules in controller.css).
@@ -47,10 +50,8 @@
   // joining as a fresh player.
   var _originalConnect = connect;
   connect = function () {
-    if (shellName) {
-      playerName = shellName;
-      playerNameIsAuto = false;
-    }
+    playerName = shellName;
+    playerNameIsAuto = false;
     try {
       // A player is only in one room at a time — clean up other rooms' ids.
       for (var i = localStorage.length - 1; i >= 0; i--) {
@@ -82,7 +83,7 @@
   // location.replace('/?bail=…') — the display root is meaningless inside
   // the shell's WebView. Feature-detected so the same deployed controller
   // falls back to normal web behavior when the bridge is absent (plain
-  // browser opening a ?cpv=1 URL). Connection cleanup mirrors the original:
+  // browser opening a ?cpName URL). Connection cleanup mirrors the original:
   // the launcher pops the WebView on gameEnded, but until it does this page
   // must not keep pinging a room it considers dead.
   var _originalBailToWelcome = bailToWelcome;

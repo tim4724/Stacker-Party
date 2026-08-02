@@ -51,7 +51,7 @@ const CONTROLLER_SCRIPTS = [
   // Removal steps are in the file header.
   '/controller/ControllerLegacyDisplay.js',
   // CouchPad shell bootstrap (Android/iOS launcher WebView). Self-gated on
-  // ?cpv=1 so it's inert everywhere else. Must follow ControllerConnection/
+  // ?cpName so it's inert everywhere else. Must follow ControllerConnection/
   // ControllerGame (wraps connect/bailToWelcome at load time) and precede
   // controller.js (whose init reads skipNameScreen). The AirConsole generator
   // strips it from the AC entry.
@@ -129,7 +129,7 @@ const AC_DEAD = [
   // bootstrap stubs buildQRMatrix to return null, so the encoder is never
   // called. Dropping it also keeps third-party (MIT) code out of the AC ZIP.
   '/shared/qrcode-generator.js',
-  // CouchPad shell bootstrap, self-gated on ?cpv=1 — never set in AC.
+  // CouchPad shell bootstrap, self-gated on ?cpName, never set in AC.
   '/controller/controller-couchpad.js',
   // An AC display ships in the same ZIP as its controller, so it can never be
   // older than it: there is no version skew for the legacy shim to cover.

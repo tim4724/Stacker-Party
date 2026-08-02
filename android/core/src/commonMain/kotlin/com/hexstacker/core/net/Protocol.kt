@@ -48,8 +48,15 @@ object RelayConfig {
      * and hands the result to clients that hold only the room code (`joined`,
      * `GET /room/:code`). Same shape as the QR join URL the web display registers
      * (controllerUrlTemplate in DisplayConnection.js).
+     *
+     * `cpp` is the CouchPad device tag (§6): it names the box to a launcher that
+     * resolved a TYPED room code, the one join path with no other way to know. The
+     * vocabulary is fixed (web/tvos/androidtv) and the launcher renders its own
+     * localized wording from it, so there is no free-text field for a hardware
+     * model. The QR join URL stays clean on every platform: whoever scans it is
+     * already looking at the screen.
      */
-    val controllerUrlTemplate: String get() = "$controllerBaseUrl/{room}#{instance}"
+    val controllerUrlTemplate: String get() = "$controllerBaseUrl/{room}?cpp=androidtv#{instance}"
 
     /**
      * Point the QR / join URL at another origin, e.g. a branch preview. Call before the

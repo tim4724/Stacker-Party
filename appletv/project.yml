@@ -73,14 +73,18 @@ targets:
         # Only standard TLS (wss/https) is used — exempt from export compliance,
         # so uploads skip the per-build encryption questionnaire.
         ITSAppUsesNonExemptEncryption: false
-        # The WebRTC input fastlane (WebRTCFastlane.swift) runs ICE connectivity
-        # checks to a phone controller on the same Wi-Fi (host-candidate pairs),
-        # which trips the tvOS local-network permission. Declare the purpose string
-        # so the prompt reads sensibly and App Review doesn't flag a missing usage
-        # description. Relay-only input still works if the user declines.
+        # Two uses trip the tvOS local-network permission: the WebRTC input
+        # fastlane (WebRTCFastlane.swift) runs ICE connectivity checks to a phone
+        # controller on the same Wi-Fi (host-candidate pairs), and RoomAdvertiser
+        # publishes the open room over Bonjour so a launcher app can offer a
+        # one-tap join. Declare the purpose string so the prompt reads sensibly and
+        # App Review doesn't flag a missing usage description. Declining costs
+        # neither path: input falls back to the relay, and the on-screen QR and
+        # room code remain the universal way in.
         NSLocalNetworkUsageDescription: >-
           HexStacker connects to phone controllers on your local network so their
-          taps reach the game with the lowest possible delay.
+          taps reach the game with the lowest possible delay, and lets phones
+          nearby find this room without scanning the code.
         # The bundled LiveKitWebRTC binary references the camera and microphone
         # capture APIs (part of WebRTC's media stack), so Apple's static scanner
         # requires purpose strings even though HexStacker only uses WebRTC data

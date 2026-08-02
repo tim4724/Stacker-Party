@@ -35,7 +35,16 @@ public enum Protocol {
     /// {room}/{instance} and hands the result to clients that hold only the
     /// room code (`joined`, `GET /room/:code`). Same shape as the QR join URL
     /// the web display registers (controllerUrlTemplate in DisplayConnection.js).
-    public static var controllerURLTemplate: String { "\(controllerBaseURL)/{room}#{instance}" }
+    ///
+    /// `cpp` is the CouchPad device tag (§6), and this template is the ONE place
+    /// the app declares which box it is. Every route the launcher can arrive by
+    /// reads it from here: a typed code and a §8 nearby tap both resolve through
+    /// the relay (the advertisement itself carries nothing but the room code), and
+    /// it survives into the launcher's rejoin card after the room is gone. The QR
+    /// join URL stays clean: whoever scans it is looking at the TV. The vocabulary
+    /// is fixed (web/tvos/androidtv) and the launcher renders its own localized
+    /// wording from it, so there is no free-text field here for a model name.
+    public static var controllerURLTemplate: String { "\(controllerBaseURL)/{room}?cpp=tvos#{instance}" }
 
     /// Point the QR / join URL at another origin, e.g. a branch preview. Call
     /// before the relay connects: the origin also rides the `create` frame as the

@@ -24,6 +24,7 @@ final class DisplayModel: ObservableObject {
     private var relay: RelayClient?
     private var coordinator: DisplayCoordinator?
     private let music = MusicPlayer()
+    private let advertiser = RoomAdvertiser()
 
     private(set) var galleryMode = ProcessInfo.processInfo.environment["HEXGALLERY"] != nil
     private var galleryIndex = 0
@@ -207,6 +208,9 @@ final class DisplayModel: ObservableObject {
         relay.onReplaced = { [weak self] in
             guard let self else { return }
             self.coordinator?.setRelayConnected(false)
+            // Terminal: another display owns the room now, so ours must stop
+            // advertising it (the new display advertises its own).
+            self.advertiser.withdraw()
             withAnimation(Self.fade) {
                 self.state.replaced = true
                 self.state.connection = .closed
@@ -304,6 +308,12 @@ final class DisplayModel: ObservableObject {
     func appDidEnterBackground() {
         backgroundedSinceResign = true
         coordinator?.displayDidEnterBackground()
+        // Stop offering one-tap join while the socket is suspended: the room may
+        // survive the background, but nothing is watching it until the rejoin, so
+        // a discovered join would land a player in front of a dead display. The
+        // foreground's roomReady (from `joined`, or from the fresh room an empty
+        // lobby opens) re-advertises.
+        advertiser.withdraw()
         guard relayStarted else { return }   // HEXSHOT/HEXLOBBY/HEXDEMO never connect
         relay?.suspend()
         // Graceful resume exists for rooms with PLAYERS. An empty lobby's
@@ -561,6 +571,7 @@ extension DisplayModel: DisplayOutput {
         self.joinURL = joinURL
         self.qrText = qrText
         PerfProbe.shared?.logRoom(joinURL)
+        syncAdvertisement()
         // One transaction for the room-confirm reveal: the QR pattern and
         // join line fade in (their opacities key on the new lobby data) and
         // the pending dim lifts. Scoped .animation(value:) modifiers in the
@@ -577,6 +588,27 @@ extension DisplayModel: DisplayOutput {
         // color from this state, so a mid-game host handoff retints them via
         // plain recomposition — no imperative retint plumbing.
         state.lobby = buildLobby(players: players, hostPeerIndex: hostPeerIndex)
+        syncAdvertisement(playerCount: players.count)
+    }
+
+    /// Offer the room to CouchPad launchers on the LAN, for exactly as long as it
+    /// is joinable (contract §8). Gated on relayStarted so the harness modes, whose
+    /// rooms are fixtures, never publish one; a recreated room replaces the record.
+    ///
+    /// A full room is withdrawn and republished when a slot frees. The launcher
+    /// does hide a full room when it resolves the code, but it only re-resolves
+    /// when a record appears, so going quiet is what takes the stale card down.
+    ///
+    /// `playerCount` lets updateLobby reuse the roster it was just handed instead
+    /// of a second trip through the room bridge (same reason buildLobby takes one).
+    /// Android's mirror needs no such parameter: it keeps the roster in a field.
+    private func syncAdvertisement(playerCount: Int? = nil) {
+        let count = playerCount ?? coordinator?.roster().count ?? 0
+        guard relayStarted, let room, count < EngineConstants.maxPlayers else {
+            advertiser.withdraw()
+            return
+        }
+        advertiser.advertise(room: room)
     }
 
     private func buildLobby(players: [PlayerRecord]? = nil, hostPeerIndex: Int? = nil) -> LobbyData {

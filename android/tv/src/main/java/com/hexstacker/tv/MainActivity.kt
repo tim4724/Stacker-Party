@@ -43,6 +43,7 @@ import com.hexstacker.core.display.DisplayOutput
 import com.hexstacker.core.display.DisplayScreen
 import com.hexstacker.core.display.ResultEntry
 import com.hexstacker.core.engine.EngineBridge
+import com.hexstacker.core.model.EngineConstants
 import com.hexstacker.core.model.GameEvent
 import com.hexstacker.core.model.GameSnapshot
 import com.hexstacker.core.net.RelayClient
@@ -105,6 +106,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var fastlane: WebRtcFastlane
     private lateinit var coordinator: DisplayCoordinator
     private lateinit var ui: TvDisplayOutput
+    private lateinit var advertiser: RoomAdvertiser
 
     // One QuickJS runtime for the whole app: the session-lived room core plus a game
     // re-inited per match (Bridge.create, no bundle re-parse). Started as soon as the
@@ -219,7 +221,8 @@ class MainActivity : ComponentActivity() {
         val mainHandler = Handler(Looper.getMainLooper())
         // The coordinator now calls DisplayOutput from the game thread, so the parts that
         // genuinely need Main (ExoPlayer, View lifecycle) get posted there.
-        ui = TvDisplayOutput(board, music, runOnMain = { block -> mainHandler.post(block) })
+        advertiser = RoomAdvertiser(this)
+        ui = TvDisplayOutput(board, music, runOnMain = { block -> mainHandler.post(block) }, advertiser = advertiser)
         // Relay callbacks land on the game thread, not Main: every consumer is thread-safe
         // (coordinator actions are a channel send, UI state goes through _state.update),
         // and relay-fallback INPUT otherwise queues behind Compose/Choreographer on Main,
@@ -237,7 +240,9 @@ class MainActivity : ComponentActivity() {
         // RelayClient already disables reconnect and emits CLOSED; flag it as the
         // terminal "replaced" state so the overlay drops the RECONNECT button (re-arming
         // reconnect would only be evicted again). Fires right after the CLOSED state above.
-        relay.onReplaced = { ui.setReplaced() }
+        // Terminal: another display owns the room now, so ours must stop advertising
+        // it (the new display advertises its own). Mirrors appletv relay.onReplaced.
+        relay.onReplaced = { advertiser.withdraw(); ui.setReplaced() }
 
         // Low-latency P2P controller input over a WebRTC DataChannel; the relay stays the
         // fallback (a controller whose fastlane can't open just sends input over the socket).
@@ -412,6 +417,10 @@ class MainActivity : ComponentActivity() {
         super.onStop()
         stoppedSincePause = true
         music.pauseForBackground()
+        // A backgrounded display is not something to offer a one-tap join into: the socket
+        // suspends below and the room is only reachable again after the rejoin, which
+        // republishes through roomReady. Mirrors appletv appDidEnterBackground.
+        advertiser.withdraw()
         if (!isFinishing) {
             fastlane.closeAll() // controllers re-offer their P2P channels on rejoin
             relay.suspendSocket()
@@ -489,6 +498,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        advertiser.withdraw() // the room closes below; take its record down with it
         coordinator.stop()
         relay.shutdown() // stop the RelayClient serial executor so its worker thread dies
         fastlane.dispose() // release peer connections + the WebRTC factory
@@ -550,6 +560,8 @@ class TvDisplayOutput(
     private val board: BoardSurfaceView,
     private val music: MusicPlayer,
     private val runOnMain: (Runnable) -> Unit,
+    /** null in the instrumentation harness, which hosts no real room. */
+    private val advertiser: RoomAdvertiser? = null,
 ) : DisplayOutput {
 
     // Writers span two threads (the game thread for coordinator callbacks, Main for the
@@ -602,12 +614,27 @@ class TvDisplayOutput(
         // The relay confirmed the room (`created`, or `joined` after a rejoin), so the
         // QR is trustworthy again — this is the ONLY place that clears the pending dim.
         _state.update { it.copy(lobby = buildLobby(), qrPending = false) }
+        syncAdvertisement()
     }
 
     override fun updateLobby(players: List<PlayerRecord>, hostPeerIndex: Int?) {
         roster = players
         hostSlot = hostPeerIndex?.let { players.firstOrNull { p -> p.peerIndex == it }?.colorSlot }
         _state.update { it.copy(lobby = buildLobby()) }
+        syncAdvertisement()
+    }
+
+    /**
+     * Offer the room to CouchPad launchers on the LAN, for exactly as long as it is
+     * joinable (contract §8). A full room is withdrawn and republished when a slot frees:
+     * the launcher does hide a full room when it resolves the code, but it only re-resolves
+     * when a record appears, so going quiet is what takes the stale card down. Mirrors
+     * appletv DisplayModel.syncAdvertisement.
+     */
+    private fun syncAdvertisement() {
+        val advertiser = advertiser ?: return
+        if (room.isEmpty() || roster.size >= EngineConstants.MAX_PLAYERS) advertiser.withdraw()
+        else advertiser.advertise(room)
     }
 
     override fun showCountdown(value: CountdownValue) {
@@ -706,6 +733,7 @@ class TvDisplayOutput(
         hostSlot = null
         // Blank card, not a dimmed stale one.
         _state.update { it.copy(lobby = buildLobby(), qrPending = false) }
+        syncAdvertisement()
     }
 
     fun setConnectionState(state: RelayTransport.ConnectionState, reconnectAttempt: Int = 0) {

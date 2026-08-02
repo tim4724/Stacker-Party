@@ -7,7 +7,7 @@ const {
 } = require('./helpers');
 
 /**
- * CouchPad Controller Contract v1 (?cpv=1) against a stubbed launcher
+ * CouchPad Controller Contract (?cpName is the shell gate) against a stubbed launcher
  * bridge: the join URL injects the player name, the shell drives live
  * renames via window.CouchPad.setName(), and terminal session ends
  * surface through window.CouchPadHost.gameEnded(reason) instead of a
@@ -23,7 +23,7 @@ async function joinCouchPadController(context, roomCode, name) {
       gameEnded: (reason) => window.__cpEnded.push(reason),
     };
   }, roomCode);
-  await page.goto(`/${roomCode}?test=1&cpv=1&cpName=${encodeURIComponent(name)}`);
+  await page.goto(`/${roomCode}?test=1&cpName=${encodeURIComponent(name)}`);
   await waitForFont(page);
   return page;
 }
@@ -168,16 +168,16 @@ test.describe('CouchPad shell contract', () => {
       };
     });
     await fakeRoomNotFound(controller);
-    await controller.goto('/ZZZZ?test=1&cpv=1&cpName=Ada');
+    await controller.goto('/ZZZZ?test=1&cpName=Ada');
     await controller.waitForFunction(() => window.__cpEnded.length > 0, null, { timeout: 10000 });
     expect(await controller.evaluate(() => window.__cpEnded)).toEqual(['room_not_found']);
     expect(controller.url()).toContain('/ZZZZ');
   });
 
-  test('without the host bridge, ?cpv=1 falls back to the normal web bail', async ({ context }) => {
+  test('without the host bridge, ?cpName falls back to the normal web bail', async ({ context }) => {
     const controller = await context.newPage();
     await fakeRoomNotFound(controller);
-    await controller.goto('/ZZZZ?test=1&cpv=1&cpName=Ada');
+    await controller.goto('/ZZZZ?test=1&cpName=Ada');
     await controller.waitForURL(/\?bail=room_not_found/, { timeout: 10000 });
   });
 });

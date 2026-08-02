@@ -664,10 +664,16 @@ function getBaseUrl() {
 // URL shape: instance in the fragment, kept out of request logs. The relay
 // accepts only absolute https templates and rejects the whole create on an
 // invalid one, so plain-http origins (local dev, e2e) register none.
+//
+// `cpp` names the display to a launcher that resolved a TYPED room code, the one
+// join path with nothing else to go on. The vocabulary is fixed (web/tvos/androidtv)
+// and the launcher renders its own localized wording from it, so there is no
+// free-text field here for a browser name. The QR join URL stays clean: whoever
+// scans it is already looking at the screen.
 function controllerUrlTemplate() {
   var base = getBaseUrl().replace(/\/+$/, '');
   if (base.indexOf('https://') !== 0) return undefined;
-  return base + '/{room}#{instance}';
+  return base + '/{room}?cpp=web#{instance}';
 }
 
 function fetchBaseUrl() {
