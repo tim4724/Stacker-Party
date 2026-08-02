@@ -76,7 +76,7 @@ fun ConnectionOverlay(
             // attempt == 0 is the heartbeat path's unnumbered immediate retry:
             // heading-only, matching the web's empty status line.
             if (!disconnected && attempt > 0) {
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(10.5.dp))
                 Text(
                     // "Attempt N of M" (web clamps N to M).
                     text = stringResource(R.string.attempt_n_of_m, attempt.coerceAtMost(maxAttempts), maxAttempts),
@@ -84,11 +84,11 @@ fun ConnectionOverlay(
                     color = Tokens.textSecondary,
                     // Legible from the couch (web A2 .game-overlay__status:
                     // clamp(1.2rem,2.4vh,1.6rem)).
-                    fontSize = vp.vhSp(12.8f, 2.4f, 17.1f),
+                    fontSize = vp.vhSp(19.2f, 2.4f, 25.6f),
                 )
             }
             if (disconnected && showReconnect) {
-                Spacer(Modifier.height(40.dp))
+                Spacer(Modifier.height(30.dp))
                 ChromeButton(
                     text = stringResource(R.string.reconnect),
                     primary = true,
@@ -98,7 +98,7 @@ fun ConnectionOverlay(
                         horizontal = vp.vwDp(24f, 3f, 48f),
                         vertical = vp.vhDp(14.4f, 2f, 27.2f),
                     ),
-                    minWidth = vp.vhDp(220f, 26f, 340f),
+                    minWidth = vp.vhDp(260f, 34f, 420f),
                     onClick = onReconnect,
                     focusRequester = focus,
                 )

@@ -68,8 +68,8 @@ fun ChromeButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     focusRequester: FocusRequester? = null,
-    fontSize: TextUnit = 18.sp,
-    contentPadding: PaddingValues = PaddingValues(horizontal = 28.dp, vertical = 14.dp),
+    fontSize: TextUnit,
+    contentPadding: PaddingValues,
     minWidth: Dp = Dp.Unspecified,
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -103,7 +103,7 @@ fun ChromeButton(
         else -> Modifier.background(Tokens.bgCard, shape) // .btn-primary:disabled
     }
     // Borderless at rest (A2); focus adds the white ring.
-    val ringModifier = if (focused) Modifier.border(4.dp, Tokens.white, shape) else Modifier
+    val ringModifier = if (focused) Modifier.border(2.dp, Tokens.white, shape) else Modifier
     val textColor = when {
         !enabled -> Tokens.textSecondary
         primary -> Tokens.btnPrimaryText

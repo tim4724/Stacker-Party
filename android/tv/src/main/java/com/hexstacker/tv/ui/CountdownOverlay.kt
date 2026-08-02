@@ -42,7 +42,9 @@ fun CountdownOverlay(value: CountdownValue, modifier: Modifier = Modifier) {
             .background(Tokens.overlayBg), // web: var(--overlay-bg), flat
         contentAlignment = Alignment.Center,
     ) {
-        val fontSize = min(maxHeight.value * 0.15f, 224f).sp // clamp(6rem,15vh,14rem)
+        // #countdown-overlay clamp(6rem,15vh,14rem). Hand-rolling this was a third
+        // unit convention in the file (vh term in dp, cap in raw web px, floor dropped).
+        val fontSize = Vp(maxWidth.value, maxHeight.value).vhSp(96f, 15f, 224f)
         val isNumber = value is CountdownValue.Number
         val text = when (value) {
             is CountdownValue.Number -> value.n.toString() // literal display value (untranslated)
@@ -93,7 +95,7 @@ fun CountdownOverlay(n: Int, modifier: Modifier = Modifier) {
     CountdownOverlay(if (n <= 0) CountdownValue.Go else CountdownValue.Number(n), modifier)
 }
 
-@Preview(widthDp = 1280, heightDp = 720)
+@Preview(widthDp = 960, heightDp = 540)
 @Composable
 private fun CountdownPreview() {
     CountdownOverlay(3)

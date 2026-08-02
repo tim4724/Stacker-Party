@@ -88,9 +88,9 @@ fun AboutScreen(
             val overscan = Theme.Size.tvOverscan.toFloat() // TV title-safe, each edge
             val overscanH = (vp.wDp * overscan).dp
             val overscanV = (vp.hDp * overscan).dp
-            // Card width / gaps mirror the tvOS AboutOverlay metrics (cardW 360px,
+            // Card width / gaps mirror the tvOS AboutView metrics (cardW 360px,
             // row gap 96px, cluster gap ~58px at 1080p) so the two TV ports align.
-            val cardW = vp.vminDp(202.5f, 33.3f, 240f)
+            val cardW = vp.vminDp(303.75f, 33.3f, 360f)
 
             // No on-screen back hint: the remote's Back button navigates back
             // implicitly (matching the tvOS port and Apple's TV HIG).
@@ -101,10 +101,10 @@ fun AboutScreen(
             Column(
                 Modifier.align(Alignment.Center).padding(horizontal = overscanH),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(vp.vhDp(24f, 5.4f, 38.9f)),
+                verticalArrangement = Arrangement.spacedBy(vp.vhDp(36f, 5.4f, 58.35f)),
             ) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(vp.vwDp(32f, 6f, 64f)),
+                    horizontalArrangement = Arrangement.spacedBy(vp.vwDp(48f, 6f, 96f)),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     LegalQrCard(
@@ -127,10 +127,10 @@ fun AboutScreen(
                     tint = Tokens.accentPrimary,
                     onClick = onOpenLicenses,
                     focusRequester = licensesFocus,
-                    fontSize = vp.vhSp(15f, 2.7f, 19.5f),
+                    fontSize = vp.vhSp(22.5f, 2.7f, 29.25f),
                     contentPadding = PaddingValues(
-                        horizontal = vp.vwDp(28f, 3.6f, 48f),
-                        vertical = vp.vhDp(10f, 2.4f, 18f),
+                        horizontal = vp.vwDp(42f, 3.6f, 72f),
+                        vertical = vp.vhDp(15f, 2.4f, 27f),
                     ),
                 )
             }
@@ -140,7 +140,7 @@ fun AboutScreen(
             Text(
                 text = version,
                 style = AppType.versionTag.copy(
-                    fontSize = vp.vhSp(15f, 2.6f, 18f),
+                    fontSize = vp.vhSp(22.5f, 2.6f, 27f),
                     color = Tokens.textFaint,
                 ),
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = overscanV),
@@ -168,21 +168,21 @@ private fun LegalQrCard(
     val qr: ImageBitmap? by rememberQrBitmap(url, 480) // crisp at 1080p
     val cardShape = RoundedCornerShape(Tokens.radiusXl)
 
-    // Sizes mirror the tvOS AboutOverlay card fractions (pad 7%, gap 5%, label
+    // Sizes mirror the tvOS AboutView card fractions (pad 7%, gap 5%, label
     // 0.58 of the 13% label band, URL 0.6 of the 10% URL band, QR inset 4%).
     Column(
         modifier
             .clip(cardShape)
             .background(Tokens.bgCard, cardShape)
-            .border(1.dp, Tokens.border, cardShape)
-            .padding(vp.vminDp(10f, 2.35f, 17f)),
-        verticalArrangement = Arrangement.spacedBy(vp.vminDp(8f, 1.7f, 12.5f)),
+            .border(0.5.dp, Tokens.border, cardShape)
+            .padding(vp.vminDp(15f, 2.35f, 25.5f)),
+        verticalArrangement = Arrangement.spacedBy(vp.vminDp(12f, 1.7f, 18.75f)),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
             text = label.uppercase(), // chrome label style, like #qr-label
             style = AppType.qrScanLabel.copy(
-                fontSize = vp.vminSp(13f, 2.5f, 18f),
+                fontSize = vp.vminSp(19.5f, 2.5f, 27f),
                 letterSpacing = 0.12.em,
                 color = Tokens.textPrimary,
             ),
@@ -197,7 +197,7 @@ private fun LegalQrCard(
                 .aspectRatio(1f)
                 .clip(RoundedCornerShape(Tokens.radiusLg))
                 .background(Tokens.white)
-                .padding(vp.vminDp(4f, 1.15f, 9f)),
+                .padding(vp.vminDp(6f, 1.15f, 13.5f)),
             contentAlignment = Alignment.Center,
         ) {
             if (qr != null) {
@@ -215,14 +215,14 @@ private fun LegalQrCard(
         BasicText(
             text = url.removePrefix("https://"),
             style = AppType.joinHost.copy(
-                fontSize = vp.vminSp(11f, 2f, 14.4f),
+                fontSize = vp.vminSp(16.5f, 2f, 21.6f),
                 color = Tokens.textSecondary,
                 textAlign = TextAlign.Center,
             ),
             maxLines = 1,
             autoSize = TextAutoSize.StepBased(
-                minFontSize = 8.sp,
-                maxFontSize = vp.vminSp(11f, 2f, 14.4f),
+                minFontSize = 6.sp,
+                maxFontSize = vp.vminSp(16.5f, 2f, 21.6f),
                 stepSize = 0.25.sp,
             ),
             modifier = Modifier.fillMaxWidth(),
@@ -230,7 +230,7 @@ private fun LegalQrCard(
     }
 }
 
-@Preview(widthDp = 1280, heightDp = 720)
+@Preview(widthDp = 960, heightDp = 540)
 @Composable
 private fun AboutPreview() {
     AboutScreen(onOpenLicenses = {})

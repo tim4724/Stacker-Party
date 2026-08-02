@@ -52,11 +52,10 @@ fun QrBlock(
             .aspectRatio(1f)
             // Radius scales with the block (web calc((--card-w + 40px) * 0.057),
             // same ratio as the player cards) so the QR and cards keep one corner
-            // character at every size; padding stays clamp(6px,1.2vmin,14px)
-            // (web-px/1.5 in dp).
+            // character at every size; padding stays clamp(6px,1.2vmin,14px).
             .clip(RoundedCornerShape(qrW * 0.057f))
             .background(Tokens.white)
-            .padding(vp.vminDp(4f, 1.2f, 9.3f)),
+            .padding(vp.vminDp(6f, 1.2f, 14f)),
         contentAlignment = Alignment.Center,
     ) {
         // The bitmap lands async (room `created` arrives mid-entrance): fade the
@@ -99,8 +98,8 @@ fun JoinLine(
     startOnHint: Boolean = false,
 ) {
     // Shared HUD face + size for URL and hint so the crossfade reads as one
-    // line changing content (web clamp(1.05rem,2.2vmin,1.5rem), px/1.5 → sp).
-    val lineSize = vp.vminSp(11.2f, 2.2f, 16f)
+    // line changing content (web clamp(1.05rem,2.2vmin,1.5rem)).
+    val lineSize = vp.vminSp(16.8f, 2.2f, 24f)
 
     var showHint by remember { mutableStateOf(startOnHint) }
     LaunchedEffect(Unit) {

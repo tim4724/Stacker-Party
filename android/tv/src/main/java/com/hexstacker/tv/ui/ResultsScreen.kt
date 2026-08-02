@@ -59,7 +59,17 @@ import kotlin.math.roundToInt
 /**
  * 180px tile of grayscale noise (the web bakes the equivalent from an SVG
  * feTurbulence data URI). Seeded xorshift (same seed as the tvOS tile) so
- * screenshot captures stay byte-stable across launches.
+ * screenshot captures stay byte-stable across launches. Same seed, but no longer the
+ * same image as tvOS, which still writes the raw byte — the argument below applies
+ * there too, so `ResultsView.swift` should follow.
+ *
+ * Deviation is kept to a QUARTER of the full 0..255 swing. This is a dither, so it
+ * only has to cover the ~1 level of quantisation it is breaking up; the full-range
+ * version read as visible grain rather than dither, and specifically as BLUE grain,
+ * because `Overlay` scales each pixel's perturbation by the backdrop and the plum
+ * backdrop is bluest. (The web's feTurbulence is fractal noise clustered around
+ * mid-grey, not the uniform white noise a raw PRNG byte gives, so the wide swing was
+ * never faithful either.) Measured: +-3 levels before, +-0.6 after.
  */
 private val noiseBrush: ShaderBrush by lazy {
     val side = 180
@@ -69,7 +79,7 @@ private val noiseBrush: ShaderBrush by lazy {
         state = state xor (state shl 13)
         state = state xor (state ushr 7)
         state = state xor (state shl 17)
-        val v = (state and 0xFF).toInt()
+        val v = 128 + (((state and 0xFF).toInt() - 128) shr 2)
         pixels[i] = (0xFF shl 24) or (v shl 16) or (v shl 8) or v
     }
     val bitmap = Bitmap.createBitmap(pixels, side, side, Bitmap.Config.ARGB_8888)
@@ -90,9 +100,9 @@ private val noiseBrush: ShaderBrush by lazy {
  * GPU. Blitting the baked result instead costs 2.7 ms (`BackdropPerfTest`), which is
  * what turns the results entrance and its focus moves back into 60 fps frames.
  *
- * Baked at 1:1 — unlike the lobby vignette ([LobbyBackground]'s GlowCache, which
- * downsamples 8x) this one cannot be cached at reduced resolution, because the noise
- * only breaks up banding while it stays exactly one texel per pixel.
+ * Baked at 1:1, as the lobby vignette ([LobbyBackground]'s GlowCache) also is: a
+ * dither only does anything at destination resolution, so neither backdrop can be
+ * cached at reduced size.
  *
  * The one divergence: the OVERLAY blend is baked against the scrim alone, whereas it
  * used to blend against the scrim already composited over the frozen board showing
@@ -201,14 +211,12 @@ fun ResultsScreen(
                 .padding(horizontal = (vp.wDp * 0.05f).dp, vertical = (vp.hDp * 0.05f).dp),
             // No wordmark on results (matches web #results-screen); center the list +
             // buttons as a group with a gap between them.
-            verticalArrangement = Arrangement.spacedBy(vp.vhDp(19.2f, 3f, 48f), Alignment.CenterVertically),
+            verticalArrangement = Arrangement.spacedBy(vp.vhDp(24f, 3f, 48f), Alignment.CenterVertically),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Column(
-                // Web #results-list is width:90% capped at 860px (~45% of a 1080p
-                // TV). An absolute dp cap renders ~1.5x wider at the gallery's hdpi
-                // density, so cap at a viewport fraction like the rest of the lobby.
-                Modifier.widthIn(max = vp.vwDp(420f, 45f, 640f)).fillMaxWidth(),
+                // Web #results-list: width 90%, max-width 860px.
+                Modifier.widthIn(max = vp.vwDp(0f, 90f, 860f)).fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(vp.vhDp(8f, 1f, 16f)),
             ) {
                 sorted.forEachIndexed { i, res ->
@@ -228,7 +236,7 @@ fun ResultsScreen(
                     // the Row bounds, which the Auto strategy's alpha buffer clips.
                     compositingStrategy = CompositingStrategy.ModulateAlpha
                 },
-                horizontalArrangement = Arrangement.spacedBy(vp.vwDp(16f, 2f, 32f)),
+                horizontalArrangement = Arrangement.spacedBy(vp.vwDp(12.8f, 1.5f, 24f)),
             ) {
                 ChromeButton(
                     text = stringResource(R.string.play_again),
@@ -240,7 +248,7 @@ fun ResultsScreen(
                         horizontal = vp.vwDp(24f, 3f, 48f),
                         vertical = vp.vhDp(14.4f, 2f, 27.2f),
                     ),
-                    minWidth = vp.vhDp(220f, 26f, 340f),
+                    minWidth = vp.vhDp(260f, 34f, 420f),
                     onClick = onPlayAgain,
                 )
                 ChromeButton(
@@ -252,7 +260,7 @@ fun ResultsScreen(
                         horizontal = vp.vwDp(24f, 3f, 48f),
                         vertical = vp.vhDp(14.4f, 2f, 27.2f),
                     ),
-                    minWidth = vp.vhDp(220f, 26f, 340f),
+                    minWidth = vp.vhDp(260f, 34f, 420f),
                     onClick = onNewGame,
                 )
             }
@@ -267,14 +275,12 @@ private fun ResultRow(res: ResultCard, index: Int, solo: Boolean, vp: Vp) {
     val lateJoinerRank = stringResource(R.string.late_joiner_rank) // DisplayUI '–' rank
     val playerFallback = stringResource(R.string.player)
     val playerCol = res.colorIndex?.let { playerColor(it) }
-    // Web is 3vh / 2.6vh (uncapped on a TV). Lo/hi caps are px, which render ~1.5x
-    // large as .sp at the gallery density, so scale the caps to let the vh % govern.
-    val rankSize = vp.vhSp(16f, 3f, 30f) // web result name/rank ~3vh (32px @1080)
-    val statsSize = vp.vhSp(13f, 2.6f, 24f) // web result stats ~2.6vh (28px @1080)
+    val rankSize = vp.vhSp(24f, 3f, 44.8f) // .result-rank/.result-name clamp(1.5rem,3vh,2.8rem)
+    val statsSize = vp.vhSp(19.2f, 2.6f, 35.2f) // .result-stats clamp(1.2rem,2.6vh,2.2rem)
     // Web's .result-stats has no font-family override — it inherits the plain
     // system font (Roboto), unlike the Baloo name / Orbitron rank. Match that.
     val statsStyle = AppType.resultStats.copy(fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium)
-    val gap = 13.3.dp // .result-row gap 1.25rem = 20px (web-px/1.5)
+    val gap = vp.px(20f) // .result-row gap 1.25rem
 
     // Stagger entrance: fade + slide up, delay 0.2 + i*0.08 s. Reduce Motion
     // renders the row settled (decorative entrance).
@@ -292,14 +298,14 @@ private fun ResultRow(res: ResultCard, index: Int, solo: Boolean, vp: Vp) {
         .fillMaxWidth()
         .graphicsLayer {
             alpha = enter.value * if (res.newPlayer) 0.75f else 1f
-            translationY = (1f - enter.value) * 10.dp.toPx()
+            translationY = (1f - enter.value) * 7.5.dp.toPx()
         }
 
     val bordered = if (res.newPlayer) {
         base
             .clip(shape)
             .background(Tokens.socketEmpty, shape)
-            .border(1.dp, Tokens.hairlineFaint, shape)
+            .border(0.5.dp, Tokens.hairlineFaint, shape)
     } else {
         base
             .shadowSm(Tokens.radiusCard)
@@ -308,15 +314,14 @@ private fun ResultRow(res: ResultCard, index: Int, solo: Boolean, vp: Vp) {
     }
 
     Row(
-        // Web paddings (all bounds web-px/1.5 in dp — the right cap and the
-        // vertical floor are active at 1080p): left clamp(0.7rem,1.3vw,1.3rem),
-        // right clamp(1.2rem,2.4vw,2.4rem), vertical clamp(0.8rem,1.6vh,1.5rem).
+        // .result-row padding: left clamp(0.7rem,1.3vw,1.3rem), right
+        // clamp(1.2rem,2.4vw,2.4rem), vertical clamp(0.8rem,1.6vh,1.5rem).
         bordered.padding(
             PaddingValues(
-                start = vp.vwDp(7.5f, 1.3f, 13.9f),
-                end = vp.vwDp(12.8f, 2.4f, 25.6f),
-                top = vp.vhDp(8.5f, 1.6f, 16f),
-                bottom = vp.vhDp(8.5f, 1.6f, 16f),
+                start = vp.vwDp(11.2f, 1.3f, 20.8f),
+                end = vp.vwDp(19.2f, 2.4f, 38.4f),
+                top = vp.vhDp(12.8f, 1.6f, 24f),
+                bottom = vp.vhDp(12.8f, 1.6f, 24f),
             ),
         ),
         verticalAlignment = Alignment.CenterVertically,
@@ -325,7 +330,7 @@ private fun ResultRow(res: ResultCard, index: Int, solo: Boolean, vp: Vp) {
             Text(
                 text = if (res.newPlayer) lateJoinerRank else res.rank?.toString().orEmpty(),
                 style = AppType.resultRank.copy(fontSize = rankSize, color = playerCol ?: Tokens.textSecondary),
-                modifier = Modifier.widthIn(min = 16.dp), // web min-width 1ch (~24px)
+                modifier = Modifier.widthIn(min = vp.px(24f)), // web min-width 1ch (~24px)
             )
             Spacer(Modifier.width(gap))
         }
@@ -343,7 +348,7 @@ private fun ResultRow(res: ResultCard, index: Int, solo: Boolean, vp: Vp) {
                 style = statsStyle.copy(fontSize = statsSize, color = Tokens.textSecondary),
             )
         } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) { // .result-stats gap 1.5rem = 24px (web-px/1.5)
+            Row(horizontalArrangement = Arrangement.spacedBy(vp.px(24f))) { // .result-stats gap 1.5rem
                 Text(
                     text = pluralStringResource(R.plurals.n_lines, res.lines ?: 0, res.lines ?: 0),
                     style = statsStyle.copy(fontSize = statsSize, color = Tokens.textSecondary),
@@ -357,7 +362,7 @@ private fun ResultRow(res: ResultCard, index: Int, solo: Boolean, vp: Vp) {
     }
 }
 
-@Preview(widthDp = 1280, heightDp = 720)
+@Preview(widthDp = 960, heightDp = 540)
 @Composable
 private fun ResultsPreview() {
     ResultsScreen(

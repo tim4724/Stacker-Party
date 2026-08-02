@@ -57,16 +57,13 @@ object Tokens {
         blue = color.blue * mix + bgCard.blue * (1f - mix),
     )
 
-    // Radii (theme.css)
-    val radiusMd = 12.dp
-    // --radius-btn 16px, web-px/1.5 like radiusCard (a 16dp corner renders 24px
-    // at the TV density and reads visibly rounder than the web buttons).
-    val radiusBtn = 10.7.dp
-    val radiusLg = 18.dp
-    val radiusXl = 22.dp
-    // .player-card / .result-row 20px. Web-px/1.5 (like the sp rule): a 20dp
-    // radius renders 30px at the TV density and reads visibly rounder than web.
-    val radiusCard = 13.3.dp
+    // Radii (theme.css), halved from web px to dp like every other length here
+    // (Android TV pins a 960dp-wide window against the web's 1920 design space).
+    val radiusMd = 6.dp // --radius-md 12px
+    val radiusBtn = 8.dp // --radius-btn 16px
+    val radiusLg = 9.dp // --radius-lg 18px
+    val radiusXl = 11.dp // --radius-xl 22px
+    val radiusCard = 10.dp // .player-card / .result-row 20px
 }
 
 /** Player identity color from the single-source `:core` [Theme] spectrum (slots 0..7). */

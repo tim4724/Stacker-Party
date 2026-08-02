@@ -16,13 +16,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import com.hexstacker.core.render.HexGeometry
 import com.hexstacker.tv.render.addRoundedHex
@@ -123,14 +121,7 @@ private fun DrawScope.drawLobbyGlow(cache: GlowCache) {
     val w = size.width.roundToInt()
     val h = size.height.roundToInt()
     val glow = cache.get(w, h) ?: return
-    drawImage(
-        image = glow,
-        srcOffset = IntOffset.Zero,
-        srcSize = IntSize(glow.width, glow.height),
-        dstOffset = IntOffset.Zero,
-        dstSize = IntSize(w, h),
-        filterQuality = FilterQuality.Low, // bilinear upscale
-    )
+    drawImage(glow) // baked at surface size, so this is a straight 1:1 blit
 }
 
 /**
@@ -145,11 +136,13 @@ private fun DrawScope.drawLobbyGlow(cache: GlowCache) {
  * redrawing a still image. Blitting a cached bitmap keeps the per-frame work a
  * texture fetch instead of a per-pixel radial-gradient evaluation.
  *
- * The source is rendered at [GLOW_DOWNSCALE] and upsampled bilinearly: a two-stop
- * radial is low-frequency, so the result is indistinguishable at TV viewing distance
- * — and slightly SMOOTHER than the full-res original, since interpolating between
- * eighth-scale texels dithers the 8-bit steps that make low-alpha radials band (the
- * banding the results screen has to paper over with a noise overlay).
+ * Baked 1:1 with `Paint.isDither`, NOT downsampled. An eighth-scale source upsampled
+ * bilinearly looks like it would hide the 8-bit steps that make a low-alpha radial
+ * band, but it cannot: the interpolation happens on the way into an 8-bit destination,
+ * so the result re-quantises to the same levels. It measured as ~1-level steps 30-50px
+ * wide — wide, smooth-edged bands, the most visible kind. Dithering has to be applied
+ * at destination resolution to do anything, which is the same reason the results
+ * backdrop bakes its noise 1:1.
  */
 private class GlowCache {
     private var cached: ImageBitmap? = null
@@ -164,11 +157,7 @@ private class GlowCache {
         return render(w, h).also { cached = it }
     }
 
-    private fun render(w: Int, h: Int): ImageBitmap {
-        // Derive the geometry in the SCALED space (it is all linear in the scale, so
-        // this matches the full-res gradient the web/tvOS lobbies paint).
-        val sw = max(2, ceil(w / GLOW_DOWNSCALE).toInt())
-        val sh = max(2, ceil(h / GLOW_DOWNSCALE).toInt())
+    private fun render(sw: Int, sh: Int): ImageBitmap {
         val bmp = Bitmap.createBitmap(sw, sh, Bitmap.Config.ARGB_8888)
         val canvas = android.graphics.Canvas(bmp)
         val cx = sw * 0.5f
@@ -179,6 +168,7 @@ private class GlowCache {
             maxOf(hypot(cx, sh - cy), hypot(sw - cx, sh - cy)),
         )
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        paint.isDither = true // the whole point: break the 8-bit steps at 1:1
         paint.shader = RadialGradient(
             cx, cy, 0.55f * maxCornerDistance,
             // Transparent BLACK as the end stop, exactly what `Color.Transparent`
@@ -191,9 +181,6 @@ private class GlowCache {
         return bmp.asImageBitmap()
     }
 }
-
-/** Linear downscale of the cached glow source (see [GlowCache]). */
-private const val GLOW_DOWNSCALE = 8f
 
 /** Draw one particle's hex cells by stamping the cached pillow bitmap at each cell,
  *  weighted by the particle opacity (web `globalAlpha` over a `getHexStamp` stamp).

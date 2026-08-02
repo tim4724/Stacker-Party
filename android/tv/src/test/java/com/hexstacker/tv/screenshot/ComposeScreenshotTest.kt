@@ -50,11 +50,11 @@ import org.robolectric.annotation.GraphicsMode
  * lobby for a failed create) instead of a hand-assembled reconstruction that could drift.
  *
  * A few states stay as direct single-widget calls because they need a determinism
- * seam the production tree deliberately doesn't expose: the lobby shots inject a
- * frozen QR + ambient background (both live/async in the app); `licenses` injects a
- * fixture dependency list (the real list reads build-time AboutLibraries metadata not
- * on the test classpath); `pause_music` seeds the focused switch (real focus can't
- * fire headless). None of these reconstruct layering — each is one full-screen widget.
+ * seam beyond the frozen ambient DisplayChrome takes: the lobby shots also inject a
+ * frozen QR (async in the app); `licenses` injects a fixture dependency list (the real
+ * list reads build-time AboutLibraries metadata not on the test classpath);
+ * `pause_music` seeds the focused switch (real focus can't fire headless). None of
+ * these reconstruct layering — each is one full-screen widget.
  *
  * All content data comes from the canonical cross-platform [GalleryFixtures] (the same
  * `HexCore.GalleryFixtures` the web and Apple TV galleries use, via QuickJS), so every
@@ -77,7 +77,7 @@ import org.robolectric.annotation.GraphicsMode
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(qualifiers = "w1280dp-h720dp-land-hdpi") // 1280x720dp @ 1.5 density = 1920x1080px
+@Config(qualifiers = "w960dp-h540dp-land-xhdpi") // 960x540dp @ 2.0 density = 1920x1080px
 class ComposeScreenshotTest {
 
     @get:Rule
@@ -113,13 +113,18 @@ class ComposeScreenshotTest {
                     )
                 }
             },
+            // Freeze the lobby ambient to the shared cross-platform fixture, exactly
+            // like LobbyBackdrop below. Only the LOBBY branch of the chrome paints it,
+            // but it costs nothing on the others and keeps every chromeShot capture
+            // reproducible run-to-run.
+            ambientPieces = GalleryFixtures.ambientPieces(),
         )
     }
 
     // The lobby backdrop DisplayChrome keeps beneath every lobby page (brand fill +
     // falling-piece ambient), with the ambient frozen to the shared cross-platform
-    // fixture — the determinism seam the production chrome deliberately doesn't
-    // expose (its ambient is live and random-seeded).
+    // fixture — the app's own ambient is live and random-seeded, so a capture of it
+    // would differ every run. Same fixture chromeShot passes down.
     @Composable
     private fun LobbyBackdrop(content: @Composable () -> Unit) {
         Box(Modifier.fillMaxSize().background(Tokens.bgPrimary)) {

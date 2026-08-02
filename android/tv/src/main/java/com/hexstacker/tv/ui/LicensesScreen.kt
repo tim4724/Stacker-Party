@@ -80,7 +80,7 @@ fun LicensesScreen(
 
             LazyColumn(
                 Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(vp.vwDp(9f, 1.45f, 19f)),
+                verticalArrangement = Arrangement.spacedBy(vp.vwDp(13.5f, 1.45f, 28.5f)),
             ) {
                 itemsIndexed(entries, key = { i, e -> "${e.name}#$i" }) { index, entry ->
                     LicenseRow(
@@ -132,8 +132,8 @@ fun LicenseTextScreen(
         // lineHeight makes the block math below exact.
         val bodyStyle = TextStyle(
             fontFamily = FontFamily.Monospace,
-            fontSize = 13.5.sp, // tvOS Menlo 20px at 1080p
-            lineHeight = 18.sp,
+            fontSize = 10.sp, // tvOS Menlo 20px at 1080p
+            lineHeight = 13.5.sp,
             color = Tokens.textSecondary,
         )
         val lineHDp = with(LocalDensity.current) { bodyStyle.lineHeight.toDp() }
@@ -173,13 +173,13 @@ private fun LicensePageTitle(text: String, vp: Vp) {
     Text(
         text = text,
         style = AppType.wordmarkMain.copy(
-            fontSize = vp.vhSp(22f, 5f, 34.7f),
+            fontSize = vp.vhSp(33f, 5f, 52.05f),
             letterSpacing = 0.08.em,
             color = Tokens.textPrimary,
         ),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.padding(bottom = vp.vhDp(12f, 2.5f, 18f)),
+        modifier = Modifier.padding(bottom = vp.vhDp(18f, 2.5f, 27f)),
     )
 }
 
@@ -213,27 +213,27 @@ private fun LicenseRow(
             .clip(shape)
             .background(Tokens.bgCard, shape)
             .then(if (focused && !pressed) Modifier.background(Tokens.white.copy(alpha = 0.06f), shape) else Modifier)
-            .then(if (focused) Modifier.border(4.dp, Tokens.white, shape) else Modifier)
+            .then(if (focused) Modifier.border(2.dp, Tokens.white, shape) else Modifier)
             .onFocusChanged { focused = it.isFocused }
             .clickable(interactionSource = interaction, indication = null) { onOpen() }
             .padding(
-                horizontal = vp.vwDp(20f, 2f, 26f),
-                vertical = vp.vwDp(12f, 1.45f, 19f),
+                horizontal = vp.vwDp(30f, 2f, 39f),
+                vertical = vp.vwDp(18f, 1.45f, 28.5f),
             ),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.5.dp)) {
             Text(
                 text = entry.name,
-                style = AppType.resultName.copy(fontSize = 18.sp, color = Tokens.textPrimary),
+                style = AppType.resultName.copy(fontSize = 13.5.sp, color = Tokens.textPrimary),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             entry.author?.takeIf { it.isNotBlank() }?.let {
                 Text(
                     text = it,
-                    style = AppType.musicCredit.copy(fontSize = 12.sp, color = Tokens.textSecondary),
+                    style = AppType.musicCredit.copy(fontSize = 9.sp, color = Tokens.textSecondary),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -243,7 +243,7 @@ private fun LicenseRow(
             Text(
                 text = it,
                 style = AppType.musicCredit.copy(
-                    fontSize = 13.sp,
+                    fontSize = 9.75.sp,
                     letterSpacing = 0.06.em,
                     color = Tokens.textSecondary,
                 ),
@@ -251,13 +251,13 @@ private fun LicenseRow(
                 modifier = Modifier
                     .clip(RoundedCornerShape(percent = 50))
                     .background(Tokens.socketPill, RoundedCornerShape(percent = 50))
-                    .padding(horizontal = 13.dp, vertical = 8.dp),
+                    .padding(horizontal = 9.75.dp, vertical = 6.dp),
             )
         }
     }
 }
 
-@Preview(widthDp = 1280, heightDp = 720)
+@Preview(widthDp = 960, heightDp = 540)
 @Composable
 private fun LicensesPreview() {
     LicensesScreen(

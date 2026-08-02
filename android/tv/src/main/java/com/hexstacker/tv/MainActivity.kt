@@ -58,6 +58,7 @@ import com.hexstacker.tv.render.SeatMeta
 import com.hexstacker.tv.ui.AboutScreen
 import com.hexstacker.tv.ui.ConnectionOverlay
 import com.hexstacker.tv.ui.CountdownOverlay
+import com.hexstacker.tv.ui.FallingPiece
 import com.hexstacker.tv.ui.LicenseTextScreen
 import com.hexstacker.tv.ui.LicensesScreen
 import com.hexstacker.tv.ui.LobbyBackground
@@ -952,6 +953,14 @@ internal fun DisplayChrome(
     onOpenAbout: () -> Unit = {},
     onOpenLicenses: () -> Unit = {},
     onOpenLicense: (Int) -> Unit = {},
+    // Frozen lobby ambient for the gallery shots — purely a determinism seam, unlike
+    // [page], which is hoisted so the host owns Back and focus. The backdrop's
+    // falling pieces are seeded from the default RNG, so a
+    // capture of a LOBBY state through this chrome came out different on every run —
+    // churn in the very shots the gallery exists to make comparable, and ambient that
+    // didn't match the web/tvOS galleries' shared fixture either. Production passes
+    // nothing and gets the live field.
+    ambientPieces: List<FallingPiece>? = null,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier.fillMaxSize()) {
@@ -1004,7 +1013,7 @@ internal fun DisplayChrome(
                 // accent vignette) sits BENEATH the page cross-fade, so page swaps fade
                 // only their content over a continuous background (tvOS parity).
                 DisplayScreen.LOBBY -> Box(Modifier.fillMaxSize().background(Tokens.bgPrimary)) {
-                    LobbyBackground(Modifier.fillMaxSize(), active = true)
+                    LobbyBackground(Modifier.fillMaxSize(), active = true, fixedPieces = ambientPieces)
                     AnimatedContent(
                         targetState = page,
                         modifier = Modifier.fillMaxSize(),

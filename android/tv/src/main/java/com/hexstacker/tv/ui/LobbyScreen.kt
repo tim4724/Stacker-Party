@@ -117,21 +117,20 @@ fun LobbyScreen(
             ) {
                 // Title band — fadeDown. The pure wordmark centers exactly (A2:
                 // the triad mark moved to the corner badge below).
-                EntranceBand(startOffsetY = (-16).dp, durationMs = 600, delayMs = 0) {
+                EntranceBand(startOffsetY = (-8).dp, durationMs = 600, delayMs = 0) {
                     Wordmark(mainSize = vp.vminSp(25.6f, 7f, 80f))
                 }
 
                 // Body band (web #lobby-body): the QR | grid row (#lobby-main)
                 // with the join/hint line tucked close beneath it — fadeUp 0.15s.
-                EntranceBand(startOffsetY = 16.dp, durationMs = 600, delayMs = 150) {
-                    // Web --card-w clamp(150px, 36vmin, 350px), web-px/1.5 in dp (like
-                    // the sp caps): sized so a 16-char name (the platform-wide cap)
-                    // fits at the full name size on a 1080p display.
-                    var cardW = vp.vminDp(100f, 36f, 233.3f)
+                EntranceBand(startOffsetY = 8.dp, durationMs = 600, delayMs = 150) {
+                    // Web --card-w clamp(150px, 36vmin, 350px): sized so a 16-char
+                    // name (the platform-wide cap) fits at the full name size.
+                    var cardW = vp.vminDp(150f, 36f, 350f)
                     // Web #qr-container calc(var(--card-w) + 40px): always a touch
-                    // taller than the two-card column beside it (2:1 cards stack to
-                    // cardW + gap, and 40px/1.5 = 26.7dp).
-                    var qrW = cardW + 26.7f.dp
+                    // taller than the two-card column beside it (2:1 cards stack
+                    // to cardW + gap).
+                    var qrW = cardW + vp.px(40f)
                     // Slot bucket (web updatePlayerList's --cols): pad to 4 placeholder
                     // slots (8 at 4K widths), one row of 4 columns once 5+ are visible.
                     val placeholderSlots = if (vp.wDp >= 2400f) 8 else 4 // web: innerWidth >= 2400 ? 8 : 4
@@ -184,7 +183,7 @@ fun LobbyScreen(
                 }
 
                 // CTA band — fadeUp 0.45s.
-                EntranceBand(startOffsetY = 16.dp, durationMs = 500, delayMs = 450) {
+                EntranceBand(startOffsetY = 8.dp, durationMs = 500, delayMs = 450) {
                     val ctaText = if (hasPlayers) {
                         pluralStringResource(R.plurals.start_n_players, data.players.size, data.players.size)
                     } else {
@@ -225,7 +224,7 @@ fun LobbyScreen(
             // reaches it); otherwise a plain glyph (previews / screenshot fixtures).
             InfoButton(
                 onOpen = onOpenAbout,
-                diameter = vp.vminDp(34f, 6f, 52f),
+                diameter = vp.vminDp(51f, 6f, 78f),
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(top = overscanV, end = overscanH),
@@ -265,7 +264,7 @@ private fun InfoButton(
             .clip(CircleShape)
             .background(if (pressed) Tokens.socketBtnPressed else Tokens.socketBtn, CircleShape)
             .border(
-                width = if (ringFocused) 3.dp else 1.dp,
+                width = if (ringFocused) 1.5.dp else 0.5.dp,
                 color = if (ringFocused) Tokens.white else Tokens.hairlineRing,
                 shape = CircleShape,
             )
@@ -428,7 +427,7 @@ private fun EntranceBand(
     ) { content() }
 }
 
-@Preview(widthDp = 1280, heightDp = 720)
+@Preview(widthDp = 960, heightDp = 540)
 @Composable
 private fun LobbyPreview() {
     Box(Modifier.fillMaxSize().background(Tokens.bgPrimary)) {

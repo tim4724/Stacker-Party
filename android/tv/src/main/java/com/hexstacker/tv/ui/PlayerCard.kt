@@ -66,16 +66,14 @@ fun PlayerCard(
     modifier: Modifier = Modifier,
 ) {
     // web display card radius calc(--card-w * 0.057): scales with the card
-    // (13.3dp at the 233.3dp cap) so shrunken grids keep the same corner
+    // (10dp at the 175dp cap) so shrunken grids keep the same corner
     // character instead of looking rounder.
     val radius = cardW * 0.057f
     val shape = RoundedCornerShape(radius)
     // Web display override: .player-card .identity-name clamp(1.5rem,4.5vmin,2.4rem)
-    // (display.css 10-foot sizes; the theme.css clamp is the phone's). Bounds are
-    // web-px / 1.5 because a capped .sp renders 1.5x larger at the gallery's hdpi
-    // density; the vmin % carries through unchanged (720dp * 1.5 = 1080px).
-    val nameSize = vp.vminSp(16f, 4.5f, 25.6f) // caps at 38.4px (2.4rem) on a 1080p TV
-    val levelSize = vp.vminSp(8f, 2f, 12.3f) // .card-level__* clamp(0.75rem,2vmin,1.15rem)
+    // (display.css 10-foot sizes; the theme.css clamp is the phone's).
+    val nameSize = vp.vminSp(24f, 4.5f, 38.4f)
+    val levelSize = vp.vminSp(12f, 2f, 18.4f) // .card-level__* clamp(0.75rem,2vmin,1.15rem)
     val padH = vp.vminDp(8f, 1.4f, 14f) // half padding clamp(8px,1.4vmin,14px)
 
     if (player == null) {
@@ -106,7 +104,7 @@ fun PlayerCard(
                 .aspectRatio(2.5f)
                 .clip(shape)
                 .background(Tokens.socketEmpty, shape)
-                .border(1.dp, Tokens.hairlineFaint, shape),
+                .border(0.5.dp, Tokens.hairlineFaint, shape),
             contentAlignment = Alignment.Center,
         ) {
             // Faint rounded-hex opening (web .player-card__opening, sized
@@ -170,8 +168,8 @@ fun PlayerCard(
             Modifier
                 .clip(CircleShape)
                 .background(Tokens.socketPill, CircleShape)
-                .padding(horizontal = vp.vminDp(6.9f, 1.6f, 10.1f), vertical = vp.vminDp(2f, 0.45f, 3f)),
-            horizontalArrangement = Arrangement.spacedBy(vp.vminDp(3.5f, 0.8f, 5f)),
+                .padding(horizontal = vp.vminDp(10.35f, 1.6f, 15.15f), vertical = vp.vminDp(3f, 0.45f, 4.5f)),
+            horizontalArrangement = Arrangement.spacedBy(vp.vminDp(5.25f, 0.8f, 7.5f)),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
@@ -198,6 +196,6 @@ private fun SocketOpening(modifier: Modifier = Modifier) {
             addRoundedHex(size.width / 2f, size.height / 2f, r * 0.9f, r * 0.12f)
         }.asComposePath()
         drawPath(path, Color(0x08FFF8EC)) // fill rgba(255,248,236,0.03)
-        drawPath(path, Tokens.textPrimary.copy(alpha = 0.45f), style = Stroke(width = 2.dp.toPx()))
+        drawPath(path, Tokens.textPrimary.copy(alpha = 0.45f), style = Stroke(width = 1.5.dp.toPx()))
     }
 }

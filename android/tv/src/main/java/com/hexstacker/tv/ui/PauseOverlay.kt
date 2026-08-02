@@ -48,7 +48,7 @@ fun PauseOverlay(
 
     BoxWithConstraints(modifier.fillMaxSize().background(Tokens.overlayBg)) {
         val vp = Vp(maxWidth.value, maxHeight.value)
-        val btnMin = vp.vhDp(220f, 26f, 340f) // #pause-continue-btn min-width clamp(220px,26vh,340px)
+        val btnMin = vp.vhDp(260f, 34f, 420f) // overlay CTA min-width clamp(260px,34vh,420px)
         val btnGap = vp.vwDp(16f, 2f, 32f) // #pause-buttons gap clamp(1rem,2vw,2rem)
         val btnFont = vp.vhSp(17.6f, 2.4f, 27.2f) // clamp(1.1rem,2.4vh,1.7rem)
         val btnPad = PaddingValues(
@@ -58,7 +58,7 @@ fun PauseOverlay(
 
         Column(
             Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterVertically),
+            verticalArrangement = Arrangement.spacedBy(15.dp, Alignment.CenterVertically),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
@@ -74,7 +74,7 @@ fun PauseOverlay(
             MusicSwitch(
                 isOn = musicOn,
                 tint = hostColor,
-                rowHeight = vp.vhDp(44f, 7f, 72f),
+                rowHeight = vp.vhDp(66f, 7f, 108f),
                 onToggle = onToggleMusic,
                 focusedForShot = musicFocusedForShot,
             )
@@ -104,7 +104,7 @@ fun PauseOverlay(
     }
 }
 
-@Preview(widthDp = 1280, heightDp = 720)
+@Preview(widthDp = 960, heightDp = 540)
 @Composable
 private fun PausePreview() {
     var on by remember { mutableStateOf(true) }
