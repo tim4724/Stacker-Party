@@ -23,6 +23,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -1059,16 +1060,42 @@ class DisplayCoordinatorTest {
             assertEquals(0, coord.room.size, "dead room's roster cleared (every peer is unreachable)")
             assertEquals(1, t.freshCreates, "transport asked to create a fresh room")
             assertEquals(DisplayScreen.LOBBY, out.screens.last())
+            assertEquals(1, out.roomClosedCount, "the dead code comes off screen straight away")
+            assertNull(out.lastRoom, "no QR is offered until the replacement room lands")
 
             // The relay's created reply re-arms the lobby with the new room code.
             t.created("NEW1", "inst2"); coord.awaitIdle()
             assertEquals("NEW1", out.lastRoom)
+            assertEquals(1, out.roomClosedCount, "the recovery path doesn't reset twice")
 
             // A transient relay error is non-fatal: nothing resets.
             t.peerJoined(1); coord.awaitIdle()
             t.relayError("some transient failure"); coord.awaitIdle()
             assertEquals(1, coord.room.size)
             assertEquals(1, t.freshCreates)
+            coord.stop()
+        } finally { bridge.close() }
+    }
+
+    @Test
+    fun createdWhileHoldingARoomClearsTheDeadRoomsState() = runBlocking {
+        // A `created` arriving while a room is already held is a REPLACEMENT: the relay
+        // tore the old room down (close 4001) and the transport unpinned it. The new room
+        // starts empty, so the dead room's seats and match must not follow it in.
+        val bridge = EngineBridge.create(bundle())
+        try {
+            val t = FakeTransport(); val out = FakeOutput()
+            val coord = DisplayCoordinator(t, out, provider(bridge), seedProvider = { 0xBADCAFEL })
+            coord.start()
+            toPlaying(coord, t, listOf(1, 2))
+            assertEquals(RoomState.PLAYING, coord.state)
+
+            t.created("NEW1", "inst2"); coord.awaitIdle()
+            assertEquals(RoomState.LOBBY, coord.state, "the match dies with the room it was played in")
+            assertEquals(0, coord.room.size, "the dead room's seats don't occupy the new lobby")
+            assertEquals(1, out.roomClosedCount, "the dead code came off screen")
+            assertEquals("NEW1", out.lastRoom, "the fresh room's code is what's shown")
+            assertEquals(0, t.freshCreates, "we already have the replacement; don't ask for another")
             coord.stop()
         } finally { bridge.close() }
     }
@@ -1241,6 +1268,7 @@ class DisplayCoordinatorTest {
         val disconnects = mutableListOf<Pair<Int, String?>>()
         var lastResults: List<ResultEntry>? = null
         var lastRoom: String? = null
+        var roomClosedCount = 0
         var lastLobby: List<PlayerRecord>? = null
         var lobbyUpdates = 0
         var musicStarted = false
@@ -1252,6 +1280,7 @@ class DisplayCoordinatorTest {
 
         override fun showScreen(screen: DisplayScreen) { screens += screen }
         override fun roomReady(room: String, joinUrl: String) { lastRoom = room }
+        override fun roomClosed() { roomClosedCount++; lastRoom = null; lastLobby = emptyList() }
         override fun updateLobby(players: List<PlayerRecord>, hostPeerIndex: Int?) { lobbyUpdates++; lastLobby = players }
         override fun showCountdown(value: CountdownValue) { countdowns += value }
         override fun renderSnapshot(snapshot: GameSnapshot) { snapshots += snapshot }

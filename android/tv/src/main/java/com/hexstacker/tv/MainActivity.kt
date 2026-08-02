@@ -431,7 +431,7 @@ class MainActivity : ComponentActivity() {
             // mid-lobby. Forget it and reset the card instead.
             if (ui.lobbyIsEmpty()) {
                 relay.unpinRoom()
-                ui.clearRoom()
+                ui.roomClosed()
             }
         }
     }
@@ -571,8 +571,8 @@ class TvDisplayOutput(
     private val _state = MutableStateFlow(UiModel())
     val state: StateFlow<UiModel> get() = _state
 
-    // Written on the game thread (roomReady/updateLobby), read on Main (onStop's
-    // lobbyIsEmpty, clearRoom). @Volatile is the happens-before for those reads; the
+    // Written on the game thread (roomReady/updateLobby/roomClosed) and on Main (onStop's
+    // suspend of an empty lobby), read on both. @Volatile is the happens-before; the
     // values are individually atomic and no reader needs them as a consistent set.
     @Volatile private var room: String = ""
     @Volatile private var joinUrl: String = ""
@@ -722,11 +722,12 @@ class TvDisplayOutput(
     /** No players seated: the relay room is memberless and dies with our socket. */
     fun lobbyIsEmpty(): Boolean = roster.isEmpty()
 
-    /** Drop the room card so the next foreground presents like a fresh open — blank
-     *  card, then the new room's QR — instead of a dimmed stale code that swaps once
-     *  the rejoin bounces. Paired with RelayClient.unpinRoom (see MainActivity.onStop);
-     *  mirrors appletv DisplayModel.appDidEnterBackground. */
-    fun clearRoom() {
+    /** Drop the room card so the next open presents fresh (blank card, then the new
+     *  room's QR) instead of a dimmed stale code that swaps once the replacement
+     *  lands. Driven by the coordinator when the room is lost, and by the Activity
+     *  when it suspends an empty lobby (paired with RelayClient.unpinRoom, see
+     *  MainActivity.onStop). Mirrors appletv DisplayModel.roomClosed. */
+    override fun roomClosed() {
         room = ""
         joinUrl = ""
         roster = emptyList()

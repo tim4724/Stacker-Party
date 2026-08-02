@@ -69,6 +69,11 @@ public protocol DisplayOutput: AnyObject {
     /// and `qrText` as the QR payload. In production the two are identical (the QR
     /// encodes the join URL); the screen gallery's JOIN fixture makes them differ.
     func roomReady(room: String, joinURL: String, qrText: String)
+    /// The room is gone (the relay retired or tore it down): drop the code, the QR and
+    /// the seats, and stop offering the room on the LAN. A replacement arrives as the
+    /// next `roomReady`, so the lobby presents like a fresh open (blank card, then the
+    /// new QR) rather than a dead code lingering until it is swapped.
+    func roomClosed()
     func updateLobby(players: [PlayerRecord], hostPeerIndex: Int?)
     func showCountdown(_ value: CountdownValue)
     func renderSnapshot(_ snapshot: GameSnapshot)
@@ -487,6 +492,14 @@ public final class DisplayCoordinator {
 
     private func onCreated(room: String, instance: String?) {
         assertOwningThread()
+        // A `created` while we still hold a room means the OLD room is gone: the relay
+        // tore it down (close 4001) and the transport unpinned it, so this is a
+        // replacement, not a first open. Its roster and match cannot follow it into a
+        // room those players were never in, so clear them before the new code goes up.
+        // Otherwise the fresh lobby shows the dead room's seats until liveness expires
+        // them. The onRelayError path resets before asking for its room and clears
+        // `self.room` doing so, so nothing runs twice there.
+        if self.room != nil { resetSession() }
         self.room = room
         self.instance = instance
         // A fresh room has an empty roster, so there is nothing to re-stamp — but the
@@ -548,19 +561,37 @@ public final class DisplayCoordinator {
     private func onRelayError(_ message: String) {
         assertOwningThread()
         guard message == "Room not found" || message == "Room is full" else { return }
+        resetSession()
+        transport.recreateRoom()   // fresh room; onCreated re-shows the lobby with the new code
+    }
+
+    /// Everything a lost room takes with it: the match, the audio, the overlays, the
+    /// roster and the room's own identity. How the REPLACEMENT room arrives is the
+    /// caller's business. onRelayError asks the transport for one, onCreated already
+    /// holds it. Mirrors the Android port's resetSession and the web display's
+    /// resetToWelcome (the TVs have no welcome screen, so they land on the lobby).
+    private func resetSession() {
         engine = nil
         discardEngineState()
+        // The dead room's peer-to-peer channels have no room to be in; a controller
+        // that comes back re-offers over the new one (web parity).
+        fastlane?.closeAll()
         output?.stopMusic()
         setPauseOverlay(false)
         rejoinQRs.removeAll()
         seenSinceTick.removeAll()
+        room = nil
+        instance = nil
         // Clears the roster, participants, alive flags, results, the pause reason and
         // the room state back to lobby. Mute survives (a device preference, not room
         // state). This used to need a follow-up clear for the connection pause, which
         // reset() did not touch — one of the three ways the three flags diverged.
         roomDo("reset")
         output?.showScreen(.lobby)   // drop the frozen game immediately
-        transport.recreateRoom()     // fresh room; onCreated re-shows the lobby with the new code
+        // Take the dead code off screen with it. Leaving it up (dimmed, as a mere link
+        // drop does) offers a QR that resolves to nothing for the whole create
+        // round-trip, and leaves the roster's cards standing under it.
+        output?.roomClosed()
     }
 
     private func onPeerJoined(_ index: Int) {

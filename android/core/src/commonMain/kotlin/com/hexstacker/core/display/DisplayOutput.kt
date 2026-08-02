@@ -46,6 +46,14 @@ data class ResultEntry(
 interface DisplayOutput {
     fun showScreen(screen: DisplayScreen)
     fun roomReady(room: String, joinUrl: String)
+
+    /**
+     * The room is gone (the relay retired or tore it down): drop the code, the QR and
+     * the seats, and stop offering the room on the LAN. A replacement arrives as the
+     * next [roomReady], so the lobby presents like a fresh open (blank card, then the
+     * new QR) rather than a dead code lingering until it is swapped.
+     */
+    fun roomClosed()
     fun updateLobby(players: List<PlayerRecord>, hostPeerIndex: Int?)
     fun showCountdown(value: CountdownValue)
     fun renderSnapshot(snapshot: GameSnapshot)

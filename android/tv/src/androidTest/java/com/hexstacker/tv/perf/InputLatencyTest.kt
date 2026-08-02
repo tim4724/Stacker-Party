@@ -258,6 +258,7 @@ class InputLatencyTest {
 
         override fun showScreen(screen: DisplayScreen) { this.screen = screen }
         override fun roomReady(room: String, joinUrl: String) {}
+        override fun roomClosed() {}
         override fun updateLobby(players: List<PlayerRecord>, hostPeerIndex: Int?) {}
         override fun showCountdown(value: CountdownValue) {}
         override fun showResults(results: List<ResultEntry>) {}

@@ -518,7 +518,7 @@ import Foundation
     // MARK: - Fatal relay error opens a fresh room (web resetToWelcome)
 
     @Test func fatalRelayErrorRecreatesRoomAndResets() {
-        let (coord, ft, _) = makeLobby(players: 2)
+        let (coord, ft, fo) = makeLobby(players: 2)
         coord.remoteStartMatch(); runCountdown(coord)
         #expect(coord.state == .playing)
 
@@ -526,6 +526,30 @@ import Foundation
         #expect(coord.state == .lobby, "a lost room resets the display to the lobby")
         #expect(coord.playerCount == 0, "the stale roster is cleared")
         #expect(ft.recreatedRoomCount == 1, "a fresh room is requested")
+        #expect(fo.roomClosedCount == 1, "the dead code comes off screen straight away")
+        #expect(fo.joinURL == nil, "no QR is offered until the replacement room lands")
+
+        // The replacement lands: one lobby, one code, the new one.
+        ft.onCreated?("ROOM99", "inst1", "eu")
+        #expect(fo.room == "ROOM99")
+        #expect(fo.joinURL?.contains("ROOM99") == true, "the new room's QR goes up")
+        #expect(fo.roomClosedCount == 1, "the recovery path doesn't reset twice")
+    }
+
+    /// A `created` arriving while a room is already held is a REPLACEMENT (the relay
+    /// tore the old one down, close 4001, and the transport unpinned it). The new room
+    /// starts empty, so the dead room's seats and match must not follow it in.
+    @Test func createdWhileHoldingARoomClearsTheDeadRoomsState() {
+        let (coord, ft, fo) = makeLobby(players: 2)
+        coord.remoteStartMatch(); runCountdown(coord)
+        #expect(coord.state == .playing)
+
+        ft.onCreated?("ROOM99", "inst2", "eu")
+        #expect(coord.state == .lobby, "the match dies with the room it was played in")
+        #expect(coord.playerCount == 0, "the dead room's seats don't occupy the new lobby")
+        #expect(fo.roomClosedCount == 1, "the dead code came off screen")
+        #expect(fo.room == "ROOM99", "the fresh room's code is what's shown")
+        #expect(ft.recreatedRoomCount == 0, "we already have the replacement; don't ask for another")
     }
 
     @Test func nonFatalRelayErrorIsIgnored() {

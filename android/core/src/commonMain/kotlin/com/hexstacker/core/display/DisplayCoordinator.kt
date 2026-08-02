@@ -472,7 +472,15 @@ class DisplayCoordinator(
     // Connection lifecycle
     // =====================================================================
 
-    private fun handleCreated(code: String, instance: String?) {
+    private suspend fun handleCreated(code: String, instance: String?) {
+        // A `created` while we still hold a room means the OLD room is gone: the relay
+        // tore it down (close 4001) and the transport unpinned it, so this is a
+        // replacement, not a first open. Its roster and match cannot follow it into a
+        // room those players were never in, so clear them before the new code goes up.
+        // Otherwise the fresh lobby shows the dead room's seats until liveness expires
+        // them. The error-recovery path resets before asking for its room (and clears
+        // [roomCode] doing so), so nothing runs twice there.
+        if (roomCode != null) resetSession()
         this.roomCode = code
         this.instance = instance
         // A fresh room means an empty roster, so there is nothing to re-stamp — but the
@@ -1124,9 +1132,15 @@ class DisplayCoordinator(
     private suspend fun onRelayError(message: String) {
         if (message != "Room not found" && message != "Room is full") return
         resetSession()
+        transport.createFresh() // handleCreated re-arms the room code + QR when `created` lands
     }
 
-    /** Full session reset + a fresh room (web resetToWelcome -> connectAndCreateRoom). */
+    /**
+     * Everything a lost room takes with it: the match, the audio, the overlays, the
+     * roster and the room's own identity (web resetToWelcome). How the REPLACEMENT room
+     * arrives is the caller's business: [onRelayError] asks the transport for one,
+     * [handleCreated] already holds it.
+     */
     private suspend fun resetSession() {
         engine = null
         discardEngineState()
@@ -1141,8 +1155,10 @@ class DisplayCoordinator(
         roomCore.reset()
 
         output.showScreen(DisplayScreen.LOBBY)
-        refreshDisplayLobby()
-        transport.createFresh() // handleCreated re-arms the room code + QR when `created` lands
+        // Take the dead code off screen with it. Leaving it up (dimmed, as a mere link
+        // drop does) offers a QR that resolves to nothing for the whole create
+        // round-trip, and leaves the roster's cards standing under it.
+        output.roomClosed()
     }
 
     // =====================================================================

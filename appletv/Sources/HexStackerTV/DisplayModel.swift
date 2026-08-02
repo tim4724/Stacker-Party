@@ -324,11 +324,7 @@ final class DisplayModel: ObservableObject {
         // presents like a fresh open — blank card, then the new room's QR.
         if state.lobby?.players.isEmpty ?? true {
             relay?.unpinRoom()
-            room = nil
-            joinURL = nil
-            qrText = nil
-            state.lobby = LobbyData()
-            state.qrPending = false   // blank card, not a dimmed stale one
+            roomClosed()
         }
     }
 
@@ -581,6 +577,21 @@ extension DisplayModel: DisplayOutput {
             state.qrPending = false
             state.lobby = buildLobby()
         }
+    }
+
+    /// The room is gone (see DisplayOutput.roomClosed). Same reset the empty-lobby
+    /// background path takes, and for the same reason: a code nobody can join has no
+    /// business on screen, dimmed or otherwise. syncAdvertisement with no room in hand
+    /// withdraws the CouchPad record too.
+    func roomClosed() {
+        room = nil
+        joinURL = nil
+        qrText = nil
+        withAnimation(Self.fade) {
+            state.lobby = LobbyData()
+            state.qrPending = false   // blank card, not a dimmed stale one
+        }
+        syncAdvertisement()
     }
 
     func updateLobby(players: [PlayerRecord], hostPeerIndex: Int?) {

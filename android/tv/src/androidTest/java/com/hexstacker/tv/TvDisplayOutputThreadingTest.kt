@@ -63,7 +63,11 @@ class TvDisplayOutputThreadingTest {
         val done = CountDownLatch(1)
         gameThread.execute {
             try {
-                // The lobby/roster half.
+                // The lobby/roster half, including the room-lost clear the coordinator
+                // drives from this same thread (resetSession) before the replacement
+                // room's code goes up.
+                out.roomReady("OLD1", "https://example.test/c/OLD1")
+                out.roomClosed()
                 out.roomReady("ABCD", "https://example.test/c/ABCD")
                 out.updateLobby(
                     listOf(

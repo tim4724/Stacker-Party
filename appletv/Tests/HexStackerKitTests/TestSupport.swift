@@ -119,6 +119,13 @@ final class FakeOutput: DisplayOutput {
     func roomReady(room: String, joinURL: String, qrText: String) {
         self.room = room; self.joinURL = joinURL; self.qrText = qrText
     }
+    var roomClosedCount = 0
+    func roomClosed() {
+        roomClosedCount += 1
+        room = nil; joinURL = nil; qrText = nil
+        lobbyPlayers = []
+        calls.append("roomClosed")
+    }
     var lobbyPlayers: [PlayerRecord] = []   // last roster handed to the display lobby
     var lobbyHost: Int?
     func updateLobby(players: [PlayerRecord], hostPeerIndex: Int?) {
