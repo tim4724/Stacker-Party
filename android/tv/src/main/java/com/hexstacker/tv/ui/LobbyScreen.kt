@@ -43,6 +43,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.hexstacker.core.model.EngineConstants
 import com.hexstacker.core.render.Theme
 import com.hexstacker.tv.R
 import kotlinx.coroutines.launch
@@ -132,9 +133,10 @@ fun LobbyScreen(
                     // to cardW + gap).
                     var qrW = cardW + vp.px(40f)
                     // Slot bucket (web updatePlayerList's --cols): pad to 4 placeholder
-                    // slots (8 at 4K widths), one row of 4 columns once 5+ are visible.
-                    val placeholderSlots = if (vp.wDp >= 2400f) 8 else 4 // web: innerWidth >= 2400 ? 8 : 4
-                    val visibleSlots = max(placeholderSlots, data.players.size).coerceAtMost(8)
+                    // slots, one row of 4 columns once 5+ are visible. Chosen by the
+                    // roster alone, never by viewport size (same as tvOS LobbyMetrics).
+                    val visibleSlots =
+                        max(4, data.players.size).coerceAtMost(EngineConstants.MAX_PLAYERS)
                     val cols = if (visibleSlots > 4) 4 else 2
                     // Horizontal fit (web grid minmax(0,...) / tvOS LobbyMetrics):
                     // shrink QR + cards proportionally when the widest row (a 4-wide

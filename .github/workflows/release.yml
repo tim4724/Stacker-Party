@@ -2,7 +2,8 @@ name: Release
 
 # Signed store builds:
 #   - Android: .aab signed with the Play upload keystore, uploaded as a workflow
-#     artifact; the Play Console upload stays manual.
+#     artifact; the Play Console upload stays manual. Versioned like tvOS below
+#     (tag -> versionName, run number -> versionCode), via -P overrides.
 #   - tvOS: signed with the Apple Distribution cert + App Store profile and
 #     uploaded straight to TestFlight via the ASC API key. Tag builds stamp the
 #     bare-semver tag as MARKETING_VERSION (the app shares the web's 4.X.Y
@@ -89,9 +90,20 @@ jobs:
           keyPassword=$ANDROID_KEY_PASSWORD
           EOF
 
+      # Play rejects a reused versionCode, so stamp a unique one; tag builds take
+      # their versionName from the tag (bare semver, shared with the web release
+      # line), others keep build.gradle.kts's. Same split as the tvOS archive
+      # below, and likewise pure command-line overrides: the static values in
+      # build.gradle.kts stay untouched.
       - name: Build release bundle (.aab)
         working-directory: android
-        run: ./gradlew :tv:bundleRelease --console=plain --stacktrace
+        run: |
+          set -eu
+          VERSION_ARGS=("-PhexVersionCode=$GITHUB_RUN_NUMBER")
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            VERSION_ARGS+=("-PhexVersionName=$GITHUB_REF_NAME")
+          fi
+          ./gradlew :tv:bundleRelease --console=plain --stacktrace "${VERSION_ARGS[@]}"
 
       # The Gradle build falls back to debug signing when keystore.properties is
       # absent or unreadable, which would produce an artifact Play rejects.

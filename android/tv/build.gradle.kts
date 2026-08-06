@@ -103,8 +103,13 @@ android {
         applicationId = "com.hexstacker.tv"
         minSdk = 28
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        // Stamped by the release workflow, the Gradle analog of tvOS's
+        // xcodebuild MARKETING_VERSION / CURRENT_PROJECT_VERSION overrides: the
+        // run number as versionCode (Play rejects a reused one, so the constant
+        // 1 below could only ever be uploaded once) and the bare-semver tag as
+        // versionName. The placeholders are what every non-release build gets.
+        versionCode = (findProperty("hexVersionCode") as String?)?.toInt() ?: 1
+        versionName = (findProperty("hexVersionName") as String?) ?: "1.0"
         // On-device navigation tests (NavigationTest): run locally against an
         // Android TV emulator via `:tv:connectedDebugAndroidTest` (not wired
         // into CI, which has no emulator).
