@@ -524,18 +524,24 @@ html:not(.in-session) #relay-status-bar { display: none; }
    white wash behind it, matching the TV shells' focus treatment (Compose
    `border(2.dp, Tokens.white)` over `white @ 0.06`) so a pad looks the same
    whichever of the three displays it is pointed at. */
+/* 4px ring and a focus swell, the widths and scales both TVs use — Compose's
+   border(2.dp) is 4 web px on the 960dp-wide TV window, and tvOS strokes the
+   same 4 in its 1:1 point space. A press still sinks the button, since
+   .btn:active outranks this. */
 .pad-focus {
-  outline: 3px solid #fff;
+  outline: 4px solid #fff;
   outline-offset: 3px;
   border-radius: 4px;
+  transform: scale(1.06);
 }
 
-/* The wash goes on the music row only: the CTAs already carry a filled
-   background that it would muddy. */
+/* The wash and the gentler swell go on the music row only: it is a row rather
+   than a CTA, and the CTAs carry a filled background the wash would muddy. */
 .music-switch.pad-focus {
   background: rgba(255, 255, 255, 0.06);
   border-color: #fff;
   outline: none;
+  transform: scale(1.03);
 }
 
 /* Join URL — host + code on one line. Click to copy the full URL;
@@ -923,32 +929,41 @@ body.airconsole #qr-container,
    controller's own .settings-switch geometry (52:30 track, 24px thumb, 3px
    inset), scaled up for couch distance. Content-hugging rather than spanning
    the button pair, which left a dead gap between them on TV. */
+/* Every metric is a multiple of the row height, exactly as both TV shells
+   derive theirs (MusicSwitch.kt / MusicSwitchView.swift): row = clamp(66px,
+   7vh, 108px), side padding 0.5x, label-to-switch gap 0.75x, label 0.40x,
+   track 0.46x. Keeping the ratios rather than re-picking clamps is what makes
+   the three columns of the gallery's pause row line up. */
 .music-switch {
+  --row-h: clamp(66px, 7vh, 108px);
   display: flex;
   align-items: center;
-  gap: clamp(0.75rem, 1.6vw, 1.5rem);
+  height: var(--row-h);
+  gap: calc(var(--row-h) * 0.75);
   margin-bottom: clamp(1.5rem, 3vh, 3rem);
-  padding: clamp(0.5rem, 1vh, 0.9rem) clamp(1rem, 2vw, 1.75rem);
-  border: 2px solid transparent;
-  border-radius: var(--radius-btn);
+  padding: 0 calc(var(--row-h) * 0.5);
+  border: 4px solid transparent;
+  border-radius: var(--radius-md);
   background: transparent;
   cursor: pointer;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
+  transition: background var(--transition-fast), border-color var(--transition-fast),
+              transform var(--transition-fast);
 }
 
 .music-switch__label {
   font-family: var(--font-brand);
-  font-weight: 700;
-  font-size: clamp(1.1rem, 2.4vh, 1.7rem);
+  /* Semibold, matching AppFont.brandSemibold on tvOS. */
+  font-weight: 600;
+  font-size: calc(var(--row-h) * 0.4);
   letter-spacing: 0.05em;
   color: var(--text-primary);
+  white-space: nowrap;
 }
 
-/* Every dimension derives from the track height, so the phone's 52:30 track /
-   24px thumb / 3px inset survives being scaled up for a TV — the same
-   derivation both TV shells do (trackW = trackH * 52/30, and so on). */
+/* The switch itself keeps the phone's 52:30 track / 24px thumb / 3px inset,
+   scaled off the row (trackW = trackH * 52/30, and so on). */
 .music-switch__track {
-  --track-h: clamp(30px, 3.75vh, 47px);
+  --track-h: calc(var(--row-h) * 0.46);
   position: relative;
   flex-shrink: 0;
   width: calc(var(--track-h) * 52 / 30);
