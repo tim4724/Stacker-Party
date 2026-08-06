@@ -93,6 +93,9 @@ class Game {
       case 'rotate_cw':
         board.rotateCW();
         break;
+      case 'rotate_ccw':
+        board.rotateCCW();
+        break;
       case 'hard_drop': {
         // Silently throttle rapid repeats (e.g. queued messages after a
         // reconnect) so one intent can't rapid-fire multiple drops.

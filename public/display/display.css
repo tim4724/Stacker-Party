@@ -512,6 +512,19 @@ html:not(.in-session) #relay-status-bar { display: none; }
   opacity: 1;
 }
 
+/* Gamepad join prompt — a quieter second line under the join URL, so the QR
+   stays the primary call to action for the phones most players arrive with. */
+#gamepad-hint {
+  margin: 0.6em 0 0;
+  text-align: center;
+  font-family: var(--font-hud);
+  font-weight: 600;
+  font-size: clamp(0.85rem, 1.9vmin, 1.25rem);
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  opacity: 0.75;
+}
+
 /* Join URL — host + code on one line. Click to copy the full URL;
    shows a brief toast via #join-url[data-copied]. Transparent at rest
    (frameless block); a faint recessed fill appears on hover as the

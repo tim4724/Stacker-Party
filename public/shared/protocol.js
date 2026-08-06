@@ -52,10 +52,14 @@ var MSG = {
 };
 
 // Input action types
+// Input action types. ROTATE_CCW has no touch gesture: it exists for gamepads
+// (public/display/GamepadInput.js), where the Tetris convention puts a rotation
+// on each of the two primary face buttons.
 var INPUT = {
   LEFT: 'left',
   RIGHT: 'right',
   ROTATE_CW: 'rotate_cw',
+  ROTATE_CCW: 'rotate_ccw',
   HARD_DROP: 'hard_drop',
   HOLD: 'hold'
 };

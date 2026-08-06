@@ -1,0 +1,498 @@
+'use strict';
+
+// =====================================================================
+// Gamepad Input — pads attached to the DISPLAY machine, as local seats
+//
+// A pad is not a second kind of player. Every press becomes the SAME message
+// a phone would have sent and goes through handleControllerMessage(), so
+// joining, auto-naming, colour slots, host election, liveness, pause and the
+// engine's input timing all keep running their one implementation. What a
+// local seat skips is the relay, and that is also why its peer index is
+// NEGATIVE: the relay hands out 1..N and owns slot 0, so -(padIndex+1) can
+// never collide with a phone (see isLocalSeat in DisplayState.js, which is
+// what guards the two party.sendTo call sites).
+//
+// Buttons are bound by INDEX, never by label. Index 0 is the physically
+// bottom face button on every brand, so one binding lands in the same place
+// on an Xbox pad (A), a DualSense (Cross) and a Switch Pro (B). Rotation
+// follows the Tetris convention — right face button clockwise, bottom
+// counter-clockwise — which is why INPUT.ROTATE_CCW exists at all; no touch
+// gesture produces it.
+//
+// Browser constraint worth knowing: Chrome does not report a pad through
+// navigator.getGamepads() until a button has been pressed on it, so a pad
+// cannot be detected before the gesture that joins it. That is why the lobby
+// hint only appears once a pad is known, and why there is no connect event
+// to listen for that would be any earlier.
+// =====================================================================
+
+// --- W3C "standard" mapping indices ---
+var PAD_BTN = {
+  ROTATE_CCW: 0,   // A / Cross / Switch B  (bottom)
+  ROTATE_CW: 1,    // B / Circle / Switch A (right)
+  HOLD_L: 4,       // L1 / LB
+  HOLD_R: 5,       // R1 / RB
+  HARD_DROP_ALT: 7,// R2 / RT
+  START: 9,        // Start / Options / +
+  UP: 12,
+  DOWN: 13,
+  LEFT: 14,
+  RIGHT: 15
+};
+
+// Auto-repeat for held left/right. DAS is the wait before the repeat starts,
+// ARR the interval once it does; both are the familiar stacker values.
+var PAD_DAS_MS = 170;
+var PAD_ARR_MS = 40;
+// A stick reads as a direction past this, and soft drop scales from here to
+// full deflection.
+var PAD_STICK_DEADZONE = 0.5;
+// Same speed range and keepalive cadence as the touchpad's soft drop
+// (TouchInput.SOFT_DROP_MIN_SPEED / _MAX_SPEED / SOFT_DROP_INTERVAL_MS): the
+// message is state-shaped, so the engine re-arms its deadline on each one and
+// auto-ends when they stop.
+var PAD_SOFT_DROP_MIN_SPEED = 3;
+var PAD_SOFT_DROP_MAX_SPEED = 10;
+var PAD_SOFT_DROP_INTERVAL_MS = 100;
+// Ceiling on repeats folded into one message. Only a long frame stall (or a
+// backgrounded tab catching up) reaches it; DisplayInput clamps again on the
+// way in, this just keeps the number sane at the source.
+var PAD_MAX_STEPS_PER_POLL = 6;
+
+// Turns one pad's raw button/axis state into controller messages. Pure: no
+// DOM, no navigator, no clock of its own — the caller passes nowMs. That is
+// what makes the mapping testable (tests/gamepad-input.test.js).
+function GamepadMapper() {
+  this._prev = [];
+  this._repeatDir = 0;
+  this._repeatNextAt = 0;
+  this._softDropSpeed = 0;
+  this._softDropNextAt = 0;
+}
+
+// buttons: array of booleans, axes: array of numbers, playing: whether game
+// input is live. Returns { messages, pressed } — `pressed` is the list of
+// button indices that went down this poll, which is what the menu bindings
+// (join, start, pause, colour, level) read.
+GamepadMapper.prototype.poll = function (buttons, axes, nowMs, playing) {
+  var pressed = [];
+  for (var i = 0; i < buttons.length; i++) {
+    if (buttons[i] && !this._prev[i]) pressed.push(i);
+  }
+
+  var messages = [];
+  if (playing) {
+    this._move(buttons, axes, nowMs, messages);
+    this._softDrop(buttons, axes, nowMs, messages);
+    this._discrete(buttons, messages);
+  } else {
+    this._endSoftDrop(messages);
+    this._repeatDir = 0;
+  }
+
+  this._prev = buttons.slice();
+  return { messages: messages, pressed: pressed };
+};
+
+// Held-direction auto-repeat. Steps ride as a COUNT on one message rather
+// than one message each, the same shape TouchInput gives a fast drag.
+GamepadMapper.prototype._move = function (buttons, axes, nowMs, out) {
+  var dir = 0;
+  if (buttons[PAD_BTN.LEFT]) dir -= 1;
+  if (buttons[PAD_BTN.RIGHT]) dir += 1;
+  if (dir === 0) {
+    var ax = axes.length > 0 ? axes[0] : 0;
+    if (Math.abs(ax) >= PAD_STICK_DEADZONE) dir = ax < 0 ? -1 : 1;
+  }
+
+  if (dir === 0) {
+    this._repeatDir = 0;
+    return;
+  }
+
+  var action = dir < 0 ? INPUT.LEFT : INPUT.RIGHT;
+  if (dir !== this._repeatDir) {
+    // Fresh press: one step now, then hold for DAS before repeating.
+    this._repeatDir = dir;
+    this._repeatNextAt = nowMs + PAD_DAS_MS;
+    out.push({ type: MSG.INPUT, action: action });
+    return;
+  }
+  if (nowMs < this._repeatNextAt) return;
+
+  var steps = Math.min(
+    1 + Math.floor((nowMs - this._repeatNextAt) / PAD_ARR_MS),
+    PAD_MAX_STEPS_PER_POLL
+  );
+  // Re-baseline off now rather than accumulating: a dropped frame costs at
+  // most a step's worth of drift and can never run away.
+  this._repeatNextAt = nowMs + PAD_ARR_MS;
+  var msg = { type: MSG.INPUT, action: action };
+  if (steps > 1) msg.n = steps;
+  out.push(msg);
+};
+
+// D-pad down drops at full speed (a digital press IS full deflection); the
+// stick scales between the dead zone and its limit.
+GamepadMapper.prototype._softDrop = function (buttons, axes, nowMs, out) {
+  var speed = 0;
+  if (buttons[PAD_BTN.DOWN]) {
+    speed = PAD_SOFT_DROP_MAX_SPEED;
+  } else {
+    var ay = axes.length > 1 ? axes[1] : 0;
+    if (ay >= PAD_STICK_DEADZONE) {
+      var t = (ay - PAD_STICK_DEADZONE) / (1 - PAD_STICK_DEADZONE);
+      speed = Math.round(
+        PAD_SOFT_DROP_MIN_SPEED +
+        Math.min(Math.max(t, 0), 1) * (PAD_SOFT_DROP_MAX_SPEED - PAD_SOFT_DROP_MIN_SPEED)
+      );
+    }
+  }
+
+  if (speed === 0) {
+    this._endSoftDrop(out);
+    return;
+  }
+  if (this._softDropSpeed !== speed || nowMs >= this._softDropNextAt) {
+    this._softDropSpeed = speed;
+    this._softDropNextAt = nowMs + PAD_SOFT_DROP_INTERVAL_MS;
+    out.push({ type: MSG.SOFT_DROP, speed: speed });
+  }
+};
+
+GamepadMapper.prototype._endSoftDrop = function (out) {
+  if (this._softDropSpeed === 0) return;
+  this._softDropSpeed = 0;
+  // Explicit end so the piece stops on release instead of waiting out the
+  // engine's own soft-drop deadline.
+  out.push({ type: MSG.SOFT_DROP_END });
+};
+
+GamepadMapper.prototype._discrete = function (buttons, out) {
+  var self = this;
+  function edge(index) { return buttons[index] && !self._prev[index]; }
+
+  if (edge(PAD_BTN.ROTATE_CW)) out.push({ type: MSG.INPUT, action: INPUT.ROTATE_CW });
+  if (edge(PAD_BTN.ROTATE_CCW)) out.push({ type: MSG.INPUT, action: INPUT.ROTATE_CCW });
+  // Deliberately no stick-up hard drop: steering with the stick would fire it
+  // by accident. D-pad up is the Tetris convention, RT the alternative for
+  // players who dislike it.
+  if (edge(PAD_BTN.UP) || edge(PAD_BTN.HARD_DROP_ALT)) {
+    out.push({ type: MSG.INPUT, action: INPUT.HARD_DROP });
+  }
+  if (edge(PAD_BTN.HOLD_L) || edge(PAD_BTN.HOLD_R)) {
+    out.push({ type: MSG.INPUT, action: INPUT.HOLD });
+  }
+};
+
+// Cleaned-up brand name for `gamepad.id`, which is the only string a pad
+// exposes and whose format differs per browser:
+//   Chrome   "Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 0b13)"
+//   Firefox  "045e-0b13-Xbox Wireless Controller"
+//   Safari   "Xbox Wireless Controller Extended Gamepad"
+// A known vendor id wins over the model string, because the model is the part
+// browsers disagree about (and that fingerprinting protections generalize).
+var PAD_VENDORS = {
+  '045e': 'Xbox',
+  '054c': 'PlayStation',
+  '057e': 'Nintendo',
+  '046d': 'Logitech',
+  '2dc8': '8BitDo',
+  '28de': 'Steam'
+};
+
+// `maxLen` is the room core's own name cap, passed in rather than read, so
+// this stays pure and the cap keeps one definition.
+function gamepadDisplayName(rawId, maxLen) {
+  var id = String(rawId == null ? '' : rawId);
+
+  var vendor = /Vendor:\s*([0-9a-f]{4})/i.exec(id) || /^([0-9a-f]{4})-[0-9a-f]{4}-/i.exec(id);
+  if (vendor && PAD_VENDORS[vendor[1].toLowerCase()]) return PAD_VENDORS[vendor[1].toLowerCase()];
+
+  var name = id
+    .replace(/\s*\([^)]*\)\s*$/, '')            // Chrome's trailing vendor block
+    .replace(/^[0-9a-f]{4}-[0-9a-f]{4}-/i, '')  // Firefox's leading ids
+    .replace(/\s*(Extended|Standard)\s+Gamepad\s*$/i, '') // Safari's suffix
+    .trim();
+  // Rather than hand over a name the room core would truncate mid-word, fall
+  // back to the generic label.
+  if (!name || name.length > maxLen) return 'Gamepad';
+  return name;
+}
+
+var GamepadInput = (function () {
+  // padIndex -> { seatId, mapper, pendingGarbage, cancelledLines }
+  var seats = new Map();
+  var unseatedPads = 0;
+  var rafId = null;
+  var hintEl = null;
+
+  // The relay owns 1..N and the display owns 0, so negatives are ours alone.
+  // Derived from the pad's own slot, so unplugging and replugging the same pad
+  // lands back on the same seat (a reconnect, not a new player).
+  function seatIdFor(padIndex) { return -(padIndex + 1); }
+
+  function seatFor(seatId) {
+    for (var entry of seats) {
+      if (entry[1].seatId === seatId) return entry[1];
+    }
+    return null;
+  }
+
+  function feed(seatId, msg) {
+    handleControllerMessage(seatId, msg);
+  }
+
+  // Palette slots nobody else holds, in order, so cycling skips taken colours
+  // instead of stalling on the silent rejection setColor gives a collision.
+  function freeColorSlots(seatId) {
+    var taken = {};
+    for (var entry of players) {
+      if (entry[0] !== seatId) taken[entry[1].playerIndex] = true;
+    }
+    var free = [];
+    for (var i = 0; i < roomCore.maxPlayers; i++) {
+      if (!taken[i]) free.push(i);
+    }
+    return free;
+  }
+
+  function cycleColor(seatId, step) {
+    var player = players.get(seatId);
+    if (!player) return;
+    var free = freeColorSlots(seatId);
+    if (free.length < 2) return;
+    var at = free.indexOf(player.playerIndex);
+    var next = free[((at + step) % free.length + free.length) % free.length];
+    feed(seatId, { type: MSG.SET_COLOR, colorIndex: next });
+  }
+
+  // Menu bindings. Out of range levels and colours are rejected by the room
+  // core, so the bounds are not re-checked here.
+  function onMenuPress(seatId, index) {
+    if (roomState === ROOM_STATE.RESULTS) {
+      if (index === PAD_BTN.ROTATE_CCW) feed(seatId, { type: MSG.PLAY_AGAIN });
+      else if (index === PAD_BTN.ROTATE_CW) feed(seatId, { type: MSG.RETURN_TO_LOBBY });
+      return;
+    }
+
+    if (roomState === ROOM_STATE.LOBBY) {
+      var player = players.get(seatId);
+      if (index === PAD_BTN.ROTATE_CCW) feed(seatId, { type: MSG.START_GAME });
+      else if (index === PAD_BTN.HOLD_L) cycleColor(seatId, -1);
+      else if (index === PAD_BTN.HOLD_R) cycleColor(seatId, 1);
+      else if (index === PAD_BTN.UP && player) {
+        feed(seatId, { type: MSG.SET_LEVEL, level: (player.startLevel || 1) + 1 });
+      } else if (index === PAD_BTN.DOWN && player) {
+        feed(seatId, { type: MSG.SET_LEVEL, level: (player.startLevel || 1) - 1 });
+      }
+      return;
+    }
+
+    // Countdown, or a paused game: Start toggles the pause, and the bottom
+    // face button lifts one the same way the overlay's Continue does.
+    if (index === PAD_BTN.START) {
+      feed(seatId, { type: paused ? MSG.RESUME_GAME : MSG.PAUSE_GAME });
+    } else if (index === PAD_BTN.ROTATE_CCW && paused) {
+      feed(seatId, { type: MSG.RESUME_GAME });
+    }
+  }
+
+  function join(padIndex, pad) {
+    var seatId = seatIdFor(padIndex);
+    var name = gamepadDisplayName(pad.id, window.GameEngine.RoomCore.NAME_MAX_LEN);
+    seats.set(padIndex, {
+      seatId: seatId,
+      mapper: new GamepadMapper(),
+      pendingGarbage: 0,
+      cancelledLines: 0
+    });
+    // The same HELLO a phone sends. autoName stays false: the pad's name is a
+    // real (if borrowed) identity, not a request for an HX-n slot.
+    feed(seatId, { type: MSG.HELLO, name: name, autoName: false });
+    // A refused join (room full) leaves no row behind — drop the seat so the
+    // next press tries again rather than feeding input nobody owns.
+    if (!players.has(seatId)) {
+      seats.delete(padIndex);
+      return null;
+    }
+    return seats.get(padIndex);
+  }
+
+  function retire(padIndex) {
+    var seat = seats.get(padIndex);
+    if (!seat) return;
+    seats.delete(padIndex);
+    // Same path as a phone closing its tab: mid-game the row is held (with a
+    // rejoin QR) so replugging the pad — or scanning with a phone — resumes
+    // the seat; in lobby or results it is dropped outright.
+    feed(seat.seatId, { type: MSG.LEAVE });
+  }
+
+  function pump(padIndex, pad, nowMs) {
+    var buttons = [];
+    for (var b = 0; b < pad.buttons.length; b++) {
+      buttons.push(!!(pad.buttons[b] && pad.buttons[b].pressed));
+    }
+
+    var seat = seats.get(padIndex);
+    if (!seat) {
+      // Any press joins, but only once there is a room to join.
+      if (currentScreen === SCREEN.WELCOME) return;
+      if (buttons.indexOf(true) < 0) return;
+      seat = join(padIndex, pad);
+      // Hand the joining press to the fresh mapper as the baseline. Without
+      // this it reads as a NEW press on the next frame and fires whatever the
+      // button is bound to — the bottom face button would join and then
+      // immediately start the game.
+      if (seat) seat.mapper.poll(buttons, pad.axes || [], nowMs, false);
+      return;
+    }
+
+    // The row can disappear without the pad going anywhere — a session reset
+    // back to welcome clears the whole roster. Give the seat up so the next
+    // press joins the new room instead of feeding a player that is gone.
+    if (!players.has(seat.seatId)) {
+      seats.delete(padIndex);
+      return;
+    }
+
+    // A local seat sends nothing over the wire, so nothing else proves it is
+    // still there. The pad being present in this poll IS the proof; without
+    // this the liveness sweep would expire an idle player mid-game.
+    roomCore.onSeen(seat.seatId, Date.now());
+
+    var playing = roomState === ROOM_STATE.PLAYING && !paused;
+    var result = seat.mapper.poll(buttons, pad.axes || [], nowMs, playing);
+
+    for (var m = 0; m < result.messages.length; m++) feed(seat.seatId, result.messages[m]);
+    if (!playing) {
+      for (var p = 0; p < result.pressed.length; p++) onMenuPress(seat.seatId, result.pressed[p]);
+    } else if (result.pressed.indexOf(PAD_BTN.START) >= 0) {
+      feed(seat.seatId, { type: MSG.PAUSE_GAME });
+    }
+
+    pollRumble(seat, pad);
+  }
+
+  // --- Rumble -------------------------------------------------------
+  // Effects a phone gets as haptics through its own vibrate() call. Here the
+  // pad is local, so they are driven straight off the engine's events.
+  function rumble(pad, duration, weak, strong) {
+    var actuator = pad.vibrationActuator;
+    if (!actuator || typeof actuator.playEffect !== 'function') return;
+    try {
+      var effect = actuator.playEffect('dual-rumble', {
+        duration: duration,
+        weakMagnitude: weak,
+        strongMagnitude: strong
+      });
+      if (effect && typeof effect.catch === 'function') effect.catch(function () {});
+    } catch (e) { /* unsupported effect type */ }
+  }
+
+  function padFor(seatId) {
+    var pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    for (var i = 0; i < pads.length; i++) {
+      var seat = seats.get(i);
+      if (pads[i] && seat && seat.seatId === seatId) return pads[i];
+    }
+    return null;
+  }
+
+  // The engine has no "garbage applied" event: rows go in at the next lock,
+  // inside the board. What it does expose is the pending count, so an
+  // unexplained DROP in it is the moment the stack got shoved up. The only
+  // other way it can fall is a defended line clear, which garbage_cancelled
+  // reports, so subtracting that leaves exactly the applied lines.
+  function pollRumble(seat, pad) {
+    if (roomState !== ROOM_STATE.PLAYING || !gameState || !gameState.players) {
+      // Between matches there is nothing to compare against, and carrying a
+      // count across would fire the thump on the next game's first frame.
+      seat.pendingGarbage = 0;
+      seat.cancelledLines = 0;
+      return;
+    }
+    var pending = 0;
+    for (var i = 0; i < gameState.players.length; i++) {
+      if (gameState.players[i].id === seat.seatId) {
+        pending = gameState.players[i].pendingGarbage || 0;
+        break;
+      }
+    }
+    var applied = seat.pendingGarbage - pending - seat.cancelledLines;
+    seat.cancelledLines = 0;
+    seat.pendingGarbage = pending;
+    if (applied > 0) rumble(pad, 90 + 50 * applied, 0.4, 0.9);
+  }
+
+  // Called from renderEngineEvent for every engine event, alongside the board
+  // animations — the same per-shell fan-out, for the effect that happens in
+  // the player's hands instead of on screen.
+  function onEngineEvent(event) {
+    if (!seats.size) return;
+    if (event.type === 'garbage_sent') {
+      var target = padFor(event.toId);
+      // The telegraph: garbage is queued and the meter is filling.
+      if (target) rumble(target, 120 + 40 * event.lines, 0.35, 0.15);
+    } else if (event.type === 'garbage_cancelled') {
+      var defender = seatFor(event.playerId);
+      if (defender) {
+        defender.cancelledLines += event.lines;
+        var pad = padFor(event.playerId);
+        if (pad) rumble(pad, 60, 0.5, 0);
+      }
+    } else if (event.type === 'player_ko') {
+      var out = padFor(event.playerId);
+      if (out) rumble(out, 400, 0.6, 1);
+    }
+  }
+
+  // --- Loop ---------------------------------------------------------
+  function poll(nowMs) {
+    rafId = requestAnimationFrame(poll);
+    var pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    unseatedPads = 0;
+    for (var i = 0; i < pads.length; i++) {
+      var pad = pads[i];
+      if (!pad || !pad.connected) { retire(i); continue; }
+      if (!seats.has(i)) unseatedPads++;
+      pump(i, pad, nowMs);
+    }
+    // A pad that vanished off the end of the array (shorter list, not a null
+    // hole) still has to give up its seat.
+    var stale = [];
+    for (var entry of seats) {
+      if (entry[0] >= pads.length) stale.push(entry[0]);
+    }
+    for (var s = 0; s < stale.length; s++) retire(stale[s]);
+    updateHint();
+  }
+
+  function updateHint() {
+    if (!hintEl) return;
+    var show = unseatedPads > 0 &&
+      (roomState === ROOM_STATE.LOBBY || roomState === ROOM_STATE.RESULTS);
+    hintEl.classList.toggle('hidden', !show);
+  }
+
+  // Not started under the gallery/test harnesses: their rosters are fixtures,
+  // and a pad plugged into the developer's machine must not join one.
+  function start() {
+    if (rafId !== null) return;
+    if (!navigator.getGamepads) return;
+    if (window.__TEST__) return;
+    hintEl = document.getElementById('gamepad-hint');
+    rafId = requestAnimationFrame(poll);
+  }
+
+  return {
+    start: start,
+    onEngineEvent: onEngineEvent,
+    isLocalSeat: function (id) { return typeof id === 'number' && id < 0; }
+  };
+})();
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { GamepadMapper, gamepadDisplayName, PAD_BTN };
+}

@@ -419,6 +419,10 @@ function renderEngineEvent(event) {
   else if (event.type === 'player_ko') onPlayerKO(event);
   else if (event.type === 'garbage_cancelled') onGarbageCancelled(event);
   else if (event.type === 'garbage_sent') onGarbageSent(event);
+  // Same per-shell fan-out, for the effect that lands in a local player's
+  // hands rather than on screen. No-op unless a gamepad holds a seat, and
+  // absent entirely from the AirConsole bundle (see AC_DEAD).
+  if (typeof GamepadInput !== 'undefined') GamepadInput.onEngineEvent(event);
 }
 
 // Map PartyCore's normalized host-effect commands to controller sends and the
@@ -436,7 +440,9 @@ function dispatchCommands(commands) {
       if (c.alive === false) publishAs(roomCore.setAlive(c.playerId, false).publish);
       // Pure telemetry: `lines` is the one figure the snapshot does not carry, so a
       // `player_ko` form sends nothing (PlayerStateCommand in PartyCore.d.ts has why).
-      if (c.lines != null) {
+      // A local gamepad seat has no peer to send to; its feedback is rumble,
+      // driven off the raw events below.
+      if (c.lines != null && !isLocalSeat(c.playerId)) {
         party.sendTo(c.playerId, { type: MSG.PLAYER_STATE, lines: c.lines });
       }
     } else if (c.type === 'gameEnd') {

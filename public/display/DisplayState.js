@@ -257,6 +257,14 @@ function getHostPeerIndex() {
   return roomCore.host;
 }
 
+// A seat filled by a gamepad plugged into THIS machine (GamepadInput.js). It is
+// a player like any other to the room core, but it has no peer on the relay, so
+// every party.sendTo must skip it. The relay hands out 1..N and the display owns
+// slot 0, which is what leaves the negative range free for these.
+function isLocalSeat(peerIndex) {
+  return typeof peerIndex === 'number' && peerIndex < 0;
+}
+
 // --- DOM References ---
 var welcomeScreen = document.getElementById('welcome-screen');
 var newGameBtn = document.getElementById('new-game-btn');

@@ -418,6 +418,12 @@ if (bgCanvas && (urlParams.get('test') !== '1' || urlParams.get('bg') === '1')) 
   welcomeBg.start();
 }
 
+// --- Gamepads attached to this machine ---
+// Self-gates on the Gamepad API and on the test harnesses, so this is a no-op
+// where there is nothing to poll. Stripped from the AirConsole bundle entirely
+// (see AC_DEAD), hence the typeof.
+if (typeof GamepadInput !== 'undefined') GamepadInput.start();
+
 // --- Debug or normal init ---
 var _scenarioParam = urlParams.get('scenario');
 if (window.__TEST__ && (debugCount > 0 || _scenarioParam)) {

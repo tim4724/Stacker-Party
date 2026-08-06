@@ -94,7 +94,9 @@ function onHello(fromId, msg) {
   if (res.claimed) applyReconnectClaim(res.oldPeerIndex, fromId);
 
   if (!res.accepted) {
-    if (res.roomFull) party.sendTo(fromId, { type: MSG.ERROR, message: 'Room is full' });
+    if (res.roomFull && !isLocalSeat(fromId)) {
+      party.sendTo(fromId, { type: MSG.ERROR, message: 'Room is full' });
+    }
     return;
   }
 

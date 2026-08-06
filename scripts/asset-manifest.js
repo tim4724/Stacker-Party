@@ -101,6 +101,10 @@ const DISPLAY_SCRIPTS = [
   '/display/DisplayGame.js',
   '/display/DisplayLiveness.js',
   '/display/DisplayInput.js',
+  // After DisplayInput.js, whose handleControllerMessage every pad press is
+  // funnelled through, and before DisplayGame's renderEngineEvent reaches for
+  // GamepadInput.onEngineEvent.
+  '/display/GamepadInput.js',
   '/display/DisplayRender.js',
   // Must precede display.js: its bottom-of-file init reads window.__TEST__
   // (set here under ?test/?scenario/?adclip) synchronously to choose
@@ -137,6 +141,11 @@ const AC_DEAD = [
   // Gallery/Playwright-only harnesses, gated on URL params AC never carries.
   '/controller/ControllerTestHarness.js',
   '/display/DisplayTestHarness.js',
+  // Local gamepad seats. An AC player is an AirConsole device, and host
+  // election in AC mode defers to getMasterPeerIndex(), which a local seat can
+  // never be — so a pad could join but never start a game. Its two call sites
+  // are typeof-guarded for this exclusion.
+  '/display/GamepadInput.js',
 ];
 
 // AC_DEAD only ever FILTERS, so a path that matches nothing fails silently: rename
