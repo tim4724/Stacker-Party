@@ -66,6 +66,9 @@ describe('GamepadMapper game input', () => {
     assert.deepEqual(tap(PAD_BTN.R2), DROP);
     // D-pad up stays the Tetris-convention hard drop.
     assert.deepEqual(tap(PAD_BTN.UP), DROP);
+    // ...and the top face button also holds, so a pad with no shoulders at
+    // all can still reach both actions.
+    assert.deepEqual(tap(PAD_BTN.FACE_UP), HOLD);
   });
 
   test('a stick pushed up never hard drops (it would fire while steering)', () => {
@@ -224,8 +227,14 @@ describe('gamepadDisplayName', () => {
     ['2dc8-3106-8BitDo Ultimate', '8BitDo'],
     // Safari (GameController framework names, no vendor id at all)
     ['DualSense Extended Gamepad', 'DualSense'],
+    ['Xbox Wireless Controller Extended Gamepad', 'Xbox'],
+    // Chrome on Windows via XInput: also no vendor id
+    ['Xbox 360 Controller (XInput STANDARD GAMEPAD)', 'Xbox 360'],
     // Unknown vendor: the model survives, stripped of decoration
     ['Rando Pad (STANDARD GAMEPAD Vendor: 9999 Product: 0001)', 'Rando Pad'],
+    ['PowerA Wired Controller (STANDARD GAMEPAD Vendor: 20d6 Product: a713)', 'PowerA'],
+    // Too long even without the noise words: whole words go, not characters
+    ['Nacon Revolution Pro Controller (Vendor: 146b Product: 0d01)', 'Nacon Revolution'],
   ];
 
   for (const [id, expected] of cases) {
@@ -234,13 +243,12 @@ describe('gamepadDisplayName', () => {
     });
   }
 
-  test('falls back rather than handing over a name the room core would cut', () => {
+  test('falls back only when nothing identifying is left', () => {
     assert.equal(gamepadDisplayName('', NAME_MAX_LEN), 'Gamepad');
     assert.equal(gamepadDisplayName(null, NAME_MAX_LEN), 'Gamepad');
-    assert.equal(
-      gamepadDisplayName('Some Absurdly Long Controller Model', NAME_MAX_LEN),
-      'Gamepad'
-    );
+    assert.equal(gamepadDisplayName('Unknown Gamepad', NAME_MAX_LEN), 'Gamepad');
+    // One unbroken word past the cap has nothing to drop.
+    assert.equal(gamepadDisplayName('Absurdlylongcontrollername', NAME_MAX_LEN), 'Gamepad');
   });
 
   test('never returns a name the room core would truncate', () => {

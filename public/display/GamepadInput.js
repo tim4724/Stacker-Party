@@ -31,11 +31,15 @@
 // better spent on the level. Everywhere else the ring is what makes Play
 // Again, New Game, Continue and Reconnect reachable without a binding each —
 // add a button to one of those screens and the pad reaches it with no change
-// here. Y, Select and the stick clicks stay unbound on purpose.
+// here. Select and the stick clicks stay unbound on purpose.
 //
 // A whole shoulder SIDE is one action, never two: both left shoulders hold
 // (colour previous in the lobby), both right ones hard drop (colour next), so
 // there is nothing to remember about which of the two your finger found.
+// Neither side is the ONLY way to reach its action, which is what keeps a pad
+// with no shoulders playable: D-pad up hard drops and the top face button
+// holds. Only the lobby's colour cycling is shoulder-only, and a colour is
+// assigned either way.
 //
 // The display operator's own chrome — the toolbar and the relay diagnostics —
 // is never pad-reachable (see OPERATOR_CHROME). It belongs to whoever set the
@@ -262,7 +266,10 @@ GamepadMapper.prototype._discrete = function (buttons, out) {
   if (edge(PAD_BTN.UP) || edge(PAD_BTN.R1) || edge(PAD_BTN.R2)) {
     out.push({ type: MSG.INPUT, action: INPUT.HARD_DROP });
   }
-  if (edge(PAD_BTN.L1) || edge(PAD_BTN.L2)) {
+  // Hold is also on the TOP face button, which is where Tetris Effect puts it
+  // and which is the only reason a pad with no shoulders at all (an NES-style
+  // retro pad, a sideways single Joy-Con) can still hold a piece.
+  if (edge(PAD_BTN.L1) || edge(PAD_BTN.L2) || edge(PAD_BTN.FACE_UP)) {
     out.push({ type: MSG.INPUT, action: INPUT.HOLD });
   }
 };
@@ -283,6 +290,11 @@ var PAD_VENDORS = {
   '28de': 'Steam'
 };
 
+// Words every pad's id repeats and none of them is identified by. Dropping
+// them is what makes a name fit the room core's cap: "Xbox Wireless
+// Controller" is 24 characters of which 4 carry the brand.
+var PAD_NOISE_RE = /\b(wireless|wired|bluetooth|usb|controller|gamepad|joystick|joypad|extended|standard|xinput|unknown)\b/gi;
+
 // `maxLen` is the room core's own name cap, passed in rather than read, so
 // this stays pure and the cap keeps one definition.
 function gamepadDisplayName(rawId, maxLen) {
@@ -292,12 +304,16 @@ function gamepadDisplayName(rawId, maxLen) {
   if (vendor && PAD_VENDORS[vendor[1].toLowerCase()]) return PAD_VENDORS[vendor[1].toLowerCase()];
 
   var name = id
-    .replace(/\s*\([^)]*\)\s*$/, '')            // Chrome's trailing vendor block
+    .replace(/\([^)]*\)/g, ' ')                 // Chrome's vendor / XInput block
     .replace(/^[0-9a-f]{4}-[0-9a-f]{4}-/i, '')  // Firefox's leading ids
-    .replace(/\s*(Extended|Standard)\s+Gamepad\s*$/i, '') // Safari's suffix
+    .replace(PAD_NOISE_RE, ' ')
+    .replace(/\s+/g, ' ')
     .trim();
-  // Rather than hand over a name the room core would truncate mid-word, fall
-  // back to the generic label.
+  // Drop whole words until it fits rather than hand the room core a name it
+  // would cut mid-word.
+  while (name.length > maxLen && name.indexOf(' ') > 0) {
+    name = name.slice(0, name.lastIndexOf(' '));
+  }
   if (!name || name.length > maxLen) return 'Gamepad';
   return name;
 }
