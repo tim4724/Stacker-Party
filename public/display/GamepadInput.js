@@ -21,16 +21,18 @@
 //
 // The pad does two different jobs and the room state picks between them:
 //   playing  the D-pad and stick are the piece, the face buttons rotate
-//   menus    the D-pad moves a focus ring over the display's real buttons and
-//            the bottom face button clicks the focused one (see moveFocus)
+//   menus    the D-pad AND the stick move a focus ring over the display's real
+//            buttons, and the bottom face button clicks the focused one
 // Only what has NO on-screen control keeps a binding of its own outside play:
-// Start toggles the pause, the shoulders cycle this seat's colour and the
-// triggers step its level. Everything else — Start, Play Again, New Game,
-// Continue, mute, fullscreen — is reached by focusing it, which is why adding
-// a button to the display makes it pad-reachable with no change here. The
-// remaining buttons (both side face buttons, Select, stick clicks) are left
-// unbound on purpose: there is nothing left for them to do that focusing the
-// control would not do better.
+// Start toggles the pause, a shoulder side cycles this seat's colour and the
+// two free face buttons step its level. Everything else — Start, Play Again,
+// New Game, Continue, mute, fullscreen — is reached by focusing it, which is
+// why adding a button to the display makes it pad-reachable with no change
+// here. Select and the stick clicks stay unbound on purpose.
+//
+// A whole shoulder SIDE is one action, never two: both left shoulders hold
+// (colour previous in the lobby), both right ones hard drop (colour next), so
+// there is nothing to remember about which of the two your finger found.
 //
 // Two boundaries worth knowing:
 //   - Chrome does not report a pad through navigator.getGamepads() until a
@@ -90,12 +92,17 @@ function GamepadMapper() {
   this._repeatNextAt = 0;
   this._softDropSpeed = 0;
   this._softDropNextAt = 0;
+  // Last stick direction the menu navigation saw, so a HELD stick is one step
+  // rather than a run through the list at frame rate.
+  this._navX = 0;
+  this._navY = 0;
 }
 
 // buttons: array of booleans, axes: array of numbers, playing: whether game
-// input is live. Returns { messages, pressed } — `pressed` is the list of
-// button indices that went down this poll, which is what the menu bindings
-// (join, start, pause, colour, level) read.
+// input is live. Returns { messages, pressed, nav }:
+//   messages  game input, empty unless playing
+//   pressed   button indices that went down this poll (join, pause, settings)
+//   nav       'prev'/'next' focus steps, empty while playing
 GamepadMapper.prototype.poll = function (buttons, axes, nowMs, playing) {
   var pressed = [];
   for (var i = 0; i < buttons.length; i++) {
@@ -103,17 +110,50 @@ GamepadMapper.prototype.poll = function (buttons, axes, nowMs, playing) {
   }
 
   var messages = [];
+  var nav = [];
   if (playing) {
     this._move(buttons, axes, nowMs, messages);
     this._softDrop(buttons, axes, nowMs, messages);
     this._discrete(buttons, messages);
+    // Keep the navigation baseline current while the stick is steering a
+    // piece, so a stick still held when the game pauses does not read as a
+    // fresh menu step on the first frame of the overlay.
+    this._stickDir(axes);
   } else {
     this._endSoftDrop(messages);
     this._repeatDir = 0;
+    this._nav(buttons, axes, nav);
   }
 
   this._prev = buttons.slice();
-  return { messages: messages, pressed: pressed };
+  return { messages: messages, pressed: pressed, nav: nav };
+};
+
+// Current stick octant as two discrete directions, recorded for edge
+// detection. Returns the pair it just stored.
+GamepadMapper.prototype._stickDir = function (axes) {
+  var x = axes.length > 0 ? axes[0] : 0;
+  var y = axes.length > 1 ? axes[1] : 0;
+  this._navX = Math.abs(x) >= PAD_STICK_DEADZONE ? (x < 0 ? -1 : 1) : 0;
+  this._navY = Math.abs(y) >= PAD_STICK_DEADZONE ? (y < 0 ? -1 : 1) : 0;
+  return { x: this._navX, y: this._navY };
+};
+
+// Focus steps from the D-pad AND the left stick, both edge-triggered: one step
+// per press and one per push past the dead zone. The lists are a handful of
+// buttons, so an auto-repeat would overshoot more often than it would help.
+GamepadMapper.prototype._nav = function (buttons, axes, out) {
+  var self = this;
+  function edge(index) { return buttons[index] && !self._prev[index]; }
+
+  if (edge(PAD_BTN.LEFT) || edge(PAD_BTN.UP)) out.push('prev');
+  if (edge(PAD_BTN.RIGHT) || edge(PAD_BTN.DOWN)) out.push('next');
+
+  var wasX = this._navX;
+  var wasY = this._navY;
+  var now = this._stickDir(axes);
+  if (now.x && now.x !== wasX) out.push(now.x < 0 ? 'prev' : 'next');
+  if (now.y && now.y !== wasY) out.push(now.y < 0 ? 'prev' : 'next');
 };
 
 // Held-direction auto-repeat. Steps ride as a COUNT on one message rather
@@ -197,13 +237,14 @@ GamepadMapper.prototype._discrete = function (buttons, out) {
   // Tetris convention: right face button clockwise, bottom counter-clockwise.
   if (edge(PAD_BTN.FACE_RIGHT)) out.push({ type: MSG.INPUT, action: INPUT.ROTATE_CW });
   if (edge(PAD_BTN.FACE_DOWN)) out.push({ type: MSG.INPUT, action: INPUT.ROTATE_CCW });
+  // A whole SIDE is one action: both left shoulders hold, both right shoulders
+  // hard drop. Nothing to remember about which of the two your finger found.
   // Deliberately no stick-up hard drop: steering with the stick would fire it
-  // by accident. D-pad up is the Tetris convention, R2 the alternative for
-  // players who dislike it.
-  if (edge(PAD_BTN.UP) || edge(PAD_BTN.R2)) {
+  // by accident. D-pad up stays the Tetris convention for it.
+  if (edge(PAD_BTN.UP) || edge(PAD_BTN.R1) || edge(PAD_BTN.R2)) {
     out.push({ type: MSG.INPUT, action: INPUT.HARD_DROP });
   }
-  if (edge(PAD_BTN.L1) || edge(PAD_BTN.R1)) {
+  if (edge(PAD_BTN.L1) || edge(PAD_BTN.L2)) {
     out.push({ type: MSG.INPUT, action: INPUT.HOLD });
   }
 };
@@ -306,6 +347,11 @@ var GamepadInput = (function () {
 
   function focusCandidates() {
     var out = [];
+    // The game toolbar (mute, fullscreen, pause) is the display operator's
+    // chrome, not a player control. In the lobby the only thing a pad player
+    // wants is START, so it is not a ring stop there — it stays reachable on
+    // the screens where the toolbar is the point.
+    var skipToolbar = roomState === ROOM_STATE.LOBBY;
     var all = document.querySelectorAll('button');
     for (var i = 0; i < all.length; i++) {
       var el = all[i];
@@ -313,6 +359,7 @@ var GamepadInput = (function () {
       // out of the tab order; honouring it keeps the ring out of overlays that
       // are on screen but not interactive.
       if (el.disabled || el.closest('[inert]') || !el.getClientRects().length) continue;
+      if (skipToolbar && el.closest('#game-toolbar')) continue;
       out.push(el);
     }
     // Reading order (top row first, then left to right), so left/up step back
@@ -367,21 +414,24 @@ var GamepadInput = (function () {
     focusEl.click();
   }
 
+  // Pad activity counts as presence, exactly like moving the mouse: without it
+  // the game toolbar stays auto-hidden and its buttons are a ring stop the
+  // player cannot see.
+  function onMenuNav(step) {
+    showCursor();
+    moveFocus(step);
+  }
+
   // Menu bindings. Out of range levels and colours are rejected by the room
   // core, so the bounds are not re-checked here.
   function onMenuPress(seatId, index) {
     var player = players.get(seatId);
 
-    if (index === PAD_BTN.FACE_DOWN || index === PAD_BTN.LEFT || index === PAD_BTN.UP ||
-        index === PAD_BTN.RIGHT || index === PAD_BTN.DOWN) {
-      // Pad activity counts as presence, exactly like moving the mouse: without
-      // it the game toolbar stays auto-hidden and its three buttons are a ring
-      // stop the player cannot see.
+    if (index === PAD_BTN.FACE_DOWN) {
       showCursor();
+      activateFocus();
+      return;
     }
-    if (index === PAD_BTN.FACE_DOWN) { activateFocus(); return; }
-    if (index === PAD_BTN.LEFT || index === PAD_BTN.UP) { moveFocus(-1); return; }
-    if (index === PAD_BTN.RIGHT || index === PAD_BTN.DOWN) { moveFocus(1); return; }
 
     // Start still toggles the pause directly. It is the one action with no
     // button on screen to focus while a game is running.
@@ -391,15 +441,15 @@ var GamepadInput = (function () {
     }
 
     // Per-seat lobby settings. These have no on-screen control to focus (the
-    // colour picker and level stepper live on the phone), so they keep
-    // buttons of their own: shoulders cycle colour, triggers step the level.
-    // R2 doubles as an alternative hard drop with no ambiguity — level exists
-    // only in the lobby, hard drop only during play.
+    // colour picker and level stepper live on the phone), so they keep buttons
+    // of their own: a whole shoulder side cycles the colour, and the two free
+    // face buttons step the level — Y sits above X on the diamond, so up is
+    // the higher one.
     if (roomState !== ROOM_STATE.LOBBY || !player) return;
-    if (index === PAD_BTN.L1) cycleColor(seatId, -1);
-    else if (index === PAD_BTN.R1) cycleColor(seatId, 1);
-    else if (index === PAD_BTN.L2) feed(seatId, { type: MSG.SET_LEVEL, level: (player.startLevel || 1) - 1 });
-    else if (index === PAD_BTN.R2) feed(seatId, { type: MSG.SET_LEVEL, level: (player.startLevel || 1) + 1 });
+    if (index === PAD_BTN.L1 || index === PAD_BTN.L2) cycleColor(seatId, -1);
+    else if (index === PAD_BTN.R1 || index === PAD_BTN.R2) cycleColor(seatId, 1);
+    else if (index === PAD_BTN.FACE_UP) feed(seatId, { type: MSG.SET_LEVEL, level: (player.startLevel || 1) + 1 });
+    else if (index === PAD_BTN.FACE_LEFT) feed(seatId, { type: MSG.SET_LEVEL, level: (player.startLevel || 1) - 1 });
   }
 
   function join(padIndex, pad) {
@@ -471,6 +521,7 @@ var GamepadInput = (function () {
 
     for (var m = 0; m < result.messages.length; m++) feed(seat.seatId, result.messages[m]);
     if (!playing) {
+      for (var n = 0; n < result.nav.length; n++) onMenuNav(result.nav[n] === 'prev' ? -1 : 1);
       for (var p = 0; p < result.pressed.length; p++) onMenuPress(seat.seatId, result.pressed[p]);
     } else if (result.pressed.indexOf(PAD_BTN.START) >= 0) {
       feed(seat.seatId, { type: MSG.PAUSE_GAME });

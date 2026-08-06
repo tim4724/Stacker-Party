@@ -50,28 +50,22 @@ describe('GamepadMapper game input', () => {
     }
   });
 
-  test('hard drop comes off both D-pad up and the right trigger', () => {
-    assert.deepEqual(
-      poll(withButtons(PAD_BTN.UP), NO_AXES, 0).messages,
-      [{ type: MSG.INPUT, action: INPUT.HARD_DROP }]
-    );
-    poll(noButtons(), NO_AXES, 16);
-    assert.deepEqual(
-      poll(withButtons(PAD_BTN.R2), NO_AXES, 32).messages,
-      [{ type: MSG.INPUT, action: INPUT.HARD_DROP }]
-    );
-  });
+  test('a whole shoulder side is one action: left holds, right hard drops', () => {
+    let t = 0;
+    const tap = (index) => {
+      const res = poll(withButtons(index), NO_AXES, t += 16);
+      poll(noButtons(), NO_AXES, t += 16);
+      return res.messages;
+    };
+    const HOLD = [{ type: MSG.INPUT, action: INPUT.HOLD }];
+    const DROP = [{ type: MSG.INPUT, action: INPUT.HARD_DROP }];
 
-  test('either shoulder button holds', () => {
-    assert.deepEqual(
-      poll(withButtons(PAD_BTN.L1), NO_AXES, 0).messages,
-      [{ type: MSG.INPUT, action: INPUT.HOLD }]
-    );
-    poll(noButtons(), NO_AXES, 16);
-    assert.deepEqual(
-      poll(withButtons(PAD_BTN.R1), NO_AXES, 32).messages,
-      [{ type: MSG.INPUT, action: INPUT.HOLD }]
-    );
+    assert.deepEqual(tap(PAD_BTN.L1), HOLD);
+    assert.deepEqual(tap(PAD_BTN.L2), HOLD);
+    assert.deepEqual(tap(PAD_BTN.R1), DROP);
+    assert.deepEqual(tap(PAD_BTN.R2), DROP);
+    // D-pad up stays the Tetris-convention hard drop.
+    assert.deepEqual(tap(PAD_BTN.UP), DROP);
   });
 
   test('a stick pushed up never hard drops (it would fire while steering)', () => {
@@ -166,6 +160,46 @@ describe('GamepadMapper game input', () => {
     const res = mapper.poll(withButtons(PAD_BTN.FACE_DOWN), NO_AXES, 0, false);
     assert.deepEqual(res.messages, []);
     assert.deepEqual(res.pressed, [PAD_BTN.FACE_DOWN]);
+  });
+
+  describe('menu focus steps', () => {
+    const menu = (buttons, axes, nowMs) => mapper.poll(buttons, axes, nowMs, false).nav;
+
+    test('the D-pad steps the ring both ways', () => {
+      assert.deepEqual(menu(withButtons(PAD_BTN.RIGHT), NO_AXES, 0), ['next']);
+      menu(noButtons(), NO_AXES, 16);
+      assert.deepEqual(menu(withButtons(PAD_BTN.DOWN), NO_AXES, 32), ['next']);
+      menu(noButtons(), NO_AXES, 48);
+      assert.deepEqual(menu(withButtons(PAD_BTN.LEFT), NO_AXES, 64), ['prev']);
+      menu(noButtons(), NO_AXES, 80);
+      assert.deepEqual(menu(withButtons(PAD_BTN.UP), NO_AXES, 96), ['prev']);
+    });
+
+    test('the stick steps the ring too, once per push', () => {
+      assert.deepEqual(menu(noButtons(), [1, 0, 0, 0], 0), ['next']);
+      // Held: no runaway.
+      for (let t = 16; t < 400; t += 16) {
+        assert.deepEqual(menu(noButtons(), [1, 0, 0, 0], t), []);
+      }
+      // Back to centre, then push again.
+      menu(noButtons(), NO_AXES, 400);
+      assert.deepEqual(menu(noButtons(), [-1, 0, 0, 0], 416), ['prev']);
+      menu(noButtons(), NO_AXES, 432);
+      assert.deepEqual(menu(noButtons(), [0, -1, 0, 0], 448), ['prev']);
+    });
+
+    test('a stick inside the dead zone does not step', () => {
+      assert.deepEqual(menu(noButtons(), [0.3, 0.3, 0, 0], 0), []);
+    });
+
+    test('a stick still held when play ends does not step on the first menu frame', () => {
+      mapper.poll(noButtons(), [1, 0, 0, 0], 0, true);   // steering a piece
+      assert.deepEqual(mapper.poll(noButtons(), [1, 0, 0, 0], 16, false).nav, []);
+    });
+
+    test('the ring never steps while play is live', () => {
+      assert.deepEqual(poll(withButtons(PAD_BTN.RIGHT), [1, 0, 0, 0], 0).nav, []);
+    });
   });
 
   test('pressed lists only the frame a button goes down', () => {
