@@ -162,30 +162,33 @@ describe('GamepadMapper game input', () => {
     assert.deepEqual(res.pressed, [PAD_BTN.FACE_DOWN]);
   });
 
-  describe('menu focus steps', () => {
+  describe('menu direction steps', () => {
     const menu = (buttons, axes, nowMs) => mapper.poll(buttons, axes, nowMs, false).nav;
 
-    test('the D-pad steps the ring both ways', () => {
-      assert.deepEqual(menu(withButtons(PAD_BTN.RIGHT), NO_AXES, 0), ['next']);
+    // Raw directions, not prev/next: the ring reads them in reading order
+    // (up is backwards) and the level stepper as an axis (up is more), so
+    // collapsing here would force one of the two to be wrong.
+    test('the D-pad reports the direction pressed', () => {
+      assert.deepEqual(menu(withButtons(PAD_BTN.RIGHT), NO_AXES, 0), ['right']);
       menu(noButtons(), NO_AXES, 16);
-      assert.deepEqual(menu(withButtons(PAD_BTN.DOWN), NO_AXES, 32), ['next']);
+      assert.deepEqual(menu(withButtons(PAD_BTN.DOWN), NO_AXES, 32), ['down']);
       menu(noButtons(), NO_AXES, 48);
-      assert.deepEqual(menu(withButtons(PAD_BTN.LEFT), NO_AXES, 64), ['prev']);
+      assert.deepEqual(menu(withButtons(PAD_BTN.LEFT), NO_AXES, 64), ['left']);
       menu(noButtons(), NO_AXES, 80);
-      assert.deepEqual(menu(withButtons(PAD_BTN.UP), NO_AXES, 96), ['prev']);
+      assert.deepEqual(menu(withButtons(PAD_BTN.UP), NO_AXES, 96), ['up']);
     });
 
-    test('the stick steps the ring too, once per push', () => {
-      assert.deepEqual(menu(noButtons(), [1, 0, 0, 0], 0), ['next']);
+    test('the stick reports directions too, once per push', () => {
+      assert.deepEqual(menu(noButtons(), [1, 0, 0, 0], 0), ['right']);
       // Held: no runaway.
       for (let t = 16; t < 400; t += 16) {
         assert.deepEqual(menu(noButtons(), [1, 0, 0, 0], t), []);
       }
       // Back to centre, then push again.
       menu(noButtons(), NO_AXES, 400);
-      assert.deepEqual(menu(noButtons(), [-1, 0, 0, 0], 416), ['prev']);
+      assert.deepEqual(menu(noButtons(), [-1, 0, 0, 0], 416), ['left']);
       menu(noButtons(), NO_AXES, 432);
-      assert.deepEqual(menu(noButtons(), [0, -1, 0, 0], 448), ['prev']);
+      assert.deepEqual(menu(noButtons(), [0, -1, 0, 0], 448), ['up']);
     });
 
     test('a stick inside the dead zone does not step', () => {
@@ -197,7 +200,7 @@ describe('GamepadMapper game input', () => {
       assert.deepEqual(mapper.poll(noButtons(), [1, 0, 0, 0], 16, false).nav, []);
     });
 
-    test('the ring never steps while play is live', () => {
+    test('nothing steps while play is live', () => {
       assert.deepEqual(poll(withButtons(PAD_BTN.RIGHT), [1, 0, 0, 0], 0).nav, []);
     });
   });

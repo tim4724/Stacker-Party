@@ -19,20 +19,26 @@
 // counter-clockwise — which is why INPUT.ROTATE_CCW exists at all; no touch
 // gesture produces it.
 //
-// The pad does two different jobs and the room state picks between them:
+// The pad does three different jobs and the room state picks between them:
 //   playing  the D-pad and stick are the piece, the face buttons rotate
-//   menus    the D-pad AND the stick move a focus ring over the display's real
-//            buttons, and the bottom face button clicks the focused one
-// Only what has NO on-screen control keeps a binding of its own outside play:
-// Start toggles the pause, a shoulder side cycles this seat's colour and the
-// two free face buttons step its level. Everything else — Start, Play Again,
-// New Game, Continue, mute, fullscreen — is reached by focusing it, which is
-// why adding a button to the display makes it pad-reachable with no change
-// here. Select and the stick clicks stay unbound on purpose.
+//   lobby    the D-pad and stick step this seat's start level, X starts the
+//            round (host only), a shoulder side cycles this seat's colour
+//   overlays the D-pad and stick move a focus ring over the display's real
+//            buttons and A clicks the focused one (results, pause, reconnect)
+// The lobby is the exception because it has no choice to make on screen: Start
+// is its one action, so a ring there would have a single stop and the D-pad is
+// better spent on the level. Everywhere else the ring is what makes Play
+// Again, New Game, Continue and Reconnect reachable without a binding each —
+// add a button to one of those screens and the pad reaches it with no change
+// here. Y, Select and the stick clicks stay unbound on purpose.
 //
 // A whole shoulder SIDE is one action, never two: both left shoulders hold
 // (colour previous in the lobby), both right ones hard drop (colour next), so
 // there is nothing to remember about which of the two your finger found.
+//
+// The display operator's own chrome — the toolbar and the relay diagnostics —
+// is never pad-reachable (see OPERATOR_CHROME). It belongs to whoever set the
+// screen up, which is also the one person guaranteed to have a pointer.
 //
 // Two boundaries worth knowing:
 //   - Chrome does not report a pad through navigator.getGamepads() until a
@@ -102,7 +108,11 @@ function GamepadMapper() {
 // input is live. Returns { messages, pressed, nav }:
 //   messages  game input, empty unless playing
 //   pressed   button indices that went down this poll (join, pause, settings)
-//   nav       'prev'/'next' focus steps, empty while playing
+//   nav       'left'/'right'/'up'/'down' steps, empty while playing. Raw
+//             directions rather than prev/next, because the two consumers
+//             collapse them differently: the focus ring reads in reading
+//             order (up is backwards), the level stepper reads as an axis
+//             (up is more).
 GamepadMapper.prototype.poll = function (buttons, axes, nowMs, playing) {
   var pressed = [];
   for (var i = 0; i < buttons.length; i++) {
@@ -139,21 +149,24 @@ GamepadMapper.prototype._stickDir = function (axes) {
   return { x: this._navX, y: this._navY };
 };
 
-// Focus steps from the D-pad AND the left stick, both edge-triggered: one step
-// per press and one per push past the dead zone. The lists are a handful of
-// buttons, so an auto-repeat would overshoot more often than it would help.
+// Menu steps from the D-pad AND the left stick, both edge-triggered: one step
+// per press and one per push past the dead zone. Lists are a handful of
+// buttons and the level range is short, so an auto-repeat would overshoot more
+// often than it would help.
 GamepadMapper.prototype._nav = function (buttons, axes, out) {
   var self = this;
   function edge(index) { return buttons[index] && !self._prev[index]; }
 
-  if (edge(PAD_BTN.LEFT) || edge(PAD_BTN.UP)) out.push('prev');
-  if (edge(PAD_BTN.RIGHT) || edge(PAD_BTN.DOWN)) out.push('next');
+  if (edge(PAD_BTN.LEFT)) out.push('left');
+  if (edge(PAD_BTN.RIGHT)) out.push('right');
+  if (edge(PAD_BTN.UP)) out.push('up');
+  if (edge(PAD_BTN.DOWN)) out.push('down');
 
   var wasX = this._navX;
   var wasY = this._navY;
   var now = this._stickDir(axes);
-  if (now.x && now.x !== wasX) out.push(now.x < 0 ? 'prev' : 'next');
-  if (now.y && now.y !== wasY) out.push(now.y < 0 ? 'prev' : 'next');
+  if (now.x && now.x !== wasX) out.push(now.x < 0 ? 'left' : 'right');
+  if (now.y && now.y !== wasY) out.push(now.y < 0 ? 'up' : 'down');
 };
 
 // Held-direction auto-repeat. Steps ride as a COUNT on one message rather
@@ -345,13 +358,14 @@ var GamepadInput = (function () {
   // running room.
   var focusEl = null;
 
+  // Chrome the display OPERATOR owns, never a ring stop: the toolbar's mute /
+  // fullscreen / pause and the relay diagnostics belong to whoever set the
+  // screen up, and a pad is a player's device. What is left for the ring is
+  // exactly the screens with a real choice on them (results, pause, reconnect).
+  var OPERATOR_CHROME = '#game-toolbar, #relay-status-bar';
+
   function focusCandidates() {
     var out = [];
-    // The game toolbar (mute, fullscreen, pause) is the display operator's
-    // chrome, not a player control. In the lobby the only thing a pad player
-    // wants is START, so it is not a ring stop there — it stays reachable on
-    // the screens where the toolbar is the point.
-    var skipToolbar = roomState === ROOM_STATE.LOBBY;
     var all = document.querySelectorAll('button');
     for (var i = 0; i < all.length; i++) {
       var el = all[i];
@@ -359,7 +373,7 @@ var GamepadInput = (function () {
       // out of the tab order; honouring it keeps the ring out of overlays that
       // are on screen but not interactive.
       if (el.disabled || el.closest('[inert]') || !el.getClientRects().length) continue;
-      if (skipToolbar && el.closest('#game-toolbar')) continue;
+      if (el.closest(OPERATOR_CHROME)) continue;
       out.push(el);
     }
     // Reading order (top row first, then left to right), so left/up step back
@@ -414,20 +428,33 @@ var GamepadInput = (function () {
     focusEl.click();
   }
 
-  // Pad activity counts as presence, exactly like moving the mouse: without it
-  // the game toolbar stays auto-hidden and its buttons are a ring stop the
-  // player cannot see.
-  function onMenuNav(step) {
-    showCursor();
-    moveFocus(step);
+  // The lobby has no choice to make on screen — Start is its one action, and
+  // with the operator chrome out of the ring there is nothing else to land on.
+  // So the D-pad is the level stepper there instead, and Start gets a button.
+  function ringActive() {
+    return roomState !== ROOM_STATE.LOBBY;
+  }
+
+  // A direction step. Note the two readings of the same input: the ring runs
+  // in READING order, where up means backwards, while the level is an AXIS,
+  // where up means more.
+  function onMenuNav(seatId, dir) {
+    if (ringActive()) {
+      // Pad activity counts as presence, exactly like moving the mouse.
+      showCursor();
+      moveFocus(dir === 'left' || dir === 'up' ? -1 : 1);
+      return;
+    }
+    var player = players.get(seatId);
+    if (!player) return;
+    var step = (dir === 'right' || dir === 'up') ? 1 : -1;
+    feed(seatId, { type: MSG.SET_LEVEL, level: (player.startLevel || 1) + step });
   }
 
   // Menu bindings. Out of range levels and colours are rejected by the room
   // core, so the bounds are not re-checked here.
   function onMenuPress(seatId, index) {
-    var player = players.get(seatId);
-
-    if (index === PAD_BTN.FACE_DOWN) {
+    if (index === PAD_BTN.FACE_DOWN && ringActive()) {
       showCursor();
       activateFocus();
       return;
@@ -440,16 +467,21 @@ var GamepadInput = (function () {
       return;
     }
 
-    // Per-seat lobby settings. These have no on-screen control to focus (the
-    // colour picker and level stepper live on the phone), so they keep buttons
-    // of their own: a whole shoulder side cycles the colour, and the two free
-    // face buttons step the level — Y sits above X on the diamond, so up is
-    // the higher one.
-    if (roomState !== ROOM_STATE.LOBBY || !player) return;
+    if (roomState !== ROOM_STATE.LOBBY || !players.has(seatId)) return;
+
+    // Starting the round is the host's call, the same rule the phones' lobby
+    // renders (only the host is shown a Start button). The display's own
+    // on-screen button is unaffected: that one belongs to whoever set the
+    // screen up, not to a player.
+    if (index === PAD_BTN.FACE_LEFT) {
+      if (seatId === getHostPeerIndex()) feed(seatId, { type: MSG.START_GAME });
+      return;
+    }
+
+    // Colour has no on-screen control to focus (the picker lives on the
+    // phone), so it keeps a shoulder side of its own in each direction.
     if (index === PAD_BTN.L1 || index === PAD_BTN.L2) cycleColor(seatId, -1);
     else if (index === PAD_BTN.R1 || index === PAD_BTN.R2) cycleColor(seatId, 1);
-    else if (index === PAD_BTN.FACE_UP) feed(seatId, { type: MSG.SET_LEVEL, level: (player.startLevel || 1) + 1 });
-    else if (index === PAD_BTN.FACE_LEFT) feed(seatId, { type: MSG.SET_LEVEL, level: (player.startLevel || 1) - 1 });
   }
 
   function join(padIndex, pad) {
@@ -521,7 +553,7 @@ var GamepadInput = (function () {
 
     for (var m = 0; m < result.messages.length; m++) feed(seat.seatId, result.messages[m]);
     if (!playing) {
-      for (var n = 0; n < result.nav.length; n++) onMenuNav(result.nav[n] === 'prev' ? -1 : 1);
+      for (var n = 0; n < result.nav.length; n++) onMenuNav(seat.seatId, result.nav[n]);
       for (var p = 0; p < result.pressed.length; p++) onMenuPress(seat.seatId, result.pressed[p]);
     } else if (result.pressed.indexOf(PAD_BTN.START) >= 0) {
       feed(seat.seatId, { type: MSG.PAUSE_GAME });
@@ -629,7 +661,7 @@ var GamepadInput = (function () {
   // overlays opening, and buttons enabling (Start is disabled until somebody
   // joins) — without rebuilding the candidate list every frame.
   function maintainFocus(playing) {
-    if (playing || !seats.size) {
+    if (playing || !seats.size || !ringActive()) {
       setFocus(null);
       return;
     }
