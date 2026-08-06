@@ -33,6 +33,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -270,7 +272,17 @@ class MainActivity : ComponentActivity() {
         reduceMotion = systemAnimationsRemoved(this)
         setContent {
             val model by ui.state.collectAsStateWithLifecycle()
-            CompositionLocalProvider(LocalReduceMotion provides reduceMotion) {
+            // Pin fontScale: the chrome is a fixed proportional canvas (every dimension
+            // is viewport x constant, see ui/Dimens.kt's Vp), so text that scales
+            // independently of it has nowhere to go: the one overflow guard
+            // (LobbyScreen's rowW) is Vp arithmetic and measures no text. The TV
+            // accessibility answer is the OS zoom, which magnifies the whole canvas and
+            // works over a fixed layout. tvOS is pinned the same way (App.swift), where
+            // the platform ships no text-size control to begin with.
+            CompositionLocalProvider(
+                LocalDensity provides Density(LocalDensity.current.density, fontScale = 1f),
+                LocalReduceMotion provides reduceMotion,
+            ) {
                 HexStackerApp(
                     board = board,
                     model = model,

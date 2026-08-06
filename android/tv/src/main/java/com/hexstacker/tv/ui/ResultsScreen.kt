@@ -42,8 +42,6 @@ import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Density
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -277,9 +275,7 @@ private fun ResultRow(res: ResultCard, index: Int, solo: Boolean, vp: Vp) {
     val playerCol = res.colorIndex?.let { playerColor(it) }
     val rankSize = vp.vhSp(24f, 3f, 44.8f) // .result-rank/.result-name clamp(1.5rem,3vh,2.8rem)
     val statsSize = vp.vhSp(19.2f, 2.6f, 35.2f) // .result-stats clamp(1.2rem,2.6vh,2.2rem)
-    // Web's .result-stats has no font-family override — it inherits the plain
-    // system font (Roboto), unlike the Baloo name / Orbitron rank. Match that.
-    val statsStyle = AppType.resultStats.copy(fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium)
+    val statsStyle = AppType.resultStats.copy(fontSize = statsSize, color = Tokens.textSecondary)
     val gap = vp.px(20f) // .result-row gap 1.25rem
 
     // Stagger entrance: fade + slide up, delay 0.2 + i*0.08 s. Reduce Motion
@@ -345,17 +341,17 @@ private fun ResultRow(res: ResultCard, index: Int, solo: Boolean, vp: Vp) {
         if (res.newPlayer) {
             Text(
                 text = stringResource(R.string.new_player),
-                style = statsStyle.copy(fontSize = statsSize, color = Tokens.textSecondary),
+                style = statsStyle,
             )
         } else {
             Row(horizontalArrangement = Arrangement.spacedBy(vp.px(24f))) { // .result-stats gap 1.5rem
                 Text(
                     text = pluralStringResource(R.plurals.n_lines, res.lines ?: 0, res.lines ?: 0),
-                    style = statsStyle.copy(fontSize = statsSize, color = Tokens.textSecondary),
+                    style = statsStyle,
                 )
                 Text(
                     text = stringResource(R.string.level_n, res.level ?: 1),
-                    style = statsStyle.copy(fontSize = statsSize, color = Tokens.textSecondary),
+                    style = statsStyle,
                 )
             }
         }
