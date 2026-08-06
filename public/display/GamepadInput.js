@@ -19,21 +19,43 @@
 // counter-clockwise — which is why INPUT.ROTATE_CCW exists at all; no touch
 // gesture produces it.
 //
-// Browser constraint worth knowing: Chrome does not report a pad through
-// navigator.getGamepads() until a button has been pressed on it, so a pad
-// cannot be detected before the gesture that joins it. That is why the lobby
-// hint only appears once a pad is known, and why there is no connect event
-// to listen for that would be any earlier.
+// The pad does two different jobs and the room state picks between them:
+//   playing  the D-pad and stick are the piece, the face buttons rotate
+//   menus    the D-pad moves a focus ring over the display's real buttons and
+//            the bottom face button clicks the focused one (see moveFocus)
+// Only what has NO on-screen control keeps a binding of its own outside play:
+// Start toggles the pause, the shoulders cycle this seat's colour and the
+// triggers step its level. Everything else — Start, Play Again, New Game,
+// Continue, mute, fullscreen — is reached by focusing it, which is why adding
+// a button to the display makes it pad-reachable with no change here. The
+// remaining buttons (both side face buttons, Select, stick clicks) are left
+// unbound on purpose: there is nothing left for them to do that focusing the
+// control would not do better.
+//
+// Two boundaries worth knowing:
+//   - Chrome does not report a pad through navigator.getGamepads() until a
+//     button has been pressed on it, so a pad cannot be detected before the
+//     gesture that joins it. Hence the lobby hint appearing only once a pad is
+//     known, and no connect event that would be any earlier.
+//   - The welcome screen is not pad-driven. There is no room to join yet, and
+//     whoever opened the display in a browser has the pointer to press its one
+//     button.
 // =====================================================================
 
 // --- W3C "standard" mapping indices ---
+// Named by PHYSICAL position, not by action, because most of these do one job
+// during play and another in the menus. What each one means is stated where it
+// is bound, not here.
 var PAD_BTN = {
-  ROTATE_CCW: 0,   // A / Cross / Switch B  (bottom)
-  ROTATE_CW: 1,    // B / Circle / Switch A (right)
-  HOLD_L: 4,       // L1 / LB
-  HOLD_R: 5,       // R1 / RB
-  HARD_DROP_ALT: 7,// R2 / RT
-  START: 9,        // Start / Options / +
+  FACE_DOWN: 0,   // A / Cross / Switch B
+  FACE_RIGHT: 1,  // B / Circle / Switch A
+  FACE_LEFT: 2,   // X / Square / Switch Y
+  FACE_UP: 3,     // Y / Triangle / Switch X
+  L1: 4,
+  R1: 5,
+  L2: 6,
+  R2: 7,
+  START: 9,       // Start / Options / +
   UP: 12,
   DOWN: 13,
   LEFT: 14,
@@ -172,15 +194,16 @@ GamepadMapper.prototype._discrete = function (buttons, out) {
   var self = this;
   function edge(index) { return buttons[index] && !self._prev[index]; }
 
-  if (edge(PAD_BTN.ROTATE_CW)) out.push({ type: MSG.INPUT, action: INPUT.ROTATE_CW });
-  if (edge(PAD_BTN.ROTATE_CCW)) out.push({ type: MSG.INPUT, action: INPUT.ROTATE_CCW });
+  // Tetris convention: right face button clockwise, bottom counter-clockwise.
+  if (edge(PAD_BTN.FACE_RIGHT)) out.push({ type: MSG.INPUT, action: INPUT.ROTATE_CW });
+  if (edge(PAD_BTN.FACE_DOWN)) out.push({ type: MSG.INPUT, action: INPUT.ROTATE_CCW });
   // Deliberately no stick-up hard drop: steering with the stick would fire it
-  // by accident. D-pad up is the Tetris convention, RT the alternative for
+  // by accident. D-pad up is the Tetris convention, R2 the alternative for
   // players who dislike it.
-  if (edge(PAD_BTN.UP) || edge(PAD_BTN.HARD_DROP_ALT)) {
+  if (edge(PAD_BTN.UP) || edge(PAD_BTN.R2)) {
     out.push({ type: MSG.INPUT, action: INPUT.HARD_DROP });
   }
-  if (edge(PAD_BTN.HOLD_L) || edge(PAD_BTN.HOLD_R)) {
+  if (edge(PAD_BTN.L1) || edge(PAD_BTN.R1)) {
     out.push({ type: MSG.INPUT, action: INPUT.HOLD });
   }
 };
@@ -267,35 +290,116 @@ var GamepadInput = (function () {
     feed(seatId, { type: MSG.SET_COLOR, colorIndex: next });
   }
 
+  // --- Focus navigation ---------------------------------------------
+  // Outside play the pad drives the display's OWN controls rather than a
+  // per-screen list of bindings: the D-pad moves a focus ring over whatever
+  // buttons the current screen shows, and the bottom face button clicks the
+  // focused one. That is what makes Start / Play Again / New Game / pause /
+  // mute / fullscreen all reachable without a binding each, and it means a
+  // button added to the display is reachable by pad the day it lands.
+  //
+  // Focus is a property of the SCREEN, not of a seat: there is one ring and
+  // any seated pad can move it, the same way a shared display has one mouse
+  // pointer. Buttons only — links would navigate the display away from the
+  // running room.
+  var focusEl = null;
+
+  function focusCandidates() {
+    var out = [];
+    var all = document.querySelectorAll('button');
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      // `inert` is how the hidden trailer modal already keeps its own controls
+      // out of the tab order; honouring it keeps the ring out of overlays that
+      // are on screen but not interactive.
+      if (el.disabled || el.closest('[inert]') || !el.getClientRects().length) continue;
+      out.push(el);
+    }
+    // Reading order (top row first, then left to right), so left/up step back
+    // and right/down step forward through a layout the player can see.
+    out.sort(function (a, b) {
+      var ra = a.getBoundingClientRect();
+      var rb = b.getBoundingClientRect();
+      if (Math.abs(ra.top - rb.top) > 8) return ra.top - rb.top;
+      return ra.left - rb.left;
+    });
+    return out;
+  }
+
+  // The screen's own call to action, so a screen change lands the ring on the
+  // button the player almost certainly wants (Start, Play Again, Continue).
+  function primaryOf(list) {
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].classList.contains('btn-primary')) return list[i];
+    }
+    return list[0] || null;
+  }
+
+  function setFocus(el) {
+    if (focusEl && focusEl !== el) focusEl.classList.remove('pad-focus');
+    focusEl = el || null;
+    if (!focusEl) return;
+    focusEl.classList.add('pad-focus');
+    // Focus for real as well, so assistive tech and :focus-driven styling
+    // agree with the ring. The ring is its own class because a programmatic
+    // focus() is not reliably :focus-visible.
+    try { focusEl.focus({ preventScroll: true }); } catch (e) { /* detached */ }
+  }
+
+  function focusStillValid() {
+    return !!focusEl && focusEl.isConnected && !focusEl.disabled &&
+      !focusEl.closest('[inert]') && focusEl.getClientRects().length > 0;
+  }
+
+  function moveFocus(step) {
+    var list = focusCandidates();
+    if (!list.length) { setFocus(null); return; }
+    var at = list.indexOf(focusEl);
+    setFocus(at < 0 ? primaryOf(list) : list[(at + step + list.length) % list.length]);
+  }
+
+  function activateFocus() {
+    if (!focusStillValid()) {
+      var list = focusCandidates();
+      setFocus(primaryOf(list));
+      return;
+    }
+    focusEl.click();
+  }
+
   // Menu bindings. Out of range levels and colours are rejected by the room
   // core, so the bounds are not re-checked here.
   function onMenuPress(seatId, index) {
-    if (roomState === ROOM_STATE.RESULTS) {
-      if (index === PAD_BTN.ROTATE_CCW) feed(seatId, { type: MSG.PLAY_AGAIN });
-      else if (index === PAD_BTN.ROTATE_CW) feed(seatId, { type: MSG.RETURN_TO_LOBBY });
-      return;
-    }
+    var player = players.get(seatId);
 
-    if (roomState === ROOM_STATE.LOBBY) {
-      var player = players.get(seatId);
-      if (index === PAD_BTN.ROTATE_CCW) feed(seatId, { type: MSG.START_GAME });
-      else if (index === PAD_BTN.HOLD_L) cycleColor(seatId, -1);
-      else if (index === PAD_BTN.HOLD_R) cycleColor(seatId, 1);
-      else if (index === PAD_BTN.UP && player) {
-        feed(seatId, { type: MSG.SET_LEVEL, level: (player.startLevel || 1) + 1 });
-      } else if (index === PAD_BTN.DOWN && player) {
-        feed(seatId, { type: MSG.SET_LEVEL, level: (player.startLevel || 1) - 1 });
-      }
-      return;
+    if (index === PAD_BTN.FACE_DOWN || index === PAD_BTN.LEFT || index === PAD_BTN.UP ||
+        index === PAD_BTN.RIGHT || index === PAD_BTN.DOWN) {
+      // Pad activity counts as presence, exactly like moving the mouse: without
+      // it the game toolbar stays auto-hidden and its three buttons are a ring
+      // stop the player cannot see.
+      showCursor();
     }
+    if (index === PAD_BTN.FACE_DOWN) { activateFocus(); return; }
+    if (index === PAD_BTN.LEFT || index === PAD_BTN.UP) { moveFocus(-1); return; }
+    if (index === PAD_BTN.RIGHT || index === PAD_BTN.DOWN) { moveFocus(1); return; }
 
-    // Countdown, or a paused game: Start toggles the pause, and the bottom
-    // face button lifts one the same way the overlay's Continue does.
+    // Start still toggles the pause directly. It is the one action with no
+    // button on screen to focus while a game is running.
     if (index === PAD_BTN.START) {
       feed(seatId, { type: paused ? MSG.RESUME_GAME : MSG.PAUSE_GAME });
-    } else if (index === PAD_BTN.ROTATE_CCW && paused) {
-      feed(seatId, { type: MSG.RESUME_GAME });
+      return;
     }
+
+    // Per-seat lobby settings. These have no on-screen control to focus (the
+    // colour picker and level stepper live on the phone), so they keep
+    // buttons of their own: shoulders cycle colour, triggers step the level.
+    // R2 doubles as an alternative hard drop with no ambiguity — level exists
+    // only in the lobby, hard drop only during play.
+    if (roomState !== ROOM_STATE.LOBBY || !player) return;
+    if (index === PAD_BTN.L1) cycleColor(seatId, -1);
+    else if (index === PAD_BTN.R1) cycleColor(seatId, 1);
+    else if (index === PAD_BTN.L2) feed(seatId, { type: MSG.SET_LEVEL, level: (player.startLevel || 1) - 1 });
+    else if (index === PAD_BTN.R2) feed(seatId, { type: MSG.SET_LEVEL, level: (player.startLevel || 1) + 1 });
   }
 
   function join(padIndex, pad) {
@@ -466,7 +570,19 @@ var GamepadInput = (function () {
       if (entry[0] >= pads.length) stale.push(entry[0]);
     }
     for (var s = 0; s < stale.length; s++) retire(stale[s]);
+    maintainFocus(roomState === ROOM_STATE.PLAYING && !paused);
     updateHint();
+  }
+
+  // One cheap check per frame keeps the ring honest across screen changes,
+  // overlays opening, and buttons enabling (Start is disabled until somebody
+  // joins) — without rebuilding the candidate list every frame.
+  function maintainFocus(playing) {
+    if (playing || !seats.size) {
+      setFocus(null);
+      return;
+    }
+    if (!focusStillValid()) setFocus(primaryOf(focusCandidates()));
   }
 
   function updateHint() {

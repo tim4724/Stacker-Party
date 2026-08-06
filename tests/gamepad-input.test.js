@@ -35,18 +35,18 @@ describe('GamepadMapper game input', () => {
   }
 
   test('the two face buttons rotate in opposite directions', () => {
-    const cw = poll(withButtons(PAD_BTN.ROTATE_CW), NO_AXES, 0);
+    const cw = poll(withButtons(PAD_BTN.FACE_RIGHT), NO_AXES, 0);
     assert.deepEqual(cw.messages, [{ type: MSG.INPUT, action: INPUT.ROTATE_CW }]);
 
     poll(noButtons(), NO_AXES, 16);
-    const ccw = poll(withButtons(PAD_BTN.ROTATE_CCW), NO_AXES, 32);
+    const ccw = poll(withButtons(PAD_BTN.FACE_DOWN), NO_AXES, 32);
     assert.deepEqual(ccw.messages, [{ type: MSG.INPUT, action: INPUT.ROTATE_CCW }]);
   });
 
   test('a held rotate button fires once, not every frame', () => {
-    poll(withButtons(PAD_BTN.ROTATE_CW), NO_AXES, 0);
+    poll(withButtons(PAD_BTN.FACE_RIGHT), NO_AXES, 0);
     for (let t = 16; t < 500; t += 16) {
-      assert.deepEqual(poll(withButtons(PAD_BTN.ROTATE_CW), NO_AXES, t).messages, []);
+      assert.deepEqual(poll(withButtons(PAD_BTN.FACE_RIGHT), NO_AXES, t).messages, []);
     }
   });
 
@@ -57,19 +57,19 @@ describe('GamepadMapper game input', () => {
     );
     poll(noButtons(), NO_AXES, 16);
     assert.deepEqual(
-      poll(withButtons(PAD_BTN.HARD_DROP_ALT), NO_AXES, 32).messages,
+      poll(withButtons(PAD_BTN.R2), NO_AXES, 32).messages,
       [{ type: MSG.INPUT, action: INPUT.HARD_DROP }]
     );
   });
 
   test('either shoulder button holds', () => {
     assert.deepEqual(
-      poll(withButtons(PAD_BTN.HOLD_L), NO_AXES, 0).messages,
+      poll(withButtons(PAD_BTN.L1), NO_AXES, 0).messages,
       [{ type: MSG.INPUT, action: INPUT.HOLD }]
     );
     poll(noButtons(), NO_AXES, 16);
     assert.deepEqual(
-      poll(withButtons(PAD_BTN.HOLD_R), NO_AXES, 32).messages,
+      poll(withButtons(PAD_BTN.R1), NO_AXES, 32).messages,
       [{ type: MSG.INPUT, action: INPUT.HOLD }]
     );
   });
@@ -163,9 +163,9 @@ describe('GamepadMapper game input', () => {
   });
 
   test('no game messages while play is not live, but presses still register', () => {
-    const res = mapper.poll(withButtons(PAD_BTN.ROTATE_CCW), NO_AXES, 0, false);
+    const res = mapper.poll(withButtons(PAD_BTN.FACE_DOWN), NO_AXES, 0, false);
     assert.deepEqual(res.messages, []);
-    assert.deepEqual(res.pressed, [PAD_BTN.ROTATE_CCW]);
+    assert.deepEqual(res.pressed, [PAD_BTN.FACE_DOWN]);
   });
 
   test('pressed lists only the frame a button goes down', () => {

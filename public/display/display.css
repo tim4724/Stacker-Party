@@ -512,6 +512,17 @@ html:not(.in-session) #relay-status-bar { display: none; }
   opacity: 1;
 }
 
+/* Gamepad focus ring (GamepadInput.js). Its own class rather than
+   :focus-visible, whose heuristics do not reliably fire for a programmatic
+   focus() — the ring has to be certain, since it is the only thing telling a
+   pad player what the bottom face button will press. Heavier than the
+   keyboard ring: this one is read from across the room. */
+.pad-focus {
+  outline: 3px solid var(--accent-secondary);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
 /* Gamepad join prompt — a quieter second line under the join URL, so the QR
    stays the primary call to action for the phones most players arrive with. */
 #gamepad-hint {
