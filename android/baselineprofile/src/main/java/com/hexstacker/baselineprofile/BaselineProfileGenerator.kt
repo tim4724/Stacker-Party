@@ -42,7 +42,7 @@ class BaselineProfileGenerator {
         // on a phone AVD.
         startActivityAndWait(
             Intent(Intent.ACTION_MAIN).apply {
-                component = ComponentName(TV_PACKAGE, "$TV_PACKAGE.MainActivity")
+                component = ComponentName(TV_PACKAGE, TV_ACTIVITY)
             },
         )
         // Let the full startup story play: entrance bands (~950ms), the falling-piece
@@ -52,6 +52,11 @@ class BaselineProfileGenerator {
     }
 
     private companion object {
-        const val TV_PACKAGE = "com.hexstacker.tv"
+        // The install identity (:tv's applicationId) and the activity's class name
+        // are NOT the same string here: the app ships under the AirConsole game id
+        // while its Kotlin package stays com.hexstacker.tv. ComponentName wants one
+        // of each, so deriving the second from the first would resolve to nothing.
+        const val TV_PACKAGE = "com.couchgames.stacker"
+        const val TV_ACTIVITY = "com.hexstacker.tv.MainActivity"
     }
 }

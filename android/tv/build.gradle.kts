@@ -100,7 +100,13 @@ android {
         }
     }
     defaultConfig {
-        applicationId = "com.hexstacker.tv"
+        // Deliberately NOT the namespace above, and not tvOS's bundle id: an
+        // AirConsole build must ship under the AirConsole game id, which is frozen
+        // at creation, and Play package names are permanent from the first upload.
+        // Claiming it now is what keeps a single binary able to serve both the
+        // standalone and the AirConsole mode later. The Kotlin package stays
+        // com.hexstacker.tv, so this only ever appears as the install identity.
+        applicationId = "com.couchgames.stacker"
         minSdk = 28
         targetSdk = 36
         // Stamped by the release workflow, the Gradle analog of tvOS's
