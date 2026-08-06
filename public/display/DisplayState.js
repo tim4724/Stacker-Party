@@ -290,19 +290,18 @@ var reconnectOverlay = document.getElementById('reconnect-overlay');
 var reconnectHeading = document.getElementById('reconnect-heading');
 var reconnectStatus = document.getElementById('reconnect-status');
 var reconnectBtn = document.getElementById('reconnect-btn');
-var muteBtn = document.getElementById('mute-btn');
+var musicSwitch = document.getElementById('pause-music-btn');
 var relayChip = document.getElementById('relay-chip');
 var relayChipRegion = document.getElementById('relay-chip-region');
 var relayChipDot = document.getElementById('relay-chip-dot');
 var relayReportBtn = document.getElementById('relay-report-btn');
 
-// Reflect stored mute state on the toolbar's mute button immediately —
-// the HTML default (aria-checked="true", sound-waves visible) matches
-// the unmuted case; for a user with stacker_muted=1 persisted, this
-// syncs the DOM before AT reads it and before the toolbar is revealed.
-if (muteBtn) {
-  if (muted) muteBtn.querySelector('.sound-waves').style.display = 'none';
-  muteBtn.setAttribute('aria-checked', muted ? 'false' : 'true');
+// Reflect stored mute state on the pause overlay's music switch immediately —
+// the HTML default (aria-checked="true") matches the unmuted case; for a user
+// with stacker_muted=1 persisted, this syncs the DOM before AT reads it and
+// before the overlay is ever raised.
+if (musicSwitch) {
+  musicSwitch.setAttribute('aria-checked', muted ? 'false' : 'true');
 }
 
 // --- Overlay dismissal fade ---
@@ -414,12 +413,6 @@ function showScreen(name) {
     resultsScreen.classList.remove('results-screen--ready');
   }
   gameToolbar.classList.toggle('hidden', name === SCREEN.WELCOME);
-  // Hide mute on lobby in AirConsole mode only — it would overlap with the
-  // version label shown in that mode.
-  muteBtn.classList.toggle(
-    'hidden',
-    name === SCREEN.LOBBY && document.body.classList.contains('airconsole')
-  );
   pauseBtn.classList.toggle('hidden', name !== SCREEN.GAME);
   if (name !== SCREEN.GAME) {
     // A game-screen exit fade uncovers these gradually, so a visible overlay

@@ -520,12 +520,22 @@ html:not(.in-session) #relay-status-bar { display: none; }
 /* Gamepad focus ring (GamepadInput.js). Its own class rather than
    :focus-visible, whose heuristics do not reliably fire for a programmatic
    focus() — the ring has to be certain, since it is the only thing telling a
-   pad player what the bottom face button will press. Heavier than the
-   keyboard ring: this one is read from across the room. */
+   pad player what the bottom face button will press. White and with the faint
+   white wash behind it, matching the TV shells' focus treatment (Compose
+   `border(2.dp, Tokens.white)` over `white @ 0.06`) so a pad looks the same
+   whichever of the three displays it is pointed at. */
 .pad-focus {
-  outline: 3px solid var(--accent-secondary);
+  outline: 3px solid #fff;
   outline-offset: 3px;
   border-radius: 4px;
+}
+
+/* The wash goes on the music row only: the CTAs already carry a filled
+   background that it would muddy. */
+.music-switch.pad-focus {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: #fff;
+  outline: none;
 }
 
 /* Join URL — host + code on one line. Click to copy the full URL;
@@ -906,6 +916,67 @@ body.airconsole #qr-container,
 #pause-buttons {
   display: flex;
   gap: clamp(1rem, 2vw, 2rem);
+}
+
+/* Game Music row, between the PAUSED heading and the button pair. Mirrors the
+   TV shells' MusicSwitch: one focusable control holding a label and the
+   controller's own .settings-switch geometry (52:30 track, 24px thumb, 3px
+   inset), scaled up for couch distance. Content-hugging rather than spanning
+   the button pair, which left a dead gap between them on TV. */
+.music-switch {
+  display: flex;
+  align-items: center;
+  gap: clamp(0.75rem, 1.6vw, 1.5rem);
+  margin-bottom: clamp(1.5rem, 3vh, 3rem);
+  padding: clamp(0.5rem, 1vh, 0.9rem) clamp(1rem, 2vw, 1.75rem);
+  border: 2px solid transparent;
+  border-radius: var(--radius-btn);
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.music-switch__label {
+  font-family: var(--font-brand);
+  font-weight: 700;
+  font-size: clamp(1.1rem, 2.4vh, 1.7rem);
+  letter-spacing: 0.05em;
+  color: var(--text-primary);
+}
+
+/* Every dimension derives from the track height, so the phone's 52:30 track /
+   24px thumb / 3px inset survives being scaled up for a TV — the same
+   derivation both TV shells do (trackW = trackH * 52/30, and so on). */
+.music-switch__track {
+  --track-h: clamp(30px, 3.75vh, 47px);
+  position: relative;
+  flex-shrink: 0;
+  width: calc(var(--track-h) * 52 / 30);
+  height: var(--track-h);
+  border-radius: 999px;
+  /* OFF reads as an empty recess; ON takes the host tint, the same pairing
+     the TVs use (white@0.12 off, host colour on). */
+  background: rgba(255, 255, 255, 0.12);
+  transition: background var(--transition-fast);
+}
+
+.music-switch[aria-checked="true"] .music-switch__track {
+  background: var(--player-color, var(--accent-secondary));
+}
+
+.music-switch__thumb {
+  position: absolute;
+  top: calc(var(--track-h) * 3 / 30);
+  left: calc(var(--track-h) * 3 / 30);
+  width: calc(var(--track-h) * 24 / 30);
+  height: calc(var(--track-h) * 24 / 30);
+  border-radius: 50%;
+  background: #fff;
+  transition: transform var(--transition-fast);
+}
+
+.music-switch[aria-checked="true"] .music-switch__thumb {
+  transform: translateX(calc(var(--track-h) * 22 / 30));
 }
 
 /* Overlay action buttons — pause/reconnect/results share one sizing scale.

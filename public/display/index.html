@@ -183,7 +183,6 @@
   </div>
 
   <div id="game-toolbar" class="hidden">
-    <button id="mute-btn" class="icon-btn" role="switch" aria-checked="true" data-i18n-title="settings_game_music" title="Game Music" data-i18n-aria-label="settings_game_music" aria-label="Game Music"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="sound-waves" d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/></svg></button>
     <button id="fullscreen-btn" class="icon-btn" role="switch" aria-checked="false" data-i18n-title="fullscreen" title="Fullscreen" data-i18n-aria-label="fullscreen" aria-label="Fullscreen"><svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor"><path d="M3 3h4V1H1v6h2V3zM11 1v2h4v4h2V1h-6zM15 15h-4v2h6v-6h-2v4zM3 11H1v6h6v-2H3v-4z"/></svg></button>
     <button id="pause-btn" class="icon-btn" data-i18n-aria-label="pause" aria-label="Pause"><span class="pause-icon"></span></button>
   </div>
@@ -197,6 +196,14 @@
   <!-- Pause overlay -->
   <div id="pause-overlay" class="game-overlay hidden">
     <h1 data-i18n="paused">PAUSED</h1>
+    <!-- Game Music lives here, not on the toolbar, matching both TV shells
+         (android PauseOverlay.kt, tvOS PauseOverlayView.swift): PAUSED over a
+         music row over the button pair. aria-checked is "music on", i.e. the
+         inverse of muted. -->
+    <button id="pause-music-btn" class="music-switch" role="switch" aria-checked="true">
+      <span class="music-switch__label" data-i18n="settings_game_music">Game Music</span>
+      <span class="music-switch__track" aria-hidden="true"><span class="music-switch__thumb"></span></span>
+    </button>
     <div id="pause-buttons">
       <button id="pause-continue-btn" class="btn btn-primary" data-i18n="continue_btn">Continue</button>
       <button id="pause-newgame-btn" class="btn btn-secondary" data-i18n="new_game">New Game</button>

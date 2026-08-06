@@ -21,8 +21,9 @@
 //
 // The pad does three different jobs and the room state picks between them:
 //   playing  the D-pad and stick are the piece, the face buttons rotate
-//   lobby    the D-pad and stick step this seat's start level, X starts the
-//            round (host only), a shoulder side cycles this seat's colour
+//   lobby    the D-pad and stick step this seat's start level, any idle face
+//            button starts the round (host only), a shoulder side cycles this
+//            seat's colour
 //   overlays the D-pad and stick move a focus ring over the display's real
 //            buttons and A clicks the focused one (results, pause, reconnect)
 // The lobby is the exception because it has no choice to make on screen: Start
@@ -475,7 +476,14 @@ var GamepadInput = (function () {
     // renders (only the host is shown a Start button). The display's own
     // on-screen button is unaffected: that one belongs to whoever set the
     // screen up, not to a player.
-    if (index === PAD_BTN.FACE_LEFT) {
+    //
+    // All three otherwise-idle face buttons do it, for the same reason any
+    // button joins: the labels move between brands, so no single one is "the X
+    // button" everywhere. Index 2 is X on an Xbox pad but Y on a Switch pad,
+    // whose X is index 3 — binding one of them would leave half the players
+    // pressing the button their pad has printed X on and getting nothing. The
+    // bottom face button is free here too, since the lobby runs no focus ring.
+    if (index === PAD_BTN.FACE_LEFT || index === PAD_BTN.FACE_UP || index === PAD_BTN.FACE_DOWN) {
       if (seatId === getHostPeerIndex()) feed(seatId, { type: MSG.START_GAME });
       return;
     }
