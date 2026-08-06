@@ -1,9 +1,10 @@
 name: Release
 
 # Signed store builds:
-#   - Android: .aab signed with the Play upload keystore, uploaded as a workflow
-#     artifact; the Play Console upload stays manual. Versioned like tvOS below
-#     (tag -> versionName, run number -> versionCode), via -P overrides.
+#   - Android: .aab signed with the Play upload keystore, kept as a workflow
+#     artifact, and on a tag published to Play's internal track as a draft.
+#     Versioned like tvOS below (tag -> versionName, run number -> versionCode),
+#     via -P overrides.
 #   - tvOS: signed with the Apple Distribution cert + App Store profile and
 #     uploaded straight to TestFlight via the ASC API key. Tag builds stamp the
 #     bare-semver tag as MARKETING_VERSION (the app shares the web's 4.X.Y
@@ -24,6 +25,9 @@ name: Release
 #   ANDROID_KEYSTORE_PASSWORD  keystore store password
 #   ANDROID_KEY_ALIAS          key alias (hexstacker-tv)
 #   ANDROID_KEY_PASSWORD       key password
+#   PLAY_SERVICE_ACCOUNT_JSON  JSON key of the Play API service account, granted
+#                              "Release to testing tracks" on the app in Play
+#                              Console (Users and permissions, not Cloud IAM)
 #   APPLE_CERT_P12_B64         base64 .p12 export of the Apple Distribution cert + private key
 #   APPLE_CERT_P12_PASSWORD    password chosen for that .p12 export
 #   APPLE_PROFILE_B64          base64 of the "HexStacker tvOS App Store" .mobileprovision
@@ -118,12 +122,34 @@ jobs:
             exit 1
           fi
 
+      # Before publishing, so a Play-side rejection still leaves the bundle
+      # downloadable from the run.
       - name: Upload .aab artifact
         uses: actions/upload-artifact@v7
         with:
           name: hexstacker-android-tv-aab
           path: android/tv/build/outputs/bundle/release/tv-release.aab
           if-no-files-found: error
+
+      # Tags only, unlike the tvOS TestFlight upload beside it: the Play API
+      # refuses an app that has never had a bundle uploaded through the console,
+      # so the very first release is manual, and a dispatch has to stay able to
+      # produce that bundle without the job failing on a publish it cannot do.
+      # Dispatch therefore means "build and hand me the artifact".
+      #
+      # Internal track as draft: a tag stages a release for review in the
+      # console rather than handing it to testers. mapping.txt goes with it or
+      # every crash report from an R8 build is unreadable.
+      - name: Publish to Play (internal track)
+        if: github.ref_type == 'tag'
+        uses: r0adkll/upload-google-play@v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.couchgames.stacker
+          releaseFiles: android/tv/build/outputs/bundle/release/tv-release.aab
+          mappingFile: android/tv/build/outputs/mapping/release/mapping.txt
+          track: internal
+          status: draft
 
   tvos:
     runs-on: macos-15
