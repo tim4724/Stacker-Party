@@ -141,6 +141,18 @@ jobs:
           set -o pipefail
           DEST="id=${TV_UDID}"
           [ -n "$TV_UDID" ] || DEST='platform=tvOS Simulator,name=Apple TV,OS=latest'
+          # Join the pre-boot before capturing. The pre-boot step backgrounds
+          # bootstatus so the boot overlaps npm ci + compile, but nothing waited
+          # for it, and XCUITest only ever gates on the app's accessibility tree,
+          # which is live well before the window server has drawn anything. A run
+          # that got there first photographed the boot logo 24 times and still
+          # reported success. This waits through "Waiting on System App", which is
+          # the readiness that was actually missing, and no-ops once booted.
+          #
+          # NO -b here, unlike the pre-boot: -b re-boots, and against a device that
+          # is still booting simctl exits 149 ("Unable to boot device in current
+          # state: Booted"), failing hardest in exactly the case this guards.
+          if [ -n "$TV_UDID" ]; then xcrun simctl bootstatus "$TV_UDID"; fi
           xcodebuild test \
             -project HexStacker.xcodeproj \
             -scheme HexStackerTV \

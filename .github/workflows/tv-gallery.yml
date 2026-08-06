@@ -275,6 +275,14 @@ jobs:
               metadata:
                 labels:
                   app: tv-gallery
+                annotations:
+                  # The image tag is keyed on the commit SHA, so re-running this
+                  # workflow rebuilds and force-pushes the SAME mutable tag while
+                  # the Deployment spec stays byte-identical, so kubectl apply is a
+                  # no-op, no rollout happens, and the pod keeps serving the layers
+                  # it already pulled. That made a bad gallery unfixable without a
+                  # dummy commit. Vary the pod template per run so apply rolls.
+                  hexstacker.com/run: "${{ github.run_id }}-${{ github.run_attempt }}"
               spec:
                 containers:
                   - name: tv-gallery

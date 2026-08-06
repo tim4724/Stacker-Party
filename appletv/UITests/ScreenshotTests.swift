@@ -39,6 +39,7 @@ final class ScreenshotTests: XCTestCase {
         XCTAssertGreaterThan(total, 0, "gallery reported no states (label=\(marker.label))")
 
         var lastName = "pending"
+        var lastShot: Data?
         for i in 0..<total {
             // Wait for the marker's value to CHANGE to the next state's name (it
             // holds the previous name through the scene swap, so a changed value
@@ -60,10 +61,22 @@ final class ScreenshotTests: XCTestCase {
                               "state \(i): app never signalled the next frozen frame")
 
             let shotStart = Date()
-            let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            let screenshot = XCUIScreen.main.screenshot()
+            let attachment = XCTAttachment(screenshot: screenshot)
             attachment.name = name
             attachment.lifetime = .keepAlways   // keep on success, not just failure
             add(attachment)
+            // The marker says the APP rendered; it says nothing about what the
+            // screen is showing. On a simulator whose window server hasn't come
+            // up, every capture is the same frozen boot framebuffer. A real run
+            // shipped 24 Apple logos to the gallery (22 sharing one hash) and
+            // still went green. Distinct frozen states never render identical
+            // frames, so an exact repeat means we captured the screen, not the app.
+            let png = screenshot.pngRepresentation
+            XCTAssertNotEqual(png, lastShot, "state \(name): captured a frame "
+                              + "byte-identical to the previous state, so the display "
+                              + "is almost certainly still on the simulator boot screen")
+            lastShot = png
             let now = Date()
             NSLog("hexshot[%d] %@: wait=%.2fs shot=%.2fs", i, name,
                   shotStart.timeIntervalSince(waitStart), now.timeIntervalSince(shotStart))
