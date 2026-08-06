@@ -43,8 +43,12 @@
 // Two boundaries worth knowing:
 //   - Chrome does not report a pad through navigator.getGamepads() until a
 //     button has been pressed on it, so a pad cannot be detected before the
-//     gesture that joins it. Hence the lobby hint appearing only once a pad is
-//     known, and no connect event that would be any earlier.
+//     gesture that joins it, and there is no connect event that would be any
+//     earlier. That is why the lobby's controller hint is on the join line's
+//     rotation unconditionally rather than shown on detection, and why ANY
+//     button joins: naming one would leave a player who pressed a different
+//     one with no feedback, and index 0 is labelled A on Xbox, Cross on
+//     PlayStation and B on a Switch pad, so no letter is right everywhere.
 //   - The welcome screen is not pad-driven. There is no room to join yet, and
 //     whoever opened the display in a browser has the pointer to press its one
 //     button.
@@ -300,9 +304,7 @@ function gamepadDisplayName(rawId, maxLen) {
 var GamepadInput = (function () {
   // padIndex -> { seatId, mapper, pendingGarbage, cancelledLines }
   var seats = new Map();
-  var unseatedPads = 0;
   var rafId = null;
-  var hintEl = null;
 
   // The relay owns 1..N and the display owns 0, so negatives are ours alone.
   // Derived from the pad's own slot, so unplugging and replugging the same pad
@@ -639,11 +641,9 @@ var GamepadInput = (function () {
   function poll(nowMs) {
     rafId = requestAnimationFrame(poll);
     var pads = navigator.getGamepads ? navigator.getGamepads() : [];
-    unseatedPads = 0;
     for (var i = 0; i < pads.length; i++) {
       var pad = pads[i];
       if (!pad || !pad.connected) { retire(i); continue; }
-      if (!seats.has(i)) unseatedPads++;
       pump(i, pad, nowMs);
     }
     // A pad that vanished off the end of the array (shorter list, not a null
@@ -654,7 +654,6 @@ var GamepadInput = (function () {
     }
     for (var s = 0; s < stale.length; s++) retire(stale[s]);
     maintainFocus(roomState === ROOM_STATE.PLAYING && !paused);
-    updateHint();
   }
 
   // One cheap check per frame keeps the ring honest across screen changes,
@@ -668,20 +667,12 @@ var GamepadInput = (function () {
     if (!focusStillValid()) setFocus(primaryOf(focusCandidates()));
   }
 
-  function updateHint() {
-    if (!hintEl) return;
-    var show = unseatedPads > 0 &&
-      (roomState === ROOM_STATE.LOBBY || roomState === ROOM_STATE.RESULTS);
-    hintEl.classList.toggle('hidden', !show);
-  }
-
   // Not started under the gallery/test harnesses: their rosters are fixtures,
   // and a pad plugged into the developer's machine must not join one.
   function start() {
     if (rafId !== null) return;
     if (!navigator.getGamepads) return;
     if (window.__TEST__) return;
-    hintEl = document.getElementById('gamepad-hint');
     rafId = requestAnimationFrame(poll);
   }
 

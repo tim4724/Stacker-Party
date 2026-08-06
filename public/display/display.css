@@ -479,7 +479,8 @@ html:not(.in-session) #relay-status-bar { display: none; }
   max-width: 100%;
 }
 
-#join-hint {
+#join-hint,
+#gamepad-hint {
   position: absolute;
   inset: 0;
   display: flex;
@@ -503,12 +504,16 @@ html:not(.in-session) #relay-status-bar { display: none; }
   transition: opacity 0.45s ease;
 }
 
+/* Either hint showing hides the URL — the three states share one line. */
 #join-line.show-hint .join-url__host,
-#join-line.show-hint .join-url__code {
+#join-line.show-hint .join-url__code,
+#join-line.show-pad-hint .join-url__host,
+#join-line.show-pad-hint .join-url__code {
   opacity: 0;
 }
 
-#join-line.show-hint #join-hint {
+#join-line.show-hint #join-hint,
+#join-line.show-pad-hint #gamepad-hint {
   opacity: 1;
 }
 
@@ -521,19 +526,6 @@ html:not(.in-session) #relay-status-bar { display: none; }
   outline: 3px solid var(--accent-secondary);
   outline-offset: 3px;
   border-radius: 4px;
-}
-
-/* Gamepad join prompt — a quieter second line under the join URL, so the QR
-   stays the primary call to action for the phones most players arrive with. */
-#gamepad-hint {
-  margin: 0.6em 0 0;
-  text-align: center;
-  font-family: var(--font-hud);
-  font-weight: 600;
-  font-size: clamp(0.85rem, 1.9vmin, 1.25rem);
-  letter-spacing: 0.06em;
-  color: var(--text-secondary);
-  opacity: 0.75;
 }
 
 /* Join URL — host + code on one line. Click to copy the full URL;

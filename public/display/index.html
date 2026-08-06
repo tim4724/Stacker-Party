@@ -146,19 +146,21 @@
         </div>
         <div id="player-list"></div>
       </div>
-      <!-- The line alternates between the URL and the localized scan hint
-           (DisplayConnection cycles .show-hint). The hint is a sibling of
-           #join-url, not a child, so #join-url's textContent stays the pure
-           URL (it labels the copy button and the e2e helpers read it). -->
+      <!-- The line cycles the URL and the two localized join hints
+           (DisplayConnection rotates .show-hint / .show-pad-hint). Both hints
+           are siblings of #join-url, not children, so #join-url's textContent
+           stays the pure URL (it labels the copy button and the e2e helpers
+           read it). The controller hint is on the rotation unconditionally
+           rather than shown on detection: Chrome does not report a pad until
+           a button has been pressed on it, so a detection-gated hint could
+           never be what prompts the first press. -->
       <div id="join-line">
         <p id="join-url">
           <span class="join-url__host"></span><span class="join-url__code"></span>
         </p>
         <span id="join-hint" data-i18n="scan_hint" aria-hidden="true">Scan code with your phone</span>
+        <span id="gamepad-hint" data-i18n="gamepad_join_hint" aria-hidden="true">Press any button on your controller</span>
       </div>
-      <!-- Shown by GamepadInput.js only once a pad is known to the browser,
-           which (in Chrome) is not until a button has been pressed on it. -->
-      <p id="gamepad-hint" class="hidden" data-i18n="gamepad_join_hint">Press any button to join</p>
     </div>
     <button id="start-btn" class="btn btn-primary" disabled data-i18n="waiting_for_players">Waiting for players...</button>
     <div id="lobby-footer">

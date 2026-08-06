@@ -289,7 +289,7 @@ function applyRoomCreated(partyRoomCode, newJoinUrl) {
       // Pin the URL while the toast is up so the user sees what landed
       // in their clipboard (the hint cycle also skips data-copied ticks).
       var jl = document.getElementById('join-line');
-      if (jl) jl.classList.remove('show-hint');
+      if (jl) jl.classList.remove('show-hint', 'show-pad-hint');
       joinUrlEl.setAttribute('data-copied-label', copiedLabel);
       joinUrlEl.setAttribute('data-copied', '1');
       // Reflect the success state for screen readers — the ::after toast
@@ -329,17 +329,22 @@ function applyRoomCreated(partyRoomCode, newJoinUrl) {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); copyToClipboard(); }
     });
 
-    // Alternate the join line between the URL and the localized "scan to
-    // join" hint. Starts on the URL so the address is the first thing a
-    // player can act on; holds the URL while the copied toast is visible.
+    // Rotate the join line through the URL and the two localized join hints
+    // (scan with a phone, press a button on a controller). Starts on the URL
+    // so the address is the first thing a player can act on; holds the URL
+    // while the copied toast is visible, and resumes from it afterwards.
     var joinLineEl = document.getElementById('join-line');
     if (joinLineEl) {
+      var joinLineStep = 0;
       setInterval(function() {
         if (joinUrlEl.hasAttribute('data-copied')) {
-          joinLineEl.classList.remove('show-hint');
+          joinLineEl.classList.remove('show-hint', 'show-pad-hint');
+          joinLineStep = 0;
           return;
         }
-        joinLineEl.classList.toggle('show-hint');
+        joinLineStep = (joinLineStep + 1) % 3;
+        joinLineEl.classList.toggle('show-hint', joinLineStep === 1);
+        joinLineEl.classList.toggle('show-pad-hint', joinLineStep === 2);
       }, 4500);
     }
   }
