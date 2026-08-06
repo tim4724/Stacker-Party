@@ -27,7 +27,14 @@ final class PressHostController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        let host = UIHostingController(rootView: DisplayRootView(model: model))
+        // Pin Dynamic Type: the chrome is a fixed proportional canvas (Dimens.swift's
+        // Vp), so text that scales independently of it has nowhere to go. tvOS ships no
+        // text-size control today, which makes this a no-op, and that is the point. It
+        // states the constraint instead of leaving it to Apple's settings screen, and
+        // matches the Android pin (MainActivity's LocalDensity). Font.custom(_:size:)
+        // is Dynamic-Type-relative, so without this the sizes are not actually fixed.
+        let host = UIHostingController(
+            rootView: DisplayRootView(model: model).dynamicTypeSize(.large))
         addChild(host)
         host.view.frame = view.bounds
         host.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]

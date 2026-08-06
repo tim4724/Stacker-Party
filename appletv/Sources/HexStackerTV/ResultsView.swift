@@ -205,23 +205,20 @@ private struct ResultRow: View {
         }
     }
 
-    // Web's .result-stats has no font-family override, so it inherits the plain
-    // system font (not Orbitron/Baloo); render lines + level as two spans with the
-    // web 1.5rem gap (buildResultRow concatenates them only because SKLabelNode is
-    // one label; the web + Android render two flex spans).
+    // .result-stats is the HUD voice (Orbitron 700, tabular figures), like every
+    // other numeric readout; render lines + level as two spans with the web 1.5rem
+    // gap (buildResultRow concatenates them only because SKLabelNode is one label;
+    // the web + Android render two flex spans).
     @ViewBuilder private var stats: some View {
         if res.newPlayer {
             Text(tr("new_player"))
-                .font(.system(size: statsSize, weight: .medium))
-                .foregroundColor(UITheme.textSecondary)
+                .styled(font: AppFont.name, size: statsSize, color: UITheme.textSecondary)
         } else {
             HStack(spacing: 24) {   // .result-stats gap 1.5rem
                 Text(tr("n_lines", res.lines ?? 0))
-                    .font(.system(size: statsSize, weight: .medium))
-                    .foregroundColor(UITheme.textSecondary)
+                    .styled(font: AppFont.name, size: statsSize, color: UITheme.textSecondary)
                 Text(tr("level_n", res.level ?? 1))
-                    .font(.system(size: statsSize, weight: .medium))
-                    .foregroundColor(UITheme.textSecondary)
+                    .styled(font: AppFont.name, size: statsSize, color: UITheme.textSecondary)
             }
         }
     }
