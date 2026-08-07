@@ -1401,6 +1401,26 @@ body.couchpad #lobby-back-btn { display: none !important; }
 body.couchpad .game-name-label { display: none !important; }
 body.couchpad #touch-area::after { content: none !important; }
 
+/* Arming system back brings Android's navigation bar back on screen, so
+   --cp-safe-bottom grows while armed and shrinks again on disarm (CONTRACT
+   §9). Reserve the gesture pill's height rather than reflow under it. The
+   game screen stops there: its bottom bar is anchored, so every reserved
+   pixel comes off the touch pad. */
+body.couchpad {
+  --safe-bottom: max(var(--cp-safe-bottom, 0px), env(safe-area-inset-bottom, 0px), 24px);
+}
+
+/* These two are the only surfaces on screen at the moment the arm state
+   flips, so they are the only ones that watch the bar arrive underneath.
+   Everything else is armed for its whole life (lobby, results, the colour
+   picker over an already-armed lobby) or never armed (the in-game reconnect
+   overlay), and keeps the inset it opened with. Both centre their content, so
+   reserving the taller three-button bar costs them nothing. */
+body.couchpad #pause-overlay,
+body.couchpad #settings-overlay {
+  --safe-bottom: max(var(--cp-safe-bottom, 0px), env(safe-area-inset-bottom, 0px), 48px);
+}
+
 /* --- AirConsole-only overrides --- */
 body.airconsole #lobby-join-url { display: none !important; }
 /* No relay PING/PONG or fastlane in AC mode, so there is no RTT to show. */

@@ -14,9 +14,11 @@
 //   launcher -> game   window.CouchPad.setName(name)     live rename
 //   game -> launcher   window.CouchPadHost.gameEnded(r)  terminal end
 //     r: 'game_ended' | 'room_not_found' | 'game_full' | 'replaced'
+//   game -> launcher   CouchPadHost.enableSystemBack(b)  arm the back gesture
+//   launcher -> game   window.CouchPad.back()            armed back gesture
 // The launcher is the identity authority: the name screen is skipped (CSS
 // hides it via body.couchpad), the injected name is never persisted as the
-// user's own typed name, and the shell owns back navigation and leaving.
+// user's own typed name, and the shell owns leaving.
 // =====================================================================
 
 (function () {
@@ -107,13 +109,65 @@
     host.gameEnded(toastKey || (keepClientId ? 'replaced' : 'game_ended'));
   };
 
-  // The shell owns back navigation (the launcher suppresses the system back
-  // gesture over the WebView). Same rationale as the AirConsole bootstrap:
-  // skip the name→lobby history push so a spurious popstate can't land on
-  // an entry that triggers performDisconnect, and no-op performDisconnect
-  // itself as belt-and-suspenders. With no pushed modal state, the settings
-  // Done button takes its direct hideSettings() fallback instead of
-  // history.back().
+  // Back never runs through history here. Same rationale as the AirConsole
+  // bootstrap: skip the name→lobby history push so a spurious popstate can't
+  // land on an entry that triggers performDisconnect, and no-op
+  // performDisconnect itself as belt-and-suspenders. With no pushed modal
+  // state, the settings Done button takes its direct hideSettings() fallback
+  // instead of history.back(). The system gesture reaches us as back() below.
   history.pushState = function () {};
   performDisconnect = function () {};
+
+  // --- System back (CONTRACT §9) ---
+  // Arming yields the screen edges to the system, so it is off during a live
+  // game where an edge swipe is a drag input. It is on where back has a
+  // meaning: over an open dialog, which back() closes, and in the lobby and on
+  // the results screen, where nothing is open and an unconsumed gesture leaves
+  // the game the same way the shell's LEAVE bar does.
+  function isOpen(el) {
+    return !!el && !el.classList.contains('hidden');
+  }
+
+  // The pause overlay lives inside the game screen and is not always cleared
+  // on the way out (a game that ends while paused goes straight to results),
+  // so its class alone doesn't mean the player is looking at it.
+  function pauseOpen() {
+    return currentScreen === 'game' && isOpen(pauseOverlay);
+  }
+
+  var backArmed = null;
+  function syncSystemBack() {
+    var want = isOpen(settingsOverlay) || isOpen(colorPickerOverlay) || pauseOpen()
+      || currentScreen === 'lobby' || currentScreen === 'gameover';
+    if (want === backArmed) return;
+    backArmed = want;
+    var host = window.CouchPadHost;
+    if (host && typeof host.enableSystemBack === 'function') host.enableSystemBack(want);
+  }
+
+  // Dialogs open and close from a dozen places (buttons, room snapshots, the
+  // reconnect path, the test harness); the `hidden` class is the one thing
+  // every path agrees on, so watch that instead of wrapping each caller.
+  var overlayWatch = new MutationObserver(syncSystemBack);
+  [settingsOverlay, colorPickerOverlay, pauseOverlay].forEach(function (el) {
+    if (el) overlayWatch.observe(el, { attributes: true, attributeFilter: ['class'] });
+  });
+  var _originalShowScreen = showScreen;
+  showScreen = function (name) {
+    _originalShowScreen(name);
+    syncSystemBack();
+  };
+  syncSystemBack();
+
+  // Called by the launcher once per gesture, only while armed. Anything but a
+  // literal true leaves the game, so the lobby and results answer nothing and
+  // fall through. Settings first: it can sit on top of the pause overlay.
+  // Decided synchronously: a Promise counts as unconsumed. hideSettings is
+  // block-scoped in controller.js, so the window alias is the only handle.
+  window.CouchPad.back = function () {
+    if (isOpen(settingsOverlay)) { window.closeSettingsOverlay(); return true; }
+    if (isOpen(colorPickerOverlay)) { closeColorPicker(); return true; }
+    if (pauseOpen()) { sendToDisplay(MSG.RESUME_GAME); return true; }
+    return false;
+  };
 })();
