@@ -2,6 +2,9 @@
 const { test, expect } = require('@playwright/test');
 const {
   createRoom,
+  waitForControllerGame,
+  waitForControllerResults,
+  waitForDisplayGame,
   waitForDisplayPlayers,
   waitForFont,
 } = require('./helpers');
@@ -19,8 +22,10 @@ async function joinCouchPadController(context, roomCode, name) {
   await page.addInitScript((rc) => {
     localStorage.removeItem('clientId_' + rc);
     window.__cpEnded = [];
+    window.__cpBack = [];
     window.CouchPadHost = {
       gameEnded: (reason) => window.__cpEnded.push(reason),
+      enableSystemBack: (on) => window.__cpBack.push(on),
     };
   }, roomCode);
   await page.goto(`/${roomCode}?test=1&cpName=${encodeURIComponent(name)}`);
@@ -75,6 +80,59 @@ test.describe('CouchPad shell contract', () => {
     await controller.waitForFunction(() => window.__cpEnded.length > 0, null, { timeout: 10000 });
     expect(await controller.evaluate(() => window.__cpEnded)).toEqual(['game_ended']);
     expect(controller.url()).toContain(`/${roomCode}`);
+  });
+
+  test('system back arms per screen and consumes dialog dismissals (CONTRACT §9)', async ({ page, context }) => {
+    test.setTimeout(90000);
+    const { roomCode } = await createRoom(page);
+    const controller = await joinCouchPadController(context, roomCode, 'Nils');
+    await controller.waitForSelector('#player-identity:not(.hidden)', { timeout: 10000 });
+
+    const armed = () => controller.evaluate(() => window.__cpBack[window.__cpBack.length - 1]);
+    const back = () => controller.evaluate(() => window.CouchPad.back());
+
+    // Lobby: armed with nothing to close, so the gesture falls through to the
+    // launcher and leaves the game, the same exit as the LEAVE bar.
+    await expect.poll(armed).toBe(true);
+    expect(await back()).toBe(false);
+
+    // Dialogs answer the gesture themselves and the player stays in the room.
+    await controller.click('#lobby-settings-btn');
+    await expect(controller.locator('#settings-overlay')).toBeVisible();
+    expect(await back()).toBe(true);
+    await expect(controller.locator('#settings-overlay')).toBeHidden();
+
+    // The colour picker fades out rather than unmounting (it keeps
+    // `display: flex` while hidden), so its class is what "closed" means.
+    await controller.click('#identity-trigger');
+    await controller.waitForSelector('#color-picker-overlay:not(.hidden)');
+    expect(await back()).toBe(true);
+    await controller.waitForSelector('#color-picker-overlay.hidden');
+
+    // Live game: disarmed, so the screen edges stay drag input. Level 15 tops
+    // the solo player out quickly, which carries us to the results screen.
+    await controller.evaluate(() => {
+      const plus = document.getElementById('level-plus-btn');
+      for (let i = 0; i < 14; i++) plus.click();
+    });
+    await expect(controller.locator('#level-display')).toHaveText('15');
+    await controller.click('#start-btn');
+    await waitForDisplayGame(page);
+    await waitForControllerGame(controller);
+    await expect.poll(armed).toBe(false);
+
+    // Pause overlay: armed again, and back resumes the game like Continue.
+    await controller.click('#pause-btn');
+    await expect(controller.locator('#pause-overlay')).toBeVisible();
+    await expect.poll(armed).toBe(true);
+    expect(await back()).toBe(true);
+    await expect(controller.locator('#pause-overlay')).toBeHidden();
+    await expect.poll(armed).toBe(false);
+
+    // Results: armed with nothing to close, like the lobby.
+    await waitForControllerResults(controller);
+    await expect.poll(armed).toBe(true);
+    expect(await back()).toBe(false);
   });
 
   test('cp-accent-color meta tracks the player color (CONTRACT §4)', async ({ page, context }) => {
