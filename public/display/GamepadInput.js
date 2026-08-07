@@ -245,7 +245,11 @@ var GamepadInput = (function () {
 
   function join(padIndex, pad) {
     var seatId = seatIdFor(padIndex);
-    var name = gamepadDisplayName(pad.id, window.GameEngine.RoomCore.NAME_MAX_LEN);
+    // The roster's names ride along so a second identical pad comes out
+    // numbered ("PlayStation 2") instead of indistinguishable from the first.
+    var taken = [];
+    for (var entry of players) taken.push(entry[1].playerName);
+    var name = gamepadDisplayName(pad.id, window.GameEngine.RoomCore.NAME_MAX_LEN, taken);
     seats.set(padIndex, {
       seatId: seatId,
       mapper: new GamepadMapper()

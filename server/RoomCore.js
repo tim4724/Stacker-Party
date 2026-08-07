@@ -627,6 +627,18 @@ function normalizePeerIndex(value) {
   return Number.isInteger(n) && n >= 0 ? n : null;
 }
 
+// A seat held by a gamepad on the display machine (PadMapper.LOCAL_SEAT_BASE).
+// Resolved LAZILY and SOFTLY: in the browser PadMapper loads after this module
+// (asset-manifest order), and the AirConsole bundle ships neither pads nor the
+// module at all — and a build with no local seats can never be asked about one,
+// so absent means "not local".
+function isLocalSeatId(peerIndex) {
+  var pm = (typeof require !== 'undefined')
+    ? require('./PadMapper.js')
+    : (typeof window !== 'undefined' && window.GameEngine && window.GameEngine.PadMapper);
+  return !!pm && pm.isLocalSeat(peerIndex);
+}
+
 // Can `peerIndex` claim the dropped seat named by the HELLO's rejoin token?
 // Returns the old peer index, or null. Reads flow's presence set rather than the
 // display's QR map, so the decision cannot drift from the roster it is about.
@@ -653,7 +665,13 @@ RoomCore.prototype.claimReconnect = function (peerIndex, msg, nowMs) {
   // flow.rekey moves the kept record from oldId to peerIndex (dropping the
   // placeholder row peerIndex got when it joined), and reclaims the sticky host
   // slot and last-seen stamp for the returning peer.
-  this.flow.rekey(oldId, peerIndex);
+  //
+  // Except the host slot when the claimed seat is a LOCAL one (a gamepad on the
+  // display machine): a phone scanning that seat's rejoin QR is a TAKEOVER, not
+  // the same device returning, so the board, name, colour and results follow
+  // the claim but host duty passes on — staying with whoever has been holding
+  // it since the pad dropped, exactly as if the pad had left.
+  this.flow.rekey(oldId, peerIndex, { inheritHost: !isLocalSeatId(oldId) });
   // Through onSeen, not flow's: the rekey just moved the departed record onto
   // this index, relayGone and all, and their HELLO is proof it is stale.
   this.onSeen(peerIndex, nowMs);

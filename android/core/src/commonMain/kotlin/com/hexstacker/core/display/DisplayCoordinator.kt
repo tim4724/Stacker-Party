@@ -1310,8 +1310,14 @@ class DisplayCoordinator(
 
     /** The remote's pause key (and Back / Menu during a game). No state guard: the room
      *  core refuses a freeze outside a running game, and the AUTO branch below is
-     *  reachable only while one is already in force, which implies running. */
-    private suspend fun togglePause() {
+     *  reachable only while one is already in force, which implies running.
+     *
+     *  Internal, not private, because [PadSeats] runs INSIDE the action consumer
+     *  (its poll is part of the tick) and must call this directly: going through
+     *  [remoteTogglePause] from there enqueues an action and awaits an ack the
+     *  consumer itself can never process — a self-deadlock that froze the whole
+     *  game thread on a pad's Start press during the countdown. */
+    internal suspend fun togglePause() {
         when (pauseReason) {
             PauseReason.MANUAL -> resumeGame()
             // Nothing left to pause — but the overlay carries New Game, and with every

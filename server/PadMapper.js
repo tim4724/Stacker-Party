@@ -301,26 +301,44 @@ var PAD_VENDORS = {
 var PAD_NOISE_RE = /\b(wireless|wired|bluetooth|usb|controller|gamepad|joystick|joypad|extended|standard|xinput|unknown)\b/gi;
 
 // `maxLen` is the room core's own name cap, passed in rather than read, so
-// this stays pure and the cap keeps one definition.
-function gamepadDisplayName(rawId, maxLen) {
+// this stays pure and the cap keeps one definition. `taken` (optional) is the
+// names already in the roster: two identical pads clean up to the identical
+// string (two DualSense on one TV is an ordinary evening), and two seats with
+// one name cannot be told apart, so the second becomes "<name> 2" — the same
+// convention the player-LEDs on the pads themselves use.
+function gamepadDisplayName(rawId, maxLen, taken) {
   var id = String(rawId == null ? '' : rawId);
 
+  var name = '';
   var vendor = /Vendor:\s*([0-9a-f]{4})/i.exec(id) || /^([0-9a-f]{4})-[0-9a-f]{4}-/i.exec(id);
-  if (vendor && PAD_VENDORS[vendor[1].toLowerCase()]) return PAD_VENDORS[vendor[1].toLowerCase()];
-
-  var name = id
-    .replace(/\([^)]*\)/g, ' ')                 // Chrome's vendor / XInput block
-    .replace(/^[0-9a-f]{4}-[0-9a-f]{4}-/i, '')  // Firefox's leading ids
-    .replace(PAD_NOISE_RE, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  // Drop whole words until it fits rather than hand the room core a name it
-  // would cut mid-word.
-  while (name.length > maxLen && name.indexOf(' ') > 0) {
-    name = name.slice(0, name.lastIndexOf(' '));
+  if (vendor && PAD_VENDORS[vendor[1].toLowerCase()]) {
+    name = PAD_VENDORS[vendor[1].toLowerCase()];
+  } else {
+    name = id
+      .replace(/\([^)]*\)/g, ' ')                 // Chrome's vendor / XInput block
+      .replace(/^[0-9a-f]{4}-[0-9a-f]{4}-/i, '')  // Firefox's leading ids
+      .replace(PAD_NOISE_RE, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    // Drop whole words until it fits rather than hand the room core a name it
+    // would cut mid-word.
+    while (name.length > maxLen && name.indexOf(' ') > 0) {
+      name = name.slice(0, name.lastIndexOf(' '));
+    }
+    if (!name || name.length > maxLen) name = 'Gamepad';
   }
-  if (!name || name.length > maxLen) return 'Gamepad';
-  return name;
+
+  if (!taken || taken.indexOf(name) < 0) return name;
+  // Make room for the counter by the same whole-word rule before numbering.
+  var base = name;
+  while (base.length > maxLen - 2 && base.indexOf(' ') > 0) {
+    base = base.slice(0, base.lastIndexOf(' '));
+  }
+  if (base.length > maxLen - 2) base = base.slice(0, maxLen - 2);
+  for (var n = 2; ; n++) {
+    var candidate = base + ' ' + n;
+    if (taken.indexOf(candidate) < 0) return candidate;
+  }
 }
 
 // --- Rumble ------------------------------------------------------------------

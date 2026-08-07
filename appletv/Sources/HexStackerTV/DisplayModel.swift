@@ -310,9 +310,17 @@ final class DisplayModel: ObservableObject {
     /// it (a UINavigationController declines a pop while one is in flight).
     /// The consume keeps a bubbled press off super's default app-exit.
     func handleMenu() -> Bool {
-        guard !state.connectionOverlayUp else { return false }
+        // Falling through to super exits to the HOME SCREEN, and the lobby is
+        // the only place that is the right reading of Menu: everywhere else a
+        // session is in progress and one press must not take the display out
+        // from under every phone in the room. The connection freeze consumes
+        // too — the match behind it is exactly what the overlay is protecting.
+        guard !state.connectionOverlayUp else { return true }
         if !state.aboutPath.isEmpty { return true }
         if state.screen == .game { coordinator?.remoteTogglePause(); return true }
+        // Menu is "back one level": from the results that is the lobby, the
+        // same reading Android gives its Back there.
+        if state.screen == .results { coordinator?.remoteReturnToLobby(); return true }
         return false
     }
 

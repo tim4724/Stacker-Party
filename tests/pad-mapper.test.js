@@ -303,4 +303,31 @@ describe('gamepadDisplayName', () => {
       assert.ok(gamepadDisplayName(id, NAME_MAX_LEN).length <= NAME_MAX_LEN);
     }
   });
+
+  // Two identical pads clean up to the identical string (two DualSense on one
+  // TV is an ordinary evening), and two seats with one name cannot be told
+  // apart — so a taken name gets numbered, the same convention the pads' own
+  // player LEDs use.
+  test('a second identical pad is numbered, not duplicated', () => {
+    const id = 'DUALSHOCK 4 Wireless Controller';
+    assert.equal(gamepadDisplayName(id, NAME_MAX_LEN, []), 'DUALSHOCK 4');
+    assert.equal(gamepadDisplayName(id, NAME_MAX_LEN, ['DUALSHOCK 4']), 'DUALSHOCK 4 2');
+    assert.equal(
+      gamepadDisplayName(id, NAME_MAX_LEN, ['DUALSHOCK 4', 'DUALSHOCK 4 2']),
+      'DUALSHOCK 4 3');
+  });
+
+  test('numbering still fits the cap by dropping whole words first', () => {
+    const id = 'Nacon Revolution Pro Controller (Vendor: 146b Product: 0d01)';
+    const first = gamepadDisplayName(id, NAME_MAX_LEN, []);
+    const second = gamepadDisplayName(id, NAME_MAX_LEN, [first]);
+    assert.notEqual(second, first);
+    assert.ok(second.length <= NAME_MAX_LEN, `${second} is over the cap`);
+  });
+
+  test('a pad also dodges a name a phone already took', () => {
+    assert.equal(
+      gamepadDisplayName('Xbox Wireless Controller Extended Gamepad', NAME_MAX_LEN, ['Xbox']),
+      'Xbox 2');
+  });
 });

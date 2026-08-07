@@ -575,6 +575,14 @@ class MainActivity : ComponentActivity() {
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val fromPad = padSource.onKeyEvent(event)
         if (fromPad && (padOwnsInput() || isPadJoinPress(event.deviceId))) return true
+        // The framework translates BUTTON_B (and a pad's own BACK key) into
+        // system back navigation. On a pad B is rotation during play and
+        // nothing anywhere else — leaving it through would hand a stray press
+        // the power to close the results or exit the lobby for everyone, which
+        // no pad button may do (tvOS pads structurally cannot). The TV remote
+        // is not a gamepad-source device, so its Back keeps its meaning.
+        if (event.keyCode == KeyEvent.KEYCODE_BACK && padSource.isGamepadEvent(event)) return true
+        if (fromPad && event.keyCode == KeyEvent.KEYCODE_BUTTON_B) return true
         return super.dispatchKeyEvent(event)
     }
 
@@ -981,10 +989,14 @@ private fun HexStackerApp(
     }
     // During a game (COUNTDOWN + PLAYING) Back toggles pause instead of exiting.
     // Going through the dispatcher (not onKeyDown) is what keeps a single Back
-    // from BOTH pausing and finishing the Activity. Disabled on the lobby/results,
-    // so Back there falls through to the default finish() and exits to the
-    // launcher (Android TV: Back must eventually reach the home screen).
+    // from BOTH pausing and finishing the Activity. On RESULTS, Back is "back
+    // one level" — the lobby, the same reading tvOS gives its Menu there — and
+    // never the launcher: a session is in progress, and one press must not take
+    // the display out from under every phone in the room. Only the LOBBY falls
+    // through to the default finish() (Android TV: Back must eventually reach
+    // the home screen, and the lobby is the one place with nothing to lose).
     BackHandler(enabled = model.screen == DisplayScreen.GAME) { onContinue() }
+    BackHandler(enabled = model.screen == DisplayScreen.RESULTS) { onNewGame() }
 
     DisplayChrome(
         model = model,

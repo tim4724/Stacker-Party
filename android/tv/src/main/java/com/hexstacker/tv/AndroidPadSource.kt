@@ -200,6 +200,10 @@ class AndroidPadSource : PadSource {
      *  an unknown pad cannot be seated. */
     fun slotFor(deviceId: Int): Int? = synchronized(lock) { slots[deviceId] }
 
+    /** Whether [event] came from a gamepad device at all — for keys this source
+     *  does not map (BACK) but whose dispatch must still know the sender. */
+    fun isGamepadEvent(event: KeyEvent): Boolean = isGamepad(event.device)
+
     private fun slot(deviceId: Int): Int = slots.getOrPut(deviceId) {
         val taken = slots.values.toSet()
         var next = 0

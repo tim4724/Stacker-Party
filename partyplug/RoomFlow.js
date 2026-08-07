@@ -161,7 +161,12 @@
   // still-present slot and gets a new peerIndex from the relay. A same-client
   // reconnect keeps its index (the relay keys slots by clientId) and never needs
   // this. Preserves the record (incl. joinedAt) and rekeys host slot + order.
-  RoomFlow.prototype.rekey = function (oldId, newId) {
+  // opts.inheritHost (default true): whether the sticky host slot follows the
+  // claim. False for a claim that REPLACES the seat's device rather than
+  // returning it (the game layer decides which is which): the board and
+  // identity still move, but host duty passes to the next eligible player, as
+  // if the old holder had left.
+  RoomFlow.prototype.rekey = function (oldId, newId, opts) {
     if (oldId === newId) return false;
     var rec = this.players.get(oldId);
     if (!rec) return false;
@@ -195,7 +200,12 @@
     // (when there's no sticky host, the `host` getter's oldest-eligible
     // fallback already picks the right player).
     if (this.hostPeerIndex === oldId) {
-      this.hostPeerIndex = newId;
+      // Excluding newId matters for the non-inheriting case: the record (and its
+      // early joinedAt) just moved onto newId, so an open election would hand
+      // the claimer the slot right back through the age tiebreak.
+      this.hostPeerIndex = (opts && opts.inheritHost === false)
+        ? this._oldestEligible(null, newId)
+        : newId;
     }
     if (this.host !== prevHost) this._emit('hostchange', { hostPeerIndex: this.host });
     this._emit('rosterchange', { players: this.list() });

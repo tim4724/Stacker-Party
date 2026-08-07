@@ -1137,7 +1137,14 @@ public final class DisplayCoordinator {
             // its own time-driven animations, so skipping the push saves the
             // decode AND the node updates. Events above still fire, since a
             // frame that changes nothing still has none.
-            if let snapshot = frame.snapshot { output?.renderSnapshot(snapshot) }
+            // Through render(), NOT straight to the output: render() retains the
+            // snapshot the per-seat merge (handleInput) builds on. Bypassing it
+            // left that copy frozen at the last INPUT's render, so every phone
+            // input repainted the OTHER boards seconds stale and the next tick
+            // snapped them back — constant flicker once local pad boards (which
+            // advance every frame) shared a match with a phone. Android's tick
+            // has always gone through its retaining renderSnapshot.
+            if let snapshot = frame.snapshot { render(snapshot) }
             // Commands normalize the host effects (controller sends, match end),
             // single-sourced from PartyCore so they can't drift from the web.
             // One frame is one change: a tick that KOs several players at once (a

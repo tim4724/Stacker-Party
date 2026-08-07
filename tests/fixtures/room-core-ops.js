@@ -235,6 +235,37 @@ const OPS = [
   { m: 'peerJoined', a: [35, 52000] },
   { m: 'peerJoined', a: [36, 52000] },
   { m: 'colorAfterStep', a: [20, 1] },
+
+  // --- A relay peer claiming a LOCAL (gamepad) seat takes the board, not host --
+  // The sticky slot follows a RETURNING player (peer 20's own path above), but a
+  // phone scanning a dropped PAD's rejoin QR is a TAKEOVER: the pad player did
+  // not come back on a new device, a different device kind took the seat over.
+  // Board, name, colour and results follow the claim; host duty stays with
+  // whoever has been holding it since the pad dropped.
+  { m: 'peerLeft', a: [30] },
+  { m: 'peerLeft', a: [31] },
+  { m: 'peerLeft', a: [32] },
+  { m: 'peerLeft', a: [33] },
+  { m: 'peerLeft', a: [34] },
+  { m: 'peerLeft', a: [35] },
+  { m: 'peerLeft', a: [36] },
+  { m: 'peerLeft', a: [20] },                   // empty the room: the pads found it
+  { m: 'peerJoined', a: [900, 60000] },         // first pad in -> sticky host
+  { m: 'hello', a: [900, { name: 'Xbox', autoName: false }, 60000] },
+  { m: 'peerJoined', a: [901, 60100] },
+  { m: 'hello', a: [901, { name: 'PlayStation', autoName: false }, 60100] },
+  { g: 'host' },                                // the first pad
+  { m: 'freezeParticipantOrder', a: [] },
+  { m: 'transitionTo', a: ['countdown'] },
+  { m: 'transitionTo', a: ['playing'] },
+  { m: 'markDisconnected', a: [900] },          // the host pad unplugs mid-game
+  { g: 'host' },                                // duty falls to the other pad...
+  { m: 'peerJoined', a: [7, 61000] },
+  { m: 'hello', a: [7, { name: 'Phone', rejoinToken: 900 }, 61000] },
+  { g: 'host' },                                // ...and STAYS there after the claim
+  { m: 'transitionTo', a: ['results'] },
+  { m: 'transitionTo', a: ['lobby'] },
+  { g: 'host' },                                // next round: still the pad's
 ];
 
 module.exports = { INIT, OPS };

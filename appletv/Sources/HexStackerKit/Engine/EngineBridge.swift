@@ -700,9 +700,12 @@ public final class EngineBridge {
         // The pad's product string, cleaned up to fit the room core's name cap.
         // Shared so one controller is named the same on every platform, and the
         // cap is read from RoomCore here rather than passed in, so no shell has
-        // to carry a copy of a number that already has one definition.
+        // to carry a copy of a number that already has one definition. The
+        // roster's names ride along so a second identical pad comes out
+        // numbered rather than indistinguishable from the first.
         padName: function (rawId) {
-          return HexCore.PadMapper.gamepadDisplayName(rawId, HexCore.RoomCore.NAME_MAX_LEN);
+          var taken = room ? room.list().map(function (p) { return p.playerName; }) : [];
+          return HexCore.PadMapper.gamepadDisplayName(rawId, HexCore.RoomCore.NAME_MAX_LEN, taken);
         },
         // One rumble effect from the shared table, so how the game FEELS in a
         // player's hands is decided once rather than in three shells. `lines` is

@@ -204,7 +204,11 @@ internal class PadSeats(
             // overlay straight back up.
             if (coordinator.state == RoomState.COUNTDOWN) {
                 if (!coordinator.paused && pressed.contains(PadButton.START)) {
-                    coordinator.remoteTogglePause()
+                    // The DIRECT toggle, never remoteTogglePause: this runs inside
+                    // the action consumer, and the acked public path would enqueue
+                    // an action the consumer can never reach — a self-deadlock
+                    // that froze the app on a pad's Start press mid-countdown.
+                    coordinator.togglePause()
                 }
                 continue
             }
