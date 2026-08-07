@@ -203,7 +203,7 @@ newGameBtn.addEventListener('click', function() {
   closeTrailer();
   initMusic();
   if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen().catch(function() {});
+    enterFullscreen();
   }
 
   if (preCreatedRoom) {
@@ -317,11 +317,22 @@ muteBtn.addEventListener('click', function() {
 });
 
 // --- Fullscreen ---
+// iPhone Safari ships no element Fullscreen API, so the method is missing
+// rather than failing: it throws on call instead of returning a rejecting
+// promise, and .catch() never gets the chance to swallow it.
+function enterFullscreen() {
+  if (!document.documentElement.requestFullscreen) return;
+  document.documentElement.requestFullscreen().catch(function() {});
+}
+function leaveFullscreen() {
+  if (!document.exitFullscreen) return;
+  document.exitFullscreen().catch(function() {});
+}
 fullscreenBtn.addEventListener('click', function() {
   if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen().catch(function() {});
+    enterFullscreen();
   } else {
-    document.exitFullscreen().catch(function() {});
+    leaveFullscreen();
   }
 });
 document.addEventListener('fullscreenchange', function() {
