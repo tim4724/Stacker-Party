@@ -71,13 +71,22 @@ describe('GamepadMapper game input', () => {
     return mapper.poll(buttons, axes, nowMs, playing);
   }
 
-  test('the two face buttons rotate in opposite directions', () => {
-    const cw = poll(withButtons(PAD_BTN.FACE_RIGHT), NO_AXES, 0);
-    assert.deepEqual(cw.messages, [{ type: MSG.INPUT, action: INPUT.ROTATE_CW }]);
+  test('every face button rotates, split by column', () => {
+    let t = 0;
+    const tap = (index) => {
+      const res = poll(withButtons(index), NO_AXES, t += 16);
+      poll(noButtons(), NO_AXES, t += 16);
+      return res.messages;
+    };
+    const CW = [{ type: MSG.INPUT, action: INPUT.ROTATE_CW }];
+    const CCW = [{ type: MSG.INPUT, action: INPUT.ROTATE_CCW }];
 
-    poll(noButtons(), NO_AXES, 16);
-    const ccw = poll(withButtons(PAD_BTN.FACE_DOWN), NO_AXES, 32);
-    assert.deepEqual(ccw.messages, [{ type: MSG.INPUT, action: INPUT.ROTATE_CCW }]);
+    // Right-hand pair clockwise, keeping the Tetris convention on index 1.
+    assert.deepEqual(tap(PAD_BTN.FACE_RIGHT), CW);
+    assert.deepEqual(tap(PAD_BTN.FACE_UP), CW);
+    // Left-hand pair counter-clockwise.
+    assert.deepEqual(tap(PAD_BTN.FACE_DOWN), CCW);
+    assert.deepEqual(tap(PAD_BTN.FACE_LEFT), CCW);
   });
 
   test('a held rotate button fires once, not every frame', () => {
@@ -87,7 +96,7 @@ describe('GamepadMapper game input', () => {
     }
   });
 
-  test('a whole shoulder side is one action: left holds, right hard drops', () => {
+  test('every shoulder holds, and hard drop is the D-pad', () => {
     let t = 0;
     const tap = (index) => {
       const res = poll(withButtons(index), NO_AXES, t += 16);
@@ -97,15 +106,16 @@ describe('GamepadMapper game input', () => {
     const HOLD = [{ type: MSG.INPUT, action: INPUT.HOLD }];
     const DROP = [{ type: MSG.INPUT, action: INPUT.HARD_DROP }];
 
+    // All four, which is what guideline games do: there is nothing to remember
+    // about which shoulder your finger found.
     assert.deepEqual(tap(PAD_BTN.L1), HOLD);
     assert.deepEqual(tap(PAD_BTN.L2), HOLD);
-    assert.deepEqual(tap(PAD_BTN.R1), DROP);
-    assert.deepEqual(tap(PAD_BTN.R2), DROP);
-    // D-pad up stays the Tetris-convention hard drop.
+    assert.deepEqual(tap(PAD_BTN.R1), HOLD);
+    assert.deepEqual(tap(PAD_BTN.R2), HOLD);
+    // Hard drop is the D-pad's, and only the D-pad's.
     assert.deepEqual(tap(PAD_BTN.UP), DROP);
-    // ...and the top face button also holds, so a pad with no shoulders at
-    // all can still reach both actions.
-    assert.deepEqual(tap(PAD_BTN.FACE_UP), HOLD);
+    // Nothing else holds: the faces are rotation's now, all four of them.
+    assert.deepEqual(tap(PAD_BTN.FACE_UP), [{ type: MSG.INPUT, action: INPUT.ROTATE_CW }]);
   });
 
   test('a stick pushed up never hard drops (it would fire while steering)', () => {

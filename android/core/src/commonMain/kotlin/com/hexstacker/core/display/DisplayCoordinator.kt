@@ -298,6 +298,9 @@ class DisplayCoordinator(
     internal suspend fun padName(rawId: String): String =
         runCatching { bridgeProvider().padName(rawId) }.getOrDefault("Gamepad")
 
+    internal suspend fun padRumbleJson(kind: String, lines: Int): String =
+        bridgeProvider().padRumbleJson(kind, lines)
+
     internal suspend fun padPoll(padsJson: String, nowMs: Double, playing: Boolean): JsonArray =
         EngineJson.json
             .parseToJsonElement(bridgeProvider().padPollJson(padsJson, nowMs, playing))

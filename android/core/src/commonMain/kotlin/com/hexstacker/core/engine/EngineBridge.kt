@@ -347,6 +347,15 @@ class EngineBridge private constructor(
     }
 
     /**
+     * One rumble effect from the shared table, as JSON, or `"null"` for an
+     * unknown kind. Callers should cache: this crosses the bridge and the answer
+     * for a given (kind, lines) never changes.
+     */
+    suspend fun padRumbleJson(kind: String, lines: Int): String = lock.withLock {
+        evalTyped<String>("padRumbleJSON", asciiJson("Bridge.padRumbleJSON(${jsString(kind)}, $lines)"))
+    }
+
+    /**
      * Close the QuickJS runtime. `suspend` + [lock] so it can never overlap an
      * in-flight frame()/input call; hopping to [dispatcher] additionally keeps the
      * native teardown off the caller's (Main) thread.

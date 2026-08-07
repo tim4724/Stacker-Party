@@ -486,6 +486,12 @@ public final class DisplayCoordinator {
         roomInt("colorAfterStep", [seat, step])
     }
 
+    /// One rumble effect from the shared table. Nil when the room core is not up
+    /// yet, or the kind is unknown.
+    func padRumble(_ kind: String, lines: Int) -> EngineBridge.PadRumble? {
+        roomCore()?.padRumble(kind, lines: lines)
+    }
+
     /// The pad's product string as a room-legal name, by the shared rules.
     public func padName(_ rawId: String) -> String {
         guard let bridge = roomCore() else { return "Gamepad" }

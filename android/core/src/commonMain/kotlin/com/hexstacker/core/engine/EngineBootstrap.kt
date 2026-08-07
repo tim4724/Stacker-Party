@@ -151,6 +151,13 @@ internal object EngineBootstrap {
         // to carry a copy of a number that already has one definition.
         padName: function (rawId) {
           return HexCore.PadMapper.gamepadDisplayName(rawId, HexCore.RoomCore.NAME_MAX_LEN);
+        },
+        // One rumble effect from the shared table, so how the game FEELS in a
+        // player's hands is decided once rather than in three shells. `lines` is
+        // ignored by the effects that do not scale.
+        padRumbleJSON: function (kind, lines) {
+          var fn = HexCore.PadMapper.RUMBLE[kind];
+          return fn ? JSON.stringify(fn(lines || 0)) : 'null';
         }
         // PAD-API-END
       };

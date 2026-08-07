@@ -298,6 +298,25 @@ public final class EngineBridge {
         invoke("padName", [rawId])?.toString() ?? "Gamepad"
     }
 
+    /// One rumble effect from the shared table. `weak`/`strong` are the two
+    /// motors of a dual-rumble pad.
+    public struct PadRumble {
+        public let durationMs: Double
+        public let weak: Double
+        public let strong: Double
+    }
+
+    /// Callers should cache: this crosses the bridge, and the answer for a given
+    /// (kind, lines) never changes.
+    public func padRumble(_ kind: String, lines: Int) -> PadRumble? {
+        guard let tree = try? jsonObject(method: "padRumbleJSON", args: [kind, lines]),
+              let row = tree as? [String: Any],
+              let duration = row["durationMs"] as? Double,
+              let weak = row["weak"] as? Double,
+              let strong = row["strong"] as? Double else { return nil }
+        return PadRumble(durationMs: duration, weak: weak, strong: strong)
+    }
+
     /// Typed convenience over `roomCallJSON`.
     public func roomCall<T: Decodable>(_ type: T.Type, _ method: String, _ argsJSON: String = "[]") throws -> T {
         try decodeRoom(type, json: try roomCallJSON(method, argsJSON), label: "roomCall(\(method))")
@@ -601,6 +620,13 @@ public final class EngineBridge {
         // to carry a copy of a number that already has one definition.
         padName: function (rawId) {
           return HexCore.PadMapper.gamepadDisplayName(rawId, HexCore.RoomCore.NAME_MAX_LEN);
+        },
+        // One rumble effect from the shared table, so how the game FEELS in a
+        // player's hands is decided once rather than in three shells. `lines` is
+        // ignored by the effects that do not scale.
+        padRumbleJSON: function (kind, lines) {
+          var fn = HexCore.PadMapper.RUMBLE[kind];
+          return fn ? JSON.stringify(fn(lines || 0)) : 'null';
         },
         // PAD-API-END
         // tvOS-only below (declared in tests/room-bridge-shim-parity.test.js).

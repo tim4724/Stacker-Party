@@ -259,10 +259,15 @@ function getHostPeerIndex() {
 
 // A seat filled by a gamepad plugged into THIS machine (GamepadInput.js). It is
 // a player like any other to the room core, but it has no peer on the relay, so
-// every party.sendTo must skip it. The relay hands out 1..N and the display owns
-// slot 0, which is what leaves the negative range free for these.
+// every party.sendTo must skip it. The id range is the shared module's, because
+// the TVs have a hard constraint on it that web-only code never meets: see
+// LOCAL_SEAT_BASE in server/PadMapper.js.
+// PadMapper is stripped from the AirConsole bundle along with GamepadInput, so
+// the lookup is guarded the same way its other call sites are: with no pad
+// support in the build there are no local seats, and false is the whole truth.
 function isLocalSeat(peerIndex) {
-  return typeof peerIndex === 'number' && peerIndex < 0;
+  var padMapper = window.GameEngine && window.GameEngine.PadMapper;
+  return !!padMapper && padMapper.isLocalSeat(peerIndex);
 }
 
 // --- DOM References ---

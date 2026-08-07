@@ -57,14 +57,22 @@ enum PadButton {
 }
 
 public final class PadSeats {
-    /// The relay owns 1...N and the display owns 0, so negatives are ours alone.
+    /// An id the relay will never hand out (it owns slot 0 and gives out 1...MAX).
+    /// Mirrors LOCAL_SEAT_BASE in server/PadMapper.js, which owns the definition
+    /// and the reason it must be POSITIVE: a player id crosses to us inside
+    /// PartyCore's packed frame, where every integer is one UTF-16 code unit, and
+    /// a negative one is unencodable — packFrame throws, so the first frame of a
+    /// match with a pad seated kills the game. Pinned by
+    /// tests/protocol-swift-parity.test.js.
+    static let localSeatBase = 900
+
     /// Derived from the pad's own slot, so unplugging and replugging the same pad
     /// lands back on the same seat: a reconnect, not a new player.
-    public static func seatId(forSlot slot: Int) -> Int { -(slot + 1) }
+    public static func seatId(forSlot slot: Int) -> Int { localSeatBase + slot }
 
     /// True for a seat this display owns rather than one the relay handed out.
     /// Every `sendTo` has to ask, because there is nothing on the wire to send to.
-    public static func isLocalSeat(_ peerIndex: Int) -> Bool { peerIndex < 0 }
+    public static func isLocalSeat(_ peerIndex: Int) -> Bool { peerIndex >= localSeatBase }
 
     private let source: PadSource
     private unowned let coordinator: DisplayCoordinator
@@ -92,8 +100,16 @@ public final class PadSeats {
         // to. `padPoll` is handed the joining press as the mapper's baseline, so
         // it reads as already-down rather than as a fresh press next frame.
         var states: [EngineBridge.PadState] = []
+        // Seats that joined on THIS poll. Their press still goes to the mapper,
+        // which is the point: it becomes the baseline, so the button that joined
+        // reads as already-down rather than as a fresh press. What must not happen
+        // is acting on it, or the bottom face button would join and start the
+        // round in one press.
+        var joinedNow: Set<Int> = []
         for reading in readings {
+            let existing = seated[reading.slot] != nil
             guard let seat = seat(for: reading) else { continue }
+            if !existing { joinedNow.insert(seat) }
             states.append(EngineBridge.PadState(
                 seat: seat, buttons: reading.buttons, axes: reading.axes))
         }
@@ -111,8 +127,16 @@ public final class PadSeats {
             // is still there. The pad being present in this poll IS the proof;
             // without it the liveness sweep would expire an idle player mid-game.
             coordinator.markLocalSeatSeen(result.seat)
+            // The joining press is a baseline, never an action. See joinedNow.
+            if joinedNow.contains(result.seat) { continue }
             for message in result.messages {
                 coordinator.deliverLocal(from: result.seat, data: message)
+                // The one effect driven by what the PLAYER did rather than what
+                // happened to them. Fired off the message rather than the
+                // resulting lock event, so the thump lands with the press.
+                if message["action"] as? String == "hard_drop" {
+                    rumble(seat: result.seat, "hardDrop")
+                }
             }
             guard !playing else {
                 if result.pressed.contains(PadButton.start) {
@@ -222,27 +246,48 @@ public final class PadSeats {
     // MARK: - Rumble
 
     /// Effects a phone gets as haptics. Driven off engine events rather than a
-    /// message, because the pad is local and the event is right there.
+    /// message, because the pad is local and the event is right there. WHAT each
+    /// one feels like is the shared table's call, not this file's.
     public func handle(event: GameEvent) {
         guard !seated.isEmpty else { return }
         switch event.type {
         case "garbage_sent":
-            // The telegraph: garbage is queued and the meter is filling.
             guard let toId = event.toId else { return }
-            rumble(seat: toId, durationMs: 120 + 40 * Double(event.lines ?? 0), weak: 0.35, strong: 0.15)
+            rumble(seat: toId, "garbageSent", lines: event.lines ?? 0)
         case "garbage_cancelled":
             guard let playerId = event.playerId else { return }
-            rumble(seat: playerId, durationMs: 60, weak: 0.5, strong: 0)
+            rumble(seat: playerId, "garbageCancelled")
+        case "garbage_applied":
+            // The stack just got shoved up. Distinct from garbage_sent, which is
+            // only the telegraph: in between, this player could still have
+            // cancelled it.
+            guard let playerId = event.playerId else { return }
+            rumble(seat: playerId, "garbageApplied", lines: event.lines ?? 0)
+        case "line_clear":
+            guard let playerId = event.playerId else { return }
+            rumble(seat: playerId, "lineClear", lines: event.lines ?? 0)
         case "player_ko":
             guard let playerId = event.playerId else { return }
-            rumble(seat: playerId, durationMs: 400, weak: 0.6, strong: 1)
+            rumble(seat: playerId, "playerKO")
         default:
             break
         }
     }
 
-    private func rumble(seat: Int, durationMs: Double, weak: Double, strong: Double) {
+    /// Cached across the whole session: the effect for a given (kind, lines)
+    /// never changes, and looking it up crosses the bridge.
+    private var effects: [String: EngineBridge.PadRumble] = [:]
+
+    private func rumble(seat: Int, _ kind: String, lines: Int = 0) {
         guard let slot = seated.first(where: { $0.value == seat })?.key else { return }
-        source.rumble(slot: slot, durationMs: durationMs, weak: weak, strong: strong)
+        let key = "\(kind):\(lines)"
+        var effect = effects[key]
+        if effect == nil {
+            effect = coordinator.padRumble(kind, lines: lines)
+            effects[key] = effect
+        }
+        guard let effect else { return }
+        source.rumble(slot: slot, durationMs: effect.durationMs,
+                      weak: effect.weak, strong: effect.strong)
     }
 }

@@ -7,8 +7,10 @@ import com.hexstacker.core.net.RoomState
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.double
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
@@ -75,17 +77,27 @@ internal class PadSeats(
 ) {
     companion object {
         /**
-         * The relay owns 1..N and the display owns 0, so negatives are ours alone.
+         * An id the relay will never hand out (it owns slot 0 and gives out
+         * 1..MAX). Mirrors LOCAL_SEAT_BASE in server/PadMapper.js, which owns the
+         * definition and the reason it must be POSITIVE: a player id reaches us
+         * inside PartyCore's packed frame, where every integer is one UTF-16 code
+         * unit, and a negative one is unencodable — packFrame throws, so the first
+         * frame of a match with a pad seated kills the game. Pinned by
+         * tests/protocol-swift-parity.test.js.
+         */
+        const val LOCAL_SEAT_BASE = 900
+
+        /**
          * Derived from the pad's own slot, so a reconnecting pad lands back on the
          * same seat: a reconnect, not a new player.
          */
-        fun seatId(slot: Int): Int = -(slot + 1)
+        fun seatId(slot: Int): Int = LOCAL_SEAT_BASE + slot
 
         /**
          * True for a seat this display owns rather than one the relay handed out.
          * Every per-peer send has to ask, because there is nothing to send to.
          */
-        fun isLocalSeat(peerIndex: Int): Boolean = peerIndex < 0
+        fun isLocalSeat(peerIndex: Int): Boolean = peerIndex >= LOCAL_SEAT_BASE
     }
 
     /** slot -> seat id, for pads that have actually joined. */
@@ -102,9 +114,17 @@ internal class PadSeats(
         val readings = source.pads()
         retireVanished(readings)
 
+        // Seats that joined on THIS poll. Their press still goes to the mapper,
+        // which is the point: it becomes the baseline, so the button that joined
+        // reads as already-down rather than as a fresh press. What must not happen
+        // is acting on it, or the bottom face button would join and start the round
+        // in one press.
+        val joinedNow = mutableSetOf<Int>()
         val states = buildJsonArray {
             for (reading in readings) {
+                val existing = seated.containsKey(reading.slot)
                 val seat = seatFor(reading) ?: continue
+                if (!existing) joinedNow.add(seat)
                 add(
                     buildJsonObject {
                         put("seat", JsonPrimitive(seat))
@@ -129,9 +149,17 @@ internal class PadSeats(
             // is still there. Its presence in this poll IS the proof; without it
             // the liveness sweep would expire an idle player mid-game.
             coordinator.markLocalSeatSeen(seat)
+            // The joining press is a baseline, never an action. See joinedNow.
+            if (joinedNow.contains(seat)) continue
 
             for (message in result.jsonObject["messages"]?.jsonArray.orEmpty()) {
                 coordinator.deliverLocal(seat, message.jsonObject)
+                // The one effect driven by what the PLAYER did rather than what
+                // happened to them. Fired off the message rather than the
+                // resulting lock event, so the thump lands with the press.
+                if (message.jsonObject["action"]?.jsonPrimitive?.content == "hard_drop") {
+                    rumble(seat, "hardDrop")
+                }
             }
             val pressed = result.jsonObject["pressed"]?.jsonArray.orEmpty().map { it.jsonPrimitive.int }
             if (playing) {
@@ -261,22 +289,51 @@ internal class PadSeats(
      * one amplitude per effect rather than two motors, so the dual-rumble weak and
      * strong magnitudes collapse to the stronger of the pair.
      */
-    fun handle(event: GameEvent) {
+    suspend fun handle(event: GameEvent) {
         if (seated.isEmpty()) return
         when (event.type) {
-            // The telegraph: garbage is queued and the meter is filling.
-            "garbage_sent" -> event.toId?.let {
-                rumble(it, 120L + 40L * (event.lines ?: 0), 0.35)
-            }
-            "garbage_cancelled" -> event.playerId?.let { rumble(it, 60L, 0.5) }
-            "player_ko" -> event.playerId?.let { rumble(it, 400L, 1.0) }
+            "garbage_sent" -> event.toId?.let { rumble(it, "garbageSent", event.lines ?: 0) }
+            "garbage_cancelled" -> event.playerId?.let { rumble(it, "garbageCancelled") }
+            // The stack just got shoved up. Distinct from garbage_sent, which is
+            // only the telegraph: in between, this player could still have
+            // cancelled it.
+            "garbage_applied" -> event.playerId?.let { rumble(it, "garbageApplied", event.lines ?: 0) }
+            "line_clear" -> event.playerId?.let { rumble(it, "lineClear", event.lines ?: 0) }
+            "player_ko" -> event.playerId?.let { rumble(it, "playerKO") }
             else -> Unit
         }
     }
 
-    private fun rumble(seat: Int, durationMs: Long, amplitude: Double) {
+    /**
+     * Cached across the whole session: the effect for a given (kind, lines) never
+     * changes, and looking it up crosses the bridge.
+     */
+    private val effects = mutableMapOf<String, Effect?>()
+
+    private data class Effect(val durationMs: Long, val amplitude: Double)
+
+    private suspend fun rumble(seat: Int, kind: String, lines: Int = 0) {
         val slot = seated.entries.firstOrNull { it.value == seat }?.key ?: return
-        source.rumble(slot, durationMs, amplitude)
+        val key = "$kind:$lines"
+        val effect = if (effects.containsKey(key)) effects[key] else {
+            val decoded = runCatching {
+                val json = coordinator.padRumbleJson(kind, lines)
+                val obj = Json.Default.parseToJsonElement(json).jsonObject
+                Effect(
+                    durationMs = obj.getValue("durationMs").jsonPrimitive.double.toLong(),
+                    // Android's InputDevice vibrator has ONE motor where a
+                    // dual-rumble pad has two, so the pair collapses to the
+                    // stronger of them rather than averaging into mush.
+                    amplitude = maxOf(
+                        obj.getValue("weak").jsonPrimitive.double,
+                        obj.getValue("strong").jsonPrimitive.double,
+                    ),
+                )
+            }.getOrNull()
+            effects[key] = decoded
+            decoded
+        }
+        effect?.let { source.rumble(slot, it.durationMs, it.amplitude) }
     }
 
     private fun msg(type: String): JsonObject =

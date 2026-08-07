@@ -7,10 +7,11 @@
 // a phone would have sent and goes through handleControllerMessage(), so
 // joining, auto-naming, colour slots, host election, liveness, pause and the
 // engine's input timing all keep running their one implementation. What a
-// local seat skips is the relay, and that is also why its peer index is
-// NEGATIVE: the relay hands out 1..N and owns slot 0, so -(padIndex+1) can
-// never collide with a phone (see isLocalSeat in DisplayState.js, which is
-// what guards the two party.sendTo call sites).
+// local seat skips is the relay, which is why it needs a peer index the relay
+// will never hand out: see LOCAL_SEAT_BASE in server/PadMapper.js, which owns
+// both that range and the reason it has to be a HIGH POSITIVE one rather than
+// the negative range you would otherwise reach for. isLocalSeat in
+// DisplayState.js is what guards the party.sendTo call sites.
 //
 // Buttons are bound by INDEX, never by label. Index 0 is the physically
 // bottom face button on every brand, so one binding lands in the same place
@@ -34,13 +35,12 @@
 // each: add a button to one of those screens and the pad reaches it with no
 // change here. Select and the stick clicks stay unbound on purpose.
 //
-// A whole shoulder SIDE is one action, never two: both left shoulders hold
-// (colour previous in the lobby), both right ones hard drop (colour next), so
-// there is nothing to remember about which of the two your finger found.
-// Neither side is the ONLY way to reach its action, which is what keeps a pad
-// with no shoulders playable: D-pad up hard drops and the top face button
-// holds. Only the lobby's colour cycling is shoulder-only, and a colour is
-// assigned either way.
+// During play EVERY shoulder holds, so there is nothing to remember about which
+// one your finger found, and hard drop is the D-pad's alone. In the LOBBY the
+// sides split, because colour needs a direction: left steps back, right steps
+// forward. That is the one place a shoulder means something different per side,
+// and it is also the only action there with no on-screen control to focus.
+// See server/PadMapper.js for why hard drop left the right shoulder.
 //
 // The display operator's own chrome — the toolbar and the relay diagnostics —
 // is never pad-reachable (see OPERATOR_CHROME). It belongs to whoever set the
@@ -69,14 +69,16 @@ var GamepadMapper = window.GameEngine.PadMapper.GamepadMapper;
 var gamepadDisplayName = window.GameEngine.PadMapper.gamepadDisplayName;
 
 var GamepadInput = (function () {
-  // padIndex -> { seatId, mapper, pendingGarbage, cancelledLines }
+  // padIndex -> { seatId, mapper }
   var seats = new Map();
   var rafId = null;
 
   // The relay owns 1..N and the display owns 0, so negatives are ours alone.
   // Derived from the pad's own slot, so unplugging and replugging the same pad
   // lands back on the same seat (a reconnect, not a new player).
-  function seatIdFor(padIndex) { return -(padIndex + 1); }
+  function seatIdFor(padIndex) {
+    return window.GameEngine.PadMapper.seatIdForSlot(padIndex);
+  }
 
   function seatFor(seatId) {
     for (var entry of seats) {
@@ -254,9 +256,7 @@ var GamepadInput = (function () {
     var name = gamepadDisplayName(pad.id, window.GameEngine.RoomCore.NAME_MAX_LEN);
     seats.set(padIndex, {
       seatId: seatId,
-      mapper: new GamepadMapper(),
-      pendingGarbage: 0,
-      cancelledLines: 0
+      mapper: new GamepadMapper()
     });
     // The same HELLO a phone sends. autoName stays false: the pad's name is a
     // real (if borrowed) identity, not a request for an HX-n slot.
@@ -316,15 +316,21 @@ var GamepadInput = (function () {
     var playing = roomState === ROOM_STATE.PLAYING && !paused;
     var result = seat.mapper.poll(buttons, pad.axes || [], nowMs, playing);
 
-    for (var m = 0; m < result.messages.length; m++) feed(seat.seatId, result.messages[m]);
+    for (var m = 0; m < result.messages.length; m++) {
+      feed(seat.seatId, result.messages[m]);
+      // The one effect driven by what the PLAYER did rather than what happened
+      // to them. Fired off the message rather than the resulting lock event, so
+      // the thump lands with the press instead of after the piece has settled.
+      if (result.messages[m].action === INPUT.HARD_DROP) {
+        play(pad, window.GameEngine.PadMapper.RUMBLE.hardDrop());
+      }
+    }
     if (!playing) {
       for (var n = 0; n < result.nav.length; n++) onMenuNav(seat.seatId, result.nav[n]);
       for (var p = 0; p < result.pressed.length; p++) onMenuPress(seat.seatId, result.pressed[p]);
     } else if (result.pressed.indexOf(PAD_BTN.START) >= 0) {
       feed(seat.seatId, { type: MSG.PAUSE_GAME });
     }
-
-    pollRumble(seat, pad);
   }
 
   // --- Rumble -------------------------------------------------------
@@ -352,52 +358,36 @@ var GamepadInput = (function () {
     return null;
   }
 
-  // The engine has no "garbage applied" event: rows go in at the next lock,
-  // inside the board. What it does expose is the pending count, so an
-  // unexplained DROP in it is the moment the stack got shoved up. The only
-  // other way it can fall is a defended line clear, which garbage_cancelled
-  // reports, so subtracting that leaves exactly the applied lines.
-  function pollRumble(seat, pad) {
-    if (roomState !== ROOM_STATE.PLAYING || !gameState || !gameState.players) {
-      // Between matches there is nothing to compare against, and carrying a
-      // count across would fire the thump on the next game's first frame.
-      seat.pendingGarbage = 0;
-      seat.cancelledLines = 0;
-      return;
-    }
-    var pending = 0;
-    for (var i = 0; i < gameState.players.length; i++) {
-      if (gameState.players[i].id === seat.seatId) {
-        pending = gameState.players[i].pendingGarbage || 0;
-        break;
-      }
-    }
-    var applied = seat.pendingGarbage - pending - seat.cancelledLines;
-    seat.cancelledLines = 0;
-    seat.pendingGarbage = pending;
-    if (applied > 0) rumble(pad, 90 + 50 * applied, 0.4, 0.9);
-  }
 
   // Called from renderEngineEvent for every engine event, alongside the board
   // animations — the same per-shell fan-out, for the effect that happens in
   // the player's hands instead of on screen.
   function onEngineEvent(event) {
     if (!seats.size) return;
+    var RUMBLE = window.GameEngine.PadMapper.RUMBLE;
     if (event.type === 'garbage_sent') {
       var target = padFor(event.toId);
-      // The telegraph: garbage is queued and the meter is filling.
-      if (target) rumble(target, 120 + 40 * event.lines, 0.35, 0.15);
+      if (target) play(target, RUMBLE.garbageSent(event.lines));
     } else if (event.type === 'garbage_cancelled') {
-      var defender = seatFor(event.playerId);
-      if (defender) {
-        defender.cancelledLines += event.lines;
-        var pad = padFor(event.playerId);
-        if (pad) rumble(pad, 60, 0.5, 0);
-      }
+      var pad = padFor(event.playerId);
+      if (pad) play(pad, RUMBLE.garbageCancelled());
+    } else if (event.type === 'garbage_applied') {
+      // The stack just got shoved up. Distinct from garbage_sent, which is only
+      // the telegraph: in between, this player could still have cancelled it.
+      var shoved = padFor(event.playerId);
+      if (shoved) play(shoved, RUMBLE.garbageApplied(event.lines));
+    } else if (event.type === 'line_clear') {
+      var clearer = padFor(event.playerId);
+      if (clearer) play(clearer, RUMBLE.lineClear(event.lines));
     } else if (event.type === 'player_ko') {
       var out = padFor(event.playerId);
-      if (out) rumble(out, 400, 0.6, 1);
+      if (out) play(out, RUMBLE.playerKO());
     }
+  }
+
+  /// Play one effect from the shared table.
+  function play(pad, effect) {
+    rumble(pad, effect.durationMs, effect.weak, effect.strong);
   }
 
   // --- Loop ---------------------------------------------------------
@@ -441,8 +431,7 @@ var GamepadInput = (function () {
 
   return {
     start: start,
-    onEngineEvent: onEngineEvent,
-    isLocalSeat: function (id) { return typeof id === 'number' && id < 0; }
+    onEngineEvent: onEngineEvent
   };
 })();
 

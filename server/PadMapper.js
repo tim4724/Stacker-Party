@@ -21,9 +21,13 @@
 //
 // Buttons are bound by INDEX, never by label. Index 0 is the physically bottom
 // face button on every brand, so one binding lands in the same place on an Xbox
-// pad (A), a DualSense (Cross) and a Switch Pro (B). Rotation follows the Tetris
-// convention: right face button clockwise, bottom counter-clockwise, which is
-// why ROTATE_CCW exists at all since no touch gesture produces it.
+// pad (A), a DualSense (Cross) and a Switch Pro (B).
+//
+// The whole pad is one sentence: the D-pad moves and drops, the faces rotate,
+// the shoulders hold. Rotation splits by column, right-hand pair clockwise and
+// left-hand pair counter-clockwise, following the Tetris convention that puts CW
+// on the right face button — which is also why ROTATE_CCW exists at all, since
+// no touch gesture produces it.
 (function(exports) {
 
 // --- W3C "standard" mapping indices ---
@@ -33,6 +37,7 @@
 var PAD_BTN = {
   FACE_DOWN: 0,   // A / Cross / Switch B
   FACE_RIGHT: 1,  // B / Circle / Switch A
+  FACE_LEFT: 2,   // X / Square / Switch Y
   FACE_UP: 3,     // Y / Triangle / Switch X
   L1: 4,
   R1: 5,
@@ -231,26 +236,43 @@ GamepadMapper.prototype._discrete = function (buttons, out) {
   var self = this;
   function edge(index) { return buttons[index] && !self._prev[index]; }
 
-  // Tetris convention: right face button clockwise, bottom counter-clockwise.
-  if (edge(PAD_BTN.FACE_RIGHT)) out.push({ type: MSG_INPUT, action: IN_ROTATE_CW });
-  if (edge(PAD_BTN.FACE_DOWN)) out.push({ type: MSG_INPUT, action: IN_ROTATE_CCW });
-  // A whole SIDE is one action: both left shoulders hold, both right shoulders
-  // hard drop. Nothing to remember about which of the two your finger found.
+  // EVERY face button rotates, split by column: the right-hand pair clockwise,
+  // the left-hand pair counter-clockwise. The right face button stays CW, which
+  // is the Tetris convention and what a player has already learned, so this
+  // extends that split rather than rearranging it.
   //
-  // The right shoulder carries hard drop against the guideline convention (where
-  // the shoulders are hold), because the left thumb steering with the STICK
-  // cannot also reach the D-pad, on any pad layout. A stick player's hard drop
-  // has to be a right-hand button, and this is it. Deliberately no stick-up hard
-  // drop: at a 0.5 dead zone a push 30 degrees off horizontal already clears the
-  // vertical threshold, so steering would fire the one input you cannot take
-  // back. D-pad up stays the Tetris convention for it.
-  if (edge(PAD_BTN.UP) || edge(PAD_BTN.R1) || edge(PAD_BTN.R2)) {
+  // All four because rotation is the discrete action this game actually spends:
+  // several times per piece, against a hold that happens at most once. An
+  // earlier arrangement gave hold five buttons (both shoulder pairs plus the top
+  // face) and rotation two, while the left face button did nothing at all.
+  if (edge(PAD_BTN.FACE_RIGHT) || edge(PAD_BTN.FACE_UP)) {
+    out.push({ type: MSG_INPUT, action: IN_ROTATE_CW });
+  }
+  if (edge(PAD_BTN.FACE_DOWN) || edge(PAD_BTN.FACE_LEFT)) {
+    out.push({ type: MSG_INPUT, action: IN_ROTATE_CCW });
+  }
+  // Hard drop is D-pad up, the Tetris convention, and nothing else. Deliberately
+  // not stick-up: at a 0.5 dead zone a push 30 degrees off horizontal already
+  // clears the vertical threshold, so steering would fire the one input you
+  // cannot take back.
+  if (edge(PAD_BTN.UP)) {
     out.push({ type: MSG_INPUT, action: IN_HARD_DROP });
   }
-  // Hold is also on the TOP face button, which is where Tetris Effect puts it
-  // and which is the only reason a pad with no shoulders at all (an NES-style
-  // retro pad, a sideways single Joy-Con) can still hold a piece.
-  if (edge(PAD_BTN.L1) || edge(PAD_BTN.L2) || edge(PAD_BTN.FACE_UP)) {
+  // ALL FOUR shoulders hold, which is what guideline games do and therefore what
+  // a player's hands already expect. An earlier arrangement put hard drop on the
+  // right side so that a thumb steering with the STICK still had a right-hand
+  // hard drop, since it cannot also reach the D-pad. That traded a convention
+  // everyone knows for a case that does not arise much: the D-pad is what people
+  // reach for on this game, and it carries hard drop already. The cost is real
+  // and worth naming — a stick-only player now has to move a thumb to drop.
+  //
+  // Nothing else holds. The top face button used to, back when only the LEFT
+  // shoulders did and it was the fallback for a pad with no shoulders; with all
+  // four holding, that fallback was spending a face button to cover a case the
+  // shoulders already cover four times over. What it costs is a pad with no
+  // shoulders AT ALL (an NES-style retro pad) having no hold, which is playable
+  // in a way that missing a rotation direction is not.
+  if (edge(PAD_BTN.L1) || edge(PAD_BTN.L2) || edge(PAD_BTN.R1) || edge(PAD_BTN.R2)) {
     out.push({ type: MSG_INPUT, action: IN_HOLD });
   }
 };
@@ -301,6 +323,65 @@ function gamepadDisplayName(rawId, maxLen) {
   return name;
 }
 
+// --- Rumble ------------------------------------------------------------------
+// What a pad does in the player's hands, as data rather than three copies of the
+// same numbers. `weak`/`strong` are the two motors of a dual-rumble pad; a
+// platform with one motor (Android's InputDevice vibrator) takes the larger.
+//
+// Deliberately SPARSE. Every one of these means something happened TO you, or
+// that you just did something decisive, so the channel stays informative. A buzz
+// on every piece lock was considered and rejected: a piece settles every second
+// or two, and a rumble that constant stops being a signal and starts being noise
+// the meaningful ones have to compete with.
+var RUMBLE = {
+  // You pressed drop. The only self-inflicted one, and the game's one moment of
+  // impact: short and firm rather than long and soft.
+  hardDrop: function () { return { durationMs: 45, weak: 0, strong: 0.55 }; },
+  // You cleared. Scaled by lines, so a quad is felt as bigger than a single.
+  lineClear: function (lines) {
+    return { durationMs: 50 + 25 * lines, weak: 0.3, strong: 0.1 * lines };
+  },
+  // The telegraph: garbage is queued against you and the meter is filling.
+  garbageSent: function (lines) {
+    return { durationMs: 120 + 40 * lines, weak: 0.35, strong: 0.15 };
+  },
+  // You defended it away.
+  garbageCancelled: function () { return { durationMs: 60, weak: 0.5, strong: 0 }; },
+  // It landed: the stack just moved up under you. The heaviest of the garbage
+  // effects, because it is the only one with a consequence already on the board.
+  garbageApplied: function (lines) {
+    return { durationMs: 90 + 50 * lines, weak: 0.4, strong: 0.9 };
+  },
+  // You are out.
+  playerKO: function () { return { durationMs: 400, weak: 0.6, strong: 1 }; }
+};
+
+// --- Local seat ids ---------------------------------------------------------
+// A seat filled by a pad attached to the display machine is a player like any
+// other to the room core, but it has no peer on the relay, so every per-peer
+// send must skip it. What it needs is an id the relay will never hand out: the
+// relay owns slot 0 (the display) and hands out 1..MAX, so anything well clear
+// of that is safe.
+//
+// It has to be POSITIVE, which is not a matter of taste. The natives receive
+// frames through PartyCore's packed format, where every integer is one UTF-16
+// code unit in 0..MAX_WIRE, and a player id is one of those integers. A negative
+// id is not merely unusual there, it is unencodable: packFrame throws on it, so
+// the first frame of a match with a pad seated kills the game. Web-only code
+// never meets that boundary, which is exactly why the constraint is easy to miss
+// from the web side and why this lives here rather than in any one shell.
+var LOCAL_SEAT_BASE = 900;
+
+function seatIdForSlot(slot) { return LOCAL_SEAT_BASE + slot; }
+
+function isLocalSeat(peerIndex) {
+  return typeof peerIndex === 'number' && peerIndex >= LOCAL_SEAT_BASE;
+}
+
+exports.RUMBLE = RUMBLE;
+exports.LOCAL_SEAT_BASE = LOCAL_SEAT_BASE;
+exports.seatIdForSlot = seatIdForSlot;
+exports.isLocalSeat = isLocalSeat;
 exports.PAD_BTN = PAD_BTN;
 exports.GamepadMapper = GamepadMapper;
 exports.gamepadDisplayName = gamepadDisplayName;
