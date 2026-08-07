@@ -211,6 +211,30 @@ const OPS = [
   // And their seat comes back the moment they speak, QR flag and all.
   { m: 'onSeen', a: [20, 51000] },
   { m: 'isExpired', a: [20, 51000] },
+
+  // --- Relative steps, which a gamepad seat uses instead of a picker ---------
+  // These resolve a step into a value; the caller then sends the ordinary
+  // SET_LEVEL / SET_COLOR. Pinned here because all three displays read them out
+  // of this module, so "which slot is next" must not become a per-platform
+  // answer. peer 20 is the only player left, peer 21 was pruned above.
+  { m: 'setLevel', a: [20, 5] },
+  { m: 'levelAfterStep', a: [20, 1] },
+  { m: 'levelAfterStep', a: [20, -1] },
+  { m: 'levelAfterStep', a: [99, 1] },           // no such seat
+  // One player, so every other slot is free: stepping wraps through all of them.
+  { m: 'colorAfterStep', a: [20, 1] },
+  { m: 'colorAfterStep', a: [20, -1] },          // wraps to the top slot
+  { m: 'colorAfterStep', a: [99, 1] },           // no such seat
+  // With the room full there is exactly one free slot (this seat's own), so
+  // there is nowhere to step to and the answer is null rather than a collision.
+  { m: 'peerJoined', a: [30, 52000] },
+  { m: 'peerJoined', a: [31, 52000] },
+  { m: 'peerJoined', a: [32, 52000] },
+  { m: 'peerJoined', a: [33, 52000] },
+  { m: 'peerJoined', a: [34, 52000] },
+  { m: 'peerJoined', a: [35, 52000] },
+  { m: 'peerJoined', a: [36, 52000] },
+  { m: 'colorAfterStep', a: [20, 1] },
 ];
 
 module.exports = { INIT, OPS };

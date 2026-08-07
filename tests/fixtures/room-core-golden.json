@@ -788,6 +788,111 @@
         20,
         51000
       ]
+    },
+    {
+      "m": "setLevel",
+      "a": [
+        20,
+        5
+      ]
+    },
+    {
+      "m": "levelAfterStep",
+      "a": [
+        20,
+        1
+      ]
+    },
+    {
+      "m": "levelAfterStep",
+      "a": [
+        20,
+        -1
+      ]
+    },
+    {
+      "m": "levelAfterStep",
+      "a": [
+        99,
+        1
+      ]
+    },
+    {
+      "m": "colorAfterStep",
+      "a": [
+        20,
+        1
+      ]
+    },
+    {
+      "m": "colorAfterStep",
+      "a": [
+        20,
+        -1
+      ]
+    },
+    {
+      "m": "colorAfterStep",
+      "a": [
+        99,
+        1
+      ]
+    },
+    {
+      "m": "peerJoined",
+      "a": [
+        30,
+        52000
+      ]
+    },
+    {
+      "m": "peerJoined",
+      "a": [
+        31,
+        52000
+      ]
+    },
+    {
+      "m": "peerJoined",
+      "a": [
+        32,
+        52000
+      ]
+    },
+    {
+      "m": "peerJoined",
+      "a": [
+        33,
+        52000
+      ]
+    },
+    {
+      "m": "peerJoined",
+      "a": [
+        34,
+        52000
+      ]
+    },
+    {
+      "m": "peerJoined",
+      "a": [
+        35,
+        52000
+      ]
+    },
+    {
+      "m": "peerJoined",
+      "a": [
+        36,
+        52000
+      ]
+    },
+    {
+      "m": "colorAfterStep",
+      "a": [
+        20,
+        1
+      ]
     }
   ],
   "steps": [
@@ -5236,6 +5341,540 @@
           "20": {
             "name": "Quiet",
             "color": 0
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "changed": true,
+        "level": 5,
+        "publish": "soon"
+      },
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": null,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0,
+            "startLevel": 5
+          }
+        }
+      }
+    },
+    {
+      "result": 6,
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": null,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0,
+            "startLevel": 5
+          }
+        }
+      }
+    },
+    {
+      "result": 4,
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": null,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0,
+            "startLevel": 5
+          }
+        }
+      }
+    },
+    {
+      "result": null,
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": null,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0,
+            "startLevel": 5
+          }
+        }
+      }
+    },
+    {
+      "result": 1,
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": null,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0,
+            "startLevel": 5
+          }
+        }
+      }
+    },
+    {
+      "result": 7,
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": null,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0,
+            "startLevel": 5
+          }
+        }
+      }
+    },
+    {
+      "result": null,
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": null,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0,
+            "startLevel": 5
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "added": true,
+        "colorIndex": 1,
+        "joinedLobby": true,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 30,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20,
+          30
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0,
+            "startLevel": 5
+          },
+          "30": {
+            "name": "HX-90",
+            "color": 1,
+            "helloSeen": false
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "added": true,
+        "colorIndex": 2,
+        "joinedLobby": true,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 30,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20,
+          30,
+          31
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0,
+            "startLevel": 5
+          },
+          "30": {
+            "name": "HX-90",
+            "color": 1,
+            "helloSeen": false
+          },
+          "31": {
+            "name": "HX-95",
+            "color": 2,
+            "helloSeen": false
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "added": true,
+        "colorIndex": 3,
+        "joinedLobby": true,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 30,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20,
+          30,
+          31,
+          32
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0,
+            "startLevel": 5
+          },
+          "30": {
+            "name": "HX-90",
+            "color": 1,
+            "helloSeen": false
+          },
+          "31": {
+            "name": "HX-95",
+            "color": 2,
+            "helloSeen": false
+          },
+          "32": {
+            "name": "HX-5",
+            "color": 3,
+            "helloSeen": false
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "added": true,
+        "colorIndex": 4,
+        "joinedLobby": true,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 30,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20,
+          30,
+          31,
+          32,
+          33
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0,
+            "startLevel": 5
+          },
+          "30": {
+            "name": "HX-90",
+            "color": 1,
+            "helloSeen": false
+          },
+          "31": {
+            "name": "HX-95",
+            "color": 2,
+            "helloSeen": false
+          },
+          "32": {
+            "name": "HX-5",
+            "color": 3,
+            "helloSeen": false
+          },
+          "33": {
+            "name": "HX-39",
+            "color": 4,
+            "helloSeen": false
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "added": true,
+        "colorIndex": 5,
+        "joinedLobby": true,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 30,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20,
+          30,
+          31,
+          32,
+          33,
+          34
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0,
+            "startLevel": 5
+          },
+          "30": {
+            "name": "HX-90",
+            "color": 1,
+            "helloSeen": false
+          },
+          "31": {
+            "name": "HX-95",
+            "color": 2,
+            "helloSeen": false
+          },
+          "32": {
+            "name": "HX-5",
+            "color": 3,
+            "helloSeen": false
+          },
+          "33": {
+            "name": "HX-39",
+            "color": 4,
+            "helloSeen": false
+          },
+          "34": {
+            "name": "HX-30",
+            "color": 5,
+            "helloSeen": false
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "added": true,
+        "colorIndex": 6,
+        "joinedLobby": true,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 30,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0,
+            "startLevel": 5
+          },
+          "30": {
+            "name": "HX-90",
+            "color": 1,
+            "helloSeen": false
+          },
+          "31": {
+            "name": "HX-95",
+            "color": 2,
+            "helloSeen": false
+          },
+          "32": {
+            "name": "HX-5",
+            "color": 3,
+            "helloSeen": false
+          },
+          "33": {
+            "name": "HX-39",
+            "color": 4,
+            "helloSeen": false
+          },
+          "34": {
+            "name": "HX-30",
+            "color": 5,
+            "helloSeen": false
+          },
+          "35": {
+            "name": "HX-16",
+            "color": 6,
+            "helloSeen": false
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "added": true,
+        "colorIndex": 7,
+        "joinedLobby": true,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 30,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0,
+            "startLevel": 5
+          },
+          "30": {
+            "name": "HX-90",
+            "color": 1,
+            "helloSeen": false
+          },
+          "31": {
+            "name": "HX-95",
+            "color": 2,
+            "helloSeen": false
+          },
+          "32": {
+            "name": "HX-5",
+            "color": 3,
+            "helloSeen": false
+          },
+          "33": {
+            "name": "HX-39",
+            "color": 4,
+            "helloSeen": false
+          },
+          "34": {
+            "name": "HX-30",
+            "color": 5,
+            "helloSeen": false
+          },
+          "35": {
+            "name": "HX-16",
+            "color": 6,
+            "helloSeen": false
+          },
+          "36": {
+            "name": "HX-85",
+            "color": 7,
+            "helloSeen": false
+          }
+        }
+      }
+    },
+    {
+      "result": null,
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 30,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          20,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36
+        ],
+        "players": {
+          "20": {
+            "name": "Quiet",
+            "color": 0,
+            "startLevel": 5
+          },
+          "30": {
+            "name": "HX-90",
+            "color": 1,
+            "helloSeen": false
+          },
+          "31": {
+            "name": "HX-95",
+            "color": 2,
+            "helloSeen": false
+          },
+          "32": {
+            "name": "HX-5",
+            "color": 3,
+            "helloSeen": false
+          },
+          "33": {
+            "name": "HX-39",
+            "color": 4,
+            "helloSeen": false
+          },
+          "34": {
+            "name": "HX-30",
+            "color": 5,
+            "helloSeen": false
+          },
+          "35": {
+            "name": "HX-16",
+            "color": 6,
+            "helloSeen": false
+          },
+          "36": {
+            "name": "HX-85",
+            "color": 7,
+            "helloSeen": false
           }
         }
       }

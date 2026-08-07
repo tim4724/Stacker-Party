@@ -38,6 +38,7 @@ const PORTABLE_MODULES = [
   'server/GalleryFixtures.js',
   'partyplug/RoomFlow.js',
   'server/RoomCore.js',
+  'server/PadMapper.js',
 ];
 
 // Forbidden host APIs. Anchored-ish regexes so substrings in unrelated

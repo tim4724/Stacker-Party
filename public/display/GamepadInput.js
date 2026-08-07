@@ -60,263 +60,13 @@
 //     button.
 // =====================================================================
 
-// --- W3C "standard" mapping indices ---
-// Named by PHYSICAL position, not by action, because most of these do one job
-// during play and another in the menus. What each one means is stated where it
-// is bound, not here.
-var PAD_BTN = {
-  FACE_DOWN: 0,   // A / Cross / Switch B
-  FACE_RIGHT: 1,  // B / Circle / Switch A
-  FACE_UP: 3,     // Y / Triangle / Switch X
-  L1: 4,
-  R1: 5,
-  L2: 6,
-  R2: 7,
-  START: 9,       // Start / Options / +
-  UP: 12,
-  DOWN: 13,
-  LEFT: 14,
-  RIGHT: 15
-};
-
-// Auto-repeat for held left/right. DAS is the wait before the repeat starts,
-// ARR the interval once it does; both are the familiar stacker values.
-var PAD_DAS_MS = 170;
-var PAD_ARR_MS = 40;
-// A stick reads as a direction past this, and soft drop scales from here to
-// full deflection.
-var PAD_STICK_DEADZONE = 0.5;
-// Same speed range and keepalive cadence as the touchpad's soft drop
-// (TouchInput.SOFT_DROP_MIN_SPEED / _MAX_SPEED / SOFT_DROP_INTERVAL_MS): the
-// message is state-shaped, so the engine re-arms its deadline on each one and
-// auto-ends when they stop.
-var PAD_SOFT_DROP_MIN_SPEED = 3;
-var PAD_SOFT_DROP_MAX_SPEED = 10;
-var PAD_SOFT_DROP_INTERVAL_MS = 100;
-// Ceiling on repeats folded into one message. Only a long frame stall (or a
-// backgrounded tab catching up) reaches it; DisplayInput clamps again on the
-// way in, this just keeps the number sane at the source.
-var PAD_MAX_STEPS_PER_POLL = 6;
-
-// Turns one pad's raw button/axis state into controller messages. Pure: no
-// DOM, no navigator, no clock of its own — the caller passes nowMs. That is
-// what makes the mapping testable (tests/gamepad-input.test.js).
-function GamepadMapper() {
-  this._prev = [];
-  this._repeatDir = 0;
-  this._repeatNextAt = 0;
-  this._softDropSpeed = 0;
-  this._softDropNextAt = 0;
-  // Last stick direction the menu navigation saw, so a HELD stick is one step
-  // rather than a run through the list at frame rate.
-  this._navX = 0;
-  this._navY = 0;
-}
-
-// buttons: array of booleans, axes: array of numbers, playing: whether game
-// input is live. Returns { messages, pressed, nav }:
-//   messages  game input, empty unless playing
-//   pressed   button indices that went down this poll (join, pause, settings)
-//   nav       'left'/'right'/'up'/'down' steps, empty while playing. Raw
-//             directions rather than prev/next, because the two consumers
-//             collapse them differently: the focus ring reads in reading
-//             order (up is backwards), the level stepper reads as an axis
-//             (up is more).
-GamepadMapper.prototype.poll = function (buttons, axes, nowMs, playing) {
-  var pressed = [];
-  for (var i = 0; i < buttons.length; i++) {
-    if (buttons[i] && !this._prev[i]) pressed.push(i);
-  }
-
-  var messages = [];
-  var nav = [];
-  if (playing) {
-    this._move(buttons, axes, nowMs, messages);
-    this._softDrop(buttons, axes, nowMs, messages);
-    this._discrete(buttons, messages);
-    // Keep the navigation baseline current while the stick is steering a
-    // piece, so a stick still held when the game pauses does not read as a
-    // fresh menu step on the first frame of the overlay.
-    this._stickDir(axes);
-  } else {
-    this._endSoftDrop(messages);
-    this._repeatDir = 0;
-    this._nav(buttons, axes, nav);
-  }
-
-  this._prev = buttons.slice();
-  return { messages: messages, pressed: pressed, nav: nav };
-};
-
-// Current stick octant as two discrete directions, recorded for edge
-// detection. Returns the pair it just stored.
-GamepadMapper.prototype._stickDir = function (axes) {
-  var x = axes.length > 0 ? axes[0] : 0;
-  var y = axes.length > 1 ? axes[1] : 0;
-  this._navX = Math.abs(x) >= PAD_STICK_DEADZONE ? (x < 0 ? -1 : 1) : 0;
-  this._navY = Math.abs(y) >= PAD_STICK_DEADZONE ? (y < 0 ? -1 : 1) : 0;
-  return { x: this._navX, y: this._navY };
-};
-
-// Menu steps from the D-pad AND the left stick, both edge-triggered: one step
-// per press and one per push past the dead zone. Lists are a handful of
-// buttons and the level range is short, so an auto-repeat would overshoot more
-// often than it would help.
-GamepadMapper.prototype._nav = function (buttons, axes, out) {
-  var self = this;
-  function edge(index) { return buttons[index] && !self._prev[index]; }
-
-  if (edge(PAD_BTN.LEFT)) out.push('left');
-  if (edge(PAD_BTN.RIGHT)) out.push('right');
-  if (edge(PAD_BTN.UP)) out.push('up');
-  if (edge(PAD_BTN.DOWN)) out.push('down');
-
-  var wasX = this._navX;
-  var wasY = this._navY;
-  var now = this._stickDir(axes);
-  if (now.x && now.x !== wasX) out.push(now.x < 0 ? 'left' : 'right');
-  if (now.y && now.y !== wasY) out.push(now.y < 0 ? 'up' : 'down');
-};
-
-// Held-direction auto-repeat. Steps ride as a COUNT on one message rather
-// than one message each, the same shape TouchInput gives a fast drag.
-GamepadMapper.prototype._move = function (buttons, axes, nowMs, out) {
-  var dir = 0;
-  if (buttons[PAD_BTN.LEFT]) dir -= 1;
-  if (buttons[PAD_BTN.RIGHT]) dir += 1;
-  if (dir === 0) {
-    var ax = axes.length > 0 ? axes[0] : 0;
-    if (Math.abs(ax) >= PAD_STICK_DEADZONE) dir = ax < 0 ? -1 : 1;
-  }
-
-  if (dir === 0) {
-    this._repeatDir = 0;
-    return;
-  }
-
-  var action = dir < 0 ? INPUT.LEFT : INPUT.RIGHT;
-  if (dir !== this._repeatDir) {
-    // Fresh press: one step now, then hold for DAS before repeating.
-    this._repeatDir = dir;
-    this._repeatNextAt = nowMs + PAD_DAS_MS;
-    out.push({ type: MSG.INPUT, action: action });
-    return;
-  }
-  if (nowMs < this._repeatNextAt) return;
-
-  var steps = Math.min(
-    1 + Math.floor((nowMs - this._repeatNextAt) / PAD_ARR_MS),
-    PAD_MAX_STEPS_PER_POLL
-  );
-  // Re-baseline off now rather than accumulating: a dropped frame costs at
-  // most a step's worth of drift and can never run away.
-  this._repeatNextAt = nowMs + PAD_ARR_MS;
-  var msg = { type: MSG.INPUT, action: action };
-  if (steps > 1) msg.n = steps;
-  out.push(msg);
-};
-
-// D-pad down drops at full speed (a digital press IS full deflection); the
-// stick scales between the dead zone and its limit.
-GamepadMapper.prototype._softDrop = function (buttons, axes, nowMs, out) {
-  var speed = 0;
-  if (buttons[PAD_BTN.DOWN]) {
-    speed = PAD_SOFT_DROP_MAX_SPEED;
-  } else {
-    var ay = axes.length > 1 ? axes[1] : 0;
-    if (ay >= PAD_STICK_DEADZONE) {
-      var t = (ay - PAD_STICK_DEADZONE) / (1 - PAD_STICK_DEADZONE);
-      speed = Math.round(
-        PAD_SOFT_DROP_MIN_SPEED +
-        Math.min(Math.max(t, 0), 1) * (PAD_SOFT_DROP_MAX_SPEED - PAD_SOFT_DROP_MIN_SPEED)
-      );
-    }
-  }
-
-  if (speed === 0) {
-    this._endSoftDrop(out);
-    return;
-  }
-  if (this._softDropSpeed !== speed || nowMs >= this._softDropNextAt) {
-    this._softDropSpeed = speed;
-    this._softDropNextAt = nowMs + PAD_SOFT_DROP_INTERVAL_MS;
-    out.push({ type: MSG.SOFT_DROP, speed: speed });
-  }
-};
-
-GamepadMapper.prototype._endSoftDrop = function (out) {
-  if (this._softDropSpeed === 0) return;
-  this._softDropSpeed = 0;
-  // Explicit end so the piece stops on release instead of waiting out the
-  // engine's own soft-drop deadline.
-  out.push({ type: MSG.SOFT_DROP_END });
-};
-
-GamepadMapper.prototype._discrete = function (buttons, out) {
-  var self = this;
-  function edge(index) { return buttons[index] && !self._prev[index]; }
-
-  // Tetris convention: right face button clockwise, bottom counter-clockwise.
-  if (edge(PAD_BTN.FACE_RIGHT)) out.push({ type: MSG.INPUT, action: INPUT.ROTATE_CW });
-  if (edge(PAD_BTN.FACE_DOWN)) out.push({ type: MSG.INPUT, action: INPUT.ROTATE_CCW });
-  // A whole SIDE is one action: both left shoulders hold, both right shoulders
-  // hard drop. Nothing to remember about which of the two your finger found.
-  // Deliberately no stick-up hard drop: steering with the stick would fire it
-  // by accident. D-pad up stays the Tetris convention for it.
-  if (edge(PAD_BTN.UP) || edge(PAD_BTN.R1) || edge(PAD_BTN.R2)) {
-    out.push({ type: MSG.INPUT, action: INPUT.HARD_DROP });
-  }
-  // Hold is also on the TOP face button, which is where Tetris Effect puts it
-  // and which is the only reason a pad with no shoulders at all (an NES-style
-  // retro pad, a sideways single Joy-Con) can still hold a piece.
-  if (edge(PAD_BTN.L1) || edge(PAD_BTN.L2) || edge(PAD_BTN.FACE_UP)) {
-    out.push({ type: MSG.INPUT, action: INPUT.HOLD });
-  }
-};
-
-// Cleaned-up brand name for `gamepad.id`, which is the only string a pad
-// exposes and whose format differs per browser:
-//   Chrome   "Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 0b13)"
-//   Firefox  "045e-0b13-Xbox Wireless Controller"
-//   Safari   "Xbox Wireless Controller Extended Gamepad"
-// A known vendor id wins over the model string, because the model is the part
-// browsers disagree about (and that fingerprinting protections generalize).
-var PAD_VENDORS = {
-  '045e': 'Xbox',
-  '054c': 'PlayStation',
-  '057e': 'Nintendo',
-  '046d': 'Logitech',
-  '2dc8': '8BitDo',
-  '28de': 'Steam'
-};
-
-// Words every pad's id repeats and none of them is identified by. Dropping
-// them is what makes a name fit the room core's cap: "Xbox Wireless
-// Controller" is 24 characters of which 4 carry the brand.
-var PAD_NOISE_RE = /\b(wireless|wired|bluetooth|usb|controller|gamepad|joystick|joypad|extended|standard|xinput|unknown)\b/gi;
-
-// `maxLen` is the room core's own name cap, passed in rather than read, so
-// this stays pure and the cap keeps one definition.
-function gamepadDisplayName(rawId, maxLen) {
-  var id = String(rawId == null ? '' : rawId);
-
-  var vendor = /Vendor:\s*([0-9a-f]{4})/i.exec(id) || /^([0-9a-f]{4})-[0-9a-f]{4}-/i.exec(id);
-  if (vendor && PAD_VENDORS[vendor[1].toLowerCase()]) return PAD_VENDORS[vendor[1].toLowerCase()];
-
-  var name = id
-    .replace(/\([^)]*\)/g, ' ')                 // Chrome's vendor / XInput block
-    .replace(/^[0-9a-f]{4}-[0-9a-f]{4}-/i, '')  // Firefox's leading ids
-    .replace(PAD_NOISE_RE, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  // Drop whole words until it fits rather than hand the room core a name it
-  // would cut mid-word.
-  while (name.length > maxLen && name.indexOf(' ') > 0) {
-    name = name.slice(0, name.lastIndexOf(' '));
-  }
-  if (!name || name.length > maxLen) return 'Gamepad';
-  return name;
-}
+// The mapping itself lives in the portable core (server/PadMapper.js), which
+// tvOS and Android TV load out of the same bundle: what a press MEANS must not
+// depend on which shell read the pad. Everything below is the part that needs a
+// browser — navigator.getGamepads, the DOM focus ring and vibrationActuator.
+var PAD_BTN = window.GameEngine.PadMapper.PAD_BTN;
+var GamepadMapper = window.GameEngine.PadMapper.GamepadMapper;
+var gamepadDisplayName = window.GameEngine.PadMapper.gamepadDisplayName;
 
 var GamepadInput = (function () {
   // padIndex -> { seatId, mapper, pendingGarbage, cancelledLines }
@@ -337,30 +87,6 @@ var GamepadInput = (function () {
 
   function feed(seatId, msg) {
     handleControllerMessage(seatId, msg);
-  }
-
-  // Palette slots nobody else holds, in order, so cycling skips taken colours
-  // instead of stalling on the silent rejection setColor gives a collision.
-  function freeColorSlots(seatId) {
-    var taken = {};
-    for (var entry of players) {
-      if (entry[0] !== seatId) taken[entry[1].playerIndex] = true;
-    }
-    var free = [];
-    for (var i = 0; i < roomCore.maxPlayers; i++) {
-      if (!taken[i]) free.push(i);
-    }
-    return free;
-  }
-
-  function cycleColor(seatId, step) {
-    var player = players.get(seatId);
-    if (!player) return;
-    var free = freeColorSlots(seatId);
-    if (free.length < 2) return;
-    var at = free.indexOf(player.playerIndex);
-    var next = free[((at + step) % free.length + free.length) % free.length];
-    feed(seatId, { type: MSG.SET_COLOR, colorIndex: next });
   }
 
   // --- Focus navigation ---------------------------------------------
@@ -464,10 +190,9 @@ var GamepadInput = (function () {
       moveFocus(dir === 'left' || dir === 'up' ? -1 : 1);
       return;
     }
-    var player = players.get(seatId);
-    if (!player) return;
     var step = (dir === 'right' || dir === 'up') ? 1 : -1;
-    feed(seatId, { type: MSG.SET_LEVEL, level: (player.startLevel || 1) + step });
+    var level = roomCore.levelAfterStep(seatId, step);
+    if (level !== null) feed(seatId, { type: MSG.SET_LEVEL, level: level });
   }
 
   // Menu bindings. Out of range levels and colours are rejected by the room
@@ -513,9 +238,15 @@ var GamepadInput = (function () {
     }
 
     // Colour has no on-screen control to focus (the picker lives on the
-    // phone), so it keeps a shoulder side of its own in each direction.
-    if (index === PAD_BTN.L1 || index === PAD_BTN.L2) cycleColor(seatId, -1);
-    else if (index === PAD_BTN.R1 || index === PAD_BTN.R2) cycleColor(seatId, 1);
+    // phone), so it keeps a shoulder side of its own in each direction. The
+    // room core resolves which slot is next, then this sends the same SET_COLOR
+    // the phone's picker sends.
+    var step = 0;
+    if (index === PAD_BTN.L1 || index === PAD_BTN.L2) step = -1;
+    else if (index === PAD_BTN.R1 || index === PAD_BTN.R2) step = 1;
+    if (step === 0) return;
+    var next = roomCore.colorAfterStep(seatId, step);
+    if (next !== null) feed(seatId, { type: MSG.SET_COLOR, colorIndex: next });
   }
 
   function join(padIndex, pad) {

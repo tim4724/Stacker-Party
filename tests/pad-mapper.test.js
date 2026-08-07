@@ -4,14 +4,51 @@ const { test, describe, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { MSG, INPUT } = require('../public/shared/protocol');
 
-// The mapper reads MSG/INPUT as globals, the same way every browser module in
-// public/ does.
-global.MSG = MSG;
-global.INPUT = INPUT;
-
-const { GamepadMapper, gamepadDisplayName, PAD_BTN } = require('../public/display/GamepadInput.js');
+const { GamepadMapper, gamepadDisplayName, PAD_BTN } = require('../server/PadMapper.js');
 
 const NAME_MAX_LEN = require('../server/RoomCore.js').RoomCore.NAME_MAX_LEN;
+
+// The mapper is portable, so it cannot import public/shared/protocol.js — the
+// portable set has no browser modules in it. It therefore writes the wire values
+// as literals, and this is what stops that copy from drifting: every message it
+// can emit is asserted against protocol.js below, so a renamed action fails here
+// rather than silently producing input no display understands.
+describe('wire values match the protocol', () => {
+  const mapper = new GamepadMapper();
+  const all = [];
+  const feed = (buttons, axes, nowMs, playing) => {
+    all.push(...mapper.poll(buttons, axes, nowMs, playing).messages);
+  };
+  // Every discrete binding, then a held direction, a stick soft drop and its
+  // release, which between them cover all six actions and all three types.
+  const press = new Array(17).fill(false);
+  [PAD_BTN.FACE_RIGHT, PAD_BTN.FACE_DOWN, PAD_BTN.UP, PAD_BTN.L1, PAD_BTN.LEFT, PAD_BTN.RIGHT]
+    .forEach((b, i) => {
+      const state = new Array(17).fill(false);
+      state[b] = true;
+      feed(state, [0, 0, 0, 0], i * 16, true);
+      feed(new Array(17).fill(false), [0, 0, 0, 0], i * 16 + 8, true);
+    });
+  feed(new Array(17).fill(false), [0, 1, 0, 0], 200, true);
+  feed(new Array(17).fill(false), [0, 0, 0, 0], 216, true);
+
+  test('every emitted type is a protocol MSG value', () => {
+    const types = new Set(all.map((m) => m.type));
+    assert.ok(types.size >= 3, `expected all three message types, saw ${[...types]}`);
+    for (const t of types) {
+      assert.ok(Object.values(MSG).includes(t), `${t} is not a MSG value`);
+    }
+  });
+
+  test('every emitted action is a protocol INPUT value', () => {
+    const actions = new Set(all.filter((m) => m.action).map((m) => m.action));
+    assert.deepEqual(
+      [...actions].sort(),
+      Object.values(INPUT).slice().sort(),
+      'the mapper should be able to emit exactly the INPUT vocabulary'
+    );
+  });
+});
 
 // A released-everything pad. Indices past the highest binding are irrelevant.
 function noButtons() {

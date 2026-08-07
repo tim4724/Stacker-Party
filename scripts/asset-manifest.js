@@ -101,6 +101,10 @@ const DISPLAY_SCRIPTS = [
   '/display/DisplayGame.js',
   '/display/DisplayLiveness.js',
   '/display/DisplayInput.js',
+  // The portable half of the gamepad support, shared verbatim with tvOS and
+  // Android TV. Read at module-eval time by GamepadInput.js, so it has to be
+  // ahead of it, the same constraint RoomCore has above.
+  '/engine/PadMapper.js',
   // After DisplayInput.js, whose handleControllerMessage every pad press is
   // funnelled through, and before DisplayGame's renderEngineEvent reaches for
   // GamepadInput.onEngineEvent.
@@ -146,6 +150,9 @@ const AC_DEAD = [
   // never be — so a pad could join but never start a game. Its two call sites
   // are typeof-guarded for this exclusion.
   '/display/GamepadInput.js',
+  // Its only browser consumer is GamepadInput.js above, so it would be dead
+  // weight in the ZIP. The TVs load it out of dist/partycore.js, not from here.
+  '/engine/PadMapper.js',
 ];
 
 // AC_DEAD only ever FILTERS, so a path that matches nothing fails silently: rename

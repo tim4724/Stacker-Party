@@ -698,6 +698,48 @@ RoomCore.prototype.setLevel = function (peerIndex, rawLevel) {
   return { changed: true, level: level, publish: inLobby ? 'soon' : 'none' };
 };
 
+// --- Relative steps, for seats that hold a D-pad instead of a picker ---------
+// A gamepad seat asks for "one more" where a phone names the value outright: it
+// has two buttons, not a slot grid or a number field. Both of these RESOLVE a
+// step into the concrete value and stop there, deliberately. The caller then
+// sends the ordinary SET_LEVEL / SET_COLOR it would have sent anyway, so a pad
+// keeps flowing through the one path that already publishes, re-renders and is
+// dispatched identically on web, tvOS and Android TV. A mutator here would make
+// every shell repeat that path a second time for pads alone.
+
+// Out of range comes back unchanged rather than clamped or wrapped, because
+// setLevel rejects it and a step past either end should do nothing.
+RoomCore.prototype.levelAfterStep = function (peerIndex, delta) {
+  var player = this.players.get(peerIndex);
+  if (!player) return null;
+  return (player.startLevel || MIN_START_LEVEL) + delta;
+};
+
+// The next FREE palette slot in either direction, or null when there is nowhere
+// to go. Skips taken slots rather than stalling on the silent rejection setColor
+// gives a collision, and wraps, since a cycle without one strands the last slot.
+// The free-slot scan reads the whole roster, which is exactly why it belongs
+// here with nextAvailableColorSlot: a shell computing its own idea of "free"
+// would be a second allocator racing this one.
+RoomCore.prototype.colorAfterStep = function (peerIndex, step) {
+  var player = this.players.get(peerIndex);
+  if (!player) return null;
+
+  var taken = {};
+  for (var entry of this.players) {
+    if (entry[0] !== peerIndex) taken[entry[1].playerIndex] = true;
+  }
+  var free = [];
+  for (var i = 0; i < this.maxPlayers; i++) {
+    if (!taken[i]) free.push(i);
+  }
+  // One free slot is this seat's own: there is nowhere to move to.
+  if (free.length < 2) return null;
+
+  var at = free.indexOf(player.playerIndex);
+  return free[((at + step) % free.length + free.length) % free.length];
+};
+
 // Re-claim a palette slot. Silently rejects collisions so concurrent picks do
 // not spam the sender with errors; the next snapshot carries the truth. Not
 // state-gated: the controller's colour picker is reachable only in the lobby, so
