@@ -117,6 +117,18 @@ class AndroidPadSource : PadSource {
     }
 
     override fun pads(): List<PadReading> {
+        // Forget devices that are gone BEFORE handing out slots, not after. A pad
+        // that dropped and came back is a new deviceId, and a stale entry still
+        // counting as taken would hand the reconnect slot 1. The seat id derives
+        // from the slot (PadSeats.seatId), so it would come back as a different
+        // PLAYER and orphan the row held open for its resume.
+        val live = InputDevice.getDeviceIds().toSet()
+        held.keys.retainAll(live)
+        latched.keys.retainAll(live)
+        axes.keys.retainAll(live)
+        hats.keys.retainAll(live)
+        slots.keys.retainAll(live)
+
         val readings = mutableListOf<PadReading>()
         for (id in InputDevice.getDeviceIds()) {
             val device = InputDevice.getDevice(id) ?: continue
@@ -147,14 +159,6 @@ class AndroidPadSource : PadSource {
                 )
             )
         }
-        // Forget devices that are gone, so a slot can be reused rather than
-        // leaking one per reconnect over a long session.
-        val live = InputDevice.getDeviceIds().toSet()
-        held.keys.retainAll(live)
-        latched.keys.retainAll(live)
-        axes.keys.retainAll(live)
-        hats.keys.retainAll(live)
-        slots.keys.retainAll(live)
         return readings.sortedBy { it.slot }
     }
 
@@ -173,6 +177,11 @@ class AndroidPadSource : PadSource {
 
     private fun latch(deviceId: Int): BooleanArray =
         latched.getOrPut(deviceId) { BooleanArray(17) }
+
+    /** The slot [deviceId] already holds, or null if it has never been polled.
+     *  Deliberately does NOT allocate: this answers "is this pad known yet", and
+     *  an unknown pad cannot be seated. */
+    fun slotFor(deviceId: Int): Int? = slots[deviceId]
 
     private fun slot(deviceId: Int): Int = slots.getOrPut(deviceId) {
         val taken = slots.values.toSet()

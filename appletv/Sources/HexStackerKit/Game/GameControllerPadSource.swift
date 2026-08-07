@@ -49,30 +49,72 @@ public final class GameControllerPadSource: PadSource {
     }
 
     public func rumble(slot: Int, durationMs: Double, weak: Double, strong: Double) {
-        guard let controller = controller(inSlot: slot),
-              let haptics = controller.haptics else { return }
-        // Left/right motors, which is what "weak/strong" means on a dual-rumble
-        // pad. A controller without them simply has no engine to create.
-        for locality in [GCHapticsLocality.leftHandle, .rightHandle] {
-            guard let engine = haptics.createEngine(withLocality: locality) else { continue }
-            let magnitude = locality == .leftHandle ? strong : weak
-            play(on: engine, magnitude: magnitude, durationMs: durationMs)
+        // `.default` is, with `.all`, the ONLY locality every pad is guaranteed to
+        // support, and Apple's recommendation: it plays on the handles. Driving the
+        // two motors separately via .leftHandle/.rightHandle returns nil on a pad
+        // that doesn't split them, which is silence rather than a coarser rumble.
+        // So the pair collapses to the stronger of the two, exactly as Android's
+        // single-motor `InputDevice.vibrator` does.
+        let magnitude = max(weak, strong)
+        guard magnitude > 0, let controller = controller(inSlot: slot) else { return }
+        let key = ObjectIdentifier(controller)
+        if engines[key] == nil {
+            engines[key] = controller.haptics?.createEngine(withLocality: .default)
+        }
+        guard let engine = engines[key] else { return }
+        do {
+            // Cheap when already running; restarts an engine that auto-shut down
+            // during a quiet stretch of play.
+            try engine.start()
+            let event = CHHapticEvent(
+                eventType: .hapticContinuous,
+                parameters: [
+                    CHHapticEventParameter(parameterID: .hapticIntensity, value: Float(magnitude)),
+                    CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.5),
+                ],
+                relativeTime: 0,
+                duration: durationMs / 1000
+            )
+            let pattern = try CHHapticPattern(events: [event], parameters: [])
+            let player = try engine.makePlayer(with: pattern)
+            try player.start(atTime: CHHapticTimeImmediate)
+            players[key] = player
+        } catch {
+            // A pad with no working motor is not a reason to interrupt a game.
         }
     }
+
+    /// Both of these exist to be RETAINED, which is the whole point. A
+    /// `CHHapticEngine` stops the instant its last strong reference goes, and so
+    /// does its player: built as locals, they are torn down on the way out of
+    /// `rumble` and no effect short enough to be useful ever reaches the motor.
+    /// One engine per controller also beats one per effect, which was a device
+    /// round-trip every line clear.
+    private var engines: [ObjectIdentifier: CHHapticEngine] = [:]
+    /// Only the newest player per controller is kept: the next effect should
+    /// replace the last one anyway, so this stays bounded on its own.
+    private var players: [ObjectIdentifier: CHHapticPatternPlayer] = [:]
 
     // MARK: - Slots
 
     private func slot(for controller: GCController) -> Int {
         let key = ObjectIdentifier(controller)
         if let slot = slots[key] { return slot }
+        // Purge BEFORE choosing, which is the whole point of the ordering. A pad
+        // that dropped and came back is a NEW GCController object, so its old
+        // entry is still sitting in `slots`; counting that as taken hands the
+        // reconnect slot 1. The seat id is derived from the slot
+        // (`PadSeats.seatId(forSlot:)`), so that is not a cosmetic difference —
+        // it comes back as a different PLAYER, and the row `retireVanished` held
+        // open for the resume is orphaned until it expires.
+        let live = Set(GCController.controllers().map(ObjectIdentifier.init))
+        slots = slots.filter { live.contains($0.key) }
+        engines = engines.filter { live.contains($0.key) }
+        players = players.filter { live.contains($0.key) }
         let taken = Set(slots.values)
         var next = 0
         while taken.contains(next) { next += 1 }
         slots[key] = next
-        // Purge slots whose controller is gone, so an unplugged pad's slot can be
-        // reused rather than leaking one per replug over a long session.
-        let live = Set(GCController.controllers().map(ObjectIdentifier.init))
-        slots = slots.filter { live.contains($0.key) }
         controller.playerIndex = GCControllerPlayerIndex(rawValue: next) ?? .indexUnset
         return next
     }
@@ -120,26 +162,4 @@ public final class GameControllerPadSource: PadSource {
         ]
     }
 
-    // MARK: - Haptics
-
-    private func play(on engine: CHHapticEngine, magnitude: Double, durationMs: Double) {
-        guard magnitude > 0 else { return }
-        do {
-            try engine.start()
-            let event = CHHapticEvent(
-                eventType: .hapticContinuous,
-                parameters: [
-                    CHHapticEventParameter(parameterID: .hapticIntensity, value: Float(magnitude)),
-                    CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.5),
-                ],
-                relativeTime: 0,
-                duration: durationMs / 1000
-            )
-            let pattern = try CHHapticPattern(events: [event], parameters: [])
-            let player = try engine.makePlayer(with: pattern)
-            try player.start(atTime: CHHapticTimeImmediate)
-        } catch {
-            // A pad with no working motor is not a reason to interrupt a game.
-        }
-    }
 }

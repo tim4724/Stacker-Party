@@ -333,27 +333,34 @@ function gamepadDisplayName(rawId, maxLen) {
 // on every piece lock was considered and rejected: a piece settles every second
 // or two, and a rumble that constant stops being a signal and starts being noise
 // the meaningful ones have to compete with.
+// Nothing here runs shorter than ~70ms, which is a floor set by the hardware and
+// not by taste: a rumble motor has to physically spin up, so a 45ms pulse is
+// mostly spin-up and is felt as a faint tick no matter how high the amplitude is
+// set. Below that floor, buying strength with amplitude alone does not work.
 var RUMBLE = {
   // You pressed drop. The only self-inflicted one, and the game's one moment of
-  // impact: short and firm rather than long and soft.
-  hardDrop: function () { return { durationMs: 45, weak: 0, strong: 0.55 }; },
+  // impact: short and firm rather than long and soft. Also the most FREQUENT by a
+  // wide margin, so it is the first to dial back if it ever wears the hand out.
+  hardDrop: function () { return { durationMs: 70, weak: 0, strong: 0.8 }; },
   // You cleared. Scaled by lines, so a quad is felt as bigger than a single.
   lineClear: function (lines) {
-    return { durationMs: 50 + 25 * lines, weak: 0.3, strong: 0.1 * lines };
+    return { durationMs: 70 + 30 * lines, weak: 0.45, strong: 0.15 * lines };
   },
   // The telegraph: garbage is queued against you and the meter is filling.
   garbageSent: function (lines) {
-    return { durationMs: 120 + 40 * lines, weak: 0.35, strong: 0.15 };
+    return { durationMs: 130 + 40 * lines, weak: 0.5, strong: 0.25 };
   },
   // You defended it away.
-  garbageCancelled: function () { return { durationMs: 60, weak: 0.5, strong: 0 }; },
+  garbageCancelled: function () { return { durationMs: 85, weak: 0.65, strong: 0 }; },
   // It landed: the stack just moved up under you. The heaviest of the garbage
   // effects, because it is the only one with a consequence already on the board.
   garbageApplied: function (lines) {
-    return { durationMs: 90 + 50 * lines, weak: 0.4, strong: 0.9 };
+    return { durationMs: 110 + 50 * lines, weak: 0.55, strong: 1 };
   },
-  // You are out.
-  playerKO: function () { return { durationMs: 400, weak: 0.6, strong: 1 }; }
+  // You are out. Shares the amplitude ceiling with garbageApplied because there
+  // is nothing above 1, so what separates them is length: this one runs about
+  // three times as long and is the only effect that outlasts the moment.
+  playerKO: function () { return { durationMs: 420, weak: 0.75, strong: 1 }; }
 };
 
 // --- Local seat ids ---------------------------------------------------------
