@@ -599,9 +599,13 @@ extension DisplayModel: DisplayOutput {
     /// Remote is itself exposed as a controller, so this switch is never as
     /// surgical as "only the gamepad".
     private func syncPadInputOwnership() {
-        let screen = state.screen
-        let inPlayState = screen == .lobby || screen == .game
-        setPadOwnsInput?(inPlayState && coordinator?.hasPadSeats == true)
+        // A PAUSED game is still the .game screen, but the overlay on top of it is
+        // a menu with buttons on it, so input has to go back to the UI or the pad
+        // cannot reach Continue. Screen alone is the wrong question; what matters
+        // is whether the pad is steering a piece right now.
+        let steering = state.screen == .game && !state.paused
+        let ownsInput = state.screen == .lobby || steering
+        setPadOwnsInput?(ownsInput && coordinator?.hasPadSeats == true)
     }
 
     func roomReady(room: String, joinURL: String, qrText: String) {

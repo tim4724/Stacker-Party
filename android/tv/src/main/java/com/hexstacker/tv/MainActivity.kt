@@ -326,7 +326,15 @@ class MainActivity : ComponentActivity() {
                         // Action.Tick + ack churn while those screens sit idle (results can
                         // sit for minutes). Countdown and gameplay tick per frame.
                         val screen = ui.state.value.screen
-                        if (screen == DisplayScreen.LOBBY || screen == DisplayScreen.RESULTS) {
+                        // The tick is what samples the pads, so an idle screen's
+                        // ~4Hz answers a button press up to a quarter second late.
+                        // A seated pad therefore opts out of the throttle, which is
+                        // simply what the other two displays already do: the web
+                        // polls at rAF and tvOS never throttles its lobby at all.
+                        // The saving is still there for the case it was written
+                        // for, a lobby or results screen nobody is touching.
+                        val idleScreen = screen == DisplayScreen.LOBBY || screen == DisplayScreen.RESULTS
+                        if (idleScreen && !coordinator.hasPadSeats) {
                             if (acc < IDLE_TICK_MS) continue
                         } else if (acc > dt) {
                             // First tick after leaving a throttled screen: drop the skipped
@@ -555,9 +563,17 @@ class MainActivity : ComponentActivity() {
      * never reaches onKeyDown's play/pause, and PadSeats binds index 9 itself.
      * Without this the two would both fire on one press.
      */
-    private fun padOwnsInput(): Boolean = when (ui.state.value.screen) {
-        DisplayScreen.LOBBY, DisplayScreen.GAME -> true
-        else -> false
+    private fun padOwnsInput(): Boolean {
+        val state = ui.state.value
+        // A PAUSED game is still the GAME screen, but the overlay on top of it is
+        // a menu with buttons on it, so input has to go back to the UI or the pad
+        // cannot reach Continue. Screen alone is the wrong question; what matters
+        // is whether the pad is steering a piece right now.
+        return when (state.screen) {
+            DisplayScreen.LOBBY -> true
+            DisplayScreen.GAME -> !state.paused
+            else -> false
+        }
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {

@@ -33,6 +33,20 @@ class AndroidPadSource : PadSource {
     /** deviceId -> held buttons, in W3C index order. */
     private val held = mutableMapOf<Int, BooleanArray>()
 
+    /**
+     * deviceId -> buttons pressed since the last poll, whether or not they are
+     * still down.
+     *
+     * Android hands us discrete key events while the consumer SAMPLES, and the
+     * lobby samples at ~4Hz to stay idle-cheap. A tap is far shorter than 250ms,
+     * so a press and its release can land entirely between two samples and vanish
+     * — including the very first press, the one that joins. Latching until the
+     * poll has seen it makes input independent of the sampling rate rather than
+     * betting on it. Web and tvOS have no equivalent because both read a live
+     * hardware snapshot, where a press cannot go missing this way.
+     */
+    private val latched = mutableMapOf<Int, BooleanArray>()
+
     /** deviceId -> `[leftX, leftY, rightX, rightY]` from the last MotionEvent. */
     private val axes = mutableMapOf<Int, DoubleArray>()
 
@@ -41,6 +55,7 @@ class AndroidPadSource : PadSource {
 
     /** Stable slot per device, so a reconnecting pad reclaims its seat. */
     private val slots = mutableMapOf<Int, Int>()
+
 
     /**
      * Feed from the Activity's dispatchKeyEvent. Returns true when the press
@@ -52,6 +67,7 @@ class AndroidPadSource : PadSource {
         val index = buttonIndex(event.keyCode) ?: return false
         val down = event.action == KeyEvent.ACTION_DOWN
         state(event.deviceId)[index] = down
+        if (down) latch(event.deviceId)[index] = true
         return true
     }
 
@@ -66,6 +82,25 @@ class AndroidPadSource : PadSource {
             event.getAxisValue(MotionEvent.AXIS_Z).toDouble(),
             event.getAxisValue(MotionEvent.AXIS_RZ).toDouble(),
         )
+        // Triggers are ANALOG on most pads: they arrive as an axis here and never
+        // as KEYCODE_BUTTON_L2/R2 at all, so without this L2 and R2 simply do
+        // nothing. Two axis pairs because vendors disagree about which they
+        // report, and some report both. Past halfway counts as pressed, matching
+        // the digital sense the shared mapper expects.
+        val leftTrigger = maxOf(
+            event.getAxisValue(MotionEvent.AXIS_LTRIGGER),
+            event.getAxisValue(MotionEvent.AXIS_BRAKE),
+        )
+        val rightTrigger = maxOf(
+            event.getAxisValue(MotionEvent.AXIS_RTRIGGER),
+            event.getAxisValue(MotionEvent.AXIS_GAS),
+        )
+        val buttons = state(event.deviceId)
+        if (leftTrigger > 0.5f && !buttons[L2]) latch(event.deviceId)[L2] = true
+        if (rightTrigger > 0.5f && !buttons[R2]) latch(event.deviceId)[R2] = true
+        buttons[L2] = leftTrigger > 0.5f
+        buttons[R2] = rightTrigger > 0.5f
+
         // A hat IS the d-pad on most pads, and arrives here rather than as a key.
         // Kept SEPARATE from the key-driven state and OR-ed at read time: a pad
         // that reports both would otherwise have its hat snapshot clear the
@@ -87,6 +122,16 @@ class AndroidPadSource : PadSource {
             val device = InputDevice.getDevice(id) ?: continue
             if (!isGamepad(device)) continue
             val buttons = state(id).copyOf()
+            // A press the poll has not seen yet counts as down for exactly this
+            // reading, then clears: still-held keys keep themselves true through
+            // `held`, and a released one reads false next poll, which is the edge
+            // the mapper needs.
+            latched[id]?.let { pending ->
+                for (i in pending.indices) {
+                    if (pending[i]) buttons[i] = true
+                    pending[i] = false
+                }
+            }
             hats[id]?.let { hat ->
                 buttons[UP] = buttons[UP] || hat[0]
                 buttons[DOWN] = buttons[DOWN] || hat[1]
@@ -106,6 +151,7 @@ class AndroidPadSource : PadSource {
         // leaking one per reconnect over a long session.
         val live = InputDevice.getDeviceIds().toSet()
         held.keys.retainAll(live)
+        latched.keys.retainAll(live)
         axes.keys.retainAll(live)
         hats.keys.retainAll(live)
         slots.keys.retainAll(live)
@@ -124,6 +170,9 @@ class AndroidPadSource : PadSource {
 
     private fun state(deviceId: Int): BooleanArray =
         held.getOrPut(deviceId) { BooleanArray(17) }
+
+    private fun latch(deviceId: Int): BooleanArray =
+        latched.getOrPut(deviceId) { BooleanArray(17) }
 
     private fun slot(deviceId: Int): Int = slots.getOrPut(deviceId) {
         val taken = slots.values.toSet()
@@ -158,6 +207,8 @@ class AndroidPadSource : PadSource {
     }
 
     private companion object {
+        const val L2 = 6
+        const val R2 = 7
         const val UP = 12
         const val DOWN = 13
         const val LEFT = 14
