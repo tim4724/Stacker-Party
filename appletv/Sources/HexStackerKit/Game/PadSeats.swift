@@ -53,7 +53,6 @@ enum PadButton {
     static let r1 = 5
     static let l2 = 6
     static let r2 = 7
-    static let start = 9
 }
 
 public final class PadSeats {
@@ -114,12 +113,7 @@ public final class PadSeats {
             for message in result.messages {
                 coordinator.deliverLocal(from: result.seat, data: message)
             }
-            guard !playing else {
-                if result.pressed.contains(PadButton.start) {
-                    coordinator.deliverLocal(from: result.seat, data: ["type": MSG.pauseGame])
-                }
-                continue
-            }
+            guard !playing else { continue }
             for direction in result.nav { onMenuNav(seat: result.seat, direction: direction) }
             for index in result.pressed { onMenuPress(seat: result.seat, index: index) }
         }
@@ -186,23 +180,22 @@ public final class PadSeats {
         coordinator.deliverLocal(from: seat, data: ["type": MSG.setLevel, "level": level])
     }
 
+    /// Index 9 (Start / Options / +) is NOT routed here, unlike on the web. tvOS
+    /// delivers a pad's Menu button as a `.menu` UIPress into the responder chain,
+    /// where PressHostController already handles it: pause during a game, and
+    /// decline at the top level so the press falls through to the system's exit.
+    /// Binding it here as well would toggle the pause twice per press, and in the
+    /// lobby it would race the platform gesture that leaves the app. The system
+    /// owns that button on this platform, which is the same call as letting native
+    /// focus own the menus.
     private func onMenuPress(seat: Int, index: Int) {
-        guard coordinator.state == .lobby else {
-            // Outside the lobby Start toggles the pause directly. It is the one
-            // action with no button on screen to focus while a game is running.
-            if index == PadButton.start {
-                coordinator.deliverLocal(
-                    from: seat, data: ["type": coordinator.isPaused ? MSG.resumeGame : MSG.pauseGame])
-            }
-            return
-        }
+        guard coordinator.state == .lobby else { return }
 
         // Starting the round is the host's call, the same rule the phones' lobby
         // renders. The bottom face button because it is the one a player reaches
-        // for when they want something to happen; Start because its meaning holds
-        // on every brand. See server/PadMapper.js for why no face button is
-        // brand-safe and why that does not matter in a lobby.
-        if index == PadButton.faceDown || index == PadButton.start {
+        // for when they want something to happen. See server/PadMapper.js for why
+        // no face button is brand-safe and why that does not matter in a lobby.
+        if index == PadButton.faceDown {
             if seat == coordinator.hostPeerIndex {
                 coordinator.deliverLocal(from: seat, data: ["type": MSG.startGame])
             }

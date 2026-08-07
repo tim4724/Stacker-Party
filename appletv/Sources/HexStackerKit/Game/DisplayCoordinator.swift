@@ -426,10 +426,6 @@ public final class DisplayCoordinator {
 
     // MARK: - Local (gamepad) seats
 
-    /// Whether a host-pressed pause is standing. `PadSeats` needs it to decide
-    /// whether Start means pause or resume; everything else reads the snapshot.
-    public var isPaused: Bool { paused }
-
     /// Deliver a message from a seat this display owns rather than the relay.
     /// Deliberately the SAME entry point the relay's messages take: a pad that
     /// took a different route would be a second implementation of joining,
