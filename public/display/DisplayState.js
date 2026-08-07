@@ -270,6 +270,28 @@ function isLocalSeat(peerIndex) {
   return !!padMapper && padMapper.isLocalSeat(peerIndex);
 }
 
+// A match whose every participant is a pad on this machine. Such a match has no
+// presence at the relay AT ALL — local seats never join a room — so the relay
+// retires the room the moment the display's own socket drops (a sleep, a network
+// blip), and the rejoin answers "Room not found". The recovery's premise — a
+// roster cannot follow the room, because those players were never in the new one
+// — holds for relay members and fails for local seats, which were never in the
+// OLD room either. So the room is replaced underneath the match and only the QR
+// changes (DisplayConnection's error handler + applyRoomCreated), exactly as the
+// two TV coordinators do. Requires a pad to still HOLD its seat, not merely to
+// have held one: with the controller gone there is nobody left to carry the
+// match for, and the ordinary reset is right.
+function isLocalOnlyMatch() {
+  if (roomState === ROOM_STATE.LOBBY) return false;
+  if (typeof GamepadInput === 'undefined' || !GamepadInput.hasSeats()) return false;
+  var active = roomCore.participants;
+  if (!active.length) return false;
+  for (var i = 0; i < active.length; i++) {
+    if (!isLocalSeat(active[i])) return false;
+  }
+  return true;
+}
+
 // --- DOM References ---
 var welcomeScreen = document.getElementById('welcome-screen');
 var newGameBtn = document.getElementById('new-game-btn');

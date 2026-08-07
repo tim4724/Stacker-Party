@@ -170,7 +170,19 @@ function connectAndCreateRoom() {
           if (party) party.failAttempt();
         } else if (msg.message === 'Room not found' || msg.message === 'Room is full') {
           console.error('Party-Server error:', msg.message);
-          resetToWelcome();
+          if (isLocalOnlyMatch()) {
+            // A pad-only match outlives its room, because it was never played
+            // through one (see isLocalOnlyMatch). Ask for a fresh room on the
+            // open socket — applyRoomCreated keeps the match, only the QR
+            // changes. Unpin first so a drop mid-create creates again instead
+            // of rejoining the dead room.
+            lastRoomCode = null;
+            lastInstance = null;
+            party.create(9, controllerUrlTemplate());
+            armCreateTimeout();
+          } else {
+            resetToWelcome();
+          }
         } else {
           console.warn('Party-Server:', msg.message);
         }
@@ -270,10 +282,14 @@ function renderJoinUrl(url) {
 }
 
 function applyRoomCreated(partyRoomCode, newJoinUrl) {
+  // The room-gone recovery path replaces the room UNDERNEATH a pad-only match
+  // (see isLocalOnlyMatch): the match, roster and screen stay, only the room
+  // identity and the join URL change.
+  var keepMatch = isLocalOnlyMatch();
   roomCode = partyRoomCode;
   lastRoomCode = partyRoomCode;
   // Ensure we're in LOBBY (may already be if coming from welcome screen)
-  if (roomState !== ROOM_STATE.LOBBY) setRoomState(ROOM_STATE.LOBBY);
+  if (!keepMatch && roomState !== ROOM_STATE.LOBBY) setRoomState(ROOM_STATE.LOBBY);
 
   joinUrl = newJoinUrl;
   renderJoinUrl(joinUrl);
@@ -350,7 +366,7 @@ function applyRoomCreated(partyRoomCode, newJoinUrl) {
   }
 
   // Reset local state
-  resetRoomData();
+  if (!keepMatch) resetRoomData();
 
   // Held for as long as the room exists, lobby included: a screensaver over the
   // lobby hides the QR and the room code, and on a display that gets no input of

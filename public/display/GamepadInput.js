@@ -73,7 +73,6 @@ var GamepadInput = (function () {
   var seats = new Map();
   var rafId = null;
 
-  // The relay owns 1..N and the display owns 0, so negatives are ours alone.
   // Derived from the pad's own slot, so unplugging and replugging the same pad
   // lands back on the same seat (a reconnect, not a new player).
   function seatIdFor(padIndex) {
@@ -424,7 +423,10 @@ var GamepadInput = (function () {
 
   return {
     start: start,
-    onEngineEvent: onEngineEvent
+    onEngineEvent: onEngineEvent,
+    // Whether any pad currently holds a seat — isLocalOnlyMatch needs to know
+    // there is still somebody to carry a match for.
+    hasSeats: function () { return seats.size > 0; }
   };
 })();
 
