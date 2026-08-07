@@ -17,7 +17,11 @@
         tools:replace="android:required" />
 
     <application>
-        <activity android:name=".MainActivity">
+        <!-- Phones may rotate; main pins landscape for the TV build. fullUser
+             still honours the tester's rotation lock. -->
+        <activity android:name=".MainActivity"
+            android:screenOrientation="fullUser"
+            tools:replace="android:screenOrientation">
             <!-- Merged alongside main's LEANBACK_LAUNCHER filter, not instead of
                  it: the same build stays launchable from the TV home row. -->
             <intent-filter>
