@@ -8,7 +8,10 @@ var ControllerAudio = (function () {
 
   function getCtx() {
     if (!audioCtx) {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      // iOS Lockdown Mode removes the Web Audio API outright: no constructor at all.
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return null;
+      audioCtx = new Ctx();
       noiseBuffer = null; // buffer is context-specific, must regenerate
     }
     if (audioCtx.state === 'suspended') {
@@ -19,8 +22,9 @@ var ControllerAudio = (function () {
 
   function prime() {
     if (primed) return;
-    primed = true;
     var ctx = getCtx();
+    if (!ctx) return;
+    primed = true;
     var buf = ctx.createBuffer(1, 1, ctx.sampleRate);
     var src = ctx.createBufferSource();
     src.buffer = buf;
@@ -31,6 +35,7 @@ var ControllerAudio = (function () {
   function tick() {
     if (muted) return;
     var ctx = getCtx();
+    if (!ctx) return;
     var osc = ctx.createOscillator();
     var gain = ctx.createGain();
     osc.connect(gain);
@@ -47,6 +52,7 @@ var ControllerAudio = (function () {
   function lineClear(count) {
     if (muted) return;
     var ctx = getCtx();
+    if (!ctx) return;
     // Triple is the top tier with the casual bag (max 3-row piece extent);
     // quads are unreachable. count >= 3 gets the 500 Hz reward tone.
     var baseFreq = count >= 3 ? 500 : count >= 2 ? 440 : 380;
@@ -68,6 +74,7 @@ var ControllerAudio = (function () {
   function drop() {
     if (muted) return;
     var ctx = getCtx();
+    if (!ctx) return;
     var t = ctx.currentTime;
     var osc = ctx.createOscillator();
     var gain = ctx.createGain();
@@ -100,6 +107,7 @@ var ControllerAudio = (function () {
   function hold() {
     if (muted) return;
     var ctx = getCtx();
+    if (!ctx) return;
     var t = ctx.currentTime;
     var osc = ctx.createOscillator();
     var gain = ctx.createGain();
