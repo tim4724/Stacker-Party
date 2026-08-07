@@ -96,56 +96,52 @@ public final class PadSeats {
     /// whether to suppress focus (see `poll`).
     public var hasSeats: Bool { !seated.isEmpty }
 
-    /// One poll, driven from the coordinator's own tick so there is a single loop.
-    /// `nowMs` is the frame clock the mapper measures DAS and the soft-drop
-    /// keepalive against, NOT wall time.
-    public func poll(nowMs: Double, playing: Bool) {
+    /// Seats that joined on the LAST collect. Their press still goes to the
+    /// mapper, which is the point: it becomes the baseline, so the button that
+    /// joined reads as already-down rather than as a fresh press. What must not
+    /// happen is acting on it, or the bottom face button would join and start
+    /// the round in one press. Spans collect to route, which is why it is not a
+    /// local.
+    private var joinedNow: Set<Int> = []
+
+    /// One poll's pad states: retire vanished pads, seat new ones, stamp
+    /// liveness. The mapping itself is the shim's; the CALLER decides which
+    /// crossing carries it — poll's own, or the playing tick's frame
+    /// (EngineBridge.framePads), which is what keeps a playing tick at one
+    /// evaluate. `nowMs` is the pad clock, NOT wall time.
+    public func collectStates(nowMs: Double) -> [EngineBridge.PadState] {
         let readings = source.pads()
         retireVanished(readings)
 
         // Join before mapping: a pad that has not joined has no seat to attribute
         // input to, and the joining press must not also fire whatever it is bound
-        // to. `padPoll` is handed the joining press as the mapper's baseline, so
-        // it reads as already-down rather than as a fresh press next frame.
+        // to (see joinedNow above).
+        joinedNow.removeAll()
         var states: [EngineBridge.PadState] = []
-        // Seats that joined on THIS poll. Their press still goes to the mapper,
-        // which is the point: it becomes the baseline, so the button that joined
-        // reads as already-down rather than as a fresh press. What must not happen
-        // is acting on it, or the bottom face button would join and start the
-        // round in one press.
-        var joinedNow: Set<Int> = []
         for reading in readings {
             let existing = seated[reading.slot] != nil
             guard let seat = seat(for: reading, nowMs: nowMs) else { continue }
             if !existing { joinedNow.insert(seat) }
-            states.append(EngineBridge.PadState(
-                seat: seat, buttons: reading.buttons, axes: reading.axes))
-        }
-        guard !states.isEmpty else { return }
-
-        let results: [EngineBridge.PadResult]
-        do { results = try coordinator.padPoll(states, nowMs: nowMs, playing: playing) }
-        catch {
-            FileHandle.standardError.write(Data("[pad] poll failed: \(error)\n".utf8))
-            return
-        }
-
-        for result in results {
             // A local seat sends nothing over the wire, so nothing else proves it
             // is still there. The pad being present in this poll IS the proof;
             // without it the liveness sweep would expire an idle player mid-game.
-            coordinator.markLocalSeatSeen(result.seat)
+            coordinator.markLocalSeatSeen(seat)
+            states.append(EngineBridge.PadState(
+                seat: seat, buttons: reading.buttons, axes: reading.axes))
+        }
+        return states
+    }
+
+    /// Route one poll's results — the menu edges and the rumble flag; the game
+    /// input never comes back (the shim feeds it to the engine itself).
+    public func route(_ results: [EngineBridge.PadResult], playing: Bool) {
+        for result in results {
             // The joining press is a baseline, never an action. See joinedNow.
             if joinedNow.contains(result.seat) { continue }
-            for message in result.messages {
-                coordinator.deliverLocal(from: result.seat, data: message)
-                // The one effect driven by what the PLAYER did rather than what
-                // happened to them. Fired off the message rather than the
-                // resulting lock event, so the thump lands with the press.
-                if message["action"] as? String == "hard_drop" {
-                    rumble(seat: result.seat, "hardDrop")
-                }
-            }
+            // The one effect driven by what the PLAYER did rather than what
+            // happened to them. Fired off the mapping rather than the resulting
+            // lock event, so the thump lands with the press.
+            if result.hardDrop { rumble(seat: result.seat, "hardDrop") }
             guard !playing else {
                 if result.pressed.contains(PadButton.start) {
                     coordinator.deliverLocal(from: result.seat, data: ["type": MSG.pauseGame])
@@ -171,6 +167,22 @@ public final class PadSeats {
             for direction in result.nav { onMenuNav(seat: result.seat, direction: direction) }
             for index in result.pressed { onMenuPress(seat: result.seat, index: index) }
         }
+    }
+
+    /// Collect, map and route in one go — the path for every tick that is NOT
+    /// running a frame (lobby, results, countdown, paused). The playing tick
+    /// rides its mapping on the frame crossing instead (see collectStates).
+    public func poll(nowMs: Double, playing: Bool) {
+        let states = collectStates(nowMs: nowMs)
+        guard !states.isEmpty else { return }
+
+        let results: [EngineBridge.PadResult]
+        do { results = try coordinator.padPoll(states, nowMs: nowMs, playing: playing) }
+        catch {
+            FileHandle.standardError.write(Data("[pad] poll failed: \(error)\n".utf8))
+            return
+        }
+        route(results, playing: playing)
     }
 
     // MARK: - Seat lifecycle

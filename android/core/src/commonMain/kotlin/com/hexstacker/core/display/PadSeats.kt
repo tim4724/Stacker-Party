@@ -133,25 +133,34 @@ internal class PadSeats(
     fun holdsSeat(slot: Int?): Boolean = slot != null && seatedSlots.contains(slot)
 
     /**
-     * One poll, driven from the coordinator's own tick so there is a single loop.
-     * [nowMs] is the monotonic clock the mapper measures DAS and the soft-drop
-     * keepalive against, NOT wall time.
+     * Seats that joined on the LAST collect. Their press still goes to the
+     * mapper, which is the point: it becomes the baseline, so the button that
+     * joined reads as already-down rather than as a fresh press. What must not
+     * happen is acting on it, or the bottom face button would join and start the
+     * round in one press. Spans collect to route, which is why it is not a local.
      */
-    suspend fun poll(nowMs: Double, playing: Boolean) {
+    private val joinedNow = mutableSetOf<Int>()
+
+    /**
+     * One poll's pad states: retire vanished pads, seat new ones, stamp
+     * liveness. The mapping itself is the shim's; the CALLER decides which
+     * crossing carries it — [poll]'s own, or the playing tick's frame
+     * ([EngineBridge.framePads]), which is what keeps a playing tick at one
+     * evaluate.
+     */
+    suspend fun collectStates(): JsonArray {
         val readings = source.pads()
         retireVanished(readings)
-
-        // Seats that joined on THIS poll. Their press still goes to the mapper,
-        // which is the point: it becomes the baseline, so the button that joined
-        // reads as already-down rather than as a fresh press. What must not happen
-        // is acting on it, or the bottom face button would join and start the round
-        // in one press.
-        val joinedNow = mutableSetOf<Int>()
-        val states = buildJsonArray {
+        joinedNow.clear()
+        return buildJsonArray {
             for (reading in readings) {
                 val existing = seated.containsKey(reading.slot)
                 val seat = seatFor(reading) ?: continue
                 if (!existing) joinedNow.add(seat)
+                // A local seat sends nothing over the wire, so nothing else proves
+                // it is still there. Its presence in this poll IS the proof; without
+                // it the liveness sweep would expire an idle player mid-game.
+                coordinator.markLocalSeatSeen(seat)
                 add(
                     buildJsonObject {
                         put("seat", JsonPrimitive(seat))
@@ -161,32 +170,23 @@ internal class PadSeats(
                 )
             }
         }
-        if (states.isEmpty()) return
+    }
 
-        val results = try {
-            coordinator.padPoll(states.toString(), nowMs, playing)
-        } catch (e: Throwable) {
-            coordinator.reportPadError("padPoll", e)
-            return
-        }
-
+    /**
+     * Route one poll's results — the menu edges and the rumble flag; the game
+     * input never comes back (the shim feeds it to the engine itself).
+     */
+    suspend fun route(results: JsonArray, playing: Boolean) {
         for (result in results) {
             val seat = result.jsonObject["seat"]?.jsonPrimitive?.int ?: continue
-            // A local seat sends nothing over the wire, so nothing else proves it
-            // is still there. Its presence in this poll IS the proof; without it
-            // the liveness sweep would expire an idle player mid-game.
-            coordinator.markLocalSeatSeen(seat)
             // The joining press is a baseline, never an action. See joinedNow.
             if (joinedNow.contains(seat)) continue
 
-            for (message in result.jsonObject["messages"]?.jsonArray.orEmpty()) {
-                coordinator.deliverLocal(seat, message.jsonObject)
-                // The one effect driven by what the PLAYER did rather than what
-                // happened to them. Fired off the message rather than the
-                // resulting lock event, so the thump lands with the press.
-                if (message.jsonObject["action"]?.jsonPrimitive?.content == "hard_drop") {
-                    rumble(seat, "hardDrop")
-                }
+            // The one effect driven by what the PLAYER did rather than what
+            // happened to them. Fired off the mapping rather than the resulting
+            // lock event, so the thump lands with the press.
+            if (result.jsonObject["hardDrop"]?.jsonPrimitive?.boolean == true) {
+                rumble(seat, "hardDrop")
             }
             val pressed = result.jsonObject["pressed"]?.jsonArray.orEmpty().map { it.jsonPrimitive.int }
             if (playing) {
@@ -213,6 +213,26 @@ internal class PadSeats(
             }
             for (index in pressed) onMenuPress(seat, index)
         }
+    }
+
+    /**
+     * Collect, map and route in one go — the path for every tick that is NOT
+     * running a frame (lobby, results, countdown, paused). The playing tick
+     * rides its mapping on the frame crossing instead (see [collectStates]).
+     * [nowMs] is the monotonic clock the mapper measures DAS and the soft-drop
+     * keepalive against, NOT wall time.
+     */
+    suspend fun poll(nowMs: Double, playing: Boolean) {
+        val states = collectStates()
+        if (states.isEmpty()) return
+
+        val results = try {
+            coordinator.padPoll(states.toString(), nowMs, playing)
+        } catch (e: Throwable) {
+            coordinator.reportPadError("padPoll", e)
+            return
+        }
+        route(results, playing)
     }
 
     // --- Seat lifecycle ------------------------------------------------------

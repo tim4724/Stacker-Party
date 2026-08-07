@@ -1076,7 +1076,13 @@ public final class DisplayCoordinator {
         // for the same reason the engine's is.
         if let padSeats {
             padClockMs += deltaMs
-            padSeats.poll(nowMs: padClockMs, playing: roomState == .playing && !paused)
+            // The unpaused PLAYING tick fuses the pad poll into its frame
+            // crossing below (framePads) — one evaluate for mapping, input and
+            // frame together. Every other state polls here, before the switch,
+            // so a pad joins, picks a colour and steps its level in the LOBBY.
+            if !(roomState == .playing && !paused) {
+                padSeats.poll(nowMs: padClockMs, playing: false)
+            }
         }
         // The local demo has no controllers sending heartbeats, so keep its
         // synthetic players "seen" — otherwise the liveness sweep flags them
@@ -1100,8 +1106,18 @@ public final class DisplayCoordinator {
             // monotonic clock PartyCore turns into a capped per-frame delta.
             frameClockMs += deltaMs
             let frame: FrameResult
-            do { frame = try engine.frame(nowMs: frameClockMs, inputs: takeInputs()) }
-            catch {
+            let padStates = padSeats?.collectStates(nowMs: padClockMs) ?? []
+            do {
+                if let padSeats, !padStates.isEmpty {
+                    let (padResults, fused) = try engine.framePads(
+                        nowMs: frameClockMs, inputs: takeInputs(),
+                        pads: padStates, padNowMs: padClockMs)
+                    padSeats.route(padResults, playing: true)
+                    frame = fused
+                } else {
+                    frame = try engine.frame(nowMs: frameClockMs, inputs: takeInputs())
+                }
+            } catch {
                 // Dropping one frame is fine; a PERSISTENT failure freezes the game,
                 // so it must at least be visible in the log (decode errors don't
                 // pass through onEngineError).

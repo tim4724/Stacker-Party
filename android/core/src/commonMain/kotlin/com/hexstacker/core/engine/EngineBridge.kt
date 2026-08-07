@@ -341,6 +341,38 @@ class EngineBridge private constructor(
         )
     }
 
+    /**
+     * The whole playing tick in ONE crossing: pad mapping, the pads' input, the
+     * controllers' [inputs] batch and the frame they all belong to (the shim's
+     * framePadsPacked). [padNowMs] is the pad clock, which keeps running while
+     * the frame clock is paused, so the two ride separately.
+     *
+     * The payload is `<len>:<pad results JSON><packed frame>` — the packed body
+     * can contain any code unit, so the header leads, length-prefixed in UTF-16
+     * units (exactly what a Kotlin String indexes). Returns the header verbatim
+     * alongside the decoded frame; the caller parses it like a padPollJson
+     * result.
+     */
+    suspend fun framePads(
+        nowMs: Double,
+        inputs: List<Pair<Int, InputAction>>,
+        padsJson: String,
+        padNowMs: Double,
+    ): Pair<String, FrameResult> = lock.withLock {
+        val combined = evalTyped<String>(
+            "framePadsPacked",
+            "Bridge.framePadsPacked(${jsNum(nowMs)}, ${inputsJs(inputs)}, ${jsString(padsJson)}, ${jsNum(padNowMs)})",
+        )
+        val colon = combined.indexOf(':')
+        val len = if (colon > 0) combined.substring(0, colon).toIntOrNull() else null
+        if (len == null || colon + 1 + len > combined.length) {
+            throw EngineException.Decode("framePadsPacked header", IllegalStateException("malformed header"))
+        }
+        val header = combined.substring(colon + 1, colon + 1 + len)
+        val packed = combined.substring(colon + 1 + len)
+        header to decodePacked("framePadsPacked", packed)
+    }
+
     /** The pad's product string as a room-legal name, by the shared rules. */
     suspend fun padName(rawId: String): String = lock.withLock {
         evalTyped<String>("padName", asciiJson("Bridge.padName(${jsString(rawId)})"))

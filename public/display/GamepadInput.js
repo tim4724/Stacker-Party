@@ -383,8 +383,14 @@ var GamepadInput = (function () {
   }
 
   // --- Loop ---------------------------------------------------------
+  function anyPad(pads) {
+    for (var i = 0; i < pads.length; i++) {
+      if (pads[i]) return true;
+    }
+    return false;
+  }
+
   function poll(nowMs) {
-    rafId = requestAnimationFrame(poll);
     var pads = navigator.getGamepads ? navigator.getGamepads() : [];
     for (var i = 0; i < pads.length; i++) {
       var pad = pads[i];
@@ -399,6 +405,16 @@ var GamepadInput = (function () {
     }
     for (var s = 0; s < stale.length; s++) retire(stale[s]);
     maintainFocus(roomState === ROOM_STATE.PLAYING && !paused);
+    // With nothing plugged in and nothing seated there is nothing to poll: let
+    // the loop die, and the connect listener in start() revives it. Most
+    // displays never see a pad, and this is what keeps them at zero cost.
+    if (!seats.size && !anyPad(pads)) { rafId = null; return; }
+    rafId = requestAnimationFrame(poll);
+  }
+
+  function startLoop() {
+    if (rafId !== null) return;
+    rafId = requestAnimationFrame(poll);
   }
 
   // One cheap check per frame keeps the ring honest across screen changes,
@@ -414,11 +430,18 @@ var GamepadInput = (function () {
 
   // Not started under the gallery/test harnesses: their rosters are fixtures,
   // and a pad plugged into the developer's machine must not join one.
+  //
+  // The loop runs only while something is plugged in. Chrome exposes nothing
+  // through getGamepads() until a button is pressed and fires
+  // `gamepadconnected` on that same press — the press that joins — while
+  // Firefox and Safari may already report a pad at load, which the one-shot
+  // check below picks up. Button state itself has no event on any browser;
+  // sampling is the platform's model, so the events only gate the loop.
   function start() {
-    if (rafId !== null) return;
     if (!navigator.getGamepads) return;
     if (window.__TEST__) return;
-    rafId = requestAnimationFrame(poll);
+    window.addEventListener('gamepadconnected', startLoop);
+    if (anyPad(navigator.getGamepads())) startLoop();
   }
 
   return {

@@ -1045,9 +1045,14 @@ class DisplayCoordinator(
         }
         // Before the state switch, because a pad joins, picks a colour and steps
         // its level in the LOBBY, where none of the branches below run any input.
+        // The unpaused PLAYING tick is the exception: it fuses the pad poll into
+        // its frame crossing below (framePads) — one evaluate for mapping, input
+        // and frame together.
         padSeats?.let {
             padClockMs += deltaMs
-            it.poll(padClockMs, state == RoomState.PLAYING && !paused)
+            if (!(state == RoomState.PLAYING && !paused)) {
+                it.poll(padClockMs, playing = false)
+            }
         }
         when (state) {
             RoomState.COUNTDOWN -> advanceCountdown(deltaMs)
@@ -1055,16 +1060,30 @@ class DisplayCoordinator(
                 if (paused) return
                 val e = engine ?: return
                 frameClockMs += deltaMs
+                val padStates = padSeats?.collectStates() ?: JsonArray(emptyList())
+                var padResultsJson: String? = null
                 val frame = try {
                     // Inputs that landed after this frame's render-on-input pull (or all
                     // of them, if none did) ride into the tick, so they are simulated in
                     // the frame they arrived in — same as the web applying each input
                     // synchronously ahead of the next rAF update — for one crossing
-                    // rather than two.
-                    e.frame(frameClockMs, takeInputs())
+                    // rather than two. With a pad seated the pad mapping and ITS input
+                    // ride the same call too (framePadsPacked).
+                    if (padStates.isNotEmpty()) {
+                        val (header, fused) = e.framePads(
+                            frameClockMs, takeInputs(), padStates.toString(), padClockMs)
+                        padResultsJson = header
+                        fused
+                    } else {
+                        e.frame(frameClockMs, takeInputs())
+                    }
                 } catch (t: Throwable) {
                     onError("frame", t)
                     return
+                }
+                padResultsJson?.let { header ->
+                    padSeats?.route(
+                        EngineJson.json.parseToJsonElement(header).jsonArray, playing = true)
                 }
                 for (ev in frame.events) {
                     output.handleGameEvent(ev) // board animations
