@@ -133,6 +133,12 @@ test.describe('CouchPad shell contract', () => {
     await waitForControllerResults(controller);
     await expect.poll(armed).toBe(true);
     expect(await back()).toBe(false);
+
+    // Arming costs the game its screen edges, so the launcher hears about it
+    // only when the state actually flips, not on every snapshot that repaints
+    // a screen. Consecutive duplicates would mean the sync is chattering.
+    const calls = await controller.evaluate(() => window.__cpBack);
+    expect(calls.filter((on, i) => i > 0 && on === calls[i - 1])).toEqual([]);
   });
 
   test('cp-accent-color meta tracks the player color (CONTRACT §4)', async ({ page, context }) => {

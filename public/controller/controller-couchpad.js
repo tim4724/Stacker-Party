@@ -162,7 +162,8 @@
   // Called by the launcher once per gesture, only while armed. Anything but a
   // literal true leaves the game, so the lobby and results answer nothing and
   // fall through. Settings first: it can sit on top of the pause overlay.
-  // Decided synchronously: a Promise counts as unconsumed.
+  // Decided synchronously: a Promise counts as unconsumed. hideSettings is
+  // block-scoped in controller.js, so the window alias is the only handle.
   window.CouchPad.back = function () {
     if (isOpen(settingsOverlay)) { window.closeSettingsOverlay(); return true; }
     if (isOpen(colorPickerOverlay)) { closeColorPicker(); return true; }

@@ -1401,24 +1401,21 @@ body.couchpad #lobby-back-btn { display: none !important; }
 body.couchpad .game-name-label { display: none !important; }
 body.couchpad #touch-area::after { content: none !important; }
 
-/* Arming the system back gesture brings Android's navigation bar back on
-   screen, so --cp-safe-bottom grows by the gesture pill and shrinks again on
-   disarm (CONTRACT §9). Reflowing every time a dialog opens is worse than the
-   space the disarmed state reclaims, so the shell reserves the bar's height
-   and lets it come and go over ground that was already spoken for.
-
-   The floor is the gesture pill; the game screen keeps it, because its bottom
-   bar is anchored and every extra pixel comes straight off the touch pad. */
+/* Arming system back brings Android's navigation bar back on screen, so
+   --cp-safe-bottom grows while armed and shrinks again on disarm (CONTRACT
+   §9). Reserve the gesture pill's height rather than reflow under it. The
+   game screen stops there: its bottom bar is anchored, so every reserved
+   pixel comes off the touch pad. */
 body.couchpad {
   --safe-bottom: max(var(--cp-safe-bottom, 0px), env(safe-area-inset-bottom, 0px), 24px);
 }
 
-/* Only these two are on screen at the moment the arm state flips, so only
-   these two ever watch the bar arrive under them: everything else is either
-   armed for its whole life (the lobby, the results, the colour picker over an
-   already-armed lobby) or never armed at all (the in-game reconnect overlay),
-   and holds whatever inset it opened with. They reserve the taller
-   three-button bar and cost nothing for it, both being centred. */
+/* These two are the only surfaces on screen at the moment the arm state
+   flips, so they are the only ones that watch the bar arrive underneath.
+   Everything else is armed for its whole life (lobby, results, the colour
+   picker over an already-armed lobby) or never armed (the in-game reconnect
+   overlay), and keeps the inset it opened with. Both centre their content, so
+   reserving the taller three-button bar costs them nothing. */
 body.couchpad #pause-overlay,
 body.couchpad #settings-overlay {
   --safe-bottom: max(var(--cp-safe-bottom, 0px), env(safe-area-inset-bottom, 0px), 48px);
