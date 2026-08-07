@@ -245,6 +245,59 @@ public final class EngineBridge {
         try roomString("roomSnapshotJSON", [], label: "roomSnapshotJSON")
     }
 
+    // MARK: - Gamepad seats
+
+    /// One pad's raw state for a poll. Encoded as-is, so the field names are the
+    /// shim's contract.
+    public struct PadState: Encodable {
+        public let seat: Int
+        public let buttons: [Bool]
+        public let axes: [Double]
+
+        public init(seat: Int, buttons: [Bool], axes: [Double]) {
+            self.seat = seat
+            self.buttons = buttons
+            self.axes = axes
+        }
+    }
+
+    /// What one pad's press produced. `messages` stay untyped dictionaries on
+    /// purpose: they are controller messages, and the coordinator's inbound path
+    /// takes exactly the `[String: Any]` the relay hands it, so a typed model here
+    /// would only have to be flattened back again.
+    public struct PadResult {
+        public let seat: Int
+        public let messages: [[String: Any]]
+        public let pressed: [Int]
+        public let nav: [String]
+    }
+
+    /// Map EVERY seated pad in one crossing (see the shim's PAD-API note on why
+    /// the batch matters). The mapper state lives in JS and is keyed by seat, so
+    /// a pad left out of the batch is forgotten and starts clean if it comes back.
+    public func padPoll(_ pads: [PadState], nowMs: Double, playing: Bool) throws -> [PadResult] {
+        let json = String(data: try JSONEncoder().encode(pads), encoding: .utf8) ?? "[]"
+        let tree = try jsonObject(method: "padPollJSON", args: [json, nowMs, playing])
+        guard let rows = tree as? [[String: Any]] else {
+            throw EngineError.decode("padPollJSON: expected an array of results")
+        }
+        return rows.compactMap { row in
+            guard let seat = row["seat"] as? Int else { return nil }
+            return PadResult(
+                seat: seat,
+                messages: row["messages"] as? [[String: Any]] ?? [],
+                pressed: row["pressed"] as? [Int] ?? [],
+                nav: row["nav"] as? [String] ?? []
+            )
+        }
+    }
+
+    /// The pad's product string cleaned up to fit the room core's name cap, by the
+    /// same rules the web display uses.
+    public func padName(_ rawId: String, maxLen: Int) -> String {
+        invoke("padName", [rawId, maxLen])?.toString() ?? "Gamepad"
+    }
+
     /// Typed convenience over `roomCallJSON`.
     public func roomCall<T: Decodable>(_ type: T.Type, _ method: String, _ argsJSON: String = "[]") throws -> T {
         try decodeRoom(type, json: try roomCallJSON(method, argsJSON), label: "roomCall(\(method))")
