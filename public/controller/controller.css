@@ -1403,14 +1403,23 @@ body.couchpad #touch-area::after { content: none !important; }
 
 /* Arming the system back gesture brings Android's navigation bar back on
    screen, so --cp-safe-bottom grows by the gesture pill and shrinks again on
-   disarm (CONTRACT §9). Reflowing the touch pad every time a dialog opens is
-   worse than the space it reclaims, so hold the bottom inset at the pill
-   height and let the bar come and go over reserved ground. A genuinely taller
-   inset (three-button navigation, an iOS home indicator) still wins the max()
-   and still moves, which is the rarer case and the one where the reserve
-   couldn't have covered it anyway. */
+   disarm (CONTRACT §9). Reflowing every time a dialog opens is worse than the
+   space the disarmed state reclaims, so the shell reserves the bar's height
+   and lets it come and go over ground that was already spoken for.
+
+   The floor is the gesture pill; the game screen keeps it, because its bottom
+   bar is anchored and every extra pixel comes straight off the touch pad. */
 body.couchpad {
   --safe-bottom: max(var(--cp-safe-bottom, 0px), env(safe-area-inset-bottom, 0px), 24px);
+}
+
+/* Screens and dialogs reserve the taller three-button bar instead, so nothing
+   moves in either Android navigation mode. They cost nothing for it: every one
+   of them centres its content, so the extra reserve lifts that content by half
+   the difference rather than eating a strip of layout. */
+body.couchpad .controller-shell,
+body.couchpad .game-overlay {
+  --safe-bottom: max(var(--cp-safe-bottom, 0px), env(safe-area-inset-bottom, 0px), 48px);
 }
 
 /* --- AirConsole-only overrides --- */

@@ -196,18 +196,35 @@ test.describe('CouchPad shell contract', () => {
     await expect.poll(barPadRight).toBeGreaterThanOrEqual(60);
 
     // The bottom edge is the exception: arming system back grows
-    // --cp-safe-bottom by the gesture pill and disarming shrinks it again, so
-    // the shell reserves that height permanently rather than reflowing every
-    // time a dialog opens. A taller inset than the reserve still expands.
-    const shellPadBottom = () => controller.evaluate(() =>
-      parseFloat(getComputedStyle(document.querySelector('#lobby-screen')).paddingBottom));
-    const disarmed = await shellPadBottom();
+    // --cp-safe-bottom by the navigation bar and disarming shrinks it again,
+    // so the shell reserves that height rather than reflowing every time a
+    // dialog opens. Two tiers, because the reserve is free on a centred
+    // layout and costs touch pad on an anchored one: screens and dialogs
+    // reserve the three-button bar, the game screen only the gesture pill.
+    const padBottom = (sel) => controller.evaluate((s) =>
+      parseFloat(getComputedStyle(document.querySelector(s)).paddingBottom), sel);
+    const setInset = (v) => controller.evaluate((b) =>
+      document.documentElement.style.setProperty('--cp-safe-bottom', b), v);
+
+    const shellAtRest = await padBottom('#lobby-screen');
+    for (const inset of ['24px', '48px']) {
+      await setInset(inset);
+      expect(await padBottom('#lobby-screen'), `shell moved at ${inset}`).toBe(shellAtRest);
+    }
+    // Past the reserve it expands again.
+    await setInset('72px');
+    await expect.poll(() => padBottom('#lobby-screen')).toBeGreaterThan(shellAtRest);
+
+    // The game screen deliberately stops at the gesture pill: it only ever
+    // sees a taller bar while a dialog covers the pad, and reserving for that
+    // would cost the height on every frame of play. Rendered here because a
+    // display:none subtree reports max() unresolved.
+    await setInset('0px');
     await controller.evaluate(() =>
-      document.documentElement.style.setProperty('--cp-safe-bottom', '24px'));
-    expect(await shellPadBottom()).toBe(disarmed);
-    await controller.evaluate(() =>
-      document.documentElement.style.setProperty('--cp-safe-bottom', '60px'));
-    await expect.poll(shellPadBottom).toBeGreaterThan(disarmed);
+      document.getElementById('game-screen').classList.remove('hidden'));
+    const gameAtRest = await padBottom('#game-screen');
+    await setInset('48px');
+    expect(await padBottom('#game-screen')).toBeGreaterThan(gameAtRest);
   });
 
   test('in-game player name is hidden (the launcher renders it)', async ({ page, context }) => {
