@@ -10,6 +10,7 @@ import android.provider.Settings
 import android.util.Log
 import android.view.Choreographer
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -261,6 +262,7 @@ class MainActivity : ComponentActivity() {
             // arrive before the bundle has finished compiling, and they queue behind this.
             bridgeProvider = { engineAsync().await() },
             fastlane = fastlane,
+            padSource = padSource,
             // Surface boundary errors the coordinator swallows to keep its loop alive
             // (engine/parse failures would otherwise vanish without a trace).
             onError = { label, e -> Log.w("DisplayCoordinator", label, e) },
@@ -528,6 +530,48 @@ class MainActivity : ComponentActivity() {
      * through the dispatcher is what stops it from BOTH pausing the game AND
      * exiting the app; see the BackHandler in [HexStackerApp].
      */
+    /**
+     * Gamepads attached to this TV, as players. Fed from the dispatch overrides
+     * below, because Android delivers button state as events rather than as a
+     * queryable snapshot.
+     */
+    private val padSource = AndroidPadSource()
+
+    /**
+     * Who owns a gamepad's presses on this screen: the game, or the UI.
+     *
+     * In the LOBBY the d-pad is a pad seat's level stepper, and during a match it
+     * is the piece; letting either also reach Compose would drag a focus ring
+     * around behind the game. On the overlays the opposite is right, so the pad
+     * moves the ring over Play Again and Continue exactly like the remote and
+     * those need no binding of their own.
+     *
+     * Consuming here rather than making the composables unfocusable is what keeps
+     * this scoped to the PAD. The TV remote is not a SOURCE_GAMEPAD device, so it
+     * keeps driving focus for whoever set the TV up. Same split as tvOS, which
+     * spells it GCEventViewController.controllerUserInteractionEnabled.
+     *
+     * It also decides who owns Start: while the pad owns input, KEYCODE_BUTTON_START
+     * never reaches onKeyDown's play/pause, and PadSeats binds index 9 itself.
+     * Without this the two would both fire on one press.
+     */
+    private fun padOwnsInput(): Boolean = when (ui.state.value.screen) {
+        DisplayScreen.LOBBY, DisplayScreen.GAME -> true
+        else -> false
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val fromPad = padSource.onKeyEvent(event)
+        if (fromPad && padOwnsInput()) return true
+        return super.dispatchKeyEvent(event)
+    }
+
+    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        val fromPad = padSource.onMotionEvent(event)
+        if (fromPad && padOwnsInput()) return true
+        return super.dispatchGenericMotionEvent(event)
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         when (keyCode) {
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,

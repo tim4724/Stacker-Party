@@ -32,6 +32,7 @@ import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import kotlin.random.Random
@@ -80,6 +81,13 @@ class DisplayCoordinator(
     private val seedProvider: () -> Long = { Random.nextLong(0, 0x1_0000_0000L) },
     /** Optional WebRTC low-latency input path (relay is the fallback). Null = relay-only. */
     private val fastlane: Fastlane? = null,
+    /**
+     * Gamepads attached to this TV, as players. Injected and null by default so
+     * the screenshot tests and any offline harness cannot seat a controller that
+     * happens to be plugged into the machine into a fixture roster. The web guards
+     * the same case with window.__TEST__.
+     */
+    padSource: PadSource? = null,
     /** Observability for boundary errors that are swallowed to keep the loop alive
      *  (engine/parse failures). Wire to platform logging in :tv; no-op by default. */
     private val onError: (label: String, error: Throwable) -> Unit = { _, _ -> },
@@ -256,6 +264,55 @@ class DisplayCoordinator(
     // controllers the input path is the hottest thing this coordinator does, and each
     // crossing is an interpolated eval plus a JSON parse.
     private val seenSinceTick = HashSet<Int>()
+
+    private val padSeats: PadSeats? = padSource?.let { PadSeats(it, this) }
+
+    /**
+     * Monotonic ms for the pad mapper. Its OWN accumulator, not [frameClockMs],
+     * which only advances while a game is running: a mapper handed a frozen clock
+     * would measure every DAS interval against the same instant.
+     */
+    private var padClockMs = 0.0
+
+    /** Whether any pad currently holds a seat. :tv stops routing pad D-pad presses
+     *  into Compose focus in the LOBBY while one does, because there the D-pad is
+     *  that seat's level stepper and cannot also move a focus ring. */
+    val hasPadSeats: Boolean get() = padSeats?.hasSeats ?: false
+
+    // --- What PadSeats needs from the coordinator ---------------------------
+
+    /**
+     * Deliver a message from a seat this display owns rather than the relay.
+     * Deliberately the SAME entry point the relay's messages take: a pad that took
+     * a different route would be a second implementation of joining, naming,
+     * colour, host election and liveness.
+     */
+    internal suspend fun deliverLocal(seat: Int, data: JsonObject) = onMessage(seat, data)
+
+    internal fun markLocalSeatSeen(seat: Int) { seenSinceTick.add(seat) }
+
+    internal fun hasPlayer(seat: Int): Boolean = room.players.containsKey(seat)
+
+    internal fun reportPadError(label: String, error: Throwable) = onError(label, error)
+
+    internal suspend fun padName(rawId: String): String =
+        runCatching { bridgeProvider().padName(rawId) }.getOrDefault("Gamepad")
+
+    internal suspend fun padPoll(padsJson: String, nowMs: Double, playing: Boolean): JsonArray =
+        EngineJson.json
+            .parseToJsonElement(bridgeProvider().padPollJson(padsJson, nowMs, playing))
+            .jsonArray
+
+    /**
+     * Send to one peer, unless the seat is LOCAL. A pad attached to this TV has no
+     * connection to send down and its index is negative, which the relay could not
+     * route anyway. Every per-peer send goes through here so one added later
+     * inherits the rule instead of having to remember it.
+     */
+    private fun sendToPeer(peerIndex: Int, data: JsonObject) {
+        if (PadSeats.isLocalSeat(peerIndex)) return
+        transport.sendTo(peerIndex, data)
+    }
 
     // Non-null only while a publishBatch block is running: the hint accumulated so far.
     // Doubles as the "are we batching" flag. Safe as a plain field: every room mutation
@@ -708,7 +765,7 @@ class DisplayCoordinator(
             Msg.SET_COLOR -> handleSetColor(from, msg)
             Msg.SET_NAME -> handleSetName(from, msg)
             Msg.SET_DISPLAY_MUTE -> handleSetMute(from, msg)
-            Msg.PING -> transport.sendTo(from, OutboundMessage.pong(msg.t))
+            Msg.PING -> sendToPeer(from, OutboundMessage.pong(msg.t))
             else -> {}
         }
         // Auto-resume AFTER processing, so the reconnecting controller has already been sent
@@ -728,7 +785,7 @@ class DisplayCoordinator(
         // The room half of a claim moved inside the room core; the game half is ours.
         if (res.claimed) res.oldPeerIndex?.let { applyReconnectClaim(it, from) }
         if (!res.accepted) {
-            if (res.roomFull) transport.sendTo(from, OutboundMessage.error("Room is full"))
+            if (res.roomFull) sendToPeer(from, OutboundMessage.error("Room is full"))
             return
         }
         // One publish settles everything a HELLO can move: this controller's own identity
@@ -977,6 +1034,12 @@ class DisplayCoordinator(
             livenessAccumMs = 0.0
             checkLiveness()
         }
+        // Before the state switch, because a pad joins, picks a colour and steps
+        // its level in the LOBBY, where none of the branches below run any input.
+        padSeats?.let {
+            padClockMs += deltaMs
+            it.poll(padClockMs, state == RoomState.PLAYING && !paused)
+        }
         when (state) {
             RoomState.COUNTDOWN -> advanceCountdown(deltaMs)
             RoomState.PLAYING -> {
@@ -994,7 +1057,12 @@ class DisplayCoordinator(
                     onError("frame", t)
                     return
                 }
-                for (ev in frame.events) output.handleGameEvent(ev) // board animations
+                for (ev in frame.events) {
+                    output.handleGameEvent(ev) // board animations
+                    // The same fan-out, for the effect that happens in a player's
+                    // hands rather than on screen.
+                    padSeats?.handle(ev)
+                }
                 // Omitted (null) when the frame is render-identical to the last
                 // delivered one (shim scene signature): keep the retained snapshot
                 // instead of re-rendering a pixel-identical full screen.
@@ -1056,7 +1124,7 @@ class DisplayCoordinator(
                     // `player_ko` form sends nothing here (PlayerStateCommand in
                     // server/PartyCore.d.ts has why).
                     if (c.lines != null) {
-                        transport.sendTo(pid, OutboundMessage.playerState(c.lines))
+                        sendToPeer(pid, OutboundMessage.playerState(c.lines))
                     }
                 }
                 CommandType.PLAYER_ELIMINATED -> c.playerId?.let {

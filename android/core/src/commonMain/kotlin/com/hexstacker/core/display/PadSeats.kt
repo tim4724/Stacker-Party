@@ -1,0 +1,284 @@
+package com.hexstacker.core.display
+
+import com.hexstacker.core.engine.EngineBridge
+import com.hexstacker.core.model.GameEvent
+import com.hexstacker.core.net.Msg
+import com.hexstacker.core.net.RoomState
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+
+/**
+ * Gamepads attached to the TV itself, as players.
+ *
+ * A pad is not a second kind of player. Every press becomes the SAME message a
+ * phone would have sent and goes through the coordinator's ordinary inbound path,
+ * so joining, auto-naming, colour slots, host election, liveness and pause all
+ * keep running their one implementation. What a local seat skips is the relay,
+ * and that is also why its peer index is NEGATIVE: the relay hands out 1..N and
+ * owns slot 0, so -(slot + 1) can never collide with a phone.
+ *
+ * The MAPPING is not here. Which button rotates, how fast a held direction
+ * repeats and how the stick scales a soft drop live in `server/PadMapper.js` and
+ * cross through [EngineBridge.padPollJson], because the web display, tvOS and
+ * this must agree about what a press means. What IS here is the part that needs a
+ * shell: which pads exist, which seat each holds, and where a menu press goes.
+ *
+ * Reading the hardware is a [PadSource], injected, so the lifecycle and routing
+ * below are testable with no controller attached. The Android implementation
+ * lives in :tv, where InputDevice does.
+ */
+interface PadSource {
+    /**
+     * Attached pads in STABLE slot order: a pad must keep its slot across polls
+     * and reclaim it after a reconnect, or it would be a new player every time.
+     */
+    fun pads(): List<PadReading>
+
+    /** Effects a phone gets as haptics through its own vibrate() call. */
+    fun rumble(slot: Int, durationMs: Long, amplitude: Double)
+}
+
+data class PadReading(
+    val slot: Int,
+    /** The product string, cleaned up through the shared rules into a name. */
+    val id: String,
+    /** W3C "standard" mapping order, so one mapper serves every platform. */
+    val buttons: List<Boolean>,
+    /** `[leftX, leftY, rightX, rightY]`, y POSITIVE DOWN as the web reports it. */
+    val axes: List<Double>,
+)
+
+/**
+ * Button indices routed by hand here. The rest are the mapper's business and are
+ * never named. Kept in sync with `PAD_BTN` in server/PadMapper.js.
+ */
+private object PadButton {
+    const val FACE_DOWN = 0
+    const val L1 = 4
+    const val R1 = 5
+    const val L2 = 6
+    const val R2 = 7
+    const val START = 9
+}
+
+internal class PadSeats(
+    private val source: PadSource,
+    private val coordinator: DisplayCoordinator,
+) {
+    companion object {
+        /**
+         * The relay owns 1..N and the display owns 0, so negatives are ours alone.
+         * Derived from the pad's own slot, so a reconnecting pad lands back on the
+         * same seat: a reconnect, not a new player.
+         */
+        fun seatId(slot: Int): Int = -(slot + 1)
+
+        /**
+         * True for a seat this display owns rather than one the relay handed out.
+         * Every per-peer send has to ask, because there is nothing to send to.
+         */
+        fun isLocalSeat(peerIndex: Int): Boolean = peerIndex < 0
+    }
+
+    /** slot -> seat id, for pads that have actually joined. */
+    private val seated = mutableMapOf<Int, Int>()
+
+    val hasSeats: Boolean get() = seated.isNotEmpty()
+
+    /**
+     * One poll, driven from the coordinator's own tick so there is a single loop.
+     * [nowMs] is the monotonic clock the mapper measures DAS and the soft-drop
+     * keepalive against, NOT wall time.
+     */
+    suspend fun poll(nowMs: Double, playing: Boolean) {
+        val readings = source.pads()
+        retireVanished(readings)
+
+        val states = buildJsonArray {
+            for (reading in readings) {
+                val seat = seatFor(reading) ?: continue
+                add(
+                    buildJsonObject {
+                        put("seat", JsonPrimitive(seat))
+                        put("buttons", JsonArray(reading.buttons.map { JsonPrimitive(it) }))
+                        put("axes", JsonArray(reading.axes.map { JsonPrimitive(it) }))
+                    }
+                )
+            }
+        }
+        if (states.isEmpty()) return
+
+        val results = try {
+            coordinator.padPoll(states.toString(), nowMs, playing)
+        } catch (e: Throwable) {
+            coordinator.reportPadError("padPoll", e)
+            return
+        }
+
+        for (result in results) {
+            val seat = result.jsonObject["seat"]?.jsonPrimitive?.int ?: continue
+            // A local seat sends nothing over the wire, so nothing else proves it
+            // is still there. Its presence in this poll IS the proof; without it
+            // the liveness sweep would expire an idle player mid-game.
+            coordinator.markLocalSeatSeen(seat)
+
+            for (message in result.jsonObject["messages"]?.jsonArray.orEmpty()) {
+                coordinator.deliverLocal(seat, message.jsonObject)
+            }
+            val pressed = result.jsonObject["pressed"]?.jsonArray.orEmpty().map { it.jsonPrimitive.int }
+            if (playing) {
+                if (pressed.contains(PadButton.START)) {
+                    coordinator.deliverLocal(seat, msg(Msg.PAUSE_GAME))
+                }
+                continue
+            }
+            for (step in result.jsonObject["nav"]?.jsonArray.orEmpty()) {
+                onMenuNav(seat, step.jsonPrimitive.content)
+            }
+            for (index in pressed) onMenuPress(seat, index)
+        }
+    }
+
+    // --- Seat lifecycle ------------------------------------------------------
+
+    private suspend fun seatFor(reading: PadReading): Int? {
+        val existing = seated[reading.slot]
+        if (existing != null) {
+            // The row can disappear without the pad going anywhere: a session
+            // reset clears the whole roster. Give the seat up so the next press
+            // joins the new room instead of feeding a player that is gone.
+            if (!coordinator.hasPlayer(existing)) {
+                seated.remove(reading.slot)
+                return null
+            }
+            return existing
+        }
+        // Any press joins. Naming one button would leave a player who pressed a
+        // different one with no feedback, and no letter is right on every brand.
+        // There is no welcome screen to exclude: a TV goes straight to the lobby.
+        if (!reading.buttons.contains(true)) return null
+        return join(reading)
+    }
+
+    private suspend fun join(reading: PadReading): Int? {
+        val seat = seatId(reading.slot)
+        val name = coordinator.padName(reading.id)
+        // The same HELLO a phone sends. autoName stays false: the pad's name is a
+        // real (if borrowed) identity, not a request for an HX-n slot.
+        coordinator.deliverLocal(
+            seat,
+            buildJsonObject {
+                put("type", JsonPrimitive(Msg.HELLO))
+                put("name", JsonPrimitive(name))
+                put("autoName", JsonPrimitive(false))
+            }
+        )
+        // A refused join (room full) leaves no row behind. Drop the seat so the
+        // next press tries again rather than feeding input nobody owns.
+        if (!coordinator.hasPlayer(seat)) return null
+        seated[reading.slot] = seat
+        return seat
+    }
+
+    private suspend fun retireVanished(readings: List<PadReading>) {
+        val live = readings.map { it.slot }.toSet()
+        for ((slot, seat) in seated.entries.toList()) {
+            if (live.contains(slot)) continue
+            seated.remove(slot)
+            // Same path as a phone closing its tab: mid-game the row is held (with
+            // a rejoin QR) so a returning pad, or a phone scanning, resumes the
+            // seat; in lobby or results it is dropped outright.
+            coordinator.deliverLocal(seat, msg(Msg.LEAVE))
+        }
+    }
+
+    // --- Menus ---------------------------------------------------------------
+
+    /**
+     * The lobby steps this seat's start level, which is why :tv stops routing pad
+     * D-pad presses into Compose focus there: the D-pad cannot both move a focus
+     * ring and set a level. Everywhere else outside play the pad is left alone to
+     * drive focus like a remote, so Play Again and Continue need no binding here.
+     */
+    private suspend fun onMenuNav(seat: Int, direction: String) {
+        if (coordinator.state != RoomState.LOBBY) return
+        val step = if (direction == "right" || direction == "up") 1 else -1
+        val level = coordinator.roomCore.levelAfterStep(seat, step) ?: return
+        coordinator.deliverLocal(
+            seat,
+            buildJsonObject {
+                put("type", JsonPrimitive(Msg.SET_LEVEL))
+                put("level", JsonPrimitive(level))
+            }
+        )
+    }
+
+    private suspend fun onMenuPress(seat: Int, index: Int) {
+        if (coordinator.state != RoomState.LOBBY) return
+
+        // Starting the round is the host's call, the same rule the phones' lobby
+        // renders. The bottom face button because it is the one a player reaches
+        // for when they want something to happen, and Start because its meaning
+        // holds on every brand. See server/PadMapper.js for why no face button is
+        // brand-safe and why that does not matter in a lobby.
+        if (index == PadButton.FACE_DOWN || index == PadButton.START) {
+            if (seat == coordinator.room.hostPeerIndex) coordinator.deliverLocal(seat, msg(Msg.START_GAME))
+            return
+        }
+
+        // Colour has no on-screen control to focus (the picker lives on the
+        // phone), so it keeps a shoulder side of its own in each direction. The
+        // room core resolves which slot is next; this then sends the same
+        // SET_COLOR the phone's picker sends.
+        val step = when (index) {
+            PadButton.L1, PadButton.L2 -> -1
+            PadButton.R1, PadButton.R2 -> 1
+            else -> return
+        }
+        val next = coordinator.roomCore.colorAfterStep(seat, step) ?: return
+        coordinator.deliverLocal(
+            seat,
+            buildJsonObject {
+                put("type", JsonPrimitive(Msg.SET_COLOR))
+                put("colorIndex", JsonPrimitive(next))
+            }
+        )
+    }
+
+    // --- Rumble --------------------------------------------------------------
+
+    /**
+     * Effects a phone gets as haptics, driven off engine events rather than a
+     * message because the pad is local and the event is right there. Android has
+     * one amplitude per effect rather than two motors, so the dual-rumble weak and
+     * strong magnitudes collapse to the stronger of the pair.
+     */
+    fun handle(event: GameEvent) {
+        if (seated.isEmpty()) return
+        when (event.type) {
+            // The telegraph: garbage is queued and the meter is filling.
+            "garbage_sent" -> event.toId?.let {
+                rumble(it, 120L + 40L * (event.lines ?: 0), 0.35)
+            }
+            "garbage_cancelled" -> event.playerId?.let { rumble(it, 60L, 0.5) }
+            "player_ko" -> event.playerId?.let { rumble(it, 400L, 1.0) }
+            else -> Unit
+        }
+    }
+
+    private fun rumble(seat: Int, durationMs: Long, amplitude: Double) {
+        val slot = seated.entries.firstOrNull { it.value == seat }?.key ?: return
+        source.rumble(slot, durationMs, amplitude)
+    }
+
+    private fun msg(type: String): JsonObject =
+        buildJsonObject { put("type", JsonPrimitive(type)) }
+}

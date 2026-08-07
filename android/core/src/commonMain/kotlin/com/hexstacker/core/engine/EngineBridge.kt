@@ -326,6 +326,27 @@ class EngineBridge private constructor(
     }
 
     /**
+     * Map EVERY attached pad in ONE call. [padsJson] is
+     * `[{seat, buttons: [bool], axes: [number]}]` and the result is one entry per
+     * seat; see the shim's PAD-API block for why the batch matters here in
+     * particular (the per-call parse floor costs more than the mapping does).
+     *
+     * The mapper state lives in JS and is keyed by seat, so a pad left out of the
+     * batch is forgotten and starts from a clean baseline if it returns.
+     */
+    suspend fun padPollJson(padsJson: String, nowMs: Double, playing: Boolean): String = lock.withLock {
+        evalTyped<String>(
+            "padPollJSON",
+            asciiJson("Bridge.padPollJSON(${jsString(padsJson)}, $nowMs, $playing)")
+        )
+    }
+
+    /** The pad's product string as a room-legal name, by the shared rules. */
+    suspend fun padName(rawId: String): String = lock.withLock {
+        evalTyped<String>("padName", asciiJson("Bridge.padName(${jsString(rawId)})"))
+    }
+
+    /**
      * Close the QuickJS runtime. `suspend` + [lock] so it can never overlap an
      * in-flight frame()/input call; hopping to [dispatcher] additionally keeps the
      * native teardown off the caller's (Main) thread.
