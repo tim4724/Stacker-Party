@@ -195,36 +195,39 @@ test.describe('CouchPad shell contract', () => {
       document.documentElement.style.setProperty('--cp-safe-right', '60px'));
     await expect.poll(barPadRight).toBeGreaterThanOrEqual(60);
 
-    // The bottom edge is the exception: arming system back grows
-    // --cp-safe-bottom by the navigation bar and disarming shrinks it again,
-    // so the shell reserves that height rather than reflowing every time a
-    // dialog opens. Two tiers, because the reserve is free on a centred
-    // layout and costs touch pad on an anchored one: screens and dialogs
-    // reserve the three-button bar, the game screen only the gesture pill.
+    // The bottom edge is the exception: arming system back brings Android's
+    // navigation bar back and disarming takes it away again, so the shell
+    // reserves the bar's height rather than reflowing under it. The general
+    // floor is the gesture pill. Elements are un-hidden before measuring
+    // because a display:none subtree reports max() unresolved.
     const padBottom = (sel) => controller.evaluate((s) =>
       parseFloat(getComputedStyle(document.querySelector(s)).paddingBottom), sel);
     const setInset = (v) => controller.evaluate((b) =>
       document.documentElement.style.setProperty('--cp-safe-bottom', b), v);
+    await controller.evaluate(() => ['game-screen', 'pause-overlay']
+      .forEach((id) => document.getElementById(id).classList.remove('hidden')));
 
+    await setInset('0px');
     const shellAtRest = await padBottom('#lobby-screen');
+    const gameAtRest = await padBottom('#game-screen');
+    await setInset('24px');
+    expect(await padBottom('#lobby-screen'), 'shell moved under the pill').toBe(shellAtRest);
+    expect(await padBottom('#game-screen'), 'game moved under the pill').toBe(gameAtRest);
+    // Past the pill they expand: the shell is armed for its whole life, so its
+    // inset never changes while it is on screen and needs no deeper reserve.
+    await setInset('48px');
+    expect(await padBottom('#lobby-screen')).toBeGreaterThan(shellAtRest);
+    expect(await padBottom('#game-screen')).toBeGreaterThan(gameAtRest);
+
+    // The pause overlay is one of the two surfaces on screen at the moment the
+    // arm state flips, so it reserves the taller three-button bar and holds
+    // still across the whole range a flip can cover.
+    await setInset('0px');
+    const pauseAtRest = await padBottom('#pause-overlay');
     for (const inset of ['24px', '48px']) {
       await setInset(inset);
-      expect(await padBottom('#lobby-screen'), `shell moved at ${inset}`).toBe(shellAtRest);
+      expect(await padBottom('#pause-overlay'), `pause moved at ${inset}`).toBe(pauseAtRest);
     }
-    // Past the reserve it expands again.
-    await setInset('72px');
-    await expect.poll(() => padBottom('#lobby-screen')).toBeGreaterThan(shellAtRest);
-
-    // The game screen deliberately stops at the gesture pill: it only ever
-    // sees a taller bar while a dialog covers the pad, and reserving for that
-    // would cost the height on every frame of play. Rendered here because a
-    // display:none subtree reports max() unresolved.
-    await setInset('0px');
-    await controller.evaluate(() =>
-      document.getElementById('game-screen').classList.remove('hidden'));
-    const gameAtRest = await padBottom('#game-screen');
-    await setInset('48px');
-    expect(await padBottom('#game-screen')).toBeGreaterThan(gameAtRest);
   });
 
   test('in-game player name is hidden (the launcher renders it)', async ({ page, context }) => {

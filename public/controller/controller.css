@@ -1413,12 +1413,14 @@ body.couchpad {
   --safe-bottom: max(var(--cp-safe-bottom, 0px), env(safe-area-inset-bottom, 0px), 24px);
 }
 
-/* Screens and dialogs reserve the taller three-button bar instead, so nothing
-   moves in either Android navigation mode. They cost nothing for it: every one
-   of them centres its content, so the extra reserve lifts that content by half
-   the difference rather than eating a strip of layout. */
-body.couchpad .controller-shell,
-body.couchpad .game-overlay {
+/* Only these two are on screen at the moment the arm state flips, so only
+   these two ever watch the bar arrive under them: everything else is either
+   armed for its whole life (the lobby, the results, the colour picker over an
+   already-armed lobby) or never armed at all (the in-game reconnect overlay),
+   and holds whatever inset it opened with. They reserve the taller
+   three-button bar and cost nothing for it, both being centred. */
+body.couchpad #pause-overlay,
+body.couchpad #settings-overlay {
   --safe-bottom: max(var(--cp-safe-bottom, 0px), env(safe-area-inset-bottom, 0px), 48px);
 }
 
