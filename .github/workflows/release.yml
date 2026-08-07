@@ -2,7 +2,7 @@ name: Release
 
 # Signed store builds:
 #   - Android: .aab signed with the Play upload keystore, kept as a workflow
-#     artifact, and on a tag published to Play's internal track as a draft.
+#     artifact, and on a tag released to Play's Android TV closed testing track.
 #     Versioned like tvOS below (tag -> versionName, run number -> versionCode),
 #     via -P overrides.
 #   - tvOS: signed with the Apple Distribution cert + App Store profile and
@@ -137,10 +137,17 @@ jobs:
       # produce that bundle without the job failing on a publish it cannot do.
       # Dispatch therefore means "build and hand me the artifact".
       #
-      # Internal track as draft: a tag stages a release for review in the
-      # console rather than handing it to testers. mapping.txt goes with it or
-      # every crash report from an R8 build is unreadable.
-      - name: Publish to Play (internal track)
+      # "tv:" is the Android TV form factor prefix (tracks are named
+      # "<prefix>:<track>", and the suffix is the track's console name verbatim,
+      # capital A included). The app is leanback-only, so it belongs on the TV
+      # track, not the mobile one it shares a console with. Read the live list
+      # with androidpublisher edits.tracks.list before changing this.
+      #
+      # Closed testing goes out completed, not draft: testers opted in, and Play
+      # still reviews the release. Point this at tv:production and the draft
+      # gate has to come back. mapping.txt goes with it or every crash report
+      # from an R8 build is unreadable.
+      - name: Publish to Play (Android TV closed testing)
         if: github.ref_type == 'tag'
         uses: r0adkll/upload-google-play@v1.1.5
         with:
@@ -148,8 +155,8 @@ jobs:
           packageName: com.couchgames.stacker
           releaseFiles: android/tv/build/outputs/bundle/release/tv-release.aab
           mappingFile: android/tv/build/outputs/mapping/release/mapping.txt
-          track: internal
-          status: draft
+          track: tv:Alpha
+          status: completed
 
   tvos:
     runs-on: macos-15
