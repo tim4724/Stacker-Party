@@ -574,21 +574,25 @@ extension DisplayModel: DisplayOutput {
     /// Who owns a gamepad's presses on this screen: the UI, or the game.
     ///
     /// tvOS routes controller input into the focus engine by default, which is
-    /// what we want on the overlays — the pad moves the ring over Play Again and
-    /// Continue exactly like the remote, so those need no binding of their own.
-    /// It is precisely wrong in the other two states. In the lobby the D-pad is
-    /// this seat's level stepper, and during a match it is the piece; both would
-    /// otherwise also be dragging a focus ring around behind the game.
+    /// what we want everywhere the display shows a menu — the pad moves the ring
+    /// over START, ⓘ, Play Again and Continue exactly like the remote, so none of
+    /// them need a binding of their own. It is wrong in exactly one state: while a
+    /// piece is being steered, where the D-pad would otherwise also drag a focus
+    /// ring around behind the game.
     ///
     /// Turning it off is not the same as making the UI unfocusable, which is why
     /// it is done here rather than with `.focusable(false)` on the views: this
-    /// stops only the PAD. The Siri remote keeps driving focus, so START and ⓘ in
-    /// the lobby stay reachable for whoever set the TV up, which is the person
-    /// holding it.
+    /// stops only the PAD. But it is also NOT surgical, and that is the reason it
+    /// is kept this narrow — the Siri Remote is exposed as a game controller too,
+    /// so the switch always takes its input as well. Widening this to a screen
+    /// with buttons on it strands whoever is holding the remote.
     ///
     /// While the pad owns input its Menu button no longer arrives as a `.menu`
-    /// press, so `PadSeats` binds index 9 itself in exactly these two states and
-    /// leaves it to the system in the others.
+    /// press, so `PadSeats` binds index 9 itself in that state and leaves it to
+    /// the system elsewhere. The SIRI REMOTE's Menu is suppressed by the same
+    /// switch — it is a game controller too — and is bound back from
+    /// GameController in `PressHostController.bindRemoteMenu`, without which a
+    /// running match could not be left at all.
     ///
     /// Gated on a pad actually HOLDING A SEAT, which is not a refinement but the
     /// correctness condition. With no pad seated there is nothing to take input
@@ -603,9 +607,13 @@ extension DisplayModel: DisplayOutput {
         // a menu with buttons on it, so input has to go back to the UI or the pad
         // cannot reach Continue. Screen alone is the wrong question; what matters
         // is whether the pad is steering a piece right now.
+        // ONLY while a piece is being steered. Every other screen the display shows
+        // is a menu, and menus are the focus engine's job on this platform — which
+        // is also the only way the Siri Remote keeps working, since this switch
+        // cannot single out the pad: the remote is a game controller too, so taking
+        // input from one takes it from both, Back button included.
         let steering = state.screen == .game && !state.paused
-        let ownsInput = state.screen == .lobby || steering
-        setPadOwnsInput?(ownsInput && coordinator?.hasPadSeats == true)
+        setPadOwnsInput?(steering && coordinator?.hasPadSeats == true)
     }
 
     func roomReady(room: String, joinURL: String, qrText: String) {

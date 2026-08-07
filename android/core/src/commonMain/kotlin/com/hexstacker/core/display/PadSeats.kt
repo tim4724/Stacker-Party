@@ -106,6 +106,16 @@ internal class PadSeats(
     val hasSeats: Boolean get() = seated.isNotEmpty()
 
     /**
+     * Whether the pad in [slot] has actually joined. A press from one that has not
+     * is a JOIN and must not also act, which [poll] already enforces internally by
+     * handing that press to the mapper as a baseline. :tv asks the same question
+     * at the other door, for the press Compose would otherwise turn into a click
+     * on whatever is focused — Play Again on the results screen being the one that
+     * bites.
+     */
+    fun holdsSeat(slot: Int?): Boolean = slot != null && seated.containsKey(slot)
+
+    /**
      * One poll, driven from the coordinator's own tick so there is a single loop.
      * [nowMs] is the monotonic clock the mapper measures DAS and the soft-drop
      * keepalive against, NOT wall time.
@@ -166,6 +176,16 @@ internal class PadSeats(
                 if (pressed.contains(PadButton.START)) {
                     coordinator.deliverLocal(seat, msg(Msg.PAUSE_GAME))
                 }
+                continue
+            }
+            // The COUNTDOWN, and only it. :tv consumes pad input during the 3-2-1
+            // (it is the GAME screen, unpaused), so nothing else hears index 9 there
+            // and the remote could pause the countdown while a pad could not. Once
+            // PAUSED the pad is NOT consumed, so the press reaches MainActivity's
+            // KEYCODE_BUTTON_START instead — binding it here as well would toggle
+            // twice on one press and put the overlay straight back up.
+            if (coordinator.state == RoomState.COUNTDOWN) {
+                if (pressed.contains(PadButton.START)) coordinator.remoteTogglePause()
                 continue
             }
             for (step in result.jsonObject["nav"]?.jsonArray.orEmpty()) {
@@ -249,6 +269,11 @@ internal class PadSeats(
         )
     }
 
+    /**
+     * The lobby's actions, bound here because the pad owns that screen's input and
+     * Compose focus never sees these presses. On the overlays the opposite holds,
+     * so Play Again and Continue are deliberately absent.
+     */
     private suspend fun onMenuPress(seat: Int, index: Int) {
         if (coordinator.state != RoomState.LOBBY) return
 

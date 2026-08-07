@@ -576,15 +576,25 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * A press from a pad that holds no seat is that pad JOINING, so it must not
+     * also reach Compose and click whatever is focused — Play Again on the results
+     * screen, or START in a lobby that already has players. PadSeats applies the
+     * same rule internally by handing the joining press to the mapper as a
+     * baseline; this is its other half.
+     */
+    private fun isPadJoinPress(deviceId: Int): Boolean =
+        !coordinator.padHoldsSeat(padSource.slotFor(deviceId))
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val fromPad = padSource.onKeyEvent(event)
-        if (fromPad && padOwnsInput()) return true
+        if (fromPad && (padOwnsInput() || isPadJoinPress(event.deviceId))) return true
         return super.dispatchKeyEvent(event)
     }
 
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
         val fromPad = padSource.onMotionEvent(event)
-        if (fromPad && padOwnsInput()) return true
+        if (fromPad && (padOwnsInput() || isPadJoinPress(event.deviceId))) return true
         return super.dispatchGenericMotionEvent(event)
     }
 

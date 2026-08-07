@@ -88,6 +88,20 @@ public final class PadSeats {
     /// whether to suppress focus (see `poll`).
     public var hasSeats: Bool { !seated.isEmpty }
 
+    /// A pad with no seat is holding a button down, so this press is a JOIN and
+    /// must not also act. `poll` already enforces that internally by handing the
+    /// press to the mapper as a baseline — this is the same rule at the other
+    /// door, for the press the focus engine would otherwise turn into a click on
+    /// whatever happens to be focused. Without it, picking up a pad in a lobby
+    /// that already has players starts the round instead of joining, and the same
+    /// press on the results screen hits Play Again.
+    ///
+    /// Read live rather than remembered from the last poll: the UI asks the
+    /// instant the press arrives, which is before the next tick sees it.
+    public var isJoinPressDown: Bool {
+        source.pads().contains { seated[$0.slot] == nil && $0.buttons.contains(true) }
+    }
+
     /// One poll, driven from the coordinator's own tick so there is a single loop.
     /// `nowMs` is the frame clock the mapper measures DAS and the soft-drop
     /// keepalive against, NOT wall time.
@@ -144,6 +158,22 @@ public final class PadSeats {
                 }
                 continue
             }
+            // Index 9 is bound here on EVERY screen, not only while the pad owns
+            // input, because tvOS never puts a gamepad's Menu button on the
+            // responder chain — it stays in GameController. That is why the remote
+            // exits the lobby and a pad does not: the code path is identical, so
+            // the press simply is not arriving. Leaving it to `handleMenu` (as the
+            // face buttons are left to the focus engine) means nothing hears it,
+            // which is what stranded the pause overlay: Menu raised it and Menu
+            // could not put it back.
+            // Countdown counts as well as playing, the same pair `remoteTogglePause`
+            // accepts and the same pair the web allows — otherwise the remote can
+            // pause the 3-2-1 and a pad cannot, for no reason a player could guess.
+            if result.pressed.contains(PadButton.start),
+               coordinator.state == .playing || coordinator.state == .countdown {
+                coordinator.remoteTogglePause()
+                continue
+            }
             for direction in result.nav { onMenuNav(seat: result.seat, direction: direction) }
             for index in result.pressed { onMenuPress(seat: result.seat, index: index) }
         }
@@ -162,11 +192,18 @@ public final class PadSeats {
             }
             return seat
         }
-        // Any press joins. Naming one button would leave a player who pressed a
-        // different one with no feedback, and no letter is right on every brand.
-        // Unlike the web there is no welcome screen to exclude: a TV display goes
-        // straight to the lobby, so there is always a room to join.
-        guard reading.buttons.contains(true) else { return nil }
+        // CONNECTING joins, with no press required — the one place tvOS differs
+        // from the web and Android, and it follows from the platform rather than
+        // from taste. Menus here belong to the focus engine, which means a pad's
+        // first press also clicks whatever is highlighted; making that press the
+        // join is what had a controller take a seat and start the round together.
+        // There is no press to disarm, because there is no joining press.
+        //
+        // What makes it safe is that tvOS drops an idle pad from
+        // `GCController.controllers()` when it sleeps, so "connected" already
+        // means "awake and in someone's hands" — the reason the web has to wait
+        // for a button (`navigator.getGamepads()` reports nothing until then) does
+        // not apply. A pad left in a drawer is not connected, so it cannot join.
         return join(reading)
     }
 
@@ -198,39 +235,40 @@ public final class PadSeats {
 
     // MARK: - Menus
 
-    /// The lobby steps this seat's start level, which is why the shell suppresses
-    /// system focus there while a pad is seated: the D-pad cannot both move a
-    /// focus ring and set a level. Everywhere else outside play the pad is left
-    /// alone to drive focus like a remote, so Play Again, Continue and the rest
-    /// need no binding here and a new button is reachable the day it lands.
+    /// The lobby steps this seat's start level on LEFT/RIGHT only. Up/down belong
+    /// to the focus engine: the lobby's two controls are stacked vertically (START
+    /// bottom-center, ⓘ top-right — see LobbyView), and nothing sits beside either,
+    /// so the two axes divide cleanly with no input taken away from the UI.
+    ///
+    /// That split is what lets several pads coexist here. Level and colour are
+    /// PER-PLAYER and never touch focus, so each pad sets its own; START and ⓘ are
+    /// decisions about the display, where one shared ring is the same model the
+    /// pause and results overlays already use.
+    ///
+    /// Rests on the lobby having nothing focusable side-by-side. Put two controls
+    /// in a row there and left/right starts moving the ring as well as the level.
     private func onMenuNav(seat: Int, direction: String) {
         guard coordinator.state == .lobby else { return }
-        let step = (direction == "right" || direction == "up") ? 1 : -1
+        let step: Int
+        if direction == "right" { step = 1 }
+        else if direction == "left" { step = -1 }
+        else { return }   // up/down belong to the focus engine
         guard let level = coordinator.roomLevelAfterStep(seat: seat, delta: step) else { return }
         coordinator.deliverLocal(from: seat, data: ["type": MSG.setLevel, "level": level])
     }
 
-    /// Index 9 (Start / Options / +) is bound here only in the two states where
-    /// the app has taken controller input away from the UI (see
-    /// DisplayModel.syncPadInputOwnership): the lobby and a running match. On the
-    /// overlays tvOS is still delivering it as a `.menu` UIPress, where
-    /// PressHostController already handles it, and binding it here as well would
-    /// toggle the pause twice per press. So the guard below is not just about
-    /// which actions exist on which screen; it is about who owns the button.
+    /// Only what the focus engine cannot reach on its own. Outside a running match
+    /// the pad drives focus exactly like a remote, so START needs no binding here:
+    /// the bottom face button is tvOS's Select and already clicks it. Binding it
+    /// again would also start the round on a press aimed at ⓘ. Same reason Play
+    /// Again and Continue are absent, and why a button added to any of these
+    /// screens is pad-reachable the day it lands.
+    ///
+    /// Index 9 is likewise unbound outside play: tvOS delivers it as `.menu`, the
+    /// same press the remote's Back sends, and `DisplayModel.handleMenu` gives it
+    /// the one meaning the platform expects.
     private func onMenuPress(seat: Int, index: Int) {
         guard coordinator.state == .lobby else { return }
-
-        // Starting the round is the host's call, the same rule the phones' lobby
-        // renders. The bottom face button because it is the one a player reaches
-        // for when they want something to happen, and Start because its meaning
-        // holds on every brand. See server/PadMapper.js for why no face button is
-        // brand-safe and why that does not matter in a lobby.
-        if index == PadButton.faceDown || index == PadButton.start {
-            if seat == coordinator.hostPeerIndex {
-                coordinator.deliverLocal(from: seat, data: ["type": MSG.startGame])
-            }
-            return
-        }
 
         // Colour has no on-screen control to focus (the picker lives on the
         // phone), so it keeps a shoulder side of its own in each direction. The
