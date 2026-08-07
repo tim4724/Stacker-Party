@@ -424,6 +424,53 @@ public final class DisplayCoordinator {
 
     public var playerCount: Int { roomScalar("size").flatMap { Int($0) } ?? 0 }
 
+    // MARK: - Local (gamepad) seats
+
+    /// Whether a host-pressed pause is standing. `PadSeats` needs it to decide
+    /// whether Start means pause or resume; everything else reads the snapshot.
+    public var isPaused: Bool { paused }
+
+    /// Deliver a message from a seat this display owns rather than the relay.
+    /// Deliberately the SAME entry point the relay's messages take: a pad that
+    /// took a different route would be a second implementation of joining,
+    /// naming, colour, host election and liveness.
+    public func deliverLocal(from seat: Int, data: [String: Any]) {
+        onMessage(from: seat, data: data)
+    }
+
+    /// A local seat sends nothing over the wire, so its presence in a poll is the
+    /// only proof it is still there. Without this the liveness sweep expires an
+    /// idle pad player mid-game.
+    public func markLocalSeatSeen(_ seat: Int) {
+        seenSinceTick.insert(seat)
+    }
+
+    /// The next start level for a relative step, or nil if the seat is unknown.
+    /// The arithmetic is the room core's so web, tvOS and Android agree.
+    public func roomLevelAfterStep(seat: Int, delta: Int) -> Int? {
+        roomInt("levelAfterStep", [seat, delta])
+    }
+
+    /// The next FREE palette slot in either direction, or nil when there is
+    /// nowhere to go. Also the room core's, for the same reason.
+    public func roomColorAfterStep(seat: Int, step: Int) -> Int? {
+        roomInt("colorAfterStep", [seat, step])
+    }
+
+    /// The pad's product string as a room-legal name, by the shared rules.
+    public func padName(_ rawId: String) -> String {
+        guard let bridge = roomCore() else { return "Gamepad" }
+        return bridge.padName(rawId)
+    }
+
+    /// Map every seated pad in one crossing. Throws so the caller can log once
+    /// rather than silently feeding nothing.
+    func padPoll(_ pads: [EngineBridge.PadState], nowMs: Double, playing: Bool)
+        throws -> [EngineBridge.PadResult] {
+        guard let bridge = roomCore() else { return [] }
+        return try bridge.padPoll(pads, nowMs: nowMs, playing: playing)
+    }
+
     /// Active participants in board-layout order. Not the same as the roster: in
     /// the lobby everyone is a participant, mid-game a late joiner is not.
     var participants: [Int] { roomProperty([Int].self, "participants") ?? [] }

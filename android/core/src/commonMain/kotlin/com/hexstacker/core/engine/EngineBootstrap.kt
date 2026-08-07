@@ -146,9 +146,11 @@ internal object EngineBootstrap {
           return JSON.stringify(out);
         },
         // The pad's product string, cleaned up to fit the room core's name cap.
-        // Shared so one controller is named the same on every platform.
-        padName: function (rawId, maxLen) {
-          return HexCore.PadMapper.gamepadDisplayName(rawId, maxLen);
+        // Shared so one controller is named the same on every platform, and the
+        // cap is read from RoomCore here rather than passed in, so no shell has
+        // to carry a copy of a number that already has one definition.
+        padName: function (rawId) {
+          return HexCore.PadMapper.gamepadDisplayName(rawId, HexCore.RoomCore.NAME_MAX_LEN);
         }
         // PAD-API-END
       };
