@@ -989,14 +989,15 @@ private fun HexStackerApp(
     }
     // During a game (COUNTDOWN + PLAYING) Back toggles pause instead of exiting.
     // Going through the dispatcher (not onKeyDown) is what keeps a single Back
-    // from BOTH pausing and finishing the Activity. On RESULTS, Back is "back
-    // one level" — the lobby, the same reading tvOS gives its Menu there — and
-    // never the launcher: a session is in progress, and one press must not take
-    // the display out from under every phone in the room. Only the LOBBY falls
-    // through to the default finish() (Android TV: Back must eventually reach
-    // the home screen, and the lobby is the one place with nothing to lose).
+    // from BOTH pausing and finishing the Activity. On RESULTS, Back is consumed
+    // WITHOUT an action: returning to the lobby is the New Game button's job
+    // alone (a deliberate click, not a reflex press), and falling through would
+    // finish() the Activity mid-session. Only the LOBBY falls through to the
+    // default finish() (Android TV: Back must eventually reach the home screen,
+    // and the lobby is the one place with nothing to lose). tvOS Menu follows
+    // the same two rules.
     BackHandler(enabled = model.screen == DisplayScreen.GAME) { onContinue() }
-    BackHandler(enabled = model.screen == DisplayScreen.RESULTS) { onNewGame() }
+    BackHandler(enabled = model.screen == DisplayScreen.RESULTS) { /* consumed */ }
 
     DisplayChrome(
         model = model,

@@ -36,6 +36,7 @@
     this.state = STATES.LOBBY;
     this.players = new Map();        // peerIndex -> player record
     this.hostPeerIndex = null;       // sticky host slot (raw; see `host` getter for effective)
+    this._exHost = null;             // departed sticky host awaiting a same-index return
     this._joinSeq = 0;               // monotonic joinedAt source (wall-clock ms collide within a tick)
     this._disconnected = new Set();  // peerIndices currently in the disconnect window
     this._order = [];                // active participants (snapshotted on COUNTDOWN, or via setActiveOrder)
@@ -123,9 +124,12 @@
     });
     this.players.set(peerIndex, player);
     // First joiner owns the sticky host slot. Also covers the "room emptied
-    // then someone joined" case (hostPeerIndex was reset to null).
-    if (this.hostPeerIndex == null) {
+    // then someone joined" case (hostPeerIndex was reset to null). An ex-host
+    // returning under the SAME index (see removePlayer: the slept gamepad)
+    // takes the slot back — host duty survives a brief disconnect.
+    if (this.hostPeerIndex == null || peerIndex === this._exHost) {
       this.hostPeerIndex = peerIndex;
+      this._exHost = null;
       this._emit('hostchange', { hostPeerIndex: this.host });
     }
     this._emit('playerjoin', { player: player });
@@ -150,7 +154,15 @@
     if (oi >= 0) this._order.splice(oi, 1);
     if (wasHost && (this.state === STATES.LOBBY || this.state === STATES.RESULTS)) {
       this.hostPeerIndex = this._electNextHost(peerIndex);
+      // Remember them: if the SAME peer index rejoins before a round starts
+      // without them, the slot is restored (see addPlayer). Only a seat whose
+      // index is stable across a departure can ever hit that — a relay peer
+      // always returns under a fresh index — so in practice this is the local
+      // gamepad that SLEPT through a lobby or results dwell: its OS-level
+      // disconnect is not a decision to leave, and host duty should survive it.
+      this._exHost = peerIndex;
     }
+    if (this.players.size === 0) this._exHost = null; // a fresh party owes them nothing
     if (this.host !== prevHost) this._emit('hostchange', { hostPeerIndex: this.host });
     this._emit('playerleave', { peerIndex: peerIndex });
     this._emit('rosterchange', { players: this.list() });
@@ -373,6 +385,9 @@
     }
     this.state = to;
     if (to !== STATES.PLAYING) this._graceDeadline = null;
+    // A round starting without the departed ex-host is the party moving on:
+    // their claim to the sticky slot lapses (see removePlayer).
+    if (to === STATES.COUNTDOWN) this._exHost = null;
     if (to === STATES.COUNTDOWN) this._snapshotOrder();
     if (to === STATES.LOBBY) this._order = [];
     if (to === STATES.LOBBY || to === STATES.RESULTS) this._reconcileStickyHost();
@@ -513,6 +528,7 @@
     this.players.clear();
     this._disconnected.clear();
     this._lastSeen.clear();
+    this._exHost = null;
     this._graceDeadline = null;
     this._order = [];
     this.hostPeerIndex = null;

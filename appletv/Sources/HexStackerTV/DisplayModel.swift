@@ -318,9 +318,11 @@ final class DisplayModel: ObservableObject {
         guard !state.connectionOverlayUp else { return true }
         if !state.aboutPath.isEmpty { return true }
         if state.screen == .game { coordinator?.remoteTogglePause(); return true }
-        // Menu is "back one level": from the results that is the lobby, the
-        // same reading Android gives its Back there.
-        if state.screen == .results { coordinator?.remoteReturnToLobby(); return true }
+        // Consumed WITHOUT an action on the results: returning to the lobby is
+        // the New Game button's job alone (a deliberate click, not a reflex
+        // press), and falling through would exit the app. Android's Back is
+        // inert there for the same reason.
+        if state.screen == .results { return true }
         return false
     }
 

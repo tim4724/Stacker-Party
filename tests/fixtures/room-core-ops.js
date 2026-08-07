@@ -266,6 +266,30 @@ const OPS = [
   { m: 'transitionTo', a: ['results'] },
   { m: 'transitionTo', a: ['lobby'] },
   { g: 'host' },                                // next round: still the pad's
+
+  // --- Host duty survives a pad sleeping through the lobby -------------------
+  // A pad's OS-level disconnect in LOBBY/RESULTS is usually SLEEP, not a
+  // decision to leave: the row drops (roster hygiene, as a closed phone tab
+  // does), but the same seat id waking up and rejoining takes the sticky slot
+  // back. A relay peer can never return under its old index, so this is
+  // inherently the local seat's path.
+  { m: 'peerLeft', a: [901] },                  // the host pad sleeps
+  { g: 'host' },                                // duty passes to the phone...
+  { m: 'peerJoined', a: [901, 70000] },
+  { m: 'hello', a: [901, { name: 'PlayStation', autoName: false }, 70000] },
+  { g: 'host' },                                // ...and returns when it wakes
+
+  // ...but lapses once a round starts without them: the party moved on.
+  { m: 'peerLeft', a: [901] },
+  { g: 'host' },
+  { m: 'freezeParticipantOrder', a: [] },
+  { m: 'transitionTo', a: ['countdown'] },
+  { m: 'transitionTo', a: ['playing'] },
+  { m: 'transitionTo', a: ['results'] },
+  { m: 'transitionTo', a: ['lobby'] },
+  { m: 'peerJoined', a: [901, 80000] },
+  { m: 'hello', a: [901, { name: 'PlayStation', autoName: false }, 80000] },
+  { g: 'host' },                                // stays the phone's
 ];
 
 module.exports = { INIT, OPS };

@@ -1041,6 +1041,94 @@
     },
     {
       "g": "host"
+    },
+    {
+      "m": "peerLeft",
+      "a": [
+        901
+      ]
+    },
+    {
+      "g": "host"
+    },
+    {
+      "m": "peerJoined",
+      "a": [
+        901,
+        70000
+      ]
+    },
+    {
+      "m": "hello",
+      "a": [
+        901,
+        {
+          "name": "PlayStation",
+          "autoName": false
+        },
+        70000
+      ]
+    },
+    {
+      "g": "host"
+    },
+    {
+      "m": "peerLeft",
+      "a": [
+        901
+      ]
+    },
+    {
+      "g": "host"
+    },
+    {
+      "m": "freezeParticipantOrder",
+      "a": []
+    },
+    {
+      "m": "transitionTo",
+      "a": [
+        "countdown"
+      ]
+    },
+    {
+      "m": "transitionTo",
+      "a": [
+        "playing"
+      ]
+    },
+    {
+      "m": "transitionTo",
+      "a": [
+        "results"
+      ]
+    },
+    {
+      "m": "transitionTo",
+      "a": [
+        "lobby"
+      ]
+    },
+    {
+      "m": "peerJoined",
+      "a": [
+        901,
+        80000
+      ]
+    },
+    {
+      "m": "hello",
+      "a": [
+        901,
+        {
+          "name": "PlayStation",
+          "autoName": false
+        },
+        80000
+      ]
+    },
+    {
+      "g": "host"
     }
   ],
   "steps": [
@@ -6732,6 +6820,354 @@
       "snapshot": {
         "roomState": "lobby",
         "hostPeerIndex": 901,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          7,
+          901
+        ],
+        "players": {
+          "7": {
+            "name": "Phone",
+            "color": 0
+          },
+          "901": {
+            "name": "PlayStation",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "known": true,
+        "action": "removed",
+        "returnedToLobby": false,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 7,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          7
+        ],
+        "players": {
+          "7": {
+            "name": "Phone",
+            "color": 0
+          }
+        }
+      }
+    },
+    {
+      "result": 7,
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 7,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          7
+        ],
+        "players": {
+          "7": {
+            "name": "Phone",
+            "color": 0
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "added": true,
+        "colorIndex": 1,
+        "joinedLobby": true,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 901,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          7,
+          901
+        ],
+        "players": {
+          "7": {
+            "name": "Phone",
+            "color": 0
+          },
+          "901": {
+            "name": "HX-57",
+            "color": 1,
+            "helloSeen": false
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "accepted": true,
+        "isNew": false,
+        "claimed": false,
+        "oldPeerIndex": null,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 901,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          7,
+          901
+        ],
+        "players": {
+          "7": {
+            "name": "Phone",
+            "color": 0
+          },
+          "901": {
+            "name": "PlayStation",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": 901,
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 901,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          7,
+          901
+        ],
+        "players": {
+          "7": {
+            "name": "Phone",
+            "color": 0
+          },
+          "901": {
+            "name": "PlayStation",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "known": true,
+        "action": "removed",
+        "returnedToLobby": false,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 7,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          7
+        ],
+        "players": {
+          "7": {
+            "name": "Phone",
+            "color": 0
+          }
+        }
+      }
+    },
+    {
+      "result": 7,
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 7,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          7
+        ],
+        "players": {
+          "7": {
+            "name": "Phone",
+            "color": 0
+          }
+        }
+      }
+    },
+    {
+      "result": [
+        7
+      ],
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 7,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          7
+        ],
+        "players": {
+          "7": {
+            "name": "Phone",
+            "color": 0
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "changed": true,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "countdown",
+        "hostPeerIndex": 7,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          7
+        ],
+        "players": {
+          "7": {
+            "name": "Phone",
+            "color": 0
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "changed": true,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "playing",
+        "hostPeerIndex": 7,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          7
+        ],
+        "players": {
+          "7": {
+            "name": "Phone",
+            "color": 0
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "changed": true,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "results",
+        "hostPeerIndex": 7,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          7
+        ],
+        "players": {
+          "7": {
+            "name": "Phone",
+            "color": 0
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "changed": true,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 7,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          7
+        ],
+        "players": {
+          "7": {
+            "name": "Phone",
+            "color": 0
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "added": true,
+        "colorIndex": 1,
+        "joinedLobby": true,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 7,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          7,
+          901
+        ],
+        "players": {
+          "7": {
+            "name": "Phone",
+            "color": 0
+          },
+          "901": {
+            "name": "HX-88",
+            "color": 1,
+            "helloSeen": false
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "accepted": true,
+        "isNew": false,
+        "claimed": false,
+        "oldPeerIndex": null,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 7,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          7,
+          901
+        ],
+        "players": {
+          "7": {
+            "name": "Phone",
+            "color": 0
+          },
+          "901": {
+            "name": "PlayStation",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": 7,
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 7,
         "paused": false,
         "displayMuted": true,
         "participants": [
