@@ -172,14 +172,18 @@ final class DisplayModel: ObservableObject {
         #else
         fastlane = nil
         #endif
-        // Not in gallery mode: those rosters are fixtures, and a pad plugged into
-        // the machine taking the capture must not join one. Same reason the web
-        // skips its poll under window.__TEST__.
+        // Only in a real room. Every harness mode (gallery, HEXLOBBY, HEXDEMO,
+        // HEXSHOT) renders a FIXTURE roster, and a pad must not join one — since a
+        // pad here seats itself on connection, it silently became an extra player
+        // and a fixture's "3 players" read as 4. The tvOS Simulator presents a
+        // virtual extended gamepad with nobody holding it, so this is not
+        // hypothetical: it is what the lobby-navigation UI test caught. Same
+        // reason the web skips its poll under window.__TEST__.
         let coordinator = DisplayCoordinator(transport: relay,
                                              engineDirectory: AssetLocator.engineDirectory,
                                              output: self,
                                              fastlane: fastlane,
-                                             padSource: galleryMode ? nil : GameControllerPadSource())
+                                             padSource: relayBacked ? GameControllerPadSource() : nil)
         self.coordinator = coordinator
         // Boards read the roster off the published lobby state, not the room: the
         // seats are already snapshot-derived (updateLobby), and a lookup on the
