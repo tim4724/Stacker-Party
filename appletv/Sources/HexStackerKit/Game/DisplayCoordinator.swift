@@ -242,10 +242,10 @@ public final class DisplayCoordinator {
     /// Monotonic ms for the pad mapper. See the note at its poll site.
     private var padClockMs: Double = 0
 
-    /// Whether any pad currently holds a seat. The lobby suppresses system focus
-    /// while one does, because there the D-pad is that seat's level stepper and it
-    /// cannot also move a focus ring.
+    /// Whether any pad currently holds a seat. A running match suppresses system
+    /// focus while one does, because there the D-pad is that seat's piece.
     public var hasPadSeats: Bool { padSeats?.hasSeats ?? false }
+
     var demoTick = 0
 
     // Render-on-input coalescing: true once handleInput has pulled a snapshot
@@ -581,7 +581,8 @@ public final class DisplayCoordinator {
         // Otherwise the fresh lobby shows the dead room's seats until liveness expires
         // them. The onRelayError path resets before asking for its room and clears
         // `self.room` doing so, so nothing runs twice there.
-        if self.room != nil { resetSession() }
+        let keepMatch = isLocalOnlyMatch
+        if self.room != nil && !keepMatch { resetSession() }
         self.room = room
         self.instance = instance
         // A fresh room has an empty roster, so there is nothing to re-stamp — but the
@@ -590,7 +591,28 @@ public final class DisplayCoordinator {
         roomLinkRestored()
         let url = joinURL(room: room, instance: instance)
         output?.roomReady(room: room, joinURL: url, qrText: url)   // production QR == join URL
-        output?.showScreen(.lobby)
+        if !keepMatch { output?.showScreen(.lobby) }
+    }
+
+    /// A match whose every player is a pad on this machine. Such a match has no
+    /// presence at the relay AT ALL — local seats never join a room — so the relay
+    /// retires the room the moment the display's own socket goes, which is exactly
+    /// what backgrounding does. The rejoin then answers "Room not found" and the
+    /// recovery path throws away a match the display is still holding, along with a
+    /// player who never left the sofa.
+    ///
+    /// The premise of that recovery — a roster cannot follow the room, because those
+    /// players were never in the new one — is true of relay members and false of
+    /// local seats, which were never in the OLD room either. So the room is replaced
+    /// underneath the match and only the QR changes: phones join through the new
+    /// door, the game carries on.
+    /// Requires a pad to still HOLD its seat, not merely to have held one: if the
+    /// controller is gone there is no one left to carry the match for, and the
+    /// ordinary reset is the right answer.
+    private var isLocalOnlyMatch: Bool {
+        guard state != .lobby, hasPadSeats else { return false }
+        let active = participants
+        return !active.isEmpty && active.allSatisfy(PadSeats.isLocalSeat)
     }
 
     private func onJoined(room: String, peers: [Int]) {
@@ -643,7 +665,9 @@ public final class DisplayCoordinator {
     private func onRelayError(_ message: String) {
         assertOwningThread()
         guard message == "Room not found" || message == "Room is full" else { return }
-        resetSession()
+        // See isLocalOnlyMatch: a pad-only match outlives its room, because it was
+        // never played through one.
+        if !isLocalOnlyMatch { resetSession() }
         transport.recreateRoom()   // fresh room; onCreated re-shows the lobby with the new code
     }
 

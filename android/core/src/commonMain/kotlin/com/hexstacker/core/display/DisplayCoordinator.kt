@@ -274,10 +274,14 @@ class DisplayCoordinator(
      */
     private var padClockMs = 0.0
 
-    /** Whether any pad currently holds a seat. :tv stops routing pad D-pad presses
-     *  into Compose focus in the LOBBY while one does, because there the D-pad is
-     *  that seat's level stepper and cannot also move a focus ring. */
+    /** Whether any pad currently holds a seat. :tv stops routing pad presses into
+     *  Compose focus during a running match while one does, because there the
+     *  D-pad is that seat's piece. */
     val hasPadSeats: Boolean get() = padSeats?.hasSeats ?: false
+
+    /** See [PadSeats.holdsSeat]: a press from a pad with no seat is a join, and
+     *  :tv swallows it so it cannot also click whatever Compose has focused. */
+    fun padHoldsSeat(slot: Int?): Boolean = padSeats?.holdsSeat(slot) ?: false
 
     // --- What PadSeats needs from the coordinator ---------------------------
 
@@ -540,7 +544,8 @@ class DisplayCoordinator(
         // Otherwise the fresh lobby shows the dead room's seats until liveness expires
         // them. The error-recovery path resets before asking for its room (and clears
         // [roomCode] doing so), so nothing runs twice there.
-        if (roomCode != null) resetSession()
+        val keepMatch = isLocalOnlyMatch()
+        if (roomCode != null && !keepMatch) resetSession()
         this.roomCode = code
         this.instance = instance
         // A fresh room means an empty roster, so there is nothing to re-stamp — but the
@@ -548,7 +553,7 @@ class DisplayCoordinator(
         // would leave liveness off for the rest of the session.
         relayConnected = true
         output.roomReady(code, joinUrl(code, instance))
-        output.showScreen(DisplayScreen.LOBBY)
+        if (!keepMatch) output.showScreen(DisplayScreen.LOBBY)
     }
 
     private suspend fun handleJoined(code: String, peers: List<Int>) {
@@ -1202,8 +1207,32 @@ class DisplayCoordinator(
      */
     private suspend fun onRelayError(message: String) {
         if (message != "Room not found" && message != "Room is full") return
-        resetSession()
+        // See [isLocalOnlyMatch]: a pad-only match outlives its room, because it was
+        // never played through one.
+        if (!isLocalOnlyMatch()) resetSession()
         transport.createFresh() // handleCreated re-arms the room code + QR when `created` lands
+    }
+
+    /**
+     * A match whose every player is a pad attached to this box. Such a match has no
+     * presence at the relay AT ALL — local seats never join a room — so the relay
+     * retires the room as soon as the display's own socket goes, which is exactly what
+     * backgrounding does. The rejoin then answers "Room not found" and the recovery
+     * path throws away a match the display is still holding, for a player who never
+     * left the sofa.
+     *
+     * The premise of that recovery — a roster cannot follow the room, because those
+     * players were never in the new one — holds for relay members and not for local
+     * seats, which were never in the OLD room either. So the room is replaced
+     * underneath the match and only the QR changes.
+     *
+     * Requires a pad to still HOLD its seat: with the controller gone there is nobody
+     * left to carry the match for, and the ordinary reset is right.
+     */
+    private fun isLocalOnlyMatch(): Boolean {
+        if (roomCore.state == RoomState.LOBBY || !hasPadSeats) return false
+        val active = room.participants
+        return active.isNotEmpty() && active.all { PadSeats.isLocalSeat(it) }
     }
 
     /**
