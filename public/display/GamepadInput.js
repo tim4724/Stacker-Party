@@ -21,17 +21,18 @@
 //
 // The pad does three different jobs and the room state picks between them:
 //   playing  the D-pad and stick are the piece, the face buttons rotate
-//   lobby    the D-pad and stick step this seat's start level, any idle face
-//            button starts the round (host only), a shoulder side cycles this
-//            seat's colour
+//   lobby    the D-pad and stick step this seat's start level, the bottom face
+//            button (or Start) begins the round (host only), a shoulder side
+//            cycles this seat's colour
 //   overlays the D-pad and stick move a focus ring over the display's real
-//            buttons and A clicks the focused one (results, pause, reconnect)
-// The lobby is the exception because it has no choice to make on screen: Start
-// is its one action, so a ring there would have a single stop and the D-pad is
-// better spent on the level. Everywhere else the ring is what makes Play
-// Again, New Game, Continue and Reconnect reachable without a binding each —
-// add a button to one of those screens and the pad reaches it with no change
-// here. Select and the stick clicks stay unbound on purpose.
+//            buttons and the bottom face button clicks the focused one
+//            (results, pause, reconnect)
+// The lobby is the exception because it has no choice to make on screen: the
+// round is its one action, so a ring there would have a single stop and the
+// D-pad is better spent on the level. Everywhere else the ring is what makes
+// Play Again, New Game, Continue and Reconnect reachable without a binding
+// each: add a button to one of those screens and the pad reaches it with no
+// change here. Select and the stick clicks stay unbound on purpose.
 //
 // A whole shoulder SIDE is one action, never two: both left shoulders hold
 // (colour previous in the lobby), both right ones hard drop (colour next), so
@@ -66,7 +67,6 @@
 var PAD_BTN = {
   FACE_DOWN: 0,   // A / Cross / Switch B
   FACE_RIGHT: 1,  // B / Circle / Switch A
-  FACE_LEFT: 2,   // X / Square / Switch Y
   FACE_UP: 3,     // Y / Triangle / Switch X
   L1: 4,
   R1: 5,
@@ -479,27 +479,35 @@ var GamepadInput = (function () {
       return;
     }
 
-    // Start still toggles the pause directly. It is the one action with no
-    // button on screen to focus while a game is running.
-    if (index === PAD_BTN.START) {
-      feed(seatId, { type: paused ? MSG.RESUME_GAME : MSG.PAUSE_GAME });
+    if (roomState !== ROOM_STATE.LOBBY || !players.has(seatId)) {
+      // Outside the lobby Start toggles the pause directly. It is the one
+      // action with no button on screen to focus while a game is running.
+      if (index === PAD_BTN.START) {
+        feed(seatId, { type: paused ? MSG.RESUME_GAME : MSG.PAUSE_GAME });
+      }
       return;
     }
-
-    if (roomState !== ROOM_STATE.LOBBY || !players.has(seatId)) return;
 
     // Starting the round is the host's call, the same rule the phones' lobby
     // renders (only the host is shown a Start button). The display's own
     // on-screen button is unaffected: that one belongs to whoever set the
     // screen up, not to a player.
     //
-    // All three otherwise-idle face buttons do it, for the same reason any
-    // button joins: the labels move between brands, so no single one is "the X
-    // button" everywhere. Index 2 is X on an Xbox pad but Y on a Switch pad,
-    // whose X is index 3 — binding one of them would leave half the players
-    // pressing the button their pad has printed X on and getting nothing. The
-    // bottom face button is free here too, since the lobby runs no focus ring.
-    if (index === PAD_BTN.FACE_LEFT || index === PAD_BTN.FACE_UP || index === PAD_BTN.FACE_DOWN) {
+    // The bottom face button, because it is the one a player reaches for when
+    // they want something to happen, and because it is already what clicks the
+    // focused button on every other screen. No face button is brand-safe: the
+    // labels that make index 0 confirm on Xbox and PlayStation make it cancel
+    // on a Switch pad, and index 1 mirrors that exactly, so no choice makes
+    // them agree. What breaks the tie is that a cancel press is a response to
+    // being somewhere you want out of, and the lobby is not that: there is
+    // nothing to back out of, so nothing for the mismatch to collide with.
+    //
+    // Start does it too. It is the one button whose meaning holds on every
+    // brand (Menu / Options / +), it is free here because pause has nothing to
+    // act on yet, and it serves the player who reasons "Start starts". It needs
+    // no on-screen hint precisely because it is the redundant path, not the one
+    // anybody has to find.
+    if (index === PAD_BTN.FACE_DOWN || index === PAD_BTN.START) {
       if (seatId === getHostPeerIndex()) feed(seatId, { type: MSG.START_GAME });
       return;
     }
