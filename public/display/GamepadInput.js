@@ -15,10 +15,10 @@
 //
 // Buttons are bound by INDEX, never by label. Index 0 is the physically
 // bottom face button on every brand, so one binding lands in the same place
-// on an Xbox pad (A), a DualSense (Cross) and a Switch Pro (B). Rotation
-// follows the Tetris convention — right face button clockwise, bottom
-// counter-clockwise — which is why INPUT.ROTATE_CCW exists at all; no touch
-// gesture produces it.
+// on an Xbox pad (A), a DualSense (Cross) and a Switch Pro (B). All four face
+// buttons rotate, split by column, the right-hand pair clockwise per the Tetris
+// convention. That convention is also why INPUT.ROTATE_CCW exists at all, since
+// no touch gesture produces it. The split itself lives in server/PadMapper.js.
 //
 // The pad does three different jobs and the room state picks between them:
 //   playing  the D-pad and stick are the piece, the face buttons rotate
@@ -78,13 +78,6 @@ var GamepadInput = (function () {
   // lands back on the same seat (a reconnect, not a new player).
   function seatIdFor(padIndex) {
     return window.GameEngine.PadMapper.seatIdForSlot(padIndex);
-  }
-
-  function seatFor(seatId) {
-    for (var entry of seats) {
-      if (entry[1].seatId === seatId) return entry[1];
-    }
-    return null;
   }
 
   function feed(seatId, msg) {
