@@ -59,7 +59,7 @@ const PLATFORM_ONLY = {
   Android: [],
 };
 
-for (const name of ['ENGINE-SHIM', 'ENGINE-API', 'ROOM-API']) {
+for (const name of ['ENGINE-SHIM', 'ENGINE-API', 'ROOM-API', 'PAD-API']) {
   test(`${name} is identical in the tvOS and Android shims`, () => {
     assert.equal(
       normalize(block(SWIFT, name, 'EngineBridge.swift')),
@@ -89,7 +89,7 @@ test('every shim method is either shared or a declared platform-only one', () =>
   // shim exposes that isn't in a shared block is drift unless it's declared.
   const methods = (src) => [...src.matchAll(/^\s+(\w+): function/gm)].map((m) => m[1]);
   const shared = new Set(
-    ['ENGINE-API', 'ROOM-API'].flatMap((n) => methods(block(SWIFT, n, 'EngineBridge.swift'))));
+    ['ENGINE-API', 'ROOM-API', 'PAD-API'].flatMap((n) => methods(block(SWIFT, n, 'EngineBridge.swift'))));
   for (const [platform, getShim] of Object.entries(SHIMS)) {
     const extra = methods(getShim()).filter((m) => !shared.has(m));
     assert.deepEqual(extra.sort(), [...PLATFORM_ONLY[platform]].sort(),
@@ -177,6 +177,58 @@ for (const [platform, getShim] of Object.entries(SHIMS)) {
       'control char stripped, quote and backslash preserved');
 
     assert.throws(() => vm.runInContext('Bridge.roomCall("noSuchMethod", "[]")', ctx), /no method/);
+  });
+}
+
+for (const [platform, getShim] of Object.entries(SHIMS)) {
+  test(`the ${platform} shim maps gamepads against the real bundle in a bare VM`, async () => {
+    const ctx = vm.createContext({});
+    vm.runInContext(await bundleCore(), ctx);
+    vm.runInContext(getShim(), ctx);
+
+    const poll = (pads, nowMs, playing) => JSON.parse(vm.runInContext(
+      `Bridge.padPollJSON(${JSON.stringify(JSON.stringify(pads))}, ${nowMs}, ${playing})`, ctx));
+    const buttons = (...down) => {
+      const b = new Array(17).fill(false);
+      for (const i of down) b[i] = true;
+      return b;
+    };
+
+    // Two pads in one call, which is the whole point of the batch: their
+    // mappers must be independent, and the seat has to come back with the
+    // result or the shell cannot tell whose input it is holding.
+    const first = poll([
+      { seat: -1, buttons: buttons(1), axes: [0, 0, 0, 0] },   // right face: rotate CW
+      { seat: -2, buttons: buttons(12), axes: [0, 0, 0, 0] },  // D-pad up: hard drop
+    ], 0, true);
+    assert.deepEqual(first.map((r) => r.seat), [-1, -2]);
+    assert.deepEqual(first[0].messages, [{ type: 'input', action: 'rotate_cw' }]);
+    assert.deepEqual(first[1].messages, [{ type: 'input', action: 'hard_drop' }]);
+
+    // Held, not re-pressed: edge detection has to survive between calls, which
+    // is what the per-seat mapper in the shim's `pads` map is for.
+    assert.deepEqual(poll([
+      { seat: -1, buttons: buttons(1), axes: [0, 0, 0, 0] },
+    ], 16, true)[0].messages, []);
+
+    // Outside play the same press yields no game input, only the raw index, so
+    // the shell can route it to the room instead of the board.
+    const menu = poll([{ seat: -1, buttons: buttons(9), axes: [0, 0, 0, 0] }], 32, false);
+    assert.deepEqual(menu[0].messages, []);
+    assert.deepEqual(menu[0].pressed, [9]);
+
+    // A pad that stops being reported is forgotten, so its held state cannot
+    // resurface on whoever lands in that seat next.
+    poll([], 48, true);
+    assert.deepEqual(
+      poll([{ seat: -1, buttons: buttons(1), axes: [0, 0, 0, 0] }], 64, true)[0].messages,
+      [{ type: 'input', action: 'rotate_cw' }],
+      'a re-seated pad starts from a clean baseline, so the held button reads as a fresh press'
+    );
+
+    assert.equal(
+      vm.runInContext('Bridge.padName("Xbox Wireless Controller (Vendor: 045e Product: 0b13)", 16)', ctx),
+      'Xbox');
   });
 }
 

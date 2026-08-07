@@ -439,6 +439,11 @@ public final class EngineBridge {
         if (!core) throw new Error('no game: create() not called');
         return core;
       }
+      // One GamepadMapper per seated pad, keyed by seat id. The mapper is a
+      // state machine (previous buttons, DAS deadline, soft-drop keepalive), so
+      // it has to survive between polls, and it lives here rather than native
+      // side for the same reason the room does: one implementation.
+      var pads = {};
       // ENGINE-SHIM-END
       return {
         // ENGINE-API-BEGIN
@@ -510,6 +515,39 @@ public final class EngineBridge {
         },
         roomSnapshotJSON: function () { return roomOrThrow().snapshotJSON(); },
         // ROOM-API-END
+        // PAD-API-BEGIN
+        // Gamepads plugged into the TV itself. HexCore.PadMapper is the same
+        // module the web display runs, so what a press means does not depend on
+        // which shell read the pad.
+        //
+        // EVERY pad rides one call: a second evaluate per pad would cost more
+        // than the mapping does (see processInputs above on the per-call parse
+        // floor), and the messages this returns are handed straight back as the
+        // next frame's input batch, so the engine input still rides frame().
+        // `pads` is an array of { seat, buttons: [bool], axes: [number] }.
+        padPollJSON: function (padsJson, nowMs, playing) {
+          var input = JSON.parse(padsJson);
+          var live = {};
+          var out = [];
+          for (var i = 0; i < input.length; i++) {
+            var p = input[i];
+            live[p.seat] = true;
+            if (!pads[p.seat]) pads[p.seat] = new HexCore.PadMapper.GamepadMapper();
+            var r = pads[p.seat].poll(p.buttons || [], p.axes || [], nowMs, !!playing);
+            out.push({ seat: p.seat, messages: r.messages, pressed: r.pressed, nav: r.nav });
+          }
+          // Forget mappers for pads that are gone, so an unplugged pad cannot
+          // leave a held direction or a live soft drop behind for whoever takes
+          // the slot next.
+          for (var k in pads) { if (!live[k]) delete pads[k]; }
+          return JSON.stringify(out);
+        },
+        // The pad's product string, cleaned up to fit the room core's name cap.
+        // Shared so one controller is named the same on every platform.
+        padName: function (rawId, maxLen) {
+          return HexCore.PadMapper.gamepadDisplayName(rawId, maxLen);
+        },
+        // PAD-API-END
         // tvOS-only below (declared in tests/room-bridge-shim-parity.test.js).
         //
         // Granular tick, for driving the engine deterministically without
