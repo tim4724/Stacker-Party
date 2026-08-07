@@ -3,8 +3,8 @@ name: Release
 # Signed store builds:
 #   - Android: .aab signed with the Play upload keystore, kept as a workflow
 #     artifact, and on a tag released to Play's Android TV closed testing track.
-#     Versioned like tvOS below (tag -> versionName, run number -> versionCode),
-#     via -P overrides.
+#     Versioned like tvOS below (tag -> versionName, run number -> versionCode,
+#     offset to dodge hand-uploaded phoneTest codes), via -P overrides.
 #   - tvOS: signed with the Apple Distribution cert + App Store profile and
 #     uploaded straight to TestFlight via the ASC API key. Tag builds stamp the
 #     bare-semver tag as MARKETING_VERSION (the app shares the web's 4.X.Y
@@ -94,6 +94,11 @@ jobs:
           keyPassword=$ANDROID_KEY_PASSWORD
           EOF
 
+      # The +100 reserves a band: codes below it belong to the manually built,
+      # phone-installable `phoneTest` bundles (see android/tv/build.gradle.kts)
+      # that Play's closed testers install, so a hand upload can never consume
+      # a number a later tag would need. Raw run numbers would collide.
+      #
       # Play rejects a reused versionCode, so stamp a unique one; tag builds take
       # their versionName from the tag (bare semver, shared with the web release
       # line), others keep build.gradle.kts's. Same split as the tvOS archive
@@ -103,7 +108,7 @@ jobs:
         working-directory: android
         run: |
           set -eu
-          VERSION_ARGS=("-PhexVersionCode=$GITHUB_RUN_NUMBER")
+          VERSION_ARGS=("-PhexVersionCode=$((GITHUB_RUN_NUMBER + 100))")
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             VERSION_ARGS+=("-PhexVersionName=$GITHUB_REF_NAME")
           fi
