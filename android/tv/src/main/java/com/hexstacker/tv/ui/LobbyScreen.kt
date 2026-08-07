@@ -106,10 +106,19 @@ fun LobbyScreen(
     // in the same backdrop with frozen pieces.
     Box(modifier.fillMaxSize()) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            val vp = Vp(maxWidth.value, maxHeight.value)
+            val w = maxWidth.value
+            val h = maxHeight.value
+            // Portrait only exists in the phoneTest build (TVs are landscape, and
+            // the shipping manifest pins it). Vp's clamp bounds scale by viewport
+            // WIDTH (the web design is landscape), so a narrow portrait phone
+            // clamps every font/control to a fraction of the TV size: size them
+            // against the rotated (landscape) footprint instead, and keep the
+            // layout fit (overscan, width budget) on the real bounds.
+            val portrait = h > w
+            val vp = if (portrait) Vp(h, w) else Vp(w, h)
             val overscan = Theme.Size.tvOverscan.toFloat() // TV title-safe, each edge
-            val overscanH = (vp.wDp * overscan).dp
-            val overscanV = (vp.hDp * overscan).dp
+            val overscanH = (w * overscan).dp
+            val overscanV = (h * overscan).dp
 
             Column(
                 Modifier.fillMaxSize().padding(horizontal = overscanH, vertical = overscanV),
@@ -139,13 +148,21 @@ fun LobbyScreen(
                         max(4, data.players.size).coerceAtMost(EngineConstants.MAX_PLAYERS)
                     val cols = if (visibleSlots > 4) 4 else 2
                     // Horizontal fit (web grid minmax(0,...) / tvOS LobbyMetrics):
-                    // shrink QR + cards proportionally when the widest row (a 4-wide
-                    // roster next to the QR) would overflow the overscan-safe width.
+                    // shrink QR + cards proportionally when the content (the QR|grid
+                    // row in landscape, the widest stacked element in portrait)
+                    // would overflow the overscan-safe width.
                     val gap = vp.vminDp(8f, 1.5f, 18f)
-                    val rowW = qrW + vp.vminDp(16f, 3f, 40f) + (cardW + gap) * cols - gap
-                    val budget = (vp.wDp * (1f - 2f * overscan)).dp
-                    if (rowW > budget) {
-                        val s = budget / rowW
+                    val qrGridGap = vp.vminDp(16f, 3f, 40f)
+                    // Portrait stacks the QR above the grid, so the fit width is
+                    // the widest element, not the row.
+                    val gridW = (cardW + gap) * cols - gap
+                    val fitW = if (portrait) maxOf(qrW, gridW) else qrW + qrGridGap + gridW
+                    val budget = (w * (1f - 2f * overscan)).dp
+                    // Portrait grows to the budget too, not only shrinks: everything
+                    // is vmin-clamped to its minimum on a narrow phone, which wastes
+                    // most of the width.
+                    if (fitW > budget || portrait) {
+                        val s = budget / fitW
                         cardW *= s
                         qrW *= s
                     }
@@ -153,10 +170,7 @@ fun LobbyScreen(
                         verticalArrangement = Arrangement.spacedBy(vp.vminDp(10f, 2.2f, 22f)),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(vp.vminDp(16f, 3f, 40f)),
-                        ) {
+                        val qrAndGrid: @Composable () -> Unit = {
                             QrBlock(
                                 qrBitmap = qrBitmap,
                                 vp = vp,
@@ -171,6 +185,17 @@ fun LobbyScreen(
                                 cardW = cardW,
                                 gap = gap,
                             )
+                        }
+                        if (portrait) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(qrGridGap),
+                            ) { qrAndGrid() }
+                        } else {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(qrGridGap),
+                            ) { qrAndGrid() }
                         }
                         JoinLine(
                             joinHost = data.joinHost,
