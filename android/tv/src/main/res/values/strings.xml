@@ -27,6 +27,7 @@
 
     <!-- Lobby. -->
     <string name="scan_hint">Scan code with your phone</string>
+    <string name="gamepad_join_hint">Press any button on your controller</string>
     <string name="waiting_for_players">Waiting for players</string>
     <string name="level_heading">Level</string>
 

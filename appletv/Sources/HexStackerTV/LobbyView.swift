@@ -470,7 +470,12 @@ struct JoinLineView: View {
     let joinURL: String
     let fontSize: CGFloat
 
-    @State private var showHint: Bool
+    /// 0 = the URL, 1 = scan with a phone, 2 = press a button on a controller.
+    /// Three steps rather than a toggle because a pad is a third way into the
+    /// room and nothing else on this screen says so (web parity: the join line
+    /// rotates the same three).
+    @State private var step: Int
+    private static let stepCount = 3
     private let beat = Timer.publish(every: 4.5, on: .main, in: .common).autoconnect()
 
     /// `startOnHint` freezes the crossfade on the scan hint for gallery/shot
@@ -480,7 +485,7 @@ struct JoinLineView: View {
     init(joinURL: String, fontSize: CGFloat, startOnHint: Bool = false) {
         self.joinURL = joinURL
         self.fontSize = fontSize
-        _showHint = State(initialValue: startOnHint)
+        _step = State(initialValue: startOnHint ? 1 : 0)
     }
 
     var body: some View {
@@ -507,14 +512,19 @@ struct JoinLineView: View {
                  + Text(code).styled(font: AppFont.black, size: fontSize,
                                      color: UITheme.accentSecondary, tracking: 0.18))
                     .lineLimit(1)
-                    .opacity(showHint ? 0 : 1)
+                    .opacity(step == 0 ? 1 : 0)
                 Text(tr("scan_hint"))
                     .styled(font: AppFont.semibold, size: fontSize,
                             color: UITheme.textSecondary, tracking: 0.06)
-                    .opacity(showHint ? 1 : 0)
+                    .opacity(step == 1 ? 1 : 0)
+                Text(tr("gamepad_join_hint"))
+                    .styled(font: AppFont.semibold, size: fontSize,
+                            color: UITheme.textSecondary, tracking: 0.06)
+                    .lineLimit(1)
+                    .opacity(step == 2 ? 1 : 0)
             }
             .onReceive(beat) { _ in
-                withAnimation(.easeInOut(duration: 0.45)) { showHint.toggle() }
+                withAnimation(.easeInOut(duration: 0.45)) { step = (step + 1) % Self.stepCount }
             }
     }
 

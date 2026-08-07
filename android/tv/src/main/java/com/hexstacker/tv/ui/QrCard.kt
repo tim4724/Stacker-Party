@@ -16,7 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -101,14 +101,20 @@ fun JoinLine(
     // line changing content (web clamp(1.05rem,2.2vmin,1.5rem)).
     val lineSize = vp.vminSp(16.8f, 2.2f, 24f)
 
-    var showHint by remember { mutableStateOf(startOnHint) }
+    // 0 = the URL, 1 = scan with a phone, 2 = press a button on a controller.
+    // Three steps rather than a toggle because a pad is a third way into the room
+    // and nothing else on this screen says so (web parity: the join line rotates
+    // the same three).
+    var step by remember { mutableIntStateOf(if (startOnHint) 1 else 0) }
     LaunchedEffect(Unit) {
         while (true) {
             delay(4500)
-            showHint = !showHint
+            step = (step + 1) % 3
         }
     }
-    val urlAlpha by animateFloatAsState(if (showHint) 0f else 1f, tween(450), label = "joinUrlAlpha")
+    val urlAlpha by animateFloatAsState(if (step == 0) 1f else 0f, tween(450), label = "joinUrlAlpha")
+    val scanAlpha by animateFloatAsState(if (step == 1) 1f else 0f, tween(450), label = "joinScanAlpha")
+    val padAlpha by animateFloatAsState(if (step == 2) 1f else 0f, tween(450), label = "joinPadAlpha")
 
     // Load fade for the WHOLE line, hint included (tvOS roomReady parity:
     // the URL fades in with the QR modules once the room confirms; before
@@ -140,7 +146,14 @@ fun JoinLine(
         Text(
             text = stringResource(R.string.scan_hint),
             style = AppType.joinHost.copy(fontSize = lineSize, color = Tokens.textSecondary),
-            modifier = Modifier.alpha(1f - urlAlpha),
+            modifier = Modifier.alpha(scanAlpha),
+            maxLines = 1,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            text = stringResource(R.string.gamepad_join_hint),
+            style = AppType.joinHost.copy(fontSize = lineSize, color = Tokens.textSecondary),
+            modifier = Modifier.alpha(padAlpha),
             maxLines = 1,
             textAlign = TextAlign.Center,
         )
