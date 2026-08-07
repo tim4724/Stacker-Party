@@ -1401,6 +1401,18 @@ body.couchpad #lobby-back-btn { display: none !important; }
 body.couchpad .game-name-label { display: none !important; }
 body.couchpad #touch-area::after { content: none !important; }
 
+/* Arming the system back gesture brings Android's navigation bar back on
+   screen, so --cp-safe-bottom grows by the gesture pill and shrinks again on
+   disarm (CONTRACT §9). Reflowing the touch pad every time a dialog opens is
+   worse than the space it reclaims, so hold the bottom inset at the pill
+   height and let the bar come and go over reserved ground. A genuinely taller
+   inset (three-button navigation, an iOS home indicator) still wins the max()
+   and still moves, which is the rarer case and the one where the reserve
+   couldn't have covered it anyway. */
+body.couchpad {
+  --safe-bottom: max(var(--cp-safe-bottom, 0px), env(safe-area-inset-bottom, 0px), 24px);
+}
+
 /* --- AirConsole-only overrides --- */
 body.airconsole #lobby-join-url { display: none !important; }
 /* No relay PING/PONG or fastlane in AC mode, so there is no RTT to show. */

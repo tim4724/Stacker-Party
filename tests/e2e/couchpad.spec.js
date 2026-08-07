@@ -194,6 +194,20 @@ test.describe('CouchPad shell contract', () => {
     await controller.evaluate(() =>
       document.documentElement.style.setProperty('--cp-safe-right', '60px'));
     await expect.poll(barPadRight).toBeGreaterThanOrEqual(60);
+
+    // The bottom edge is the exception: arming system back grows
+    // --cp-safe-bottom by the gesture pill and disarming shrinks it again, so
+    // the shell reserves that height permanently rather than reflowing every
+    // time a dialog opens. A taller inset than the reserve still expands.
+    const shellPadBottom = () => controller.evaluate(() =>
+      parseFloat(getComputedStyle(document.querySelector('#lobby-screen')).paddingBottom));
+    const disarmed = await shellPadBottom();
+    await controller.evaluate(() =>
+      document.documentElement.style.setProperty('--cp-safe-bottom', '24px'));
+    expect(await shellPadBottom()).toBe(disarmed);
+    await controller.evaluate(() =>
+      document.documentElement.style.setProperty('--cp-safe-bottom', '60px'));
+    await expect.poll(shellPadBottom).toBeGreaterThan(disarmed);
   });
 
   test('in-game player name is hidden (the launcher renders it)', async ({ page, context }) => {
