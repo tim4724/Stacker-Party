@@ -234,7 +234,12 @@ final class DisplayModel: ObservableObject {
 
     private func startTickPump() {
         boardScene.onTick = { [weak self] deltaMs in
-            self?.coordinator?.tick(deltaMs: deltaMs)
+            guard let self else { return }
+            self.coordinator?.tick(deltaMs: deltaMs)
+            // Re-evaluated per frame, not just on a screen change: a pad can take
+            // a seat (or give one up) without the screen moving at all, and it is
+            // the SEAT that decides this, not the screen alone.
+            self.syncPadInputOwnership()
         }
     }
 
@@ -563,7 +568,7 @@ extension DisplayModel: DisplayOutput {
             if screen != .lobby { state.aboutPath = [] }
         }
         updateFramePacing()
-        syncPadInputOwnership(screen)
+        syncPadInputOwnership()
     }
 
     /// Who owns a gamepad's presses on this screen: the UI, or the game.
@@ -584,8 +589,19 @@ extension DisplayModel: DisplayOutput {
     /// While the pad owns input its Menu button no longer arrives as a `.menu`
     /// press, so `PadSeats` binds index 9 itself in exactly these two states and
     /// leaves it to the system in the others.
-    private func syncPadInputOwnership(_ screen: DisplayScreen) {
-        setPadOwnsInput?(screen == .lobby || screen == .game)
+    ///
+    /// Gated on a pad actually HOLDING A SEAT, which is not a refinement but the
+    /// correctness condition. With no pad seated there is nothing to take input
+    /// away from, and taking it anyway breaks the screen gallery: its capture
+    /// drives the app through XCUIRemote, which arrives as controller input and
+    /// simply stopped being delivered, so the carousel never advanced. That is
+    /// also the honest reason to keep this as narrow as possible — the Siri
+    /// Remote is itself exposed as a controller, so this switch is never as
+    /// surgical as "only the gamepad".
+    private func syncPadInputOwnership() {
+        let screen = state.screen
+        let inPlayState = screen == .lobby || screen == .game
+        setPadOwnsInput?(inPlayState && coordinator?.hasPadSeats == true)
     }
 
     func roomReady(room: String, joinURL: String, qrText: String) {
