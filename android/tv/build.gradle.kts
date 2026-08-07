@@ -152,6 +152,19 @@ android {
             // installable for testing on machines/CI without the keystore.
             signingConfig = signingConfigs.getByName(if (hasReleaseKeystore) "release" else "debug")
         }
+        // A release build that also installs on phones and tablets
+        // (src/phoneTest/AndroidManifest.xml). Play's closed-testing
+        // requirement wants 12 testers for 14 continuous days, and testers who
+        // own only a phone cannot install a leanback-required app at all.
+        // Same applicationId, so it uploads to the same Play track; bump
+        // -PhexVersionCode past the last release or Play rejects it.
+        //
+        // Deliberately a build type and not a flag on `release`: CI builds
+        // `release`, so no tag can ever ship the phone-installable manifest to
+        // the TV listing by accident.
+        create("phoneTest") {
+            initWith(getByName("release"))
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

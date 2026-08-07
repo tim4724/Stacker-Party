@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Overlay for the `phoneTest` build type ONLY (see build.gradle.kts). It exists to
+  get the app installable on the phones Play's closed testers actually own, and
+  needs BOTH changes below: leanback-optional alone installs an app with no
+  launcher icon, which is worse than not installing at all.
+
+  Never merge these into src/main — the shipping TV build must stay leanback-only.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Play filters the app off every non-TV device while this is required. -->
+    <uses-feature
+        android:name="android.software.leanback"
+        android:required="false"
+        tools:replace="android:required" />
+
+    <application>
+        <activity android:name=".MainActivity">
+            <!-- Merged alongside main's LEANBACK_LAUNCHER filter, not instead of
+                 it: the same build stays launchable from the TV home row. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>
