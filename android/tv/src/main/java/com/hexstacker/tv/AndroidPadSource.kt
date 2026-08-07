@@ -30,6 +30,16 @@ import com.hexstacker.core.display.PadSource
  */
 class AndroidPadSource : PadSource {
 
+    /**
+     * Guards every map below. The event feeds run on the UI thread
+     * (dispatchKeyEvent / dispatchGenericMotionEvent) while [pads], [rumble] and
+     * [slotFor]'s callers sample from the game thread — unguarded, a
+     * `getOrPut` racing `retainAll` throws ConcurrentModificationException out
+     * of the tick, and a press latched between [pads]'s copy and its clear
+     * would vanish unseen (including the very first one, the join).
+     */
+    private val lock = Any()
+
     /** deviceId -> held buttons, in W3C index order. */
     private val held = mutableMapOf<Int, BooleanArray>()
 
@@ -47,7 +57,7 @@ class AndroidPadSource : PadSource {
      */
     private val latched = mutableMapOf<Int, BooleanArray>()
 
-    /** deviceId -> `[leftX, leftY, rightX, rightY]` from the last MotionEvent. */
+    /** deviceId -> `[leftX, leftY]` from the last MotionEvent. */
     private val axes = mutableMapOf<Int, DoubleArray>()
 
     /** deviceId -> hat-derived `[up, down, left, right]`. See onMotionEvent. */
@@ -66,8 +76,10 @@ class AndroidPadSource : PadSource {
         if (!isGamepad(event.device)) return false
         val index = buttonIndex(event.keyCode) ?: return false
         val down = event.action == KeyEvent.ACTION_DOWN
-        state(event.deviceId)[index] = down
-        if (down) latch(event.deviceId)[index] = true
+        synchronized(lock) {
+            state(event.deviceId)[index] = down
+            if (down) latch(event.deviceId)[index] = true
+        }
         return true
     }
 
@@ -75,12 +87,13 @@ class AndroidPadSource : PadSource {
     fun onMotionEvent(event: MotionEvent): Boolean {
         if (!isGamepad(event.device)) return false
         if (event.action != MotionEvent.ACTION_MOVE) return false
-        axes[event.deviceId] = doubleArrayOf(
+        // Left stick only: the shared mapper never reads a right stick, and
+        // AXIS_Z/AXIS_RZ are the analog TRIGGERS on a fair number of pads anyway,
+        // so carrying them under a right-stick label would be a trap.
+        val stick = doubleArrayOf(
             event.getAxisValue(MotionEvent.AXIS_X).toDouble(),
             // Already positive-DOWN on Android, unlike GameController. Not a bug.
             event.getAxisValue(MotionEvent.AXIS_Y).toDouble(),
-            event.getAxisValue(MotionEvent.AXIS_Z).toDouble(),
-            event.getAxisValue(MotionEvent.AXIS_RZ).toDouble(),
         )
         // Triggers are ANALOG on most pads: they arrive as an axis here and never
         // as KEYCODE_BUTTON_L2/R2 at all, so without this L2 and R2 simply do
@@ -95,28 +108,30 @@ class AndroidPadSource : PadSource {
             event.getAxisValue(MotionEvent.AXIS_RTRIGGER),
             event.getAxisValue(MotionEvent.AXIS_GAS),
         )
-        val buttons = state(event.deviceId)
-        if (leftTrigger > 0.5f && !buttons[L2]) latch(event.deviceId)[L2] = true
-        if (rightTrigger > 0.5f && !buttons[R2]) latch(event.deviceId)[R2] = true
-        buttons[L2] = leftTrigger > 0.5f
-        buttons[R2] = rightTrigger > 0.5f
-
         // A hat IS the d-pad on most pads, and arrives here rather than as a key.
         // Kept SEPARATE from the key-driven state and OR-ed at read time: a pad
         // that reports both would otherwise have its hat snapshot clear the
         // direction its keycode just set, on every motion event.
         val hatX = event.getAxisValue(MotionEvent.AXIS_HAT_X)
         val hatY = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
-        hats[event.deviceId] = booleanArrayOf(
-            hatY < -0.5f,   // up
-            hatY > 0.5f,    // down
-            hatX < -0.5f,   // left
-            hatX > 0.5f,    // right
-        )
+        synchronized(lock) {
+            axes[event.deviceId] = stick
+            val buttons = state(event.deviceId)
+            if (leftTrigger > 0.5f && !buttons[L2]) latch(event.deviceId)[L2] = true
+            if (rightTrigger > 0.5f && !buttons[R2]) latch(event.deviceId)[R2] = true
+            buttons[L2] = leftTrigger > 0.5f
+            buttons[R2] = rightTrigger > 0.5f
+            hats[event.deviceId] = booleanArrayOf(
+                hatY < -0.5f,   // up
+                hatY > 0.5f,    // down
+                hatX < -0.5f,   // left
+                hatX > 0.5f,    // right
+            )
+        }
         return true
     }
 
-    override fun pads(): List<PadReading> {
+    override fun pads(): List<PadReading> = synchronized(lock) {
         // Forget devices that are gone BEFORE handing out slots, not after. A pad
         // that dropped and came back is a new deviceId, and a stale entry still
         // counting as taken would hand the reconnect slot 1. The seat id derives
@@ -155,15 +170,17 @@ class AndroidPadSource : PadSource {
                     slot = slot(id),
                     id = device.name ?: "Gamepad",
                     buttons = buttons.toList(),
-                    axes = (axes[id] ?: DoubleArray(4)).toList(),
+                    axes = (axes[id] ?: DoubleArray(2)).toList(),
                 )
             )
         }
-        return readings.sortedBy { it.slot }
+        readings.sortedBy { it.slot }
     }
 
     override fun rumble(slot: Int, durationMs: Long, amplitude: Double) {
-        val deviceId = slots.entries.firstOrNull { it.value == slot }?.key ?: return
+        val deviceId = synchronized(lock) {
+            slots.entries.firstOrNull { it.value == slot }?.key
+        } ?: return
         val vibrator = InputDevice.getDevice(deviceId)?.vibrator ?: return
         if (!vibrator.hasVibrator()) return
         val scaled = (amplitude * 255).toInt().coerceIn(1, 255)
@@ -181,7 +198,7 @@ class AndroidPadSource : PadSource {
     /** The slot [deviceId] already holds, or null if it has never been polled.
      *  Deliberately does NOT allocate: this answers "is this pad known yet", and
      *  an unknown pad cannot be seated. */
-    fun slotFor(deviceId: Int): Int? = slots[deviceId]
+    fun slotFor(deviceId: Int): Int? = synchronized(lock) { slots[deviceId] }
 
     private fun slot(deviceId: Int): Int = slots.getOrPut(deviceId) {
         val taken = slots.values.toSet()

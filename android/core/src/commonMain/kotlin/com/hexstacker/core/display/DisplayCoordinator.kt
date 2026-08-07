@@ -116,7 +116,7 @@ class DisplayCoordinator(
     // WHY the game is frozen, or null. Owned by [RoomCoreClient], which mirrors the room
     // core's answer on every pause/resume/reset, so there is nothing to keep in step here.
     private val pauseReason: PauseReason? get() = brainOrNull?.pauseReason
-    private val paused: Boolean get() = pauseReason != null
+    internal val paused: Boolean get() = pauseReason != null
     private var muted = false
 
     /**
@@ -312,9 +312,10 @@ class DisplayCoordinator(
 
     /**
      * Send to one peer, unless the seat is LOCAL. A pad attached to this TV has no
-     * connection to send down and its index is negative, which the relay could not
-     * route anyway. Every per-peer send goes through here so one added later
-     * inherits the rule instead of having to remember it.
+     * connection to send down: its index sits in a range the relay never hands out
+     * ([PadSeats.LOCAL_SEAT_BASE]), so there is nothing to route to. Every per-peer
+     * send goes through here so one added later inherits the rule instead of
+     * having to remember it.
      */
     private fun sendToPeer(peerIndex: Int, data: JsonObject) {
         if (PadSeats.isLocalSeat(peerIndex)) return

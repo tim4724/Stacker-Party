@@ -591,12 +591,13 @@ extension DisplayModel: DisplayOutput {
     /// so the switch always takes its input as well. Widening this to a screen
     /// with buttons on it strands whoever is holding the remote.
     ///
-    /// While the pad owns input its Menu button no longer arrives as a `.menu`
-    /// press, so `PadSeats` binds index 9 itself in that state and leaves it to
-    /// the system elsewhere. The SIRI REMOTE's Menu is suppressed by the same
-    /// switch — it is a game controller too — and is bound back from
-    /// GameController in `PressHostController.bindRemoteMenu`, without which a
-    /// running match could not be left at all.
+    /// A gamepad's Menu button never arrives as a `.menu` press in EITHER state —
+    /// tvOS keeps it in GameController — which is why `PadSeats` binds index 9
+    /// itself (see the note at its poll). The SIRI REMOTE's Menu, which does
+    /// arrive as `.menu`, is suppressed by this switch while the pad owns input —
+    /// the remote is a game controller too — and is bound back from GameController
+    /// in `PressHostController.bindRemoteMenu`, without which a running match
+    /// could not be left at all.
     ///
     /// Gated on a pad actually HOLDING A SEAT, which is not a refinement but the
     /// correctness condition. With no pad seated there is nothing to take input

@@ -34,8 +34,11 @@ final class PressHostController: GCEventViewController {
         super.viewDidLoad()
         model.setPadOwnsInput = { [weak self] padOwns in
             // The property is phrased the other way round: it asks whether
-            // controller input should still reach the UI.
-            self?.controllerUserInteractionEnabled = !padOwns
+            // controller input should still reach the UI. Written only on change:
+            // the sync runs from the render tick, and this is an input-routing
+            // switch, not a plain flag.
+            guard let self, self.controllerUserInteractionEnabled != !padOwns else { return }
+            self.controllerUserInteractionEnabled = !padOwns
         }
         GCController.controllers().forEach(bindRemoteMenu)
         menuBinding = NotificationCenter.default.addObserver(

@@ -24,8 +24,9 @@ import kotlinx.serialization.json.jsonPrimitive
  * phone would have sent and goes through the coordinator's ordinary inbound path,
  * so joining, auto-naming, colour slots, host election, liveness and pause all
  * keep running their one implementation. What a local seat skips is the relay,
- * and that is also why its peer index is NEGATIVE: the relay hands out 1..N and
- * owns slot 0, so -(slot + 1) can never collide with a phone.
+ * which is why its peer index comes from a range the relay will never hand out —
+ * see [PadSeats.LOCAL_SEAT_BASE] for the range and the packed-frame constraint
+ * that makes it a HIGH POSITIVE one.
  *
  * The MAPPING is not here. Which button rotates, how fast a held direction
  * repeats and how the stick scales a soft drop live in `server/PadMapper.js` and
@@ -54,7 +55,8 @@ data class PadReading(
     val id: String,
     /** W3C "standard" mapping order, so one mapper serves every platform. */
     val buttons: List<Boolean>,
-    /** `[leftX, leftY, rightX, rightY]`, y POSITIVE DOWN as the web reports it. */
+    /** `[leftX, leftY]`, y POSITIVE DOWN as the web reports it. The mapper reads
+     *  nothing past the left stick, so nothing else is carried. */
     val axes: List<Double>,
 )
 
@@ -100,10 +102,25 @@ internal class PadSeats(
         fun isLocalSeat(peerIndex: Int): Boolean = peerIndex >= LOCAL_SEAT_BASE
     }
 
-    /** slot -> seat id, for pads that have actually joined. */
+    /** slot -> seat id, for pads that have actually joined. Game thread only. */
     private val seated = mutableMapOf<Int, Int>()
 
-    val hasSeats: Boolean get() = seated.isNotEmpty()
+    /**
+     * The seated slots, as an immutable snapshot for readers on OTHER threads:
+     * [holdsSeat] is asked from the UI thread's dispatchKeyEvent and [hasSeats]
+     * from the activity's tick gate, while [seated] mutates on the game thread.
+     * Rewritten (never mutated) after every seat change, so a cross-thread read
+     * sees a coherent set — at worst one poll stale, which both callers tolerate.
+     */
+    @kotlin.concurrent.Volatile
+    private var seatedSlots: Set<Int> = emptySet()
+
+    /** Slots whose join was refused (room full). A held button would otherwise
+     *  re-send HELLO through the bridge on every poll; cleared once every button
+     *  on that pad is released, so the retry is a fresh press, as on the web. */
+    private val refused = mutableSetOf<Int>()
+
+    val hasSeats: Boolean get() = seatedSlots.isNotEmpty()
 
     /**
      * Whether the pad in [slot] has actually joined. A press from one that has not
@@ -113,7 +130,7 @@ internal class PadSeats(
      * on whatever is focused — Play Again on the results screen being the one that
      * bites.
      */
-    fun holdsSeat(slot: Int?): Boolean = slot != null && seated.containsKey(slot)
+    fun holdsSeat(slot: Int?): Boolean = slot != null && seatedSlots.contains(slot)
 
     /**
      * One poll, driven from the coordinator's own tick so there is a single loop.
@@ -178,14 +195,17 @@ internal class PadSeats(
                 }
                 continue
             }
-            // The COUNTDOWN, and only it. :tv consumes pad input during the 3-2-1
-            // (it is the GAME screen, unpaused), so nothing else hears index 9 there
-            // and the remote could pause the countdown while a pad could not. Once
-            // PAUSED the pad is NOT consumed, so the press reaches MainActivity's
-            // KEYCODE_BUTTON_START instead — binding it here as well would toggle
-            // twice on one press and put the overlay straight back up.
+            // The UNPAUSED countdown, and only it. :tv consumes pad input during
+            // the 3-2-1 (it is the GAME screen, unpaused), so nothing else hears
+            // index 9 there and the remote could pause the countdown while a pad
+            // could not. Once PAUSED the pad is NOT consumed — countdown included —
+            // so the press reaches MainActivity's KEYCODE_BUTTON_START instead;
+            // binding it here as well would toggle twice on one press and put the
+            // overlay straight back up.
             if (coordinator.state == RoomState.COUNTDOWN) {
-                if (pressed.contains(PadButton.START)) coordinator.remoteTogglePause()
+                if (!coordinator.paused && pressed.contains(PadButton.START)) {
+                    coordinator.remoteTogglePause()
+                }
                 continue
             }
             for (step in result.jsonObject["nav"]?.jsonArray.orEmpty()) {
@@ -205,6 +225,7 @@ internal class PadSeats(
             // joins the new room instead of feeding a player that is gone.
             if (!coordinator.hasPlayer(existing)) {
                 seated.remove(reading.slot)
+                seatedSlots = seated.keys.toSet()
                 return null
             }
             return existing
@@ -212,7 +233,11 @@ internal class PadSeats(
         // Any press joins. Naming one button would leave a player who pressed a
         // different one with no feedback, and no letter is right on every brand.
         // There is no welcome screen to exclude: a TV goes straight to the lobby.
-        if (!reading.buttons.contains(true)) return null
+        if (!reading.buttons.contains(true)) {
+            refused.remove(reading.slot)
+            return null
+        }
+        if (reading.slot in refused) return null
         return join(reading)
     }
 
@@ -229,18 +254,24 @@ internal class PadSeats(
                 put("autoName", JsonPrimitive(false))
             }
         )
-        // A refused join (room full) leaves no row behind. Drop the seat so the
-        // next press tries again rather than feeding input nobody owns.
-        if (!coordinator.hasPlayer(seat)) return null
+        // A refused join (room full) leaves no row behind. Drop the seat, and
+        // remember the refusal until the button is released (see [refused]).
+        if (!coordinator.hasPlayer(seat)) {
+            refused.add(reading.slot)
+            return null
+        }
         seated[reading.slot] = seat
+        seatedSlots = seated.keys.toSet()
         return seat
     }
 
     private suspend fun retireVanished(readings: List<PadReading>) {
         val live = readings.map { it.slot }.toSet()
+        refused.retainAll(live)
         for ((slot, seat) in seated.entries.toList()) {
             if (live.contains(slot)) continue
             seated.remove(slot)
+            seatedSlots = seated.keys.toSet()
             // Same path as a phone closing its tab: mid-game the row is held (with
             // a rejoin QR) so a returning pad, or a phone scanning, resumes the
             // seat; in lobby or results it is dropped outright.

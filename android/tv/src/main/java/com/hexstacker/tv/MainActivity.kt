@@ -525,20 +525,6 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * The single remote/keyboard context-key path: keys the focused Compose node
-     * doesn't consume bubble up here, and during GAME (board + overlays only)
-     * nothing is focused, so they arrive directly. Play/Pause is the context action
-     * (start / pause / continue / play-again); P mirrors it for keyboards; Menu
-     * pauses during a game. D-pad navigation + Select are left to Compose focus
-     * on the lobby/results.
-     *
-     * BACK is intentionally NOT handled here: consuming it in onKeyDown would
-     * suppress the OnBackPressedDispatcher (which fires the app's game-pause
-     * BackHandler during GAME and the default finish() elsewhere). Routing BACK
-     * through the dispatcher is what stops it from BOTH pausing the game AND
-     * exiting the app; see the BackHandler in [HexStackerApp].
-     */
-    /**
      * Gamepads attached to this TV, as players. Fed from the dispatch overrides
      * below, because Android delivers button state as events rather than as a
      * queryable snapshot.
@@ -598,6 +584,20 @@ class MainActivity : ComponentActivity() {
         return super.dispatchGenericMotionEvent(event)
     }
 
+    /**
+     * The single remote/keyboard context-key path: keys the focused Compose node
+     * doesn't consume bubble up here, and during GAME (board + overlays only)
+     * nothing is focused, so they arrive directly. Play/Pause is the context action
+     * (start / pause / continue / play-again); P mirrors it for keyboards; Menu
+     * pauses during a game. D-pad navigation + Select are left to Compose focus
+     * on the lobby/results.
+     *
+     * BACK is intentionally NOT handled here: consuming it in onKeyDown would
+     * suppress the OnBackPressedDispatcher (which fires the app's game-pause
+     * BackHandler during GAME and the default finish() elsewhere). Routing BACK
+     * through the dispatcher is what stops it from BOTH pausing the game AND
+     * exiting the app; see the BackHandler in [HexStackerApp].
+     */
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         when (keyCode) {
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,

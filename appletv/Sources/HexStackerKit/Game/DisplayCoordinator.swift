@@ -447,8 +447,8 @@ public final class DisplayCoordinator {
     // MARK: - Local (gamepad) seats
 
     /// Send to one peer, unless the seat is LOCAL. A pad attached to this TV has
-    /// no connection to send down, and its index is negative, which is not
-    /// something the relay could route even if we tried.
+    /// no connection to send down: its index sits in a range the relay never
+    /// hands out (`PadSeats.localSeatBase`), so there is nothing to route to.
     ///
     /// Every per-peer send goes through here rather than each site testing for
     /// itself, so a send added later inherits the rule instead of having to
@@ -1074,9 +1074,9 @@ public final class DisplayCoordinator {
         // game is running, and a mapper handed a frozen clock would measure every
         // DAS interval against the same instant. Monotonic rather than wall time
         // for the same reason the engine's is.
-        if padSeats != nil {
+        if let padSeats {
             padClockMs += deltaMs
-            padSeats?.poll(nowMs: padClockMs, playing: roomState == .playing && !paused)
+            padSeats.poll(nowMs: padClockMs, playing: roomState == .playing && !paused)
         }
         // The local demo has no controllers sending heartbeats, so keep its
         // synthetic players "seen" — otherwise the liveness sweep flags them

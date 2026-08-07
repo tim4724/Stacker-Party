@@ -5,10 +5,11 @@ import Foundation
 /// A pad is not a second kind of player. Every press becomes the SAME message a
 /// phone would have sent and goes through the coordinator's inbound path, so
 /// joining, auto-naming, colour slots, host election, liveness and pause all keep
-/// running their one implementation. What a local seat skips is the relay, and
-/// that is also why its peer index is NEGATIVE: the relay hands out 1...N and owns
-/// slot 0, so -(slot + 1) can never collide with a phone. `isLocalSeat` is what
-/// guards the `transport.sendTo` call sites.
+/// running their one implementation. What a local seat skips is the relay, which
+/// is why its peer index comes from a range the relay will never hand out — see
+/// `localSeatBase` below for the range and the packed-frame constraint that makes
+/// it a HIGH POSITIVE one. `isLocalSeat` is what guards the `transport.sendTo`
+/// call sites.
 ///
 /// The MAPPING is not here. Which button rotates, how fast a held direction
 /// repeats and how the stick scales a soft drop all live in `server/PadMapper.js`
@@ -34,7 +35,8 @@ public struct PadReading {
     public let id: String
     /// W3C "standard" mapping order, so one mapper serves every platform.
     public let buttons: [Bool]
-    /// `[leftX, leftY, rightX, rightY]`, y POSITIVE DOWN as the web reports it.
+    /// `[leftX, leftY]`, y POSITIVE DOWN as the web reports it. The mapper reads
+    /// nothing past the left stick, so nothing else is carried.
     public let axes: [Double]
 
     public init(slot: Int, id: String, buttons: [Bool], axes: [Double]) {
@@ -78,6 +80,12 @@ public final class PadSeats {
     private unowned let coordinator: DisplayCoordinator
     /// slot -> seat id, for pads that have actually joined.
     private var seated: [Int: Int] = [:]
+    /// slot -> pad-clock time of a REFUSED join (room full). Because tvOS joins
+    /// on connect rather than on a press, a refused pad would otherwise re-send
+    /// HELLO on every poll — three bridge crossings per frame, forever. There is
+    /// no press edge to retry on here, so the retry is paced by time instead.
+    private var refusedAt: [Int: Double] = [:]
+    private let refusedRetryMs: Double = 1000
 
     public init(source: PadSource, coordinator: DisplayCoordinator) {
         self.source = source
@@ -87,20 +95,6 @@ public final class PadSeats {
     /// Seats currently held by a pad, which the shell needs in order to know
     /// whether to suppress focus (see `poll`).
     public var hasSeats: Bool { !seated.isEmpty }
-
-    /// A pad with no seat is holding a button down, so this press is a JOIN and
-    /// must not also act. `poll` already enforces that internally by handing the
-    /// press to the mapper as a baseline — this is the same rule at the other
-    /// door, for the press the focus engine would otherwise turn into a click on
-    /// whatever happens to be focused. Without it, picking up a pad in a lobby
-    /// that already has players starts the round instead of joining, and the same
-    /// press on the results screen hits Play Again.
-    ///
-    /// Read live rather than remembered from the last poll: the UI asks the
-    /// instant the press arrives, which is before the next tick sees it.
-    public var isJoinPressDown: Bool {
-        source.pads().contains { seated[$0.slot] == nil && $0.buttons.contains(true) }
-    }
 
     /// One poll, driven from the coordinator's own tick so there is a single loop.
     /// `nowMs` is the frame clock the mapper measures DAS and the soft-drop
@@ -122,7 +116,7 @@ public final class PadSeats {
         var joinedNow: Set<Int> = []
         for reading in readings {
             let existing = seated[reading.slot] != nil
-            guard let seat = seat(for: reading) else { continue }
+            guard let seat = seat(for: reading, nowMs: nowMs) else { continue }
             if !existing { joinedNow.insert(seat) }
             states.append(EngineBridge.PadState(
                 seat: seat, buttons: reading.buttons, axes: reading.axes))
@@ -181,7 +175,7 @@ public final class PadSeats {
 
     // MARK: - Seat lifecycle
 
-    private func seat(for reading: PadReading) -> Int? {
+    private func seat(for reading: PadReading, nowMs: Double) -> Int? {
         if let seat = seated[reading.slot] {
             // The row can disappear without the pad going anywhere: a session
             // reset clears the whole roster. Give the seat up so the next press
@@ -204,10 +198,11 @@ public final class PadSeats {
         // means "awake and in someone's hands" — the reason the web has to wait
         // for a button (`navigator.getGamepads()` reports nothing until then) does
         // not apply. A pad left in a drawer is not connected, so it cannot join.
-        return join(reading)
+        if let at = refusedAt[reading.slot], nowMs - at < refusedRetryMs { return nil }
+        return join(reading, nowMs: nowMs)
     }
 
-    private func join(_ reading: PadReading) -> Int? {
+    private func join(_ reading: PadReading, nowMs: Double) -> Int? {
         let seat = Self.seatId(forSlot: reading.slot)
         let name = coordinator.padName(reading.id)
         // The same HELLO a phone sends. autoName stays false: the pad's name is a
@@ -215,15 +210,22 @@ public final class PadSeats {
         coordinator.deliverLocal(from: seat, data: [
             "type": MSG.hello, "name": name, "autoName": false,
         ])
-        // A refused join (room full) leaves no row behind. Drop the seat so the
-        // next press tries again rather than feeding input nobody owns.
-        guard coordinator.player(seat) != nil else { return nil }
+        // A refused join (room full) leaves no row behind. Drop the seat, and
+        // note the refusal so the retry runs on the clock (see refusedAt) rather
+        // than on every poll.
+        guard coordinator.player(seat) != nil else {
+            refusedAt[reading.slot] = nowMs
+            return nil
+        }
+        refusedAt.removeValue(forKey: reading.slot)
         seated[reading.slot] = seat
         return seat
     }
 
     private func retireVanished(_ readings: [PadReading]) {
         let live = Set(readings.map(\.slot))
+        // A replugged pad should try again at once, not wait out an old refusal.
+        refusedAt = refusedAt.filter { live.contains($0.key) }
         for (slot, seat) in seated where !live.contains(slot) {
             seated.removeValue(forKey: slot)
             // Same path as a phone closing its tab: mid-game the row is held

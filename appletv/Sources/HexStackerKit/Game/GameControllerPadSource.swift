@@ -19,9 +19,10 @@ import GameController
 ///     named for position, not for the letter printed on a Switch pad), so the
 ///     four face buttons map straight across.
 ///
-/// Menu (index 9) is deliberately reported but never acted on. tvOS delivers it
-/// as a `.menu` UIPress to the responder chain, where the app already handles it;
-/// see the note in `PadSeats.onMenuPress`.
+/// Menu (index 9) is reported like every other button and routed by `PadSeats`:
+/// tvOS never puts a gamepad's Menu on the responder chain (unlike the Siri
+/// Remote's), so the poll is the only door it arrives at. See the note at the
+/// index-9 binding in `PadSeats.poll`.
 public final class GameControllerPadSource: PadSource {
     /// Slots are assigned here rather than read from `GCController.controllers()`,
     /// whose order is not stable: a pad must keep its slot across polls and
@@ -33,8 +34,10 @@ public final class GameControllerPadSource: PadSource {
     public init() {}
 
     public func pads() -> [PadReading] {
+        let controllers = GCController.controllers()
+        purgeVanished(keeping: controllers)
         var readings: [PadReading] = []
-        for controller in GCController.controllers() {
+        for controller in controllers {
             guard let pad = controller.extendedGamepad else { continue }
             let slot = slot(for: controller)
             readings.append(PadReading(
@@ -97,20 +100,28 @@ public final class GameControllerPadSource: PadSource {
 
     // MARK: - Slots
 
-    private func slot(for controller: GCController) -> Int {
-        let key = ObjectIdentifier(controller)
-        if let slot = slots[key] { return slot }
-        // Purge BEFORE choosing, which is the whole point of the ordering. A pad
-        // that dropped and came back is a NEW GCController object, so its old
-        // entry is still sitting in `slots`; counting that as taken hands the
-        // reconnect slot 1. The seat id is derived from the slot
-        // (`PadSeats.seatId(forSlot:)`), so that is not a cosmetic difference —
-        // it comes back as a different PLAYER, and the row `retireVanished` held
-        // open for the resume is orphaned until it expires.
-        let live = Set(GCController.controllers().map(ObjectIdentifier.init))
+    /// Runs at the top of every poll, BEFORE any slot is read or chosen. A pad
+    /// that dropped and came back is a NEW GCController object, so its old entry
+    /// would otherwise sit in `slots`; counting that as taken hands the reconnect
+    /// slot 1. The seat id is derived from the slot (`PadSeats.seatId(forSlot:)`),
+    /// so that is not a cosmetic difference — it comes back as a different PLAYER,
+    /// and the row `retireVanished` held open for the resume is orphaned until it
+    /// expires. Purging here rather than lazily inside `slot(for:)` also matters
+    /// for the OTHER two maps: a started `CHHapticEngine` would outlive its
+    /// controller until the next unknown pad appeared, and an `ObjectIdentifier`
+    /// is an address — a new controller allocated where a released one sat would
+    /// inherit the dead entry wholesale, slot and silent engine both.
+    private func purgeVanished(keeping controllers: [GCController]) {
+        let live = Set(controllers.map(ObjectIdentifier.init))
+        guard !slots.keys.allSatisfy(live.contains) else { return }
         slots = slots.filter { live.contains($0.key) }
         engines = engines.filter { live.contains($0.key) }
         players = players.filter { live.contains($0.key) }
+    }
+
+    private func slot(for controller: GCController) -> Int {
+        let key = ObjectIdentifier(controller)
+        if let slot = slots[key] { return slot }
         let taken = Set(slots.values)
         var next = 0
         while taken.contains(next) { next += 1 }
@@ -157,8 +168,6 @@ public final class GameControllerPadSource: PadSource {
             Double(pad.leftThumbstick.xAxis.value),
             // Flipped: see the note at the top. +1 is UP here, DOWN for the mapper.
             Double(-pad.leftThumbstick.yAxis.value),
-            Double(pad.rightThumbstick.xAxis.value),
-            Double(-pad.rightThumbstick.yAxis.value),
         ]
     }
 
