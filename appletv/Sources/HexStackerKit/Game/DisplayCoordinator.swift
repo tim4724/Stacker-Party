@@ -234,6 +234,18 @@ public final class DisplayCoordinator {
     // methods live in DisplayCoordinator+Gallery.swift; extensions can't add
     // stored properties, so their state lives here.
     var demoActive = false
+
+    /// Gamepads attached to this TV, as players. nil when no pad source was
+    /// injected, which is every offline harness.
+    private var padSeats: PadSeats?
+
+    /// Monotonic ms for the pad mapper. See the note at its poll site.
+    private var padClockMs: Double = 0
+
+    /// Whether any pad currently holds a seat. The lobby suppresses system focus
+    /// while one does, because there the D-pad is that seat's level stepper and it
+    /// cannot also move a focus ring.
+    public var hasPadSeats: Bool { padSeats?.hasSeats ?? false }
     var demoTick = 0
 
     // Render-on-input coalescing: true once handleInput has pulled a snapshot
@@ -265,6 +277,7 @@ public final class DisplayCoordinator {
                 engineDirectory: URL,
                 output: DisplayOutput,
                 fastlane: InputFastlane? = nil,
+                padSource: PadSource? = nil,
                 seedProvider: @escaping () -> UInt32 = { UInt32.random(in: 0...UInt32.max) },
                 nowProvider: @escaping () -> Double = { Date().timeIntervalSince1970 * 1000 }) {
         self.transport = transport
@@ -273,6 +286,13 @@ public final class DisplayCoordinator {
         self.fastlane = fastlane
         self.seedProvider = seedProvider
         self.nowProvider = nowProvider
+        // Injected rather than built here, and nil by default, so the offline
+        // harnesses (gallery shots, the local demo) cannot seat a pad that
+        // happens to be plugged into the developer's machine into a fixture
+        // roster. The web guards the same case with window.__TEST__.
+        if let padSource {
+            self.padSeats = PadSeats(source: padSource, coordinator: self)
+        }
     }
 
     // MARK: - The room core
@@ -425,6 +445,19 @@ public final class DisplayCoordinator {
     public var playerCount: Int { roomScalar("size").flatMap { Int($0) } ?? 0 }
 
     // MARK: - Local (gamepad) seats
+
+    /// Send to one peer, unless the seat is LOCAL. A pad attached to this TV has
+    /// no connection to send down, and its index is negative, which is not
+    /// something the relay could route even if we tried.
+    ///
+    /// Every per-peer send goes through here rather than each site testing for
+    /// itself, so a send added later inherits the rule instead of having to
+    /// remember it. The web guards its call sites one by one; this is the same
+    /// rule with one place to state it.
+    private func sendToPeer(_ peerIndex: Int, _ data: [String: Any]) {
+        guard !PadSeats.isLocalSeat(peerIndex) else { return }
+        transport.sendTo(peerIndex, data)
+    }
 
     /// Deliver a message from a seat this display owns rather than the relay.
     /// Deliberately the SAME entry point the relay's messages take: a pad that
@@ -732,7 +765,7 @@ public final class DisplayCoordinator {
         case MSG.setColor: handleSetColor(from: from, msg: msg)
         case MSG.setName: handleSetName(from: from, msg: msg)
         case MSG.setDisplayMute: handleSetMute(from: from, msg: msg)
-        case MSG.ping: transport.sendTo(from, OutboundMessage.pong(t: msg.t))
+        case MSG.ping: sendToPeer(from, OutboundMessage.pong(t: msg.t))
         default: break
         }
 
@@ -762,7 +795,7 @@ public final class DisplayCoordinator {
 
         guard res.accepted == true else {
             if res.roomFull == true {
-                transport.sendTo(from, OutboundMessage.error(message: "Room is full"))
+                sendToPeer(from, OutboundMessage.error(message: "Room is full"))
             }
             return
         }
@@ -1004,6 +1037,17 @@ public final class DisplayCoordinator {
         flushPendingSnapshot()           // trailing edge of the set_state throttle
         let deltaMs = min(max(rawDelta, 0), Self.maxFrameDeltaMs)
         let roomState = state
+        // Before the state switch, because a pad joins, picks a colour and steps
+        // its level in the LOBBY, where none of the branches below run any input.
+        //
+        // Its own accumulator, not frameClockMs: that one only advances while a
+        // game is running, and a mapper handed a frozen clock would measure every
+        // DAS interval against the same instant. Monotonic rather than wall time
+        // for the same reason the engine's is.
+        if padSeats != nil {
+            padClockMs += deltaMs
+            padSeats?.poll(nowMs: padClockMs, playing: roomState == .playing && !paused)
+        }
         // The local demo has no controllers sending heartbeats, so keep its
         // synthetic players "seen" — otherwise the liveness sweep flags them
         // disconnected after 3 s and auto-pauses the self-playing game, and
@@ -1036,7 +1080,12 @@ public final class DisplayCoordinator {
             }
             // Events are the complete record — drive the native-only board
             // animations from them (line clears, lock flashes, KO, shakes).
-            for event in frame.events { output?.handleGameEvent(event) }
+            for event in frame.events {
+                output?.handleGameEvent(event)
+                // The same per-event fan-out, for the effect that happens in a
+                // player's hands rather than on screen.
+                padSeats?.handle(event: event)
+            }
             // nil = render-identical to the last delivered frame (PartyCore's
             // scene signature): the scene keeps drawing its retained state and
             // its own time-driven animations, so skipping the push saves the
@@ -1111,7 +1160,7 @@ public final class DisplayCoordinator {
                 // carry. Liveness is the snapshot's alone, so a `player_ko` form sends
                 // nothing here (PlayerStateCommand in server/PartyCore.d.ts has why).
                 if let lines = c.lines {
-                    transport.sendTo(pid, OutboundMessage.playerState(lines: lines))
+                    sendToPeer(pid, OutboundMessage.playerState(lines: lines))
                 }
             case "gameEnd":
                 endGame(results: c.results ?? [], elapsed: c.elapsed ?? 0)

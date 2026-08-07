@@ -27,6 +27,10 @@ final class DisplayModel: ObservableObject {
     private let advertiser = RoomAdvertiser()
 
     private(set) var galleryMode = ProcessInfo.processInfo.environment["HEXGALLERY"] != nil
+
+    /// Set by PressHostController, which owns the GameController event scope.
+    /// See `syncPadInputOwnership`.
+    var setPadOwnsInput: ((Bool) -> Void)?
     private var galleryIndex = 0
     // Frozen-capture harness modes (HEXGALLERY carousel, HEXSHOT single state):
     // render one settled state, no live tick — and no animations at all:
@@ -168,10 +172,14 @@ final class DisplayModel: ObservableObject {
         #else
         fastlane = nil
         #endif
+        // Not in gallery mode: those rosters are fixtures, and a pad plugged into
+        // the machine taking the capture must not join one. Same reason the web
+        // skips its poll under window.__TEST__.
         let coordinator = DisplayCoordinator(transport: relay,
                                              engineDirectory: AssetLocator.engineDirectory,
                                              output: self,
-                                             fastlane: fastlane)
+                                             fastlane: fastlane,
+                                             padSource: galleryMode ? nil : GameControllerPadSource())
         self.coordinator = coordinator
         // Boards read the roster off the published lobby state, not the room: the
         // seats are already snapshot-derived (updateLobby), and a lookup on the
@@ -555,6 +563,29 @@ extension DisplayModel: DisplayOutput {
             if screen != .lobby { state.aboutPath = [] }
         }
         updateFramePacing()
+        syncPadInputOwnership(screen)
+    }
+
+    /// Who owns a gamepad's presses on this screen: the UI, or the game.
+    ///
+    /// tvOS routes controller input into the focus engine by default, which is
+    /// what we want on the overlays — the pad moves the ring over Play Again and
+    /// Continue exactly like the remote, so those need no binding of their own.
+    /// It is precisely wrong in the other two states. In the lobby the D-pad is
+    /// this seat's level stepper, and during a match it is the piece; both would
+    /// otherwise also be dragging a focus ring around behind the game.
+    ///
+    /// Turning it off is not the same as making the UI unfocusable, which is why
+    /// it is done here rather than with `.focusable(false)` on the views: this
+    /// stops only the PAD. The Siri remote keeps driving focus, so START and ⓘ in
+    /// the lobby stay reachable for whoever set the TV up, which is the person
+    /// holding it.
+    ///
+    /// While the pad owns input its Menu button no longer arrives as a `.menu`
+    /// press, so `PadSeats` binds index 9 itself in exactly these two states and
+    /// leaves it to the system in the others.
+    private func syncPadInputOwnership(_ screen: DisplayScreen) {
+        setPadOwnsInput?(screen == .lobby || screen == .game)
     }
 
     func roomReady(room: String, joinURL: String, qrText: String) {

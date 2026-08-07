@@ -1,3 +1,4 @@
+import GameController
 import SwiftUI
 
 @main
@@ -22,11 +23,20 @@ private struct RootHost: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: PressHostController, context: Context) {}
 }
 
-final class PressHostController: UIViewController {
+/// A GCEventViewController so the app can decide, per screen, whether a gamepad's
+/// presses drive the focus engine or go only to the game. See
+/// DisplayModel.syncPadInputOwnership for the rule and why it is not the same as
+/// making the views unfocusable.
+final class PressHostController: GCEventViewController {
     private let model = DisplayModel()
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        model.setPadOwnsInput = { [weak self] padOwns in
+            // The property is phrased the other way round: it asks whether
+            // controller input should still reach the UI.
+            self?.controllerUserInteractionEnabled = !padOwns
+        }
         // Pin Dynamic Type: the chrome is a fixed proportional canvas (Dimens.swift's
         // Vp), so text that scales independently of it has nowhere to go. tvOS ships no
         // text-size control today, which makes this a no-op, and that is the point. It
