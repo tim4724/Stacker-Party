@@ -1082,4 +1082,20 @@ import Foundation
         #expect(fo.results?.count == 1)
         #expect(fo.lastSnapshot?.players.count == 1, "one frozen board behind the solo result")
     }
+
+    @Test func lobbyGhostSlotIsSweptAfterTheLingerWindow() {
+        // A killed tab sends no peer_left, and expiredPeers deliberately sits out
+        // the LOBBY — lingeringPeers is the long-clock cleanup, routed through the
+        // ordinary peer-left path by the lobby tick branch.
+        let clock = Clock()
+        let (coord, ft, _) = makeLobby(players: 2, clock: clock)
+        clock.ms = 10_000
+        ft.onMessage?(1, ["type": "ping"])
+        coord.tick(deltaMs: 16.7)
+        #expect(coord.roster().count == 2, "under the linger bar both stay")
+        clock.ms = 26_000
+        ft.onMessage?(1, ["type": "ping"])
+        coord.tick(deltaMs: 16.7)
+        #expect(coord.roster().map(\.peerIndex) == [1], "the ghost slot departs, the live one stays")
+    }
 }

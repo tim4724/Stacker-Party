@@ -311,6 +311,8 @@ class RoomCoreClient private constructor(private val bridge: EngineBridge) {
     @Serializable
     data class LivenessTick(
         val expired: List<Int> = emptyList(),
+        /** Lobby ghost slots past the linger window: route through the peer-left path. */
+        val departed: List<Int> = emptyList(),
         /** The late-joiner grace window elapsed: return to the lobby. */
         val graceFired: Boolean = false,
     )

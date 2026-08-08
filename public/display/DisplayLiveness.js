@@ -96,6 +96,11 @@ function startLivenessCheck() {
       // handoff reaches the remaining controllers' isHost flags.
       publishAs('now');
     }
+    // Lobby ghost slots: a controller silent past the (much longer) linger
+    // window departs outright, through the same path a relay peer_left takes —
+    // the cleanup a killed tab never triggers on its own.
+    var departed = roomCore.lingeringPeers(now);
+    for (const goneId of departed) onPeerLeft(goneId);
     // Poll the flow-owned late-joiner grace deadline (armed by
     // checkAllPlayersDisconnected on the event path). Replaces the old
     // setTimeout: fires within one tick of the 5s window elapsing, and

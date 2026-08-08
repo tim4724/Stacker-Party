@@ -308,6 +308,20 @@ const OPS = [
   { m: 'peerJoined', a: [901, 92000] },
   { m: 'hello', a: [901, { name: 'PlayStation', autoName: false }, 92000] },
   { g: 'host' },                                // ...but the waking pad reclaims it
+
+  // --- The lobby frees a ghost slot on its own -------------------------------
+  // A killed tab sends no peer_left, and expiredPeers deliberately sits out the
+  // LOBBY (a locked phone must keep its card) — so nothing ever removed the row.
+  // lingeringPeers is the long-clock cleanup: silence past LOBBY_LINGER_MS is no
+  // longer a locked phone waiting. The shell routes each id through its ordinary
+  // peer-left path (the peerLeft op below models that). The idle PAD is exempt:
+  // its presence is the pad poll's business, never the clock's.
+  { m: 'peerJoined', a: [13, 100000] },
+  { m: 'hello', a: [13, { name: 'Ghost', autoName: false }, 100000] },
+  { m: 'tick', a: [110000, [9]] },              // 10s silent: under the linger bar
+  { m: 'tick', a: [116000, [9]] },              // 16s: departed names 13 — not the pad
+  { m: 'peerLeft', a: [13] },
+  { g: 'host' },
 ];
 
 module.exports = { INIT, OPS };

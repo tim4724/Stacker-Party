@@ -564,6 +564,7 @@ class DisplayCoordinator(
         // and RoomCore.pause refuses a manual pause while the connection freeze stands.
         // Mirrors tvOS roomLinkRestored.
         connectionResume()
+        refreshDisconnectQrs()
         output.roomReady(code, joinUrl(code, instance))
         if (!keepMatch) output.showScreen(DisplayScreen.LOBBY)
     }
@@ -619,6 +620,15 @@ class DisplayCoordinator(
             // landed on a host's manual pause leaves that pause standing.
             connectionResume()
         }
+        refreshDisconnectQrs()
+    }
+
+    /** The room identity just (re)confirmed: re-issue every held rejoin QR from the
+     *  CURRENT room. One raised while the room was gone gets its code, and a room
+     *  replaced underneath a kept match stops advertising the dead room's claim URL
+     *  (which 404s). Web refreshDisconnectQRs / tvOS roomLinkRestored do the same. */
+    private suspend fun refreshDisconnectQrs() {
+        for (id in disconnectedBoards) output.setDisconnected(id, rejoinUrl(id))
     }
 
     private suspend fun onPeerJoined(index: Int) {
@@ -683,6 +693,10 @@ class DisplayCoordinator(
             // reaches the remaining controllers.
             publishAs(RoomCoreClient.PUBLISH_NOW)
         }
+        // Lobby ghost slots: a controller silent past the (much longer) linger
+        // window departs through the ordinary peer-left path — the cleanup a
+        // killed tab never triggers on its own. Web and tvOS run the same rule.
+        for (id in res.departed) onPeerLeft(id)
         // The late-joiner grace deadline (armed on the event path by
         // checkAllParticipantsDisconnected) fired: return to the lobby for them.
         if (res.graceFired) returnToLobby()

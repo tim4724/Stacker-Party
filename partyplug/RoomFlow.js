@@ -46,11 +46,12 @@
     // predicate the host calls with an injected nowMs. The detectors NEVER
     // mutate _disconnected and never _emit — the host applies a detected expiry
     // through the existing markDisconnected path, keeping the single-writer
-    // invariant intact. opts.liveness?: { timeoutMs, graceMs, enabledProvider }.
+    // invariant intact. opts.liveness?: { timeoutMs, graceMs, lingerMs, enabledProvider }.
     var liveness = opts.liveness || {};
     this._lastSeen = new Map();      // peerIndex -> last nowMs we heard from it
     this._livenessTimeoutMs = liveness.timeoutMs != null ? liveness.timeoutMs : Infinity;
     this._graceMs = liveness.graceMs || 0;
+    this._lingerMs = liveness.lingerMs != null ? liveness.lingerMs : Infinity;
     // Optional () => boolean. When it returns false, liveness expiry is
     // suppressed (e.g. AirConsole, where the SDK owns connection tracking). Read
     // live so a host that sets it up after construction is detected correctly.
@@ -448,6 +449,24 @@
     for (var id of this.players.keys()) {
       if (this._disconnected.has(id)) continue;
       if (this.isExpired(id, nowMs)) out.push(id);
+    }
+    return out;
+  };
+
+  // The LOBBY's cleanup, on a far longer clock than expiredPeers. The lobby
+  // gate above protects a phone merely locked for a moment (mid-game that state
+  // earns a held row and a rejoin QR; in the lobby removal is for good) — but
+  // with no bound at all, a controller whose peer_left never arrives (a killed
+  // tab, a relay hiccup) parks a ghost card in the lobby forever. Silence past
+  // lingerMs is no longer a locked phone waiting: they left. The caller routes
+  // these through its ordinary peer-left path; this only names them.
+  RoomFlow.prototype.lingeringPeers = function (nowMs) {
+    if (this.state !== STATES.LOBBY) return [];
+    if (this._lingerMs === Infinity) return [];
+    if (this._livenessEnabledProvider && !this._livenessEnabledProvider()) return [];
+    var out = [];
+    for (var id of this.players.keys()) {
+      if (this._lastSeen.has(id) && nowMs - this._lastSeen.get(id) > this._lingerMs) out.push(id);
     }
     return out;
   };

@@ -1213,6 +1213,51 @@
     },
     {
       "g": "host"
+    },
+    {
+      "m": "peerJoined",
+      "a": [
+        13,
+        100000
+      ]
+    },
+    {
+      "m": "hello",
+      "a": [
+        13,
+        {
+          "name": "Ghost",
+          "autoName": false
+        },
+        100000
+      ]
+    },
+    {
+      "m": "tick",
+      "a": [
+        110000,
+        [
+          9
+        ]
+      ]
+    },
+    {
+      "m": "tick",
+      "a": [
+        116000,
+        [
+          9
+        ]
+      ]
+    },
+    {
+      "m": "peerLeft",
+      "a": [
+        13
+      ]
+    },
+    {
+      "g": "host"
     }
   ],
   "steps": [
@@ -3330,6 +3375,7 @@
     {
       "result": {
         "expired": [],
+        "departed": [],
         "graceFired": false
       },
       "snapshot": {
@@ -3377,6 +3423,7 @@
           5,
           6
         ],
+        "departed": [],
         "graceFired": false
       },
       "snapshot": {
@@ -5423,6 +5470,7 @@
           20,
           21
         ],
+        "departed": [],
         "graceFired": false
       },
       "snapshot": {
@@ -7563,6 +7611,191 @@
         "isNew": false,
         "claimed": false,
         "oldPeerIndex": null,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 901,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          9,
+          901
+        ],
+        "players": {
+          "9": {
+            "name": "Kim",
+            "color": 0
+          },
+          "901": {
+            "name": "PlayStation",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": 901,
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 901,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          9,
+          901
+        ],
+        "players": {
+          "9": {
+            "name": "Kim",
+            "color": 0
+          },
+          "901": {
+            "name": "PlayStation",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "added": true,
+        "colorIndex": 2,
+        "joinedLobby": true,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 901,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          9,
+          901,
+          13
+        ],
+        "players": {
+          "9": {
+            "name": "Kim",
+            "color": 0
+          },
+          "13": {
+            "name": "HX-77",
+            "color": 2,
+            "helloSeen": false
+          },
+          "901": {
+            "name": "PlayStation",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "accepted": true,
+        "isNew": false,
+        "claimed": false,
+        "oldPeerIndex": null,
+        "publish": "now"
+      },
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 901,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          9,
+          901,
+          13
+        ],
+        "players": {
+          "9": {
+            "name": "Kim",
+            "color": 0
+          },
+          "13": {
+            "name": "Ghost",
+            "color": 2
+          },
+          "901": {
+            "name": "PlayStation",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "expired": [],
+        "departed": [],
+        "graceFired": false
+      },
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 901,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          9,
+          901,
+          13
+        ],
+        "players": {
+          "9": {
+            "name": "Kim",
+            "color": 0
+          },
+          "13": {
+            "name": "Ghost",
+            "color": 2
+          },
+          "901": {
+            "name": "PlayStation",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "expired": [],
+        "departed": [
+          13
+        ],
+        "graceFired": false
+      },
+      "snapshot": {
+        "roomState": "lobby",
+        "hostPeerIndex": 901,
+        "paused": false,
+        "displayMuted": true,
+        "participants": [
+          9,
+          901,
+          13
+        ],
+        "players": {
+          "9": {
+            "name": "Kim",
+            "color": 0
+          },
+          "13": {
+            "name": "Ghost",
+            "color": 2
+          },
+          "901": {
+            "name": "PlayStation",
+            "color": 1
+          }
+        }
+      }
+    },
+    {
+      "result": {
+        "known": true,
+        "action": "removed",
+        "returnedToLobby": false,
         "publish": "now"
       },
       "snapshot": {

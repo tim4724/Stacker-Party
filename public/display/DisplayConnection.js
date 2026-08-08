@@ -382,6 +382,7 @@ function applyRoomCreated(partyRoomCode, newJoinUrl) {
   // room's lobby never shows, so nothing else would thaw it. Mirrors tvOS
   // roomLinkRestored / Android handleCreated.
   connectionResume();
+  refreshDisconnectQRs();
 
   // Generate + paint the QR synchronously so it's on screen the instant the
   // lobby is revealed — reading the canvas box inside renderQR forces the one
@@ -447,6 +448,7 @@ function onDisplayRejoined(partyRoomCode, peers) {
     // do too now that the state machine is shared.
     connectionResume();
   });
+  refreshDisconnectQRs();
 
   if (roomState === ROOM_STATE.LOBBY) {
     showScreen(SCREEN.LOBBY);
@@ -767,6 +769,14 @@ function showDisconnectQR(peerIndex) {
   var offscreen = document.createElement('canvas');
   renderQR(offscreen, qrMatrix, 512);
   disconnectedQRs.set(peerIndex, offscreen);
+}
+
+// The room identity just (re)confirmed: rebuild every held rejoin QR from the
+// CURRENT joinUrl. A QR raised while the room was gone gets its code, and a
+// room replaced underneath a kept match stops advertising the dead room's
+// claim URL (which 404s).
+function refreshDisconnectQRs() {
+  for (var entry of disconnectedQRs) showDisconnectQR(entry[0]);
 }
 
 // renderQR() lives in DisplayUI.js (rendering helper)

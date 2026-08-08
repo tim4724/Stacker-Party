@@ -127,6 +127,8 @@ struct RoomResult: Decodable {
 /// the late-joiner grace window elapsed.
 struct RoomTick: Decodable {
     let expired: [Int]
+    /// Lobby ghost slots past the linger window: route through the peer-left path.
+    let departed: [Int]
     let graceFired: Bool
 }
 
@@ -1171,7 +1173,12 @@ public final class DisplayCoordinator {
         case .lobby:
             // Flush the batched liveness stamps anyway, so a lobby that sat idle
             // doesn't hand the first COUNTDOWN sweep a roster of stale timestamps.
-            _ = drainSeen(nowProvider())
+            // `departed` is the lobby's ghost-slot cleanup: a controller silent
+            // past the linger window leaves through the ordinary peer-left path
+            // (a killed tab never sends one). Gated like pollPresence — while
+            // our OWN link is down, their silence is our fault.
+            let sweep = drainSeen(nowProvider())
+            if relayConnected { for id in sweep.departed { onPeerLeft(id) } }
         }
     }
 
@@ -1453,6 +1460,11 @@ public final class DisplayCoordinator {
     private func roomLinkRestored() {
         relayConnected = true
         connectionResume()
+        // The room identity just (re)confirmed: re-issue every held rejoin QR
+        // from the CURRENT room. One raised while the room was gone gets its
+        // code, and a room replaced underneath a kept match stops advertising
+        // the dead room's claim URL (which 404s). Web and Android do the same.
+        for id in rejoinQRs { output?.setDisconnected(playerId: id, joinURL: rejoinURL(id)) }
     }
 
     // MARK: - Presence / liveness
@@ -1462,7 +1474,7 @@ public final class DisplayCoordinator {
     private func drainSeen(_ now: Double) -> RoomTick {
         let seen = Array(seenSinceTick)
         seenSinceTick.removeAll(keepingCapacity: true)
-        return roomValue(RoomTick.self, "tick", [now, seen]) ?? RoomTick(expired: [], graceFired: false)
+        return roomValue(RoomTick.self, "tick", [now, seen]) ?? RoomTick(expired: [], departed: [], graceFired: false)
     }
 
     /// Once-per-frame presence sweep. Flags silently-dead controllers, returns to the

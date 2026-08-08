@@ -267,8 +267,11 @@ class BoardSurfaceView @JvmOverloads constructor(
             disconnects[playerId] = joinUrl
             // Encode the QR here, on this (game) thread: it costs milliseconds once per
             // URL, which has no place inline in the render thread's per-frame loop,
-            // where it used to run on first sight of the overlay.
-            qrCache.warm(joinUrl)
+            // where it used to run on first sight of the overlay. A roomless raise
+            // (rejoinUrl with no room code) skips the encode — warming "" would only
+            // negative-cache a non-URL; the overlay shows without a QR until the
+            // coordinator re-issues the real one when the room is (re)confirmed.
+            if (joinUrl.isNotEmpty()) qrCache.warm(joinUrl)
         }
         bumpContent()
     }

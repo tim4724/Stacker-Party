@@ -46,6 +46,11 @@ const MAX_FRAME_DELTA_MS = 50;           // Cap per-frame delta (~3 frames at 60
 
 // Display-side timing
 const LIVENESS_TIMEOUT_MS = 3000;   // Controller considered disconnected after this silence
+// Lobby ghost-slot cleanup: a controller silent this long in the LOBBY departs
+// outright (RoomFlow.lingeringPeers). Far longer than LIVENESS_TIMEOUT_MS on
+// purpose — a phone locked for a moment must keep its card; a tab whose
+// peer_left never arrived must not keep it forever.
+const LOBBY_LINGER_MS = 15000;
 // Grace before returning to lobby when every active participant has dropped but
 // late joiners are waiting — lets the host reconnect before we bail out.
 const LATE_JOINER_GRACE_MS = 5000;
@@ -315,6 +320,7 @@ exports.SOFT_DROP_TIMEOUT_MS = SOFT_DROP_TIMEOUT_MS;
 exports.HARD_DROP_MIN_INTERVAL_MS = HARD_DROP_MIN_INTERVAL_MS;
 exports.MAX_FRAME_DELTA_MS = MAX_FRAME_DELTA_MS;
 exports.LIVENESS_TIMEOUT_MS = LIVENESS_TIMEOUT_MS;
+exports.LOBBY_LINGER_MS = LOBBY_LINGER_MS;
 exports.LATE_JOINER_GRACE_MS = LATE_JOINER_GRACE_MS;
 exports.SELF_HEARTBEAT_DEAD_MS = SELF_HEARTBEAT_DEAD_MS;
 exports.COLS = COLS;

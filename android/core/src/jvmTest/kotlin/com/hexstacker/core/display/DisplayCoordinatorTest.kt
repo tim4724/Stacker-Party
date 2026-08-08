@@ -1310,6 +1310,50 @@ class DisplayCoordinatorTest {
     }
 
     @Test
+    fun phoneTakeoverThenLobbyLeaveFreesTheSlot() = runBlocking {
+        val bridge = EngineBridge.create(bundle())
+        try {
+            val t = FakeTransport(); val out = FakeOutput(); val pads = FakePadSource()
+            val coord = DisplayCoordinator(t, out, provider(bridge), padSource = pads, seedProvider = { 0xBADCAFEL })
+            coord.start()
+            t.created("ROOM42", "inst1"); coord.awaitIdle()
+
+            // Two pads in, host pad starts the round.
+            pads.readings = listOf(padReading(pressed = intArrayOf(0)), padReading(slot = 1, id = "DualSense Wireless Controller", pressed = intArrayOf(0)))
+            tick(coord)
+            assertEquals(setOf(PadSeats.seatId(0), PadSeats.seatId(1)), coord.room.players.keys)
+            pads.readings = listOf(padReading(), padReading(slot = 1, id = "DualSense Wireless Controller"))
+            tick(coord)
+            pads.readings = listOf(padReading(pressed = intArrayOf(9)), padReading(slot = 1, id = "DualSense Wireless Controller"))
+            tick(coord)
+            pads.readings = listOf(padReading(), padReading(slot = 1, id = "DualSense Wireless Controller"))
+            var ticks = 0
+            while (coord.state == RoomState.COUNTDOWN && ticks < 600) { tick(coord); ticks++ }
+            assertEquals(RoomState.PLAYING, coord.state)
+
+            // Pad 2 unplugs mid-game: row held, rejoin QR with a real URL.
+            pads.readings = listOf(padReading())
+            tick(coord)
+            val qr = out.disconnects.last { it.first == PadSeats.seatId(1) }.second
+            assertTrue(!qr.isNullOrEmpty(), "rejoin QR url must be non-empty, got '$qr'")
+
+            // A phone scans it and claims the seat.
+            t.peerJoined(5); coord.awaitIdle()
+            t.deliver(5, buildJsonObject {
+                put("type", Msg.HELLO); put("name", "Phone"); put("rejoinToken", PadSeats.seatId(1))
+            }); coord.awaitIdle()
+            assertEquals(setOf(PadSeats.seatId(0), 5), coord.room.players.keys)
+
+            // Back to the lobby, then the phone closes its page (relay peer_left).
+            t.deliver(5, buildJsonObject { put("type", Msg.RETURN_TO_LOBBY) }); coord.awaitIdle()
+            assertEquals(RoomState.LOBBY, coord.state)
+            t.peerLeft(5); coord.awaitIdle()
+            assertEquals(setOf(PadSeats.seatId(0)), coord.room.players.keys, "lobby slot must be freed")
+            coord.stop()
+        } finally { bridge.close() }
+    }
+
+    @Test
     fun padSeatSurvivesNothingItShouldNot() = runBlocking {
         val bridge = EngineBridge.create(bundle())
         try {
@@ -1341,6 +1385,70 @@ class DisplayCoordinatorTest {
             tick(coord)
             assertEquals(setOf(PadSeats.seatId(0)), coord.room.players.keys)
             assertEquals("Xbox", coord.room.player(PadSeats.seatId(0))!!.name)
+            coord.stop()
+        } finally { bridge.close() }
+    }
+
+    @Test
+    fun lobbyGhostSlotIsSweptAfterTheLingerWindow() = runBlocking {
+        val bridge = EngineBridge.create(bundle())
+        try {
+            var now = 0.0
+            val t = FakeTransport(); val out = FakeOutput()
+            val coord = DisplayCoordinator(t, out, provider(bridge), seedProvider = { 0xBADCAFEL })
+            coord.clock = { now }
+            coord.start()
+            t.created("ROOM42", "inst1"); coord.awaitIdle()
+            t.peerJoined(1); t.deliver(1, hello("Alex")); coord.awaitIdle()
+            t.peerJoined(2); t.deliver(2, hello("Bea")); coord.awaitIdle()
+            assertEquals(setOf(1, 2), coord.room.players.keys)
+
+            // Bea's tab is killed: no peer_left ever arrives, and the lobby's
+            // expiredPeers gate means nothing else would remove the row. Alex
+            // keeps pinging.
+            now = 10_000.0
+            t.deliver(1, simple(Msg.PING)); coord.awaitIdle()
+            coord.tick(1200.0)
+            assertEquals(setOf(1, 2), coord.room.players.keys, "under the linger bar both stay")
+
+            now = 26_000.0
+            t.deliver(1, simple(Msg.PING)); coord.awaitIdle()
+            coord.tick(1200.0)
+            assertEquals(setOf(1), coord.room.players.keys, "the ghost slot departs, the live one stays")
+            coord.stop()
+        } finally { bridge.close() }
+    }
+
+    @Test
+    fun keptMatchReissuesRejoinQrsForTheFreshRoom() = runBlocking {
+        val bridge = EngineBridge.create(bundle())
+        try {
+            val t = FakeTransport(); val out = FakeOutput(); val pads = FakePadSource()
+            val coord = DisplayCoordinator(t, out, provider(bridge), padSource = pads, seedProvider = { 0xBADCAFEL })
+            coord.start()
+            t.created("ROOM42", "inst1"); coord.awaitIdle()
+
+            // Pad-only match, one pad unplugs mid-game: its rejoin QR names ROOM42.
+            pads.readings = listOf(padReading(pressed = intArrayOf(0)), padReading(slot = 1, id = "DualSense Wireless Controller", pressed = intArrayOf(0)))
+            tick(coord)
+            pads.readings = listOf(padReading(), padReading(slot = 1, id = "DualSense Wireless Controller"))
+            tick(coord)
+            pads.readings = listOf(padReading(pressed = intArrayOf(9)), padReading(slot = 1, id = "DualSense Wireless Controller"))
+            tick(coord)
+            pads.readings = listOf(padReading(), padReading(slot = 1, id = "DualSense Wireless Controller"))
+            var ticks = 0
+            while (coord.state == RoomState.COUNTDOWN && ticks < 600) { tick(coord); ticks++ }
+            assertEquals(RoomState.PLAYING, coord.state)
+            pads.readings = listOf(padReading())
+            tick(coord)
+            assertTrue(out.disconnects.last { it.first == PadSeats.seatId(1) }.second!!.contains("ROOM42"))
+
+            // The relay replaces the room underneath the kept match: every held
+            // rejoin QR must be re-issued with the NEW room code — the old claim
+            // URL 404s.
+            t.created("ROOM99", "inst1"); coord.awaitIdle()
+            assertEquals(RoomState.PLAYING, coord.state, "the pad-only match survives the swap")
+            assertTrue(out.disconnects.last { it.first == PadSeats.seatId(1) }.second!!.contains("ROOM99"))
             coord.stop()
         } finally { bridge.close() }
     }

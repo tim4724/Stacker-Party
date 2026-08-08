@@ -125,9 +125,16 @@ function RoomCore(opts) {
     this._rng = typeof opts.rng === 'function' ? opts.rng : Math.random;
   }
 
+  // Default the lobby linger for every liveness-enabled shell: the ghost-slot
+  // cleanup is core behavior, not a per-platform choice. AirConsole passes an
+  // enabledProvider that suppresses all of it (the SDK owns connection tracking).
+  var liveness = opts.liveness;
+  if (liveness && liveness.lingerMs == null) {
+    liveness = Object.assign({ lingerMs: GameConstants.LOBBY_LINGER_MS }, liveness);
+  }
   this.flow = new RoomFlow({
     masterProvider: opts.masterProvider,
-    liveness: opts.liveness,
+    liveness: liveness,
   });
 
   // Roster backing store, aliased onto flow's map so in-process consumers (the
@@ -1004,6 +1011,12 @@ RoomCore.prototype.isExpired = function (peerIndex, nowMs) { return this.flow.is
 RoomCore.prototype.expiredPeers = function (nowMs) {
   return this.flow.expiredPeers(nowMs).filter(function (id) { return !isLocalSeatId(id); });
 };
+// Lobby ghost slots (see RoomFlow.lingeringPeers): the shell routes each of
+// these through its ordinary peer-left path, exactly as if the relay had said
+// so. Local seats exempt for the same reason as expiredPeers above.
+RoomCore.prototype.lingeringPeers = function (nowMs) {
+  return this.flow.lingeringPeers(nowMs).filter(function (id) { return !isLocalSeatId(id); });
+};
 RoomCore.prototype.markDisconnected = function (peerIndex) { this.flow.markDisconnected(peerIndex); };
 RoomCore.prototype.markReconnected = function (peerIndex) { this.flow.markReconnected(peerIndex); };
 RoomCore.prototype.clearDisconnected = function (nowMs) { this.flow.clearDisconnected(nowMs); };
@@ -1022,6 +1035,7 @@ RoomCore.prototype.tick = function (nowMs, seen) {
   }
   return {
     expired: this.expiredPeers(nowMs), // through the wrapper: local seats exempt
+    departed: this.lingeringPeers(nowMs),
     graceFired: this.flow.graceTick(nowMs),
   };
 };
