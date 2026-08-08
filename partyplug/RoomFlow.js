@@ -124,9 +124,9 @@
     });
     this.players.set(peerIndex, player);
     // First joiner owns the sticky host slot. Also covers the "room emptied
-    // then someone joined" case (hostPeerIndex was reset to null). An ex-host
-    // returning under the SAME index (see removePlayer: the slept gamepad)
-    // takes the slot back — host duty survives a brief disconnect.
+    // then someone joined" case (hostPeerIndex was reset to null). A remembered
+    // ex-host returning under the SAME index (see removePlayer's rememberHost)
+    // takes the slot back — host duty survives an involuntary disconnect.
     if (this.hostPeerIndex == null || peerIndex === this._exHost) {
       this.hostPeerIndex = peerIndex;
       this._exHost = null;
@@ -143,7 +143,11 @@
   // meanwhile). hostchange fires whenever the EFFECTIVE host changes — including
   // a mid-game departure where the sticky slot stays put but the getter's
   // fallback shifts to a present player.
-  RoomFlow.prototype.removePlayer = function (peerIndex) {
+  // opts.rememberHost: the departure is involuntary and the same peer index can
+  // return (the game layer decides which is which — a relay peer never can, its
+  // indexes are never reissued). A remembered host gets the slot back if that
+  // index rejoins before a round starts without them (see addPlayer).
+  RoomFlow.prototype.removePlayer = function (peerIndex, opts) {
     if (!this.players.has(peerIndex)) return;
     var prevHost = this.host;
     var wasHost = peerIndex === this.hostPeerIndex;
@@ -154,13 +158,9 @@
     if (oi >= 0) this._order.splice(oi, 1);
     if (wasHost && (this.state === STATES.LOBBY || this.state === STATES.RESULTS)) {
       this.hostPeerIndex = this._electNextHost(peerIndex);
-      // Remember them: if the SAME peer index rejoins before a round starts
-      // without them, the slot is restored (see addPlayer). Only a seat whose
-      // index is stable across a departure can ever hit that — a relay peer
-      // always returns under a fresh index — so in practice this is the local
-      // gamepad that SLEPT through a lobby or results dwell: its OS-level
-      // disconnect is not a decision to leave, and host duty should survive it.
-      this._exHost = peerIndex;
+      // Not cleared on other departures: an unreturnable holder leaving in the
+      // meantime must not erase a remembered host's outstanding claim.
+      if (opts && opts.rememberHost) this._exHost = peerIndex;
     }
     if (this.players.size === 0) this._exHost = null; // a fresh party owes them nothing
     if (this.host !== prevHost) this._emit('hostchange', { hostPeerIndex: this.host });
@@ -214,9 +214,13 @@
     if (this.hostPeerIndex === oldId) {
       // Excluding newId matters for the non-inheriting case: the record (and its
       // early joinedAt) just moved onto newId, so an open election would hand
-      // the claimer the slot right back through the age tiebreak.
+      // the claimer the slot right back through the age tiebreak. _electNextHost
+      // (not a raw open election) for the same reason removePlayer uses it: a
+      // claim only happens mid-round, where candidates must come from _order —
+      // an open election could seat a late joiner the getter then rejects,
+      // falling back to... the claimer.
       this.hostPeerIndex = (opts && opts.inheritHost === false)
-        ? this._oldestEligible(null, newId)
+        ? this._electNextHost(newId)
         : newId;
     }
     if (this.host !== prevHost) this._emit('hostchange', { hostPeerIndex: this.host });

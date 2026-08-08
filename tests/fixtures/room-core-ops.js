@@ -290,6 +290,24 @@ const OPS = [
   { m: 'peerJoined', a: [901, 80000] },
   { m: 'hello', a: [901, { name: 'PlayStation', autoName: false }, 80000] },
   { g: 'host' },                                // stays the phone's
+
+  // --- ...and survives unrelated roster churn while the pad is asleep --------
+  // Only a LOCAL seat's departure records a claim (a relay peer can never
+  // return under its old index), so an interim host closing their tab must not
+  // erase the sleeping pad's outstanding claim.
+  { m: 'peerJoined', a: [8, 90000] },
+  { m: 'hello', a: [8, { name: 'Rex', autoName: false }, 90000] },
+  { m: 'peerLeft', a: [7] },                    // the phone host leaves for good
+  { g: 'host' },                                // duty passes to the pad
+  { m: 'peerLeft', a: [901] },                  // the host pad sleeps
+  { g: 'host' },                                // duty passes to Rex...
+  { m: 'peerJoined', a: [9, 91000] },
+  { m: 'hello', a: [9, { name: 'Kim', autoName: false }, 91000] },
+  { m: 'peerLeft', a: [8] },                    // ...who then closes their tab
+  { g: 'host' },                                // duty passes to Kim...
+  { m: 'peerJoined', a: [901, 92000] },
+  { m: 'hello', a: [901, { name: 'PlayStation', autoName: false }, 92000] },
+  { g: 'host' },                                // ...but the waking pad reclaims it
 ];
 
 module.exports = { INIT, OPS };

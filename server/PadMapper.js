@@ -410,6 +410,5 @@ exports.isLocalSeat = isLocalSeat;
 exports.PAD_BTN = PAD_BTN;
 exports.GamepadMapper = GamepadMapper;
 exports.gamepadDisplayName = gamepadDisplayName;
-exports.STICK_DEADZONE = PAD_STICK_DEADZONE;
 
 })(typeof exports !== 'undefined' ? exports : (window.GameEngine = window.GameEngine || {}, window.GameEngine.PadMapper = {}));

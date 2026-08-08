@@ -28,6 +28,8 @@
 
 var RoomFlow = ((typeof require !== 'undefined') ? require('../partyplug/RoomFlow.js') : window.RoomFlow);
 var GameConstants = ((typeof require !== 'undefined') ? require('./constants.js') : window.GameConstants);
+// Absent in the AirConsole bundle, which strips PadMapper (see isLocalSeatId).
+var PadMapper = ((typeof require !== 'undefined') ? require('./PadMapper.js') : (window.GameEngine && window.GameEngine.PadMapper));
 
 // Rapid, self-correcting roster churn: the +/- level stepper and the colour
 // rose. Both are finger-speed controls where only the final value matters, so
@@ -589,10 +591,14 @@ RoomCore.prototype.peerLeft = function (peerIndex) {
       this.flow.removePlayer(peerIndex);
     }
   } else if (state === RoomFlow.STATES.LOBBY) {
-    this.flow.removePlayer(peerIndex);
+    // rememberHost: only a LOCAL seat can ever return under the same peer index
+    // (the relay never reissues one), and a local seat vanishing is the OS
+    // dropping a sleeping or unplugged pad — not a decision to leave — so host
+    // duty survives it if the pad wakes before the next round starts.
+    this.flow.removePlayer(peerIndex, { rememberHost: isLocalSeatId(peerIndex) });
     this._removeParticipant(peerIndex);
   } else if (state === RoomFlow.STATES.RESULTS) {
-    this.flow.removePlayer(peerIndex);
+    this.flow.removePlayer(peerIndex, { rememberHost: isLocalSeatId(peerIndex) });
     this._removeParticipant(peerIndex);
     this.flow.setActiveOrder(this._participants);
     // Return to the lobby once no game participants remain; late joiners, who
@@ -628,15 +634,11 @@ function normalizePeerIndex(value) {
 }
 
 // A seat held by a gamepad on the display machine (PadMapper.LOCAL_SEAT_BASE).
-// Resolved LAZILY and SOFTLY: in the browser PadMapper loads after this module
-// (asset-manifest order), and the AirConsole bundle ships neither pads nor the
-// module at all — and a build with no local seats can never be asked about one,
-// so absent means "not local".
+// PadMapper is absent from the AirConsole bundle (which ships no pads) — and a
+// build with no local seats can never be asked about one, so absent means
+// "not local".
 function isLocalSeatId(peerIndex) {
-  var pm = (typeof require !== 'undefined')
-    ? require('./PadMapper.js')
-    : (typeof window !== 'undefined' && window.GameEngine && window.GameEngine.PadMapper);
-  return !!pm && pm.isLocalSeat(peerIndex);
+  return !!PadMapper && PadMapper.isLocalSeat(peerIndex);
 }
 
 // Can `peerIndex` claim the dropped seat named by the HELLO's rejoin token?

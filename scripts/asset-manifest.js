@@ -77,6 +77,10 @@ const DISPLAY_SCRIPTS = [
   '/partyplug/AirConsoleAdapter.js',
   '/partyplug/AirConsoleStorage.js',
   '/partyplug/RoomFlow.js',
+  // The portable half of the gamepad support, shared verbatim with tvOS and
+  // Android TV. Read at module-eval time by RoomCore.js and GamepadInput.js
+  // below, so it has to precede both.
+  '/engine/PadMapper.js',
   // Out of the /engine/ block on purpose: RoomCore composes RoomFlow and reads
   // window.RoomFlow at module-eval time, so the kit's IIFE has to have run first.
   '/engine/RoomCore.js',
@@ -101,10 +105,6 @@ const DISPLAY_SCRIPTS = [
   '/display/DisplayGame.js',
   '/display/DisplayLiveness.js',
   '/display/DisplayInput.js',
-  // The portable half of the gamepad support, shared verbatim with tvOS and
-  // Android TV. Read at module-eval time by GamepadInput.js, so it has to be
-  // ahead of it, the same constraint RoomCore has above.
-  '/engine/PadMapper.js',
   // After DisplayInput.js, whose handleControllerMessage every pad press is
   // funnelled through, and before DisplayGame's renderEngineEvent reaches for
   // GamepadInput.onEngineEvent.
