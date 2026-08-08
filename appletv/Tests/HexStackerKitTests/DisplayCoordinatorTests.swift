@@ -828,6 +828,48 @@ import Foundation
         #expect(ft.states.last?["roomState"] as? String == "playing")
     }
 
+    /// The render pump is not guaranteed a steady 60Hz: returning from an app
+    /// suspend can starve it down to sparse, huge deltas (hardware session,
+    /// 2026-08-08: countdown sat frozen on "3", then crawled). The countdown is
+    /// wall-time on every platform — web runs setInterval, Android feeds its
+    /// accumulator the UNCLAMPED tick delta (the engine caps its own frame
+    /// delta) — so elapsed time must finish it however few ticks carry it.
+    /// Clamping each tick to the 50ms frame cap turned one real second into
+    /// 50ms of countdown, a 20x dilation.
+    @Test func starvedPumpCountdownAdvancesByElapsedTimeNotTickCount() {
+        let (coord, _, fo) = makeLobby(players: 2)
+        coord.remoteStartMatch()
+        #expect(coord.state == .countdown)
+        // 3-2-1-GO is 3.5s of wall time. Deliver 8s as eight 1s ticks.
+        for _ in 0..<8 where coord.state == .countdown { coord.tick(deltaMs: 1000) }
+        #expect(coord.state == .playing,
+                "a starved pump must not dilate the countdown: 8s of elapsed time finishes 3.5s of 3-2-1-GO")
+        #expect(fo.countdowns == [.number(3), .number(2), .number(1), .go],
+                "every step is still shown once, in order — caught up, not skipped")
+    }
+
+    /// The display's own link dropping mid-countdown freezes it (the sim must
+    /// not run blind), and the relay's `joined` answer resumes it — with the
+    /// current digit getting its full second again (web startCountdown(cb,
+    /// remaining) resume; rewindCountdownStep here).
+    @Test func linkDropFreezesTheCountdownAndRejoinResumesIt() {
+        let (coord, ft, fo) = makeLobby(players: 2)
+        coord.remoteStartMatch()
+        #expect(coord.state == .countdown)
+        coord.tick(deltaMs: 1000)   // "2" is up
+        #expect(fo.countdowns.last == .number(2))
+
+        coord.setRelayConnected(false)
+        for _ in 0..<10 { coord.tick(deltaMs: 1000) }
+        #expect(coord.state == .countdown, "link down freezes the countdown; it must not tick on blind")
+        #expect(fo.countdowns.last == .number(2), "the digit holds while frozen")
+
+        coord.setRelayConnected(true)
+        ft.onJoined?("ROOM42", [1, 2])
+        for _ in 0..<4 where coord.state == .countdown { coord.tick(deltaMs: 1000) }
+        #expect(coord.state == .playing, "the rejoin resumes the countdown through to the match")
+    }
+
     @Test func playPauseTogglesDuringPlay() {
         let (coord, _, fo) = makeLobby(players: 1)
         coord.remoteStartMatch()

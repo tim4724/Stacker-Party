@@ -26,6 +26,12 @@ public extension DisplayCoordinator {
     /// can be exercised/screenshotted. Shared by the HEXLOBBY dev mode and the
     /// gallery `lobby` shot.
     func startLobbyDemo(playerCount: Int = 3) {
+        // A fixture roster sends no heartbeats: without the demo keep-alive the
+        // lobby linger sweeps it out after 15 s, and a match started from it
+        // would auto-pause on the first liveness sweep. Self-play is also what
+        // makes a HEXLOBBY-started match observable, HEXDEMO-style.
+        demoActive = true
+        demoTick = 0
         showGalleryLobby(players: max(1, min(playerCount, EngineConstants.maxPlayers)))
     }
 

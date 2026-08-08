@@ -29,6 +29,9 @@ struct CountdownOverlayView: View {
                       paused: paused)
                 .id(text)
                 .transition(.identity)
+                // For the lifecycle UI test: board HUDs also carry bare digit
+                // labels, so presence of THE countdown digit needs an identifier.
+                .accessibilityIdentifier("countdown-digit")
         }
     }
 }

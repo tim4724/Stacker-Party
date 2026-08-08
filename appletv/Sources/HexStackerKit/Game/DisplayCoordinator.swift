@@ -273,8 +273,6 @@ public final class DisplayCoordinator {
     private static let stepMs = 1000.0
     private static let goHoldMs = 500.0
 
-    private static let maxFrameDeltaMs = 50.0   // matches the web frame clamp
-
     public init(transport: RelayTransport,
                 engineDirectory: URL,
                 output: DisplayOutput,
@@ -1072,7 +1070,13 @@ public final class DisplayCoordinator {
         assertOwningThread()
         renderedInputSinceTick = false   // new frame: re-arm render-on-input
         flushPendingSnapshot()           // trailing edge of the set_state throttle
-        let deltaMs = min(max(rawDelta, 0), Self.maxFrameDeltaMs)
+        // Only sanitize negatives/NaN; do NOT clamp to the 50ms frame cap. The
+        // engine's frame() applies MAX_FRAME_DELTA_MS itself (per its contract),
+        // and the countdown and pad clocks must advance by real elapsed time — a
+        // render pump starved by an app suspend/resume delivers rare, huge
+        // deltas, and clamping each one turned a second into 50ms of countdown
+        // (frozen "3", 20x-slow 3-2-1-GO). Android's tick does exactly this.
+        let deltaMs = rawDelta.isFinite ? max(rawDelta, 0) : 0
         let roomState = state
         // Before the state switch, because a pad joins, picks a colour and steps
         // its level in the LOBBY, where none of the branches below run any input.
@@ -1093,10 +1097,13 @@ public final class DisplayCoordinator {
         }
         // The local demo has no controllers sending heartbeats, so keep its
         // synthetic players "seen" — otherwise the liveness sweep flags them
-        // disconnected after 3 s and auto-pauses the self-playing game, and
-        // on RESULTS the presence sweep would auto-return a finished demo
-        // match to the lobby (which cuts the HEXTOUR results dwell short).
-        if demoActive, roomState != .lobby { seenSinceTick.formUnion(participants) }
+        // disconnected after 3 s and auto-pauses the self-playing game, on
+        // RESULTS the presence sweep would auto-return a finished demo match
+        // to the lobby (which cuts the HEXTOUR results dwell short), and in
+        // the LOBBY the ghost-slot linger would sweep a fixture roster out
+        // from under the harness after 15 s (HEXLOBBY's Start silently no-ops
+        // once the seeded players are gone).
+        if demoActive { seenSinceTick.formUnion(participants) }
         switch roomState {
         case .countdown:
             pollPresence(nowProvider(), roomState)

@@ -125,4 +125,52 @@ import Foundation
         #expect(coord.roster().map(\.peerIndex) == [PadSeats.seatId(forSlot: 0)])
         #expect(coord.roster().first?.playerName == "Xbox")
     }
+
+    /// The whole app-suspend round trip for a pads-only party (hardware session,
+    /// 2026-08-08: two Bluetooth pads, background + return). Pads are LOCAL seats,
+    /// so the relay room holds no members but the display — it dies with our
+    /// suspended socket, the foreground rejoin bounces off "Room not found" and a
+    /// FRESH room replaces it. tvOS also drops the pads from GCController while
+    /// suspended, and the first foreground tick can run before they re-attach.
+    /// Through all of that the pads must land back on the SAME seats (slot-derived
+    /// ids, same names) and the party must be startable with boards on screen.
+    @Test func padsReseatIntoTheFreshRoomAfterAnAppSuspend() {
+        let (coord, ft, fo, pads) = make()
+        pads.readings = [reading(slot: 0), reading(slot: 1, id: "DualSense Wireless Controller")]
+        tick(coord)
+        let seatsBefore = coord.roster().map(\.peerIndex)
+        let namesBefore = coord.roster().map(\.playerName)
+        #expect(seatsBefore == [PadSeats.seatId(forSlot: 0), PadSeats.seatId(forSlot: 1)])
+
+        // Backgrounding: P2P channels close, the relay socket suspends (link down),
+        // and the sleeping pads vanish from the controller list.
+        coord.displayDidEnterBackground()
+        coord.setRelayConnected(false)
+        pads.readings = []
+        tick(coord)
+
+        // Foreground, harsh order: a tick before the pads re-attach, then the
+        // relay recovers into a fresh room (the suspended room is gone), then the
+        // pads wake back up.
+        tick(coord)
+        coord.setRelayConnected(true)
+        ft.onCreated?("ROOM99", "inst2", "eu")
+        pads.readings = [reading(slot: 0), reading(slot: 1, id: "DualSense Wireless Controller")]
+        tick(coord)
+        #expect(coord.roster().map(\.peerIndex) == seatsBefore, "same pads, same seats — a reconnect, not new players")
+        #expect(coord.roster().map(\.playerName) == namesBefore)
+
+        // And the fresh room is a working party: the host pad starts the match,
+        // the game screen goes up with both boards behind the countdown.
+        pads.readings = [reading(slot: 0, pressed: PadButton.start),
+                         reading(slot: 1, id: "DualSense Wireless Controller")]
+        tick(coord)
+        #expect(coord.state == .countdown)
+        #expect(fo.screen == .game)
+        #expect(fo.lastSnapshot?.players.count == 2, "both boards render behind the 3-2-1")
+        pads.readings = [reading(slot: 0), reading(slot: 1, id: "DualSense Wireless Controller")]
+        var ticks = 0
+        while coord.state == .countdown && ticks < 600 { tick(coord); ticks += 1 }
+        #expect(coord.state == .playing)
+    }
 }

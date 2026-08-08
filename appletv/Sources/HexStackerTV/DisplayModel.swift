@@ -386,6 +386,14 @@ final class DisplayModel: ObservableObject {
     /// room is unchanged, so lift the precautionary dim — unless the link is
     /// genuinely down, where roomReady clears it after the reconnect instead.
     func appDidBecomeActive() {
+        // SpriteView can leave the scene paused after a background round trip
+        // (2026-08-08 hardware session: countdown frozen on "3", boards never
+        // faded in). The scene's update() is the display's ONLY tick pump —
+        // countdown, presence, engine frames and the screen-swap fades all ride
+        // it — so a stuck pause is a frozen app that still draws. Unpausing is
+        // free when it is already running; do it on every activation.
+        boardScene.isPaused = false
+        boardScene.view?.isPaused = false
         if !backgroundedSinceResign, linkState == .open {
             withAnimation(Self.fade) { state.qrPending = false }
         }
