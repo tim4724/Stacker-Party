@@ -306,10 +306,10 @@ const server = http.createServer((req, res) => {
 
   // Android App Links: the Digital Asset Links statement lets a system QR scan /
   // tapped hexstacker.com/<room> open the CouchPad app instead of Chrome, the
-  // counterpart to the AASA above. Fingerprints: the release/upload key and the
-  // debug key (for testing a locally-built install). NOTE: once the app enrols in
-  // Play App Signing, add Google's app-signing-key SHA-256 here too, or verified
-  // App Links break for Play-distributed installs (Play Console → App integrity).
+  // counterpart to the AASA above. Fingerprints: the release/upload key, the
+  // debug key (for testing a locally-built install), and the Play App Signing
+  // keys (Play Console → App integrity) — without those, verified App Links
+  // break for Play-distributed installs.
   if (urlPath === '/.well-known/assetlinks.json') {
     sendJson(res, 200, [
       {
@@ -320,6 +320,9 @@ const server = http.createServer((req, res) => {
           sha256_cert_fingerprints: [
             'CF:3C:FF:CD:9E:68:1C:37:F0:35:24:9A:7B:F0:10:14:3D:EC:AE:0D:DD:18:D7:57:F0:6E:8F:7A:0C:52:A0:38',
             '17:56:F5:01:B4:93:67:B9:7D:A7:C9:97:10:42:D7:88:E0:B0:0E:45:A6:55:D9:24:A5:53:BD:D2:D8:55:13:7F',
+            'BD:EC:77:73:8E:92:15:A9:E7:F1:A6:B4:3F:5E:BB:46:18:3D:EA:95:DC:EA:66:AA:0F:3F:19:A9:5E:53:DE:EE',
+            'F5:3B:3D:0A:3D:D1:DC:1B:EC:AC:9D:40:D0:E6:93:BF:EB:C3:B6:4B:D3:5C:9C:69:0F:4D:FD:6F:43:CA:1C:20',
+            'C0:FA:AA:CB:9B:B1:C1:37:86:7B:01:16:E9:0E:8C:6A:94:02:7F:C5:84:9E:6B:E1:73:6E:9D:70:2D:DB:1C:30',
           ],
         },
       },
