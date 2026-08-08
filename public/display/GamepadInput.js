@@ -204,7 +204,7 @@ var GamepadInput = (function () {
     if (roomState !== ROOM_STATE.LOBBY || !players.has(seatId)) {
       // Outside the lobby Start toggles the pause directly. It is the one
       // action with no button on screen to focus while a game is running.
-      if (index === PAD_BTN.START) {
+      if (index === PAD_BTN.START && canPause(seatId)) {
         feed(seatId, { type: paused ? MSG.RESUME_GAME : MSG.PAUSE_GAME });
       }
       return;
@@ -260,6 +260,7 @@ var GamepadInput = (function () {
     var name = gamepadDisplayName(pad.id, window.GameEngine.RoomCore.NAME_MAX_LEN, taken);
     seats.set(padIndex, {
       seatId: seatId,
+      id: pad.id,
       mapper: new GamepadMapper()
     });
     // The same HELLO a phone sends. autoName stays false: the pad's name is a
@@ -294,6 +295,17 @@ var GamepadInput = (function () {
     }
 
     var seat = seats.get(padIndex);
+    // An index is a SLOT, not an identity. Swap one pad for another and the
+    // browser can hand the replacement the index the old one had — with no null
+    // in between if both events land within a frame — so the seat still matches
+    // and the new pad silently drives the old row: an Xbox reading "DUALSHOCK 4"
+    // because no HELLO was ever sent for it. Treat a changed id as the unplug
+    // the poll never saw. The TVs cannot hit this; they key slots on the device
+    // itself (ObjectIdentifier / deviceId), which an index only stands in for.
+    if (seat && seat.id !== pad.id) {
+      retire(padIndex);
+      seat = null;
+    }
     if (!seat) {
       // Any press joins, but only once there is a room to join.
       if (currentScreen === SCREEN.WELCOME) return;
@@ -336,9 +348,18 @@ var GamepadInput = (function () {
     if (!playing) {
       for (var n = 0; n < result.nav.length; n++) onMenuNav(seat.seatId, result.nav[n]);
       for (var p = 0; p < result.pressed.length; p++) onMenuPress(seat.seatId, result.pressed[p]);
-    } else if (result.pressed.indexOf(PAD_BTN.START) >= 0) {
+    } else if (result.pressed.indexOf(PAD_BTN.START) >= 0 && canPause(seat.seatId)) {
       feed(seat.seatId, { type: MSG.PAUSE_GAME });
     }
+  }
+
+  // A late joiner sat this round out, and stopping a game they are not in is
+  // not theirs to do. A phone is held to that by its own screen — the pause
+  // button lives on the GAME screen, which a late joiner never reaches — and a
+  // pad has no screen, so the rule has to be stated here instead. The display
+  // trusts PAUSE_GAME from anyone, exactly as it trusts a phone's.
+  function canPause(seatId) {
+    return roomCore.isParticipant(seatId);
   }
 
   // --- Rumble -------------------------------------------------------

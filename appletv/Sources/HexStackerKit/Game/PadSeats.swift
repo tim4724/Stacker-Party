@@ -144,7 +144,7 @@ public final class PadSeats {
             // lock event, so the thump lands with the press.
             if result.hardDrop { rumble(seat: result.seat, "hardDrop") }
             guard !playing else {
-                if result.pressed.contains(PadButton.start) {
+                if result.pressed.contains(PadButton.start), canPause(result.seat) {
                     coordinator.deliverLocal(from: result.seat, data: ["type": MSG.pauseGame])
                 }
                 continue
@@ -160,7 +160,7 @@ public final class PadSeats {
             // Countdown counts as well as playing, the same pair `remoteTogglePause`
             // accepts and the same pair the web allows — otherwise the remote can
             // pause the 3-2-1 and a pad cannot, for no reason a player could guess.
-            if result.pressed.contains(PadButton.start),
+            if result.pressed.contains(PadButton.start), canPause(result.seat),
                coordinator.state == .playing || coordinator.state == .countdown {
                 coordinator.remoteTogglePause()
                 continue
@@ -184,6 +184,15 @@ public final class PadSeats {
             return
         }
         route(results, playing: playing)
+    }
+
+    /// A late joiner sat this round out, and stopping a game they are not in is
+    /// not theirs to do. A phone is held to that by its own screen — the pause
+    /// button lives on the GAME screen, which a late joiner never reaches — and
+    /// a pad has no screen, so the rule is stated here instead. The display
+    /// trusts PAUSE_GAME from anyone, exactly as it trusts a phone's.
+    private func canPause(_ seat: Int) -> Bool {
+        coordinator.participants.contains(seat)
     }
 
     // MARK: - Seat lifecycle

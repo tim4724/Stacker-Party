@@ -191,7 +191,7 @@ internal class PadSeats(
             }
             val pressed = result.jsonObject["pressed"]?.jsonArray.orEmpty().map { it.jsonPrimitive.int }
             if (playing) {
-                if (pressed.contains(PadButton.START)) {
+                if (pressed.contains(PadButton.START) && canPause(seat)) {
                     coordinator.deliverLocal(seat, msg(Msg.PAUSE_GAME))
                 }
                 continue
@@ -204,7 +204,7 @@ internal class PadSeats(
             // binding it here as well would toggle twice on one press and put the
             // overlay straight back up.
             if (coordinator.state == RoomState.COUNTDOWN) {
-                if (!coordinator.paused && pressed.contains(PadButton.START)) {
+                if (!coordinator.paused && pressed.contains(PadButton.START) && canPause(seat)) {
                     // The DIRECT toggle, never remoteTogglePause: this runs inside
                     // the action consumer, and the acked public path would enqueue
                     // an action the consumer can never reach — a self-deadlock
@@ -241,6 +241,15 @@ internal class PadSeats(
         }
         route(results, playing)
     }
+
+    /**
+     * A late joiner sat this round out, and stopping a game they are not in is not
+     * theirs to do. A phone is held to that by its own screen — the pause button
+     * lives on the GAME screen, which a late joiner never reaches — and a pad has
+     * no screen, so the rule is stated here instead. The display trusts PAUSE_GAME
+     * from anyone, exactly as it trusts a phone's.
+     */
+    private fun canPause(seat: Int): Boolean = coordinator.room.participants.contains(seat)
 
     // --- Seat lifecycle ------------------------------------------------------
 
