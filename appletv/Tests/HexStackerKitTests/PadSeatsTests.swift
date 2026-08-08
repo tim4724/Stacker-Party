@@ -126,6 +126,33 @@ import Foundation
         #expect(coord.roster().first?.playerName == "Xbox")
     }
 
+    /// The link-drop freeze exists so the sim can't run blind behind a reconnect
+    /// overlay — blind to PHONES. A pads-only party has no relay presence at all
+    /// (local seats never join the room), so nothing runs blind without it: input,
+    /// liveness and the screen are all on this machine. The link settling after a
+    /// resume flaps through non-open states with no overlay; each flap used to
+    /// freeze the countdown silently and every thaw rewound the digit — stuck on
+    /// "3", crawling to GO, with a perfectly healthy render loop.
+    @Test func linkFlapsDoNotFreezeAPadsOnlyParty() {
+        let (coord, _, fo, pads) = make()
+        pads.readings = [reading(slot: 0), reading(slot: 1, id: "DualSense Wireless Controller")]
+        tick(coord)
+        pads.readings = [reading(slot: 0, pressed: PadButton.start),
+                         reading(slot: 1, id: "DualSense Wireless Controller")]
+        tick(coord)
+        #expect(coord.state == .countdown)
+        pads.readings = [reading(slot: 0), reading(slot: 1, id: "DualSense Wireless Controller")]
+
+        coord.setRelayConnected(false)
+        for _ in 0..<5 where coord.state == .countdown { coord.tick(deltaMs: 1000) }
+        #expect(coord.state == .playing, "a pads-only countdown must not freeze on a link flap")
+
+        // And the match keeps simulating with the relay still away.
+        let rendered = fo.renderCount
+        tick(coord, times: 40, deltaMs: 100)
+        #expect(fo.renderCount > rendered, "pads-only frames keep pulling while the link is down")
+    }
+
     /// The whole app-suspend round trip for a pads-only party (hardware session,
     /// 2026-08-08: two Bluetooth pads, background + return). Pads are LOCAL seats,
     /// so the relay room holds no members but the display — it dies with our

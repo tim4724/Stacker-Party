@@ -394,6 +394,11 @@ final class DisplayModel: ObservableObject {
         // free when it is already running; do it on every activation.
         boardScene.isPaused = false
         boardScene.view?.isPaused = false
+        // Re-assert the screensaver hold: it was set once at start() and the
+        // comment there explains why a screensaver is unrecoverable — if the
+        // flag doesn't survive a background round trip, the next idle stretch
+        // parks the whole pump again.
+        UIApplication.shared.isIdleTimerDisabled = true
         if !backgroundedSinceResign, linkState == .open {
             withAnimation(Self.fade) { state.qrPending = false }
         }

@@ -609,6 +609,9 @@ public final class DisplayCoordinator {
     /// Requires a pad to still HOLD its seat, not merely to have held one: if the
     /// controller is gone there is no one left to carry the match for, and the
     /// ordinary reset is the right answer.
+    ///
+    /// Also the gate on the link-drop freeze (connectionPause): a match that has
+    /// no relay presence has nothing to run blind without one.
     private var isLocalOnlyMatch: Bool {
         guard state != .lobby, hasPadSeats else { return false }
         let active = participants
@@ -1405,7 +1408,15 @@ public final class DisplayCoordinator {
     /// Our own relay link dropped: freeze the sim so it can't run blind behind the
     /// reconnect overlay. Publishing is best-effort by definition — the relay is
     /// exactly what we cannot reach. Driven by setRelayConnected.
+    ///
+    /// Not for a local-only match: every player is a pad on THIS machine, so
+    /// nothing runs blind without the relay — input, liveness and the screen are
+    /// all local. Freezing anyway made the link's settling flaps (each .connecting
+    /// hop lands here, and no overlay marks it) stick the 3-2-1 digit and re-rewind
+    /// it on every thaw — a countdown that crawls with two pads on the sofa and a
+    /// perfectly healthy render loop.
     private func connectionPause() {
+        guard !isLocalOnlyMatch else { return }
         let res = freezePause(.connection)
         guard res.changed == true else { return }
         publishAs(res.publish)
