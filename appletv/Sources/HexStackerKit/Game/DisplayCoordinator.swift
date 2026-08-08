@@ -633,6 +633,11 @@ public final class DisplayCoordinator {
         // because expiredPeers skips already-disconnected peers, never self-heal.
         var goneIds: [Int] = []
         for p in roster() {
+            // A local (gamepad) seat was never in the relay's room, so its
+            // absence from the peer list says nothing: its presence is proven by
+            // the pad poll (markLocalSeatSeen), not by the relay. Counting it as
+            // gone here dropped every pad seat on a display reconnect.
+            if PadSeats.isLocalSeat(p.peerIndex) { continue }
             guard peers.contains(p.peerIndex) else { goneIds.append(p.peerIndex); continue }
             seenSinceTick.insert(p.peerIndex)
             if !p.connected {
@@ -1107,6 +1112,12 @@ public final class DisplayCoordinator {
             frameClockMs += deltaMs
             let frame: FrameResult
             let padStates = padSeats?.collectStates(nowMs: padClockMs) ?? []
+            // collectStates is not a pure read: it routes pad joins and LEAVEs
+            // (retireVanished), and unplugging the last pad can end the match
+            // under us (grace -> returnToLobby). Re-check before framing what
+            // is then a dead engine — the frame would push a board and RESULTS
+            // over the lobby that was just shown.
+            guard state == .playing, !paused, self.engine != nil else { return }
             do {
                 if let padSeats, !padStates.isEmpty {
                     let (padResults, fused) = try engine.framePads(

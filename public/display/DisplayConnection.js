@@ -374,9 +374,14 @@ function applyRoomCreated(partyRoomCode, newJoinUrl) {
   // the room is torn down (resetToWelcome). Mirrors tvOS isIdleTimerDisabled and
   // Android FLAG_KEEP_SCREEN_ON, which hold for the same span.
   acquireWakeLock();
-  showScreen(SCREEN.LOBBY);
+  if (!keepMatch) showScreen(SCREEN.LOBBY);
   updateStartButton();
   startLivenessCheck();
+  // The relay answered: the link is back. Lifts ONLY a link-drop freeze (see
+  // connectionResume), which the kept match is otherwise stuck in — the fresh
+  // room's lobby never shows, so nothing else would thaw it. Mirrors tvOS
+  // roomLinkRestored / Android handleCreated.
+  connectionResume();
 
   // Generate + paint the QR synchronously so it's on screen the instant the
   // lobby is revealed — reading the canvas box inside renderQR forces the one
@@ -399,6 +404,11 @@ function onDisplayRejoined(partyRoomCode, peers) {
   var connectedSet = new Set(peers || []);
   var disconnectedIds = [];
   for (const pEntry of players) {
+    // A local (gamepad) seat was never in the relay's room, so its absence from
+    // the peer list says nothing: its presence is proven by the pad poll
+    // (GamepadInput stamps onSeen), not by the relay. Counting it as gone here
+    // dropped every pad seat on a display reconnect.
+    if (isLocalSeat(pEntry[0])) continue;
     if (connectedSet.has(pEntry[0])) {
       roomCore.onSeen(pEntry[0], now);
     } else {

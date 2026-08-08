@@ -297,9 +297,6 @@ final class DisplayModel: ObservableObject {
 
     /// Menu button: pause during gameplay; return false at the top level so
     /// tvOS exits the app normally (the caller falls through to the default).
-    /// Also declines under the connection overlay: exiting to the home screen
-    /// there is safe (backgrounding suspends the socket; the party resumes
-    /// gracefully).
     ///
     /// While About/Licenses are up, the NavigationStack is the ONLY owner of
     /// Menu: it pops one level itself (on press-ENDED). This handler must
@@ -313,9 +310,12 @@ final class DisplayModel: ObservableObject {
         // Falling through to super exits to the HOME SCREEN, and the lobby is
         // the only place that is the right reading of Menu: everywhere else a
         // session is in progress and one press must not take the display out
-        // from under every phone in the room. The connection freeze consumes
-        // too — the match behind it is exactly what the overlay is protecting.
-        guard !state.connectionOverlayUp else { return true }
+        // from under every phone in the room. That rule holds under the
+        // connection overlay too — the match behind it is exactly what it is
+        // protecting — EXCEPT over the lobby, where there is no session to
+        // protect (launching with the relay unreachable lands here) and Menu
+        // must still be a way off the TV.
+        guard !state.connectionOverlayUp else { return state.screen != .lobby }
         if !state.aboutPath.isEmpty { return true }
         if state.screen == .game { coordinator?.remoteTogglePause(); return true }
         // Consumed WITHOUT an action on the results: returning to the lobby is
@@ -627,7 +627,10 @@ extension DisplayModel: DisplayOutput {
         // is also the only way the Siri Remote keeps working, since this switch
         // cannot single out the pad: the remote is a game controller too, so taking
         // input from one takes it from both, Back button included.
-        let steering = state.screen == .game && !state.paused
+        // The connection overlay counts as a menu too: its RECONNECT button may
+        // be the only actionable thing in the room, and in a pad-only match the
+        // pad may be the only input there is.
+        let steering = state.screen == .game && !state.paused && !state.connectionOverlayUp
         setPadOwnsInput?(steering && coordinator?.hasPadSeats == true)
     }
 

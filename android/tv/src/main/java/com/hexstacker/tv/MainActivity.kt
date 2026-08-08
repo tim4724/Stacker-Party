@@ -551,6 +551,12 @@ class MainActivity : ComponentActivity() {
      */
     private fun padOwnsInput(): Boolean {
         val state = ui.state.value
+        // The connection overlay counts as a menu too, whatever screen it covers:
+        // its RECONNECT button may be the only actionable thing in the room, and
+        // in a pad-only match the pad may be the only input there is. Same rule
+        // as tvOS syncPadInputOwnership.
+        if (state.connection == RelayTransport.ConnectionState.RECONNECTING ||
+            state.connection == RelayTransport.ConnectionState.CLOSED) return false
         // A PAUSED game is still the GAME screen, but the overlay on top of it is
         // a menu with buttons on it, so input has to go back to the UI or the pad
         // cannot reach Continue. Screen alone is the wrong question; what matters

@@ -300,7 +300,13 @@ class DisplayCoordinator(
     internal fun reportPadError(label: String, error: Throwable) = onError(label, error)
 
     internal suspend fun padName(rawId: String): String =
-        runCatching { bridgeProvider().padName(rawId) }.getOrDefault("Gamepad")
+        try {
+            bridgeProvider().padName(rawId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            "Gamepad"
+        }
 
     internal suspend fun padRumbleJson(kind: String, lines: Int): String =
         bridgeProvider().padRumbleJson(kind, lines)
@@ -553,6 +559,11 @@ class DisplayCoordinator(
         // sweep must come back on, or the room-gone recovery path (error -> createFresh)
         // would leave liveness off for the rest of the session.
         relayConnected = true
+        // The relay answered: the link is back. Lifts ONLY a link-drop freeze, which a
+        // kept pad-only match is otherwise stuck in — no controller exists to thaw it,
+        // and RoomCore.pause refuses a manual pause while the connection freeze stands.
+        // Mirrors tvOS roomLinkRestored.
+        connectionResume()
         output.roomReady(code, joinUrl(code, instance))
         if (!keepMatch) output.showScreen(DisplayScreen.LOBBY)
     }
@@ -573,6 +584,11 @@ class DisplayCoordinator(
         val now = nowWallMs()
         val gone = mutableListOf<Int>()
         for (id in room.players.keys) {
+            // A local (gamepad) seat was never in the relay's room, so its absence
+            // from the peer list says nothing: its presence is proven by the pad
+            // poll (markLocalSeatSeen), not by the relay. Counting it as gone here
+            // dropped every pad seat on a display reconnect.
+            if (PadSeats.isLocalSeat(id)) continue
             if (id in peers) roomCore.onSeen(id, now) else gone.add(id)
         }
         // The whole reconciliation is ONE change: however many peers went missing, plus
@@ -1058,9 +1074,16 @@ class DisplayCoordinator(
             RoomState.COUNTDOWN -> advanceCountdown(deltaMs)
             RoomState.PLAYING -> {
                 if (paused) return
-                val e = engine ?: return
+                if (engine == null) return
                 frameClockMs += deltaMs
                 val padStates = padSeats?.collectStates() ?: JsonArray(emptyList())
+                // collectStates is not a pure read: it routes pad joins and LEAVEs
+                // (retireVanished), and unplugging the last pad can end the match
+                // under us (grace -> returnToLobby). Re-check before framing what
+                // is then a dead engine — the frame would push a board and RESULTS
+                // over the lobby that was just shown. tvOS re-checks the same way.
+                if (state != RoomState.PLAYING || paused) return
+                val e = engine ?: return
                 var padResultsJson: String? = null
                 val frame = try {
                     // Inputs that landed after this frame's render-on-input pull (or all
