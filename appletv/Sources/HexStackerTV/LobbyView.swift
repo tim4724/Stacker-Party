@@ -470,16 +470,11 @@ struct JoinLineView: View {
     let joinURL: String
     let fontSize: CGFloat
 
-    /// 0 = the URL, 1 = scan with a phone, 2 = press a button on a controller.
-    /// Three steps rather than a toggle because a pad is a third way into the
-    /// room and nothing else on this screen says so (web parity: the join line
-    /// rotates the same three).
-    @State private var step: Int
-    // URL and scan hint only. The web's third step — "press any button on your
-    // controller" — is a JOIN instruction, and on tvOS a pad joins by CONNECTING
-    // (PadSeats.seat(for:)): there is no joining press, and the press the hint
-    // invites would click the focused START and begin the round instead.
-    private static let stepCount = 2
+    /// URL and scan hint only. The web's third step — "press any button on your
+    /// controller" — is a JOIN instruction, and on tvOS a pad joins by CONNECTING
+    /// (PadSeats.seat(for:)): there is no joining press, and the press the hint
+    /// invites would click the focused START and begin the round instead.
+    @State private var showHint: Bool
     private let beat = Timer.publish(every: 4.5, on: .main, in: .common).autoconnect()
 
     /// `startOnHint` freezes the crossfade on the scan hint for gallery/shot
@@ -489,7 +484,7 @@ struct JoinLineView: View {
     init(joinURL: String, fontSize: CGFloat, startOnHint: Bool = false) {
         self.joinURL = joinURL
         self.fontSize = fontSize
-        _step = State(initialValue: startOnHint ? 1 : 0)
+        _showHint = State(initialValue: startOnHint)
     }
 
     var body: some View {
@@ -516,14 +511,14 @@ struct JoinLineView: View {
                  + Text(code).styled(font: AppFont.black, size: fontSize,
                                      color: UITheme.accentSecondary, tracking: 0.18))
                     .lineLimit(1)
-                    .opacity(step == 0 ? 1 : 0)
+                    .opacity(showHint ? 0 : 1)
                 Text(tr("scan_hint"))
                     .styled(font: AppFont.semibold, size: fontSize,
                             color: UITheme.textSecondary, tracking: 0.06)
-                    .opacity(step == 1 ? 1 : 0)
+                    .opacity(showHint ? 1 : 0)
             }
             .onReceive(beat) { _ in
-                withAnimation(.easeInOut(duration: 0.45)) { step = (step + 1) % Self.stepCount }
+                withAnimation(.easeInOut(duration: 0.45)) { showHint.toggle() }
             }
     }
 

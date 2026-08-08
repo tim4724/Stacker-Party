@@ -21,8 +21,8 @@ import GameController
 ///
 /// Menu (index 9) is reported like every other button and routed by `PadSeats`:
 /// tvOS never puts a gamepad's Menu on the responder chain (unlike the Siri
-/// Remote's), so the poll is the only door it arrives at. See the note at the
-/// index-9 binding in `PadSeats.poll`.
+/// Remote's), so the poll is the only door it arrives at. See the notes at the
+/// index-9 bindings in `PadSeats.route` and `PadSeats.onMenuPress`.
 public final class GameControllerPadSource: PadSource {
     /// Slots are assigned here rather than read from `GCController.controllers()`,
     /// whose order is not stable: a pad must keep its slot across polls and
@@ -60,11 +60,9 @@ public final class GameControllerPadSource: PadSource {
         // single-motor `InputDevice.vibrator` does.
         let magnitude = max(weak, strong)
         guard magnitude > 0, let controller = controller(inSlot: slot) else { return }
+        // Created (and warm-started) when the pad got its slot — see slot(for:).
+        guard let engine = engines[ObjectIdentifier(controller)] else { return }
         let key = ObjectIdentifier(controller)
-        if engines[key] == nil {
-            engines[key] = controller.haptics?.createEngine(withLocality: .default)
-        }
-        guard let engine = engines[key] else { return }
         do {
             // Cheap when already running; restarts an engine that auto-shut down
             // during a quiet stretch of play.
@@ -127,6 +125,14 @@ public final class GameControllerPadSource: PadSource {
         while taken.contains(next) { next += 1 }
         slots[key] = next
         controller.playerIndex = GCControllerPlayerIndex(rawValue: next) ?? .indexUnset
+        // Warm the haptic engine here, on the poll that first sees the pad:
+        // creating and cold-starting it lazily inside rumble() put both on the
+        // render thread of the exact frame the first hard drop landed on. The
+        // completion-handler start keeps the cold start off this thread too.
+        if let engine = controller.haptics?.createEngine(withLocality: .default) {
+            engines[key] = engine
+            engine.start(completionHandler: nil)
+        }
         return next
     }
 

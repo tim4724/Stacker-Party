@@ -4,6 +4,7 @@ import com.hexstacker.core.engine.EngineBridge
 import com.hexstacker.core.model.GameEvent
 import com.hexstacker.core.net.Msg
 import com.hexstacker.core.net.RoomState
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -232,6 +233,8 @@ internal class PadSeats(
 
         val results = try {
             coordinator.padPoll(states.toString(), nowMs, playing)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             coordinator.reportPadError("padPoll", e)
             return
@@ -396,7 +399,7 @@ internal class PadSeats(
         val slot = seated.entries.firstOrNull { it.value == seat }?.key ?: return
         val key = "$kind:$lines"
         val effect = if (effects.containsKey(key)) effects[key] else {
-            val decoded = runCatching {
+            val decoded = try {
                 val json = coordinator.padRumbleJson(kind, lines)
                 val obj = Json.Default.parseToJsonElement(json).jsonObject
                 Effect(
@@ -409,7 +412,11 @@ internal class PadSeats(
                         obj.getValue("strong").jsonPrimitive.double,
                     ),
                 )
-            }.getOrNull()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                null
+            }
             effects[key] = decoded
             decoded
         }

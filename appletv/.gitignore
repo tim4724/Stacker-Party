@@ -8,8 +8,9 @@ DerivedData/
 # Build output
 build/
 .build/
-# xcodebuild derivedDataPath (app-target builds / CI)
+# xcodebuild derivedDataPath (app-target builds / CI, plus local sideload builds)
 .build-xcode/
+.build-xcode-local/
 .swiftpm/
 
 # Engine JS mirrored into the app bundle at build time (single source of

@@ -121,12 +121,21 @@ class AndroidPadSource : PadSource {
             if (rightTrigger > 0.5f && !buttons[R2]) latch(event.deviceId)[R2] = true
             buttons[L2] = leftTrigger > 0.5f
             buttons[R2] = rightTrigger > 0.5f
-            hats[event.deviceId] = booleanArrayOf(
+            val newHat = booleanArrayOf(
                 hatY < -0.5f,   // up
                 hatY > 0.5f,    // down
                 hatX < -0.5f,   // left
                 hatX > 0.5f,    // right
             )
+            // Rising edges latch exactly like the triggers above: a d-pad tap can
+            // land its press AND release between two idle-rate polls, and joining
+            // by d-pad is the documented "any button" contract.
+            val prevHat = hats[event.deviceId] ?: BooleanArray(4)
+            val pending = latch(event.deviceId)
+            for ((i, key) in intArrayOf(UP, DOWN, LEFT, RIGHT).withIndex()) {
+                if (newHat[i] && !prevHat[i]) pending[key] = true
+            }
+            hats[event.deviceId] = newHat
         }
         return true
     }

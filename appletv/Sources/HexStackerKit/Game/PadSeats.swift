@@ -112,6 +112,7 @@ public final class PadSeats {
     public func collectStates(nowMs: Double) -> [EngineBridge.PadState] {
         let readings = source.pads()
         retireVanished(readings)
+        validateSeats(nowMs: nowMs)
 
         // Join before mapping: a pad that has not joined has no seat to attribute
         // input to, and the joining press must not also fire whatever it is bound
@@ -187,15 +188,28 @@ public final class PadSeats {
 
     // MARK: - Seat lifecycle
 
+    /// A row can disappear without its pad going anywhere: a session reset
+    /// clears the whole roster, and a phone claiming the seat's rejoin QR moves
+    /// the row to its own index. Give the seat up so the next press joins fresh
+    /// instead of feeding a player that is gone. Swept at 1Hz, not per frame:
+    /// `roster()` is a bridge crossing, and the fused playing tick exists to
+    /// keep those at one per frame (a doomed press inside the window is a no-op
+    /// everywhere — the engine and the room both ignore unknown players).
+    /// Android reads its native roster mirror per frame instead; tvOS keeps no
+    /// mirror, and a 1s window costs nothing observable.
+    private var seatSweepMs: Double = -.infinity
+
+    private func validateSeats(nowMs: Double) {
+        guard !seated.isEmpty, nowMs - seatSweepMs >= 1000 else { return }
+        seatSweepMs = nowMs
+        let rows = Set(coordinator.roster().map(\.peerIndex))
+        for (slot, seat) in seated where !rows.contains(seat) {
+            seated.removeValue(forKey: slot)
+        }
+    }
+
     private func seat(for reading: PadReading, nowMs: Double) -> Int? {
         if let seat = seated[reading.slot] {
-            // The row can disappear without the pad going anywhere: a session
-            // reset clears the whole roster. Give the seat up so the next press
-            // joins the new room instead of feeding a player that is gone.
-            if coordinator.player(seat) == nil {
-                seated.removeValue(forKey: reading.slot)
-                return nil
-            }
             return seat
         }
         // CONNECTING joins, with no press required — the one place tvOS differs
@@ -277,12 +291,21 @@ public final class PadSeats {
     /// again would also start the round on a press aimed at ⓘ. Same reason Play
     /// Again and Continue are absent, and why a button added to any of these
     /// screens is pad-reachable the day it lands.
-    ///
-    /// Index 9 is likewise unbound outside play: tvOS delivers it as `.menu`, the
-    /// same press the remote's Back sends, and `DisplayModel.handleMenu` gives it
-    /// the one meaning the platform expects.
     private func onMenuPress(seat: Int, index: Int) {
         guard coordinator.state == .lobby else { return }
+
+        // Index 9 is the exception, as everywhere (see route): a gamepad's Menu
+        // button never reaches the responder chain, so if it is to mean anything
+        // the binding must be here. In the lobby it starts the round — the same
+        // host-gated Start the web and Android give it. Not the bottom face
+        // button too (Android's other binding): here that is Select, and the
+        // focus engine already clicks the focused START with it.
+        if index == PadButton.start {
+            if seat == coordinator.hostPeerIndex {
+                coordinator.deliverLocal(from: seat, data: ["type": MSG.startGame])
+            }
+            return
+        }
 
         // Colour has no on-screen control to focus (the picker lives on the
         // phone), so it keeps a shoulder side of its own in each direction. The
@@ -326,17 +349,22 @@ public final class PadSeats {
         }
     }
 
-    /// Cached across the whole session: the effect for a given (kind, lines)
-    /// never changes, and looking it up crosses the bridge.
-    private var effects: [String: EngineBridge.PadRumble] = [:]
+    /// Cached across the whole session, misses included: the effect for a given
+    /// (kind, lines) never changes, and looking it up crosses the bridge.
+    private var effects: [String: EngineBridge.PadRumble?] = [:]
 
     private func rumble(seat: Int, _ kind: String, lines: Int = 0) {
         guard let slot = seated.first(where: { $0.value == seat })?.key else { return }
         let key = "\(kind):\(lines)"
-        var effect = effects[key]
-        if effect == nil {
+        let effect: EngineBridge.PadRumble?
+        if let cached = effects[key] {
+            effect = cached
+        } else {
             effect = coordinator.padRumble(kind, lines: lines)
-            effects[key] = effect
+            // updateValue, not the subscript: subscript-assigning nil REMOVES
+            // the key, so a miss would cross the bridge on every event (the
+            // Android twin caches the miss too).
+            effects.updateValue(effect, forKey: key)
         }
         guard let effect else { return }
         source.rumble(slot: slot, durationMs: effect.durationMs,
