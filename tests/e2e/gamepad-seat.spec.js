@@ -80,5 +80,35 @@ test.describe('Gamepad seats', () => {
     await press(page, 0);
     // Still one seat, not two: the replug reclaimed the same one.
     await page.waitForSelector('#game-screen:not(.hidden)');
+
+    // Back to the lobby through the ring: D-pad steps Continue -> New Game.
+    await press(page, 9);
+    await expect(page.locator('#pause-overlay')).not.toHaveClass(/hidden/);
+    await press(page, 13);
+    await expect(page.locator('#pause-newgame-btn')).toHaveClass(/pad-focus/);
+    await press(page, 0);
+    await page.waitForSelector('#lobby-screen:not(.hidden)');
+    // The resumed seat kept its NAME: its own held row must not count as a
+    // collision (a battery swap used to rename the seat to "Xbox 2").
+    await expect(page.locator('.player-card:not(.empty) .identity-name')).toHaveText('Xbox');
+
+    // Unplug in the lobby: the row drops outright, and once nothing is
+    // plugged in the poll loop is allowed to die...
+    await page.evaluate(() => { window.__pad.connected = false; });
+    await expect(page.locator('.player-card:not(.empty)')).toHaveCount(0);
+    await page.evaluate(() => { navigator.getGamepads = () => []; });
+    await page.waitForTimeout(250);
+    // ...for real: a press that fires no gamepadconnected goes unheard.
+    await page.evaluate(() => {
+      navigator.getGamepads = () => [window.__pad];
+      window.__pad.connected = true;
+      window.__pad.buttons[0].pressed = true;
+    });
+    await page.waitForTimeout(300);
+    await expect(page.locator('.player-card:not(.empty)')).toHaveCount(0);
+    // The connect event revives the loop, which hears the still-held press.
+    await page.evaluate(() => { window.dispatchEvent(new Event('gamepadconnected')); });
+    await expect(page.locator('.player-card:not(.empty) .identity-name')).toHaveText('Xbox');
+    await page.evaluate(() => { window.__pad.buttons[0].pressed = false; });
   });
 });

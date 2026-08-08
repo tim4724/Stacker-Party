@@ -996,7 +996,14 @@ RoomCore.prototype.onSeen = function (peerIndex, nowMs) {
   this.flow.onSeen(peerIndex, nowMs);
 };
 RoomCore.prototype.isExpired = function (peerIndex, nowMs) { return this.flow.isExpired(peerIndex, nowMs); };
-RoomCore.prototype.expiredPeers = function (nowMs) { return this.flow.expiredPeers(nowMs); };
+// Local (gamepad) seats are exempt: their heartbeat is the pad poll, and the
+// poll and this sweep do not share a clock — the web polls on rAF, which a
+// hidden tab suspends while the 1s sweep interval keeps firing, so an
+// alt-tabbed pad match expired its own players. A pad that actually vanishes
+// is retired BY the poll (synthesized LEAVE) the moment it leaves the readings.
+RoomCore.prototype.expiredPeers = function (nowMs) {
+  return this.flow.expiredPeers(nowMs).filter(function (id) { return !isLocalSeatId(id); });
+};
 RoomCore.prototype.markDisconnected = function (peerIndex) { this.flow.markDisconnected(peerIndex); };
 RoomCore.prototype.markReconnected = function (peerIndex) { this.flow.markReconnected(peerIndex); };
 RoomCore.prototype.clearDisconnected = function (nowMs) { this.flow.clearDisconnected(nowMs); };
@@ -1014,7 +1021,7 @@ RoomCore.prototype.tick = function (nowMs, seen) {
     for (var i = 0; i < seen.length; i++) this.onSeen(seen[i], nowMs);
   }
   return {
-    expired: this.flow.expiredPeers(nowMs),
+    expired: this.expiredPeers(nowMs), // through the wrapper: local seats exempt
     graceFired: this.flow.graceTick(nowMs),
   };
 };

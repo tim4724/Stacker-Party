@@ -71,6 +71,9 @@ var gamepadDisplayName = window.GameEngine.PadMapper.gamepadDisplayName;
 var GamepadInput = (function () {
   // padIndex -> { seatId, mapper }
   var seats = new Map();
+  // Pad indices whose join the room refused (full). Cleared on release, so a
+  // held press does not re-run the join at frame rate.
+  var refused = new Set();
   var rafId = null;
 
   // Derived from the pad's own slot, so unplugging and replugging the same pad
@@ -247,8 +250,13 @@ var GamepadInput = (function () {
     var seatId = seatIdFor(padIndex);
     // The roster's names ride along so a second identical pad comes out
     // numbered ("PlayStation 2") instead of indistinguishable from the first.
+    // Except this seat's OWN row: a mid-game replug resumes it (the row is held
+    // for exactly that), and counting its name as taken renamed the seat to
+    // "Xbox 2" on every battery swap.
     var taken = [];
-    for (var entry of players) taken.push(entry[1].playerName);
+    for (var entry of players) {
+      if (entry[0] !== seatId) taken.push(entry[1].playerName);
+    }
     var name = gamepadDisplayName(pad.id, window.GameEngine.RoomCore.NAME_MAX_LEN, taken);
     seats.set(padIndex, {
       seatId: seatId,
@@ -257,10 +265,13 @@ var GamepadInput = (function () {
     // The same HELLO a phone sends. autoName stays false: the pad's name is a
     // real (if borrowed) identity, not a request for an HX-n slot.
     feed(seatId, { type: MSG.HELLO, name: name, autoName: false });
-    // A refused join (room full) leaves no row behind — drop the seat so the
-    // next press tries again rather than feeding input nobody owns.
+    // A refused join (room full) leaves no row behind — drop the seat, and
+    // remember the refusal until the button is released (see pump): a held
+    // press otherwise re-ran the whole join at frame rate. Same rule as the
+    // TWO TVs' refused sets.
     if (!players.has(seatId)) {
       seats.delete(padIndex);
+      refused.add(padIndex);
       return null;
     }
     return seats.get(padIndex);
@@ -286,7 +297,8 @@ var GamepadInput = (function () {
     if (!seat) {
       // Any press joins, but only once there is a room to join.
       if (currentScreen === SCREEN.WELCOME) return;
-      if (buttons.indexOf(true) < 0) return;
+      if (buttons.indexOf(true) < 0) { refused.delete(padIndex); return; }
+      if (refused.has(padIndex)) return;
       seat = join(padIndex, pad);
       // Hand the joining press to the fresh mapper as the baseline. Without
       // this it reads as a NEW press on the next frame and fires whatever the

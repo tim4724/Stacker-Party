@@ -531,7 +531,6 @@ html:not(.in-session) #relay-status-bar { display: none; }
 .pad-focus {
   outline: 4px solid #fff;
   outline-offset: 3px;
-  border-radius: 4px;
   transform: scale(1.06);
 }
 
@@ -912,6 +911,14 @@ body.airconsole #qr-container,
 #pause-overlay h1,
 #reconnect-overlay h1 {
   font-size: clamp(1.6rem, 4vh, 3.5rem);
+}
+
+/* The relay-link overlay outranks every screen, results included (the TVs
+   layer it the same). Under the results' z-index 20 its RECONNECT button was
+   invisible yet still real — a pad's focus ring could land on it and press a
+   button no one could see. */
+#reconnect-overlay {
+  z-index: 30;
 }
 
 #pause-overlay h1 {
