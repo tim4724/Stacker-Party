@@ -25,7 +25,7 @@
     "ad:max": "AD_MAX=1 npm run ad"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.1",
-    "esbuild": "^0.28.1"
+    "@playwright/test": "^1.62.1",
+    "esbuild": "^0.28.2"
   }
 }

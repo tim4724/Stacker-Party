@@ -7,15 +7,15 @@ androidxActivity = "1.13.0"
 androidxComposeBom = "2026.06.01"
 androidxTestExt = "1.3.0"
 androidxTestRunner = "1.7.0"
-# 1.5 alpha: the first line with AGP 9 support (1.4.x's producer plugin expects
+# 1.5: the first line with AGP 9 support (1.4.x's producer plugin expects
 # AGP 8's TestExtension and fails to apply against AGP 9's TestExtensionImpl).
-benchmark = "1.5.0-alpha07"
+benchmark = "1.5.0-beta01"
 uiautomator = "2.4.0"
 coroutines = "1.11.0"
 junit = "4.13.2"
 kotlin = "2.4.10"
 kotlinxSerialization = "1.11.0"
-media3 = "1.10.1"
+media3 = "1.11.0"
 okhttp = "5.4.0"
 profileinstaller = "1.4.1"
 # QuickJS binding. Zipline rather than quickjs-kt: SAME engine, but a synchronous JNI call
@@ -23,8 +23,8 @@ profileinstaller = "1.4.1"
 # ~78us. See EngineBridge for the locale guard this requires — it is not optional.
 zipline = "1.27.0"
 robolectric = "4.16.1"
-roborazzi = "1.70.0"
-webrtc = "144.7559.09"
+roborazzi = "1.71.0"
+webrtc = "144.7559.12"
 zxing = "3.5.4"
 
 [libraries]
