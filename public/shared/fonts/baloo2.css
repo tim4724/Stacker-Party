@@ -1,11 +1,35 @@
 /* Baloo 2 — brand face (titles, buttons, headings). Variable weight 400-800.
    Latin + latin-ext subsets only, matching Orbitron's coverage: Cyrillic/CJK
-   locales fall back to the system sans stack, same as before. */
+   locales fall back to the system sans stack, same as before.
+
+   The metric overrides place the capitals. Baloo ships ascent 1078 / descent
+   524 per 1000 em and its caps ink to 616, so an all-caps line leaves 462
+   above the caps and 524 below the baseline: uppercase sits 0.031em high in
+   every line box, whatever the line-height, which is what made button labels
+   read high. 1139 / 463 (a bigger ascent pushes text down) lands the caps
+   0.030em BELOW geometric centre, an optical offset judged on a phone against
+   the live CTAs and the lobby name chip. Take the cap from rendered ink, not
+   OS/2 sCapHeight: that reports the wght-400 value (602) and undershoots.
+
+   The sum stays 1602 so line boxes keep their height, give or take the 1px
+   the engine's separate rounding of ascent and descent can add. Text drops
+   0.061em inside its line box, so tight line-heights lose that much descender
+   room: .identity-name and .game-name-label (both 1.15) clear a 'g' by about
+   a pixel at their shipped sizes, so don't tighten those or grow the font
+   without re-checking a descender.
+
+   DOM only. fillText anchors to the raw em box, so canvas brand text does not
+   move; only measureText's reported bounds change. Nothing box-centres Baloo
+   on a canvas (CanvasUtils' face is drawn from an anchored baseline, and the
+   artwork wordmark carries its own optical nudge), so that gap costs nothing.
+   The tvOS/Android shells never see this rule. */
 @font-face {
   font-family: 'Baloo 2';
   font-style: normal;
   font-weight: 400 800;
   font-display: swap;
+  ascent-override: 113.9%;
+  descent-override: 46.3%;
   src: url('./Baloo2-latin-ext.woff2') format('woff2');
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
@@ -14,6 +38,8 @@
   font-style: normal;
   font-weight: 400 800;
   font-display: swap;
+  ascent-override: 113.9%;
+  descent-override: 46.3%;
   src: url('./Baloo2-latin.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
