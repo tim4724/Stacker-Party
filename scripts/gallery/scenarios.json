@@ -102,7 +102,8 @@
     {
       "key": "pause-music",
       "title": "Paused (music switch focused)",
-      "tvos": { "shot": "pause-music", "players": 4, "note": "focus state; no web equivalent" },
+      "web": { "scenario": "pause", "players": 4, "params": { "host": 0, "focus": "music" }, "note": "gamepad ring, seeded — the harness admits no pad to a fixture roster" },
+      "tvos": { "shot": "pause-music", "players": 4 },
       "android": { "file": "pause_music", "note": "focused visual seeded (headless host has no real focus)" }
     },
     {

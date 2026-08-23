@@ -28,6 +28,8 @@
 
 var RoomFlow = ((typeof require !== 'undefined') ? require('../partyplug/RoomFlow.js') : window.RoomFlow);
 var GameConstants = ((typeof require !== 'undefined') ? require('./constants.js') : window.GameConstants);
+// Absent in the AirConsole bundle, which strips PadMapper (see isLocalSeatId).
+var PadMapper = ((typeof require !== 'undefined') ? require('./PadMapper.js') : (window.GameEngine && window.GameEngine.PadMapper));
 
 // Rapid, self-correcting roster churn: the +/- level stepper and the colour
 // rose. Both are finger-speed controls where only the final value matters, so
@@ -123,9 +125,16 @@ function RoomCore(opts) {
     this._rng = typeof opts.rng === 'function' ? opts.rng : Math.random;
   }
 
+  // Default the lobby linger for every liveness-enabled shell: the ghost-slot
+  // cleanup is core behavior, not a per-platform choice. AirConsole passes an
+  // enabledProvider that suppresses all of it (the SDK owns connection tracking).
+  var liveness = opts.liveness;
+  if (liveness && liveness.lingerMs == null) {
+    liveness = Object.assign({ lingerMs: GameConstants.LOBBY_LINGER_MS }, liveness);
+  }
   this.flow = new RoomFlow({
     masterProvider: opts.masterProvider,
-    liveness: opts.liveness,
+    liveness: liveness,
   });
 
   // Roster backing store, aliased onto flow's map so in-process consumers (the
@@ -589,10 +598,14 @@ RoomCore.prototype.peerLeft = function (peerIndex) {
       this.flow.removePlayer(peerIndex);
     }
   } else if (state === RoomFlow.STATES.LOBBY) {
-    this.flow.removePlayer(peerIndex);
+    // rememberHost: only a LOCAL seat can ever return under the same peer index
+    // (the relay never reissues one), and a local seat vanishing is the OS
+    // dropping a sleeping or unplugged pad — not a decision to leave — so host
+    // duty survives it if the pad wakes before the next round starts.
+    this.flow.removePlayer(peerIndex, { rememberHost: isLocalSeatId(peerIndex) });
     this._removeParticipant(peerIndex);
   } else if (state === RoomFlow.STATES.RESULTS) {
-    this.flow.removePlayer(peerIndex);
+    this.flow.removePlayer(peerIndex, { rememberHost: isLocalSeatId(peerIndex) });
     this._removeParticipant(peerIndex);
     this.flow.setActiveOrder(this._participants);
     // Return to the lobby once no game participants remain; late joiners, who
@@ -627,6 +640,14 @@ function normalizePeerIndex(value) {
   return Number.isInteger(n) && n >= 0 ? n : null;
 }
 
+// A seat held by a gamepad on the display machine (PadMapper.LOCAL_SEAT_BASE).
+// PadMapper is absent from the AirConsole bundle (which ships no pads) — and a
+// build with no local seats can never be asked about one, so absent means
+// "not local".
+function isLocalSeatId(peerIndex) {
+  return !!PadMapper && PadMapper.isLocalSeat(peerIndex);
+}
+
 // Can `peerIndex` claim the dropped seat named by the HELLO's rejoin token?
 // Returns the old peer index, or null. Reads flow's presence set rather than the
 // display's QR map, so the decision cannot drift from the roster it is about.
@@ -653,7 +674,13 @@ RoomCore.prototype.claimReconnect = function (peerIndex, msg, nowMs) {
   // flow.rekey moves the kept record from oldId to peerIndex (dropping the
   // placeholder row peerIndex got when it joined), and reclaims the sticky host
   // slot and last-seen stamp for the returning peer.
-  this.flow.rekey(oldId, peerIndex);
+  //
+  // Except the host slot when the claimed seat is a LOCAL one (a gamepad on the
+  // display machine): a phone scanning that seat's rejoin QR is a TAKEOVER, not
+  // the same device returning, so the board, name, colour and results follow
+  // the claim but host duty passes on — staying with whoever has been holding
+  // it since the pad dropped, exactly as if the pad had left.
+  this.flow.rekey(oldId, peerIndex, { inheritHost: !isLocalSeatId(oldId) });
   // Through onSeen, not flow's: the rekey just moved the departed record onto
   // this index, relayGone and all, and their HELLO is proof it is stale.
   this.onSeen(peerIndex, nowMs);
@@ -696,6 +723,48 @@ RoomCore.prototype.setLevel = function (peerIndex, rawLevel) {
   // unreachable, so the value is recorded but nothing needs to hear about it.
   var inLobby = this.flow.state === RoomFlow.STATES.LOBBY;
   return { changed: true, level: level, publish: inLobby ? 'soon' : 'none' };
+};
+
+// --- Relative steps, for seats that hold a D-pad instead of a picker ---------
+// A gamepad seat asks for "one more" where a phone names the value outright: it
+// has two buttons, not a slot grid or a number field. Both of these RESOLVE a
+// step into the concrete value and stop there, deliberately. The caller then
+// sends the ordinary SET_LEVEL / SET_COLOR it would have sent anyway, so a pad
+// keeps flowing through the one path that already publishes, re-renders and is
+// dispatched identically on web, tvOS and Android TV. A mutator here would make
+// every shell repeat that path a second time for pads alone.
+
+// Out of range comes back unchanged rather than clamped or wrapped, because
+// setLevel rejects it and a step past either end should do nothing.
+RoomCore.prototype.levelAfterStep = function (peerIndex, delta) {
+  var player = this.players.get(peerIndex);
+  if (!player) return null;
+  return (player.startLevel || MIN_START_LEVEL) + delta;
+};
+
+// The next FREE palette slot in either direction, or null when there is nowhere
+// to go. Skips taken slots rather than stalling on the silent rejection setColor
+// gives a collision, and wraps, since a cycle without one strands the last slot.
+// The free-slot scan reads the whole roster, which is exactly why it belongs
+// here with nextAvailableColorSlot: a shell computing its own idea of "free"
+// would be a second allocator racing this one.
+RoomCore.prototype.colorAfterStep = function (peerIndex, step) {
+  var player = this.players.get(peerIndex);
+  if (!player) return null;
+
+  var taken = {};
+  for (var entry of this.players) {
+    if (entry[0] !== peerIndex) taken[entry[1].playerIndex] = true;
+  }
+  var free = [];
+  for (var i = 0; i < this.maxPlayers; i++) {
+    if (!taken[i]) free.push(i);
+  }
+  // One free slot is this seat's own: there is nowhere to move to.
+  if (free.length < 2) return null;
+
+  var at = free.indexOf(player.playerIndex);
+  return free[((at + step) % free.length + free.length) % free.length];
 };
 
 // Re-claim a palette slot. Silently rejects collisions so concurrent picks do
@@ -934,7 +1003,20 @@ RoomCore.prototype.onSeen = function (peerIndex, nowMs) {
   this.flow.onSeen(peerIndex, nowMs);
 };
 RoomCore.prototype.isExpired = function (peerIndex, nowMs) { return this.flow.isExpired(peerIndex, nowMs); };
-RoomCore.prototype.expiredPeers = function (nowMs) { return this.flow.expiredPeers(nowMs); };
+// Local (gamepad) seats are exempt: their heartbeat is the pad poll, and the
+// poll and this sweep do not share a clock — the web polls on rAF, which a
+// hidden tab suspends while the 1s sweep interval keeps firing, so an
+// alt-tabbed pad match expired its own players. A pad that actually vanishes
+// is retired BY the poll (synthesized LEAVE) the moment it leaves the readings.
+RoomCore.prototype.expiredPeers = function (nowMs) {
+  return this.flow.expiredPeers(nowMs).filter(function (id) { return !isLocalSeatId(id); });
+};
+// Lobby ghost slots (see RoomFlow.lingeringPeers): the shell routes each of
+// these through its ordinary peer-left path, exactly as if the relay had said
+// so. Local seats exempt for the same reason as expiredPeers above.
+RoomCore.prototype.lingeringPeers = function (nowMs) {
+  return this.flow.lingeringPeers(nowMs).filter(function (id) { return !isLocalSeatId(id); });
+};
 RoomCore.prototype.markDisconnected = function (peerIndex) { this.flow.markDisconnected(peerIndex); };
 RoomCore.prototype.markReconnected = function (peerIndex) { this.flow.markReconnected(peerIndex); };
 RoomCore.prototype.clearDisconnected = function (nowMs) { this.flow.clearDisconnected(nowMs); };
@@ -952,7 +1034,8 @@ RoomCore.prototype.tick = function (nowMs, seen) {
     for (var i = 0; i < seen.length; i++) this.onSeen(seen[i], nowMs);
   }
   return {
-    expired: this.flow.expiredPeers(nowMs),
+    expired: this.expiredPeers(nowMs), // through the wrapper: local seats exempt
+    departed: this.lingeringPeers(nowMs),
     graceFired: this.flow.graceTick(nowMs),
   };
 };

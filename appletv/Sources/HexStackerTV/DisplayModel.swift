@@ -27,6 +27,10 @@ final class DisplayModel: ObservableObject {
     private let advertiser = RoomAdvertiser()
 
     private(set) var galleryMode = ProcessInfo.processInfo.environment["HEXGALLERY"] != nil
+
+    /// Set by PressHostController, which owns the GameController event scope.
+    /// See `syncPadInputOwnership`.
+    var setPadOwnsInput: ((Bool) -> Void)?
     private var galleryIndex = 0
     // Frozen-capture harness modes (HEXGALLERY carousel, HEXSHOT single state):
     // render one settled state, no live tick — and no animations at all:
@@ -168,10 +172,18 @@ final class DisplayModel: ObservableObject {
         #else
         fastlane = nil
         #endif
+        // Only in a real room. Every harness mode (gallery, HEXLOBBY, HEXDEMO,
+        // HEXSHOT) renders a FIXTURE roster, and a pad must not join one — since a
+        // pad here seats itself on connection, it silently became an extra player
+        // and a fixture's "3 players" read as 4. The tvOS Simulator presents a
+        // virtual extended gamepad with nobody holding it, so this is not
+        // hypothetical: it is what the lobby-navigation UI test caught. Same
+        // reason the web skips its poll under window.__TEST__.
         let coordinator = DisplayCoordinator(transport: relay,
                                              engineDirectory: AssetLocator.engineDirectory,
                                              output: self,
-                                             fastlane: fastlane)
+                                             fastlane: fastlane,
+                                             padSource: relayBacked ? GameControllerPadSource() : nil)
         self.coordinator = coordinator
         // Boards read the roster off the published lobby state, not the room: the
         // seats are already snapshot-derived (updateLobby), and a lookup on the
@@ -226,7 +238,12 @@ final class DisplayModel: ObservableObject {
 
     private func startTickPump() {
         boardScene.onTick = { [weak self] deltaMs in
-            self?.coordinator?.tick(deltaMs: deltaMs)
+            guard let self else { return }
+            self.coordinator?.tick(deltaMs: deltaMs)
+            // Re-evaluated per frame, not just on a screen change: a pad can take
+            // a seat (or give one up) without the screen moving at all, and it is
+            // the SEAT that decides this, not the screen alone.
+            self.syncPadInputOwnership()
         }
     }
 
@@ -280,9 +297,6 @@ final class DisplayModel: ObservableObject {
 
     /// Menu button: pause during gameplay; return false at the top level so
     /// tvOS exits the app normally (the caller falls through to the default).
-    /// Also declines under the connection overlay: exiting to the home screen
-    /// there is safe (backgrounding suspends the socket; the party resumes
-    /// gracefully).
     ///
     /// While About/Licenses are up, the NavigationStack is the ONLY owner of
     /// Menu: it pops one level itself (on press-ENDED). This handler must
@@ -293,9 +307,22 @@ final class DisplayModel: ObservableObject {
     /// it (a UINavigationController declines a pop while one is in flight).
     /// The consume keeps a bubbled press off super's default app-exit.
     func handleMenu() -> Bool {
-        guard !state.connectionOverlayUp else { return false }
+        // Falling through to super exits to the HOME SCREEN, and the lobby is
+        // the only place that is the right reading of Menu: everywhere else a
+        // session is in progress and one press must not take the display out
+        // from under every phone in the room. That rule holds under the
+        // connection overlay too — the match behind it is exactly what it is
+        // protecting — EXCEPT over the lobby, where there is no session to
+        // protect (launching with the relay unreachable lands here) and Menu
+        // must still be a way off the TV.
+        guard !state.connectionOverlayUp else { return state.screen != .lobby }
         if !state.aboutPath.isEmpty { return true }
         if state.screen == .game { coordinator?.remoteTogglePause(); return true }
+        // Consumed WITHOUT an action on the results: returning to the lobby is
+        // the New Game button's job alone (a deliberate click, not a reflex
+        // press), and falling through would exit the app. Android's Back is
+        // inert there for the same reason.
+        if state.screen == .results { return true }
         return false
     }
 
@@ -359,6 +386,19 @@ final class DisplayModel: ObservableObject {
     /// room is unchanged, so lift the precautionary dim — unless the link is
     /// genuinely down, where roomReady clears it after the reconnect instead.
     func appDidBecomeActive() {
+        // SpriteView can leave the scene paused after a background round trip
+        // (2026-08-08 hardware session: countdown frozen on "3", boards never
+        // faded in). The scene's update() is the display's ONLY tick pump —
+        // countdown, presence, engine frames and the screen-swap fades all ride
+        // it — so a stuck pause is a frozen app that still draws. Unpausing is
+        // free when it is already running; do it on every activation.
+        boardScene.isPaused = false
+        boardScene.view?.isPaused = false
+        // Re-assert the screensaver hold: it was set once at start() and the
+        // comment there explains why a screensaver is unrecoverable — if the
+        // flag doesn't survive a background round trip, the next idle stretch
+        // parks the whole pump again.
+        UIApplication.shared.isIdleTimerDisabled = true
         if !backgroundedSinceResign, linkState == .open {
             withAnimation(Self.fade) { state.qrPending = false }
         }
@@ -555,6 +595,56 @@ extension DisplayModel: DisplayOutput {
             if screen != .lobby { state.aboutPath = [] }
         }
         updateFramePacing()
+        syncPadInputOwnership()
+    }
+
+    /// Who owns a gamepad's presses on this screen: the UI, or the game.
+    ///
+    /// tvOS routes controller input into the focus engine by default, which is
+    /// what we want everywhere the display shows a menu — the pad moves the ring
+    /// over START, ⓘ, Play Again and Continue exactly like the remote, so none of
+    /// them need a binding of their own. It is wrong in exactly one state: while a
+    /// piece is being steered, where the D-pad would otherwise also drag a focus
+    /// ring around behind the game.
+    ///
+    /// Turning it off is not the same as making the UI unfocusable, which is why
+    /// it is done here rather than with `.focusable(false)` on the views: this
+    /// stops only the PAD. But it is also NOT surgical, and that is the reason it
+    /// is kept this narrow — the Siri Remote is exposed as a game controller too,
+    /// so the switch always takes its input as well. Widening this to a screen
+    /// with buttons on it strands whoever is holding the remote.
+    ///
+    /// A gamepad's Menu button never arrives as a `.menu` press in EITHER state —
+    /// tvOS keeps it in GameController — which is why `PadSeats` binds index 9
+    /// itself (see the note at its poll). The SIRI REMOTE's Menu, which does
+    /// arrive as `.menu`, is suppressed by this switch while the pad owns input —
+    /// the remote is a game controller too — and is bound back from GameController
+    /// in `PressHostController.bindRemoteMenu`, without which a running match
+    /// could not be left at all.
+    ///
+    /// Gated on a pad actually HOLDING A SEAT, which is not a refinement but the
+    /// correctness condition. With no pad seated there is nothing to take input
+    /// away from, and taking it anyway breaks the screen gallery: its capture
+    /// drives the app through XCUIRemote, which arrives as controller input and
+    /// simply stopped being delivered, so the carousel never advanced. That is
+    /// also the honest reason to keep this as narrow as possible — the Siri
+    /// Remote is itself exposed as a controller, so this switch is never as
+    /// surgical as "only the gamepad".
+    private func syncPadInputOwnership() {
+        // A PAUSED game is still the .game screen, but the overlay on top of it is
+        // a menu with buttons on it, so input has to go back to the UI or the pad
+        // cannot reach Continue. Screen alone is the wrong question; what matters
+        // is whether the pad is steering a piece right now.
+        // ONLY while a piece is being steered. Every other screen the display shows
+        // is a menu, and menus are the focus engine's job on this platform — which
+        // is also the only way the Siri Remote keeps working, since this switch
+        // cannot single out the pad: the remote is a game controller too, so taking
+        // input from one takes it from both, Back button included.
+        // The connection overlay counts as a menu too: its RECONNECT button may
+        // be the only actionable thing in the room, and in a pad-only match the
+        // pad may be the only input there is.
+        let steering = state.screen == .game && !state.paused && !state.connectionOverlayUp
+        setPadOwnsInput?(steering && coordinator?.hasPadSeats == true)
     }
 
     func roomReady(room: String, joinURL: String, qrText: String) {

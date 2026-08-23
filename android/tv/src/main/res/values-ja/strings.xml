@@ -13,6 +13,8 @@
     <string name="triple_clear">3ライン!</string>
 
     <string name="scan_hint">スマホでコードをスキャン</string>
+
+    <string name="gamepad_join_hint">コントローラーのボタンを押す</string>
     <string name="waiting_for_players">プレイヤー待ってる</string>
     <string name="level_heading">レベル</string>
 

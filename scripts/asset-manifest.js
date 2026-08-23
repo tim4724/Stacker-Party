@@ -77,6 +77,10 @@ const DISPLAY_SCRIPTS = [
   '/partyplug/AirConsoleAdapter.js',
   '/partyplug/AirConsoleStorage.js',
   '/partyplug/RoomFlow.js',
+  // The portable half of the gamepad support, shared verbatim with tvOS and
+  // Android TV. Read at module-eval time by RoomCore.js and GamepadInput.js
+  // below, so it has to precede both.
+  '/engine/PadMapper.js',
   // Out of the /engine/ block on purpose: RoomCore composes RoomFlow and reads
   // window.RoomFlow at module-eval time, so the kit's IIFE has to have run first.
   '/engine/RoomCore.js',
@@ -101,6 +105,10 @@ const DISPLAY_SCRIPTS = [
   '/display/DisplayGame.js',
   '/display/DisplayLiveness.js',
   '/display/DisplayInput.js',
+  // After DisplayInput.js, whose handleControllerMessage every pad press is
+  // funnelled through, and before DisplayGame's renderEngineEvent reaches for
+  // GamepadInput.onEngineEvent.
+  '/display/GamepadInput.js',
   '/display/DisplayRender.js',
   // Must precede display.js: its bottom-of-file init reads window.__TEST__
   // (set here under ?test/?scenario/?adclip) synchronously to choose
@@ -137,6 +145,14 @@ const AC_DEAD = [
   // Gallery/Playwright-only harnesses, gated on URL params AC never carries.
   '/controller/ControllerTestHarness.js',
   '/display/DisplayTestHarness.js',
+  // Local gamepad seats. An AC player is an AirConsole device, and host
+  // election in AC mode defers to getMasterPeerIndex(), which a local seat can
+  // never be — so a pad could join but never start a game. Its two call sites
+  // are typeof-guarded for this exclusion.
+  '/display/GamepadInput.js',
+  // Its only browser consumer is GamepadInput.js above, so it would be dead
+  // weight in the ZIP. The TVs load it out of dist/partycore.js, not from here.
+  '/engine/PadMapper.js',
 ];
 
 // AC_DEAD only ever FILTERS, so a path that matches nothing fails silently: rename

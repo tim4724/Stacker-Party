@@ -12,6 +12,8 @@
     <string name="triple_clear">ÜÇLÜ!</string>
 
     <string name="scan_hint">Kodu telefonunla tara</string>
+
+    <string name="gamepad_join_hint">Kumandanda bir tuşa bas</string>
     <string name="waiting_for_players">Oyuncular bekleniyor</string>
     <string name="level_heading">Seviye</string>
 

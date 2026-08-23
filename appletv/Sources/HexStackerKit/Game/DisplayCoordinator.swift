@@ -127,6 +127,8 @@ struct RoomResult: Decodable {
 /// the late-joiner grace window elapsed.
 struct RoomTick: Decodable {
     let expired: [Int]
+    /// Lobby ghost slots past the linger window: route through the peer-left path.
+    let departed: [Int]
     let graceFired: Bool
 }
 
@@ -234,6 +236,18 @@ public final class DisplayCoordinator {
     // methods live in DisplayCoordinator+Gallery.swift; extensions can't add
     // stored properties, so their state lives here.
     var demoActive = false
+
+    /// Gamepads attached to this TV, as players. nil when no pad source was
+    /// injected, which is every offline harness.
+    private var padSeats: PadSeats?
+
+    /// Monotonic ms for the pad mapper. See the note at its poll site.
+    private var padClockMs: Double = 0
+
+    /// Whether any pad currently holds a seat. A running match suppresses system
+    /// focus while one does, because there the D-pad is that seat's piece.
+    public var hasPadSeats: Bool { padSeats?.hasSeats ?? false }
+
     var demoTick = 0
 
     // Render-on-input coalescing: true once handleInput has pulled a snapshot
@@ -259,12 +273,11 @@ public final class DisplayCoordinator {
     private static let stepMs = 1000.0
     private static let goHoldMs = 500.0
 
-    private static let maxFrameDeltaMs = 50.0   // matches the web frame clamp
-
     public init(transport: RelayTransport,
                 engineDirectory: URL,
                 output: DisplayOutput,
                 fastlane: InputFastlane? = nil,
+                padSource: PadSource? = nil,
                 seedProvider: @escaping () -> UInt32 = { UInt32.random(in: 0...UInt32.max) },
                 nowProvider: @escaping () -> Double = { Date().timeIntervalSince1970 * 1000 }) {
         self.transport = transport
@@ -273,6 +286,13 @@ public final class DisplayCoordinator {
         self.fastlane = fastlane
         self.seedProvider = seedProvider
         self.nowProvider = nowProvider
+        // Injected rather than built here, and nil by default, so the offline
+        // harnesses (gallery shots, the local demo) cannot seat a pad that
+        // happens to be plugged into the developer's machine into a fixture
+        // roster. The web guards the same case with window.__TEST__.
+        if let padSource {
+            self.padSeats = PadSeats(source: padSource, coordinator: self)
+        }
     }
 
     // MARK: - The room core
@@ -424,6 +444,68 @@ public final class DisplayCoordinator {
 
     public var playerCount: Int { roomScalar("size").flatMap { Int($0) } ?? 0 }
 
+    // MARK: - Local (gamepad) seats
+
+    /// Send to one peer, unless the seat is LOCAL. A pad attached to this TV has
+    /// no connection to send down: its index sits in a range the relay never
+    /// hands out (`PadSeats.localSeatBase`), so there is nothing to route to.
+    ///
+    /// Every per-peer send goes through here rather than each site testing for
+    /// itself, so a send added later inherits the rule instead of having to
+    /// remember it. The web guards its call sites one by one; this is the same
+    /// rule with one place to state it.
+    private func sendToPeer(_ peerIndex: Int, _ data: [String: Any]) {
+        guard !PadSeats.isLocalSeat(peerIndex) else { return }
+        transport.sendTo(peerIndex, data)
+    }
+
+    /// Deliver a message from a seat this display owns rather than the relay.
+    /// Deliberately the SAME entry point the relay's messages take: a pad that
+    /// took a different route would be a second implementation of joining,
+    /// naming, colour, host election and liveness.
+    public func deliverLocal(from seat: Int, data: [String: Any]) {
+        onMessage(from: seat, data: data)
+    }
+
+    /// A local seat sends nothing over the wire, so its presence in a poll is the
+    /// only proof it is still there. Without this the liveness sweep expires an
+    /// idle pad player mid-game.
+    public func markLocalSeatSeen(_ seat: Int) {
+        seenSinceTick.insert(seat)
+    }
+
+    /// The next start level for a relative step, or nil if the seat is unknown.
+    /// The arithmetic is the room core's so web, tvOS and Android agree.
+    public func roomLevelAfterStep(seat: Int, delta: Int) -> Int? {
+        roomInt("levelAfterStep", [seat, delta])
+    }
+
+    /// The next FREE palette slot in either direction, or nil when there is
+    /// nowhere to go. Also the room core's, for the same reason.
+    public func roomColorAfterStep(seat: Int, step: Int) -> Int? {
+        roomInt("colorAfterStep", [seat, step])
+    }
+
+    /// One rumble effect from the shared table. Nil when the room core is not up
+    /// yet, or the kind is unknown.
+    func padRumble(_ kind: String, lines: Int) -> EngineBridge.PadRumble? {
+        roomCore()?.padRumble(kind, lines: lines)
+    }
+
+    /// The pad's product string as a room-legal name, by the shared rules.
+    public func padName(_ rawId: String) -> String {
+        guard let bridge = roomCore() else { return "Gamepad" }
+        return bridge.padName(rawId)
+    }
+
+    /// Map every seated pad in one crossing. Throws so the caller can log once
+    /// rather than silently feeding nothing.
+    func padPoll(_ pads: [EngineBridge.PadState], nowMs: Double, playing: Bool)
+        throws -> [EngineBridge.PadResult] {
+        guard let bridge = roomCore() else { return [] }
+        return try bridge.padPoll(pads, nowMs: nowMs, playing: playing)
+    }
+
     /// Active participants in board-layout order. Not the same as the roster: in
     /// the lobby everyone is a participant, mid-game a late joiner is not.
     var participants: [Int] { roomProperty([Int].self, "participants") ?? [] }
@@ -499,7 +581,8 @@ public final class DisplayCoordinator {
         // Otherwise the fresh lobby shows the dead room's seats until liveness expires
         // them. The onRelayError path resets before asking for its room and clears
         // `self.room` doing so, so nothing runs twice there.
-        if self.room != nil { resetSession() }
+        let keepMatch = isLocalOnlyMatch
+        if self.room != nil && !keepMatch { resetSession() }
         self.room = room
         self.instance = instance
         // A fresh room has an empty roster, so there is nothing to re-stamp — but the
@@ -508,7 +591,31 @@ public final class DisplayCoordinator {
         roomLinkRestored()
         let url = joinURL(room: room, instance: instance)
         output?.roomReady(room: room, joinURL: url, qrText: url)   // production QR == join URL
-        output?.showScreen(.lobby)
+        if !keepMatch { output?.showScreen(.lobby) }
+    }
+
+    /// A match whose every player is a pad on this machine. Such a match has no
+    /// presence at the relay AT ALL — local seats never join a room — so the relay
+    /// retires the room the moment the display's own socket goes, which is exactly
+    /// what backgrounding does. The rejoin then answers "Room not found" and the
+    /// recovery path throws away a match the display is still holding, along with a
+    /// player who never left the sofa.
+    ///
+    /// The premise of that recovery — a roster cannot follow the room, because those
+    /// players were never in the new one — is true of relay members and false of
+    /// local seats, which were never in the OLD room either. So the room is replaced
+    /// underneath the match and only the QR changes: phones join through the new
+    /// door, the game carries on.
+    /// Requires a pad to still HOLD its seat, not merely to have held one: if the
+    /// controller is gone there is no one left to carry the match for, and the
+    /// ordinary reset is the right answer.
+    ///
+    /// Also the gate on the link-drop freeze (connectionPause): a match that has
+    /// no relay presence has nothing to run blind without one.
+    private var isLocalOnlyMatch: Bool {
+        guard state != .lobby, hasPadSeats else { return false }
+        let active = participants
+        return !active.isEmpty && active.allSatisfy(PadSeats.isLocalSeat)
     }
 
     private func onJoined(room: String, peers: [Int]) {
@@ -529,6 +636,11 @@ public final class DisplayCoordinator {
         // because expiredPeers skips already-disconnected peers, never self-heal.
         var goneIds: [Int] = []
         for p in roster() {
+            // A local (gamepad) seat was never in the relay's room, so its
+            // absence from the peer list says nothing: its presence is proven by
+            // the pad poll (markLocalSeatSeen), not by the relay. Counting it as
+            // gone here dropped every pad seat on a display reconnect.
+            if PadSeats.isLocalSeat(p.peerIndex) { continue }
             guard peers.contains(p.peerIndex) else { goneIds.append(p.peerIndex); continue }
             seenSinceTick.insert(p.peerIndex)
             if !p.connected {
@@ -561,7 +673,9 @@ public final class DisplayCoordinator {
     private func onRelayError(_ message: String) {
         assertOwningThread()
         guard message == "Room not found" || message == "Room is full" else { return }
-        resetSession()
+        // See isLocalOnlyMatch: a pad-only match outlives its room, because it was
+        // never played through one.
+        if !isLocalOnlyMatch { resetSession() }
         transport.recreateRoom()   // fresh room; onCreated re-shows the lobby with the new code
     }
 
@@ -689,7 +803,7 @@ public final class DisplayCoordinator {
         case MSG.setColor: handleSetColor(from: from, msg: msg)
         case MSG.setName: handleSetName(from: from, msg: msg)
         case MSG.setDisplayMute: handleSetMute(from: from, msg: msg)
-        case MSG.ping: transport.sendTo(from, OutboundMessage.pong(t: msg.t))
+        case MSG.ping: sendToPeer(from, OutboundMessage.pong(t: msg.t))
         default: break
         }
 
@@ -719,7 +833,7 @@ public final class DisplayCoordinator {
 
         guard res.accepted == true else {
             if res.roomFull == true {
-                transport.sendTo(from, OutboundMessage.error(message: "Room is full"))
+                sendToPeer(from, OutboundMessage.error(message: "Room is full"))
             }
             return
         }
@@ -959,14 +1073,40 @@ public final class DisplayCoordinator {
         assertOwningThread()
         renderedInputSinceTick = false   // new frame: re-arm render-on-input
         flushPendingSnapshot()           // trailing edge of the set_state throttle
-        let deltaMs = min(max(rawDelta, 0), Self.maxFrameDeltaMs)
+        // Only sanitize negatives/NaN; do NOT clamp to the 50ms frame cap. The
+        // engine's frame() applies MAX_FRAME_DELTA_MS itself (per its contract),
+        // and the countdown and pad clocks must advance by real elapsed time — a
+        // render pump starved by an app suspend/resume delivers rare, huge
+        // deltas, and clamping each one turned a second into 50ms of countdown
+        // (frozen "3", 20x-slow 3-2-1-GO). Android's tick does exactly this.
+        let deltaMs = rawDelta.isFinite ? max(rawDelta, 0) : 0
         let roomState = state
+        // Before the state switch, because a pad joins, picks a colour and steps
+        // its level in the LOBBY, where none of the branches below run any input.
+        //
+        // Its own accumulator, not frameClockMs: that one only advances while a
+        // game is running, and a mapper handed a frozen clock would measure every
+        // DAS interval against the same instant. Monotonic rather than wall time
+        // for the same reason the engine's is.
+        if let padSeats {
+            padClockMs += deltaMs
+            // The unpaused PLAYING tick fuses the pad poll into its frame
+            // crossing below (framePads) — one evaluate for mapping, input and
+            // frame together. Every other state polls here, before the switch,
+            // so a pad joins, picks a colour and steps its level in the LOBBY.
+            if !(roomState == .playing && !paused) {
+                padSeats.poll(nowMs: padClockMs, playing: false)
+            }
+        }
         // The local demo has no controllers sending heartbeats, so keep its
         // synthetic players "seen" — otherwise the liveness sweep flags them
-        // disconnected after 3 s and auto-pauses the self-playing game, and
-        // on RESULTS the presence sweep would auto-return a finished demo
-        // match to the lobby (which cuts the HEXTOUR results dwell short).
-        if demoActive, roomState != .lobby { seenSinceTick.formUnion(participants) }
+        // disconnected after 3 s and auto-pauses the self-playing game, on
+        // RESULTS the presence sweep would auto-return a finished demo match
+        // to the lobby (which cuts the HEXTOUR results dwell short), and in
+        // the LOBBY the ghost-slot linger would sweep a fixture roster out
+        // from under the harness after 15 s (HEXLOBBY's Start silently no-ops
+        // once the seeded players are gone).
+        if demoActive { seenSinceTick.formUnion(participants) }
         switch roomState {
         case .countdown:
             pollPresence(nowProvider(), roomState)
@@ -983,8 +1123,24 @@ public final class DisplayCoordinator {
             // monotonic clock PartyCore turns into a capped per-frame delta.
             frameClockMs += deltaMs
             let frame: FrameResult
-            do { frame = try engine.frame(nowMs: frameClockMs, inputs: takeInputs()) }
-            catch {
+            let padStates = padSeats?.collectStates(nowMs: padClockMs) ?? []
+            // collectStates is not a pure read: it routes pad joins and LEAVEs
+            // (retireVanished), and unplugging the last pad can end the match
+            // under us (grace -> returnToLobby). Re-check before framing what
+            // is then a dead engine — the frame would push a board and RESULTS
+            // over the lobby that was just shown.
+            guard state == .playing, !paused, self.engine != nil else { return }
+            do {
+                if let padSeats, !padStates.isEmpty {
+                    let (padResults, fused) = try engine.framePads(
+                        nowMs: frameClockMs, inputs: takeInputs(),
+                        pads: padStates, padNowMs: padClockMs)
+                    padSeats.route(padResults, playing: true)
+                    frame = fused
+                } else {
+                    frame = try engine.frame(nowMs: frameClockMs, inputs: takeInputs())
+                }
+            } catch {
                 // Dropping one frame is fine; a PERSISTENT failure freezes the game,
                 // so it must at least be visible in the log (decode errors don't
                 // pass through onEngineError).
@@ -993,13 +1149,25 @@ public final class DisplayCoordinator {
             }
             // Events are the complete record — drive the native-only board
             // animations from them (line clears, lock flashes, KO, shakes).
-            for event in frame.events { output?.handleGameEvent(event) }
+            for event in frame.events {
+                output?.handleGameEvent(event)
+                // The same per-event fan-out, for the effect that happens in a
+                // player's hands rather than on screen.
+                padSeats?.handle(event: event)
+            }
             // nil = render-identical to the last delivered frame (PartyCore's
             // scene signature): the scene keeps drawing its retained state and
             // its own time-driven animations, so skipping the push saves the
             // decode AND the node updates. Events above still fire, since a
             // frame that changes nothing still has none.
-            if let snapshot = frame.snapshot { output?.renderSnapshot(snapshot) }
+            // Through render(), NOT straight to the output: render() retains the
+            // snapshot the per-seat merge (handleInput) builds on. Bypassing it
+            // left that copy frozen at the last INPUT's render, so every phone
+            // input repainted the OTHER boards seconds stale and the next tick
+            // snapped them back — constant flicker once local pad boards (which
+            // advance every frame) shared a match with a phone. Android's tick
+            // has always gone through its retaining renderSnapshot.
+            if let snapshot = frame.snapshot { render(snapshot) }
             // Commands normalize the host effects (controller sends, match end),
             // single-sourced from PartyCore so they can't drift from the web.
             // One frame is one change: a tick that KOs several players at once (a
@@ -1015,7 +1183,12 @@ public final class DisplayCoordinator {
         case .lobby:
             // Flush the batched liveness stamps anyway, so a lobby that sat idle
             // doesn't hand the first COUNTDOWN sweep a roster of stale timestamps.
-            _ = drainSeen(nowProvider())
+            // `departed` is the lobby's ghost-slot cleanup: a controller silent
+            // past the linger window leaves through the ordinary peer-left path
+            // (a killed tab never sends one). Gated like pollPresence — while
+            // our OWN link is down, their silence is our fault.
+            let sweep = drainSeen(nowProvider())
+            if relayConnected { for id in sweep.departed { onPeerLeft(id) } }
         }
     }
 
@@ -1068,7 +1241,7 @@ public final class DisplayCoordinator {
                 // carry. Liveness is the snapshot's alone, so a `player_ko` form sends
                 // nothing here (PlayerStateCommand in server/PartyCore.d.ts has why).
                 if let lines = c.lines {
-                    transport.sendTo(pid, OutboundMessage.playerState(lines: lines))
+                    sendToPeer(pid, OutboundMessage.playerState(lines: lines))
                 }
             case "gameEnd":
                 endGame(results: c.results ?? [], elapsed: c.elapsed ?? 0)
@@ -1235,7 +1408,15 @@ public final class DisplayCoordinator {
     /// Our own relay link dropped: freeze the sim so it can't run blind behind the
     /// reconnect overlay. Publishing is best-effort by definition — the relay is
     /// exactly what we cannot reach. Driven by setRelayConnected.
+    ///
+    /// Not for a local-only match: every player is a pad on THIS machine, so
+    /// nothing runs blind without the relay — input, liveness and the screen are
+    /// all local. Freezing anyway made the link's settling flaps (each .connecting
+    /// hop lands here, and no overlay marks it) stick the 3-2-1 digit and re-rewind
+    /// it on every thaw — a countdown that crawls with two pads on the sofa and a
+    /// perfectly healthy render loop.
     private func connectionPause() {
+        guard !isLocalOnlyMatch else { return }
         let res = freezePause(.connection)
         guard res.changed == true else { return }
         publishAs(res.publish)
@@ -1297,6 +1478,11 @@ public final class DisplayCoordinator {
     private func roomLinkRestored() {
         relayConnected = true
         connectionResume()
+        // The room identity just (re)confirmed: re-issue every held rejoin QR
+        // from the CURRENT room. One raised while the room was gone gets its
+        // code, and a room replaced underneath a kept match stops advertising
+        // the dead room's claim URL (which 404s). Web and Android do the same.
+        for id in rejoinQRs { output?.setDisconnected(playerId: id, joinURL: rejoinURL(id)) }
     }
 
     // MARK: - Presence / liveness
@@ -1306,7 +1492,7 @@ public final class DisplayCoordinator {
     private func drainSeen(_ now: Double) -> RoomTick {
         let seen = Array(seenSinceTick)
         seenSinceTick.removeAll(keepingCapacity: true)
-        return roomValue(RoomTick.self, "tick", [now, seen]) ?? RoomTick(expired: [], graceFired: false)
+        return roomValue(RoomTick.self, "tick", [now, seen]) ?? RoomTick(expired: [], departed: [], graceFired: false)
     }
 
     /// Once-per-frame presence sweep. Flags silently-dead controllers, returns to the

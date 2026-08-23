@@ -142,6 +142,7 @@ public enum InputAction: String, CaseIterable {
     case left
     case right
     case rotateCW = "rotate_cw"
+    case rotateCCW = "rotate_ccw"
     case hardDrop = "hard_drop"
     case hold
 }

@@ -10,6 +10,7 @@ import android.provider.Settings
 import android.util.Log
 import android.view.Choreographer
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -261,6 +262,7 @@ class MainActivity : ComponentActivity() {
             // arrive before the bundle has finished compiling, and they queue behind this.
             bridgeProvider = { engineAsync().await() },
             fastlane = fastlane,
+            padSource = padSource,
             // Surface boundary errors the coordinator swallows to keep its loop alive
             // (engine/parse failures would otherwise vanish without a trace).
             onError = { label, e -> Log.w("DisplayCoordinator", label, e) },
@@ -324,7 +326,15 @@ class MainActivity : ComponentActivity() {
                         // Action.Tick + ack churn while those screens sit idle (results can
                         // sit for minutes). Countdown and gameplay tick per frame.
                         val screen = ui.state.value.screen
-                        if (screen == DisplayScreen.LOBBY || screen == DisplayScreen.RESULTS) {
+                        // The tick is what samples the pads, so an idle screen's
+                        // ~4Hz answers a button press up to a quarter second late.
+                        // A seated pad therefore opts out of the throttle, which is
+                        // simply what the other two displays already do: the web
+                        // polls at rAF and tvOS never throttles its lobby at all.
+                        // The saving is still there for the case it was written
+                        // for, a lobby or results screen nobody is touching.
+                        val idleScreen = screen == DisplayScreen.LOBBY || screen == DisplayScreen.RESULTS
+                        if (idleScreen && !coordinator.hasPadSeats) {
                             if (acc < IDLE_TICK_MS) continue
                         } else if (acc > dt) {
                             // First tick after leaving a throttled screen: drop the skipped
@@ -512,6 +522,80 @@ class MainActivity : ComponentActivity() {
         if (m.screen == DisplayScreen.GAME && !m.paused && !m.muted && m.countdown == null) {
             music.resumeFromBackground()
         }
+    }
+
+    /**
+     * Gamepads attached to this TV, as players. Fed from the dispatch overrides
+     * below, because Android delivers button state as events rather than as a
+     * queryable snapshot.
+     */
+    private val padSource = AndroidPadSource()
+
+    /**
+     * Who owns a gamepad's presses on this screen: the game, or the UI.
+     *
+     * In the LOBBY the d-pad is a pad seat's level stepper, and during a match it
+     * is the piece; letting either also reach Compose would drag a focus ring
+     * around behind the game. On the overlays the opposite is right, so the pad
+     * moves the ring over Play Again and Continue exactly like the remote and
+     * those need no binding of their own.
+     *
+     * Consuming here rather than making the composables unfocusable is what keeps
+     * this scoped to the PAD. The TV remote is not a SOURCE_GAMEPAD device, so it
+     * keeps driving focus for whoever set the TV up. Same split as tvOS, which
+     * spells it GCEventViewController.controllerUserInteractionEnabled.
+     *
+     * It also decides who owns Start: while the pad owns input, KEYCODE_BUTTON_START
+     * never reaches onKeyDown's play/pause, and PadSeats binds index 9 itself.
+     * Without this the two would both fire on one press.
+     */
+    private fun padOwnsInput(): Boolean {
+        val state = ui.state.value
+        // The connection overlay counts as a menu too, whatever screen it covers:
+        // its RECONNECT button may be the only actionable thing in the room, and
+        // in a pad-only match the pad may be the only input there is. Same rule
+        // as tvOS syncPadInputOwnership.
+        if (state.connection == RelayTransport.ConnectionState.RECONNECTING ||
+            state.connection == RelayTransport.ConnectionState.CLOSED) return false
+        // A PAUSED game is still the GAME screen, but the overlay on top of it is
+        // a menu with buttons on it, so input has to go back to the UI or the pad
+        // cannot reach Continue. Screen alone is the wrong question; what matters
+        // is whether the pad is steering a piece right now.
+        return when (state.screen) {
+            DisplayScreen.LOBBY -> true
+            DisplayScreen.GAME -> !state.paused
+            else -> false
+        }
+    }
+
+    /**
+     * A press from a pad that holds no seat is that pad JOINING, so it must not
+     * also reach Compose and click whatever is focused — Play Again on the results
+     * screen, or START in a lobby that already has players. PadSeats applies the
+     * same rule internally by handing the joining press to the mapper as a
+     * baseline; this is its other half.
+     */
+    private fun isPadJoinPress(deviceId: Int): Boolean =
+        !coordinator.padHoldsSeat(padSource.slotFor(deviceId))
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val fromPad = padSource.onKeyEvent(event)
+        if (fromPad && (padOwnsInput() || isPadJoinPress(event.deviceId))) return true
+        // The framework translates BUTTON_B (and a pad's own BACK key) into
+        // system back navigation. On a pad B is rotation during play and
+        // nothing anywhere else — leaving it through would hand a stray press
+        // the power to close the results or exit the lobby for everyone, which
+        // no pad button may do (tvOS pads structurally cannot). The TV remote
+        // is not a gamepad-source device, so its Back keeps its meaning.
+        if (event.keyCode == KeyEvent.KEYCODE_BACK && padSource.isGamepadEvent(event)) return true
+        if (fromPad && event.keyCode == KeyEvent.KEYCODE_BUTTON_B) return true
+        return super.dispatchKeyEvent(event)
+    }
+
+    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        val fromPad = padSource.onMotionEvent(event)
+        if (fromPad && (padOwnsInput() || isPadJoinPress(event.deviceId))) return true
+        return super.dispatchGenericMotionEvent(event)
     }
 
     /**
@@ -911,10 +995,15 @@ private fun HexStackerApp(
     }
     // During a game (COUNTDOWN + PLAYING) Back toggles pause instead of exiting.
     // Going through the dispatcher (not onKeyDown) is what keeps a single Back
-    // from BOTH pausing and finishing the Activity. Disabled on the lobby/results,
-    // so Back there falls through to the default finish() and exits to the
-    // launcher (Android TV: Back must eventually reach the home screen).
+    // from BOTH pausing and finishing the Activity. On RESULTS, Back is consumed
+    // WITHOUT an action: returning to the lobby is the New Game button's job
+    // alone (a deliberate click, not a reflex press), and falling through would
+    // finish() the Activity mid-session. Only the LOBBY falls through to the
+    // default finish() (Android TV: Back must eventually reach the home screen,
+    // and the lobby is the one place with nothing to lose). tvOS Menu follows
+    // the same two rules.
     BackHandler(enabled = model.screen == DisplayScreen.GAME) { onContinue() }
+    BackHandler(enabled = model.screen == DisplayScreen.RESULTS) { /* consumed */ }
 
     DisplayChrome(
         model = model,

@@ -326,6 +326,68 @@ class EngineBridge private constructor(
     }
 
     /**
+     * Map EVERY attached pad in ONE call. [padsJson] is
+     * `[{seat, buttons: [bool], axes: [number]}]` and the result is one entry per
+     * seat; see the shim's PAD-API block for why the batch matters here in
+     * particular (the per-call parse floor costs more than the mapping does).
+     *
+     * The mapper state lives in JS and is keyed by seat, so a pad left out of the
+     * batch is forgotten and starts from a clean baseline if it returns.
+     */
+    suspend fun padPollJson(padsJson: String, nowMs: Double, playing: Boolean): String = lock.withLock {
+        evalTyped<String>(
+            "padPollJSON",
+            asciiJson("Bridge.padPollJSON(${jsString(padsJson)}, $nowMs, $playing)")
+        )
+    }
+
+    /**
+     * The whole playing tick in ONE crossing: pad mapping, the pads' input, the
+     * controllers' [inputs] batch and the frame they all belong to (the shim's
+     * framePadsPacked). [padNowMs] is the pad clock, which keeps running while
+     * the frame clock is paused, so the two ride separately.
+     *
+     * The payload is `<len>:<pad results JSON><packed frame>` — the packed body
+     * can contain any code unit, so the header leads, length-prefixed in UTF-16
+     * units (exactly what a Kotlin String indexes). Returns the header verbatim
+     * alongside the decoded frame; the caller parses it like a padPollJson
+     * result.
+     */
+    suspend fun framePads(
+        nowMs: Double,
+        inputs: List<Pair<Int, InputAction>>,
+        padsJson: String,
+        padNowMs: Double,
+    ): Pair<String, FrameResult> = lock.withLock {
+        val combined = evalTyped<String>(
+            "framePadsPacked",
+            "Bridge.framePadsPacked(${jsNum(nowMs)}, ${inputsJs(inputs)}, ${jsString(padsJson)}, ${jsNum(padNowMs)})",
+        )
+        val colon = combined.indexOf(':')
+        val len = if (colon > 0) combined.substring(0, colon).toIntOrNull() else null
+        if (len == null || colon + 1 + len > combined.length) {
+            throw EngineException.Decode("framePadsPacked header", IllegalStateException("malformed header"))
+        }
+        val header = combined.substring(colon + 1, colon + 1 + len)
+        val packed = combined.substring(colon + 1 + len)
+        header to decodePacked("framePadsPacked", packed)
+    }
+
+    /** The pad's product string as a room-legal name, by the shared rules. */
+    suspend fun padName(rawId: String): String = lock.withLock {
+        evalTyped<String>("padName", asciiJson("Bridge.padName(${jsString(rawId)})"))
+    }
+
+    /**
+     * One rumble effect from the shared table, as JSON, or `"null"` for an
+     * unknown kind. Callers should cache: this crosses the bridge and the answer
+     * for a given (kind, lines) never changes.
+     */
+    suspend fun padRumbleJson(kind: String, lines: Int): String = lock.withLock {
+        evalTyped<String>("padRumbleJSON", asciiJson("Bridge.padRumbleJSON(${jsString(kind)}, $lines)"))
+    }
+
+    /**
      * Close the QuickJS runtime. `suspend` + [lock] so it can never overlap an
      * in-flight frame()/input call; hopping to [dispatcher] additionally keeps the
      * native teardown off the caller's (Main) thread.

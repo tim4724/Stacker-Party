@@ -288,16 +288,17 @@ newGameResultsBtn.addEventListener('click', function() {
 });
 
 // --- Mute ---
-// Initial DOM state synced at module load time so it reflects the
-// stored mute setting before the toolbar is revealed.
+// The control is the pause overlay's Game Music switch (both TV shells put it
+// there and have no toolbar mute at all). Initial DOM state is synced at module
+// load time in DisplayState.js so it reflects the stored setting before the
+// overlay is first raised. aria-checked is "music on", the inverse of muted.
 
 function setDisplayMuted(next) {
   next = !!next;
   if (next === muted) return;
   var res = roomCore.setMuted(next);
   try { localStorage.setItem('stacker_muted', muted ? '1' : '0'); } catch (e) { /* iframe sandbox */ }
-  muteBtn.querySelector('.sound-waves').style.display = muted ? 'none' : '';
-  muteBtn.setAttribute('aria-checked', muted ? 'false' : 'true');
+  musicSwitch.setAttribute('aria-checked', muted ? 'false' : 'true');
   if (music) {
     music.muted = muted;
     if (music.masterGain) {
@@ -312,7 +313,7 @@ function setDisplayMuted(next) {
   publishAs(res.publish);
 }
 
-muteBtn.addEventListener('click', function() {
+musicSwitch.addEventListener('click', function() {
   setDisplayMuted(!muted);
 });
 
@@ -417,6 +418,12 @@ if (bgCanvas && (urlParams.get('test') !== '1' || urlParams.get('bg') === '1')) 
   welcomeBg.resize(window.innerWidth, window.innerHeight);
   welcomeBg.start();
 }
+
+// --- Gamepads attached to this machine ---
+// Self-gates on the Gamepad API and on the test harnesses, so this is a no-op
+// where there is nothing to poll. Stripped from the AirConsole bundle entirely
+// (see AC_DEAD), hence the typeof.
+if (typeof GamepadInput !== 'undefined') GamepadInput.start();
 
 // --- Debug or normal init ---
 var _scenarioParam = urlParams.get('scenario');

@@ -93,6 +93,9 @@ class Game {
       case 'rotate_cw':
         board.rotateCW();
         break;
+      case 'rotate_ccw':
+        board.rotateCCW();
+        break;
       case 'hard_drop': {
         // Silently throttle rapid repeats (e.g. queued messages after a
         // reconnect) so one intent can't rapid-fire multiple drops.
@@ -109,6 +112,7 @@ class Game {
           if (result.linesCleared > 0) {
             this.handleLineClear(playerId, result);
           }
+          this._drainGarbageApplied(playerId, board);
         }
         break;
       }
@@ -165,6 +169,7 @@ class Game {
             this.handleLineClear(id, result);
           }
         }
+        this._drainGarbageApplied(id, board);
       } catch (err) {
         if (typeof console !== 'undefined' && console.error) console.error('[game] Board tick error for', id, ':', err);
         board.alive = false;
@@ -213,6 +218,23 @@ class Game {
     state.id = id;
     state.pendingGarbage += this.garbageManager.getPendingLines(id);
     return state;
+  }
+
+  // Garbage rows actually went into a board. Distinct from `garbage_sent`, which
+  // fires when the attack is QUEUED: between the two the defender can still cancel
+  // it, so they are different moments with different consequences, and only this
+  // one means the stack just moved up.
+  //
+  // Emitted here rather than derived by each display from a drop in the pending
+  // count. That derivation is possible (the web did it) but it needs a second
+  // subtraction to discount cancelled lines, and it can only exist where a shell
+  // can watch every frame's snapshot — the two TVs read packed frames and cannot.
+  // One event replaces three implementations of the same guess.
+  _drainGarbageApplied(playerId, board) {
+    const lines = board.garbageAppliedSinceDrain;
+    if (lines <= 0) return;
+    board.garbageAppliedSinceDrain = 0;
+    this.callbacks.onEvent({ type: 'garbage_applied', playerId, lines });
   }
 
   handleLineClear(playerId, clearResult) {

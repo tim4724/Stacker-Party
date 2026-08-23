@@ -32,6 +32,7 @@ import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import kotlin.random.Random
@@ -80,6 +81,13 @@ class DisplayCoordinator(
     private val seedProvider: () -> Long = { Random.nextLong(0, 0x1_0000_0000L) },
     /** Optional WebRTC low-latency input path (relay is the fallback). Null = relay-only. */
     private val fastlane: Fastlane? = null,
+    /**
+     * Gamepads attached to this TV, as players. Injected and null by default so
+     * the screenshot tests and any offline harness cannot seat a controller that
+     * happens to be plugged into the machine into a fixture roster. The web guards
+     * the same case with window.__TEST__.
+     */
+    padSource: PadSource? = null,
     /** Observability for boundary errors that are swallowed to keep the loop alive
      *  (engine/parse failures). Wire to platform logging in :tv; no-op by default. */
     private val onError: (label: String, error: Throwable) -> Unit = { _, _ -> },
@@ -108,7 +116,7 @@ class DisplayCoordinator(
     // WHY the game is frozen, or null. Owned by [RoomCoreClient], which mirrors the room
     // core's answer on every pause/resume/reset, so there is nothing to keep in step here.
     private val pauseReason: PauseReason? get() = brainOrNull?.pauseReason
-    private val paused: Boolean get() = pauseReason != null
+    internal val paused: Boolean get() = pauseReason != null
     private var muted = false
 
     /**
@@ -256,6 +264,69 @@ class DisplayCoordinator(
     // controllers the input path is the hottest thing this coordinator does, and each
     // crossing is an interpolated eval plus a JSON parse.
     private val seenSinceTick = HashSet<Int>()
+
+    private val padSeats: PadSeats? = padSource?.let { PadSeats(it, this) }
+
+    /**
+     * Monotonic ms for the pad mapper. Its OWN accumulator, not [frameClockMs],
+     * which only advances while a game is running: a mapper handed a frozen clock
+     * would measure every DAS interval against the same instant.
+     */
+    private var padClockMs = 0.0
+
+    /** Whether any pad currently holds a seat. :tv stops routing pad presses into
+     *  Compose focus during a running match while one does, because there the
+     *  D-pad is that seat's piece. */
+    val hasPadSeats: Boolean get() = padSeats?.hasSeats ?: false
+
+    /** See [PadSeats.holdsSeat]: a press from a pad with no seat is a join, and
+     *  :tv swallows it so it cannot also click whatever Compose has focused. */
+    fun padHoldsSeat(slot: Int?): Boolean = padSeats?.holdsSeat(slot) ?: false
+
+    // --- What PadSeats needs from the coordinator ---------------------------
+
+    /**
+     * Deliver a message from a seat this display owns rather than the relay.
+     * Deliberately the SAME entry point the relay's messages take: a pad that took
+     * a different route would be a second implementation of joining, naming,
+     * colour, host election and liveness.
+     */
+    internal suspend fun deliverLocal(seat: Int, data: JsonObject) = onMessage(seat, data)
+
+    internal fun markLocalSeatSeen(seat: Int) { seenSinceTick.add(seat) }
+
+    internal fun hasPlayer(seat: Int): Boolean = room.players.containsKey(seat)
+
+    internal fun reportPadError(label: String, error: Throwable) = onError(label, error)
+
+    internal suspend fun padName(rawId: String): String =
+        try {
+            bridgeProvider().padName(rawId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            "Gamepad"
+        }
+
+    internal suspend fun padRumbleJson(kind: String, lines: Int): String =
+        bridgeProvider().padRumbleJson(kind, lines)
+
+    internal suspend fun padPoll(padsJson: String, nowMs: Double, playing: Boolean): JsonArray =
+        EngineJson.json
+            .parseToJsonElement(bridgeProvider().padPollJson(padsJson, nowMs, playing))
+            .jsonArray
+
+    /**
+     * Send to one peer, unless the seat is LOCAL. A pad attached to this TV has no
+     * connection to send down: its index sits in a range the relay never hands out
+     * ([PadSeats.LOCAL_SEAT_BASE]), so there is nothing to route to. Every per-peer
+     * send goes through here so one added later inherits the rule instead of
+     * having to remember it.
+     */
+    private fun sendToPeer(peerIndex: Int, data: JsonObject) {
+        if (PadSeats.isLocalSeat(peerIndex)) return
+        transport.sendTo(peerIndex, data)
+    }
 
     // Non-null only while a publishBatch block is running: the hint accumulated so far.
     // Doubles as the "are we batching" flag. Safe as a plain field: every room mutation
@@ -480,15 +551,22 @@ class DisplayCoordinator(
         // Otherwise the fresh lobby shows the dead room's seats until liveness expires
         // them. The error-recovery path resets before asking for its room (and clears
         // [roomCode] doing so), so nothing runs twice there.
-        if (roomCode != null) resetSession()
+        val keepMatch = isLocalOnlyMatch()
+        if (roomCode != null && !keepMatch) resetSession()
         this.roomCode = code
         this.instance = instance
         // A fresh room means an empty roster, so there is nothing to re-stamp — but the
         // sweep must come back on, or the room-gone recovery path (error -> createFresh)
         // would leave liveness off for the rest of the session.
         relayConnected = true
+        // The relay answered: the link is back. Lifts ONLY a link-drop freeze, which a
+        // kept pad-only match is otherwise stuck in — no controller exists to thaw it,
+        // and RoomCore.pause refuses a manual pause while the connection freeze stands.
+        // Mirrors tvOS roomLinkRestored.
+        connectionResume()
+        refreshDisconnectQrs()
         output.roomReady(code, joinUrl(code, instance))
-        output.showScreen(DisplayScreen.LOBBY)
+        if (!keepMatch) output.showScreen(DisplayScreen.LOBBY)
     }
 
     private suspend fun handleJoined(code: String, peers: List<Int>) {
@@ -507,6 +585,11 @@ class DisplayCoordinator(
         val now = nowWallMs()
         val gone = mutableListOf<Int>()
         for (id in room.players.keys) {
+            // A local (gamepad) seat was never in the relay's room, so its absence
+            // from the peer list says nothing: its presence is proven by the pad
+            // poll (markLocalSeatSeen), not by the relay. Counting it as gone here
+            // dropped every pad seat on a display reconnect.
+            if (PadSeats.isLocalSeat(id)) continue
             if (id in peers) roomCore.onSeen(id, now) else gone.add(id)
         }
         // The whole reconciliation is ONE change: however many peers went missing, plus
@@ -537,6 +620,15 @@ class DisplayCoordinator(
             // landed on a host's manual pause leaves that pause standing.
             connectionResume()
         }
+        refreshDisconnectQrs()
+    }
+
+    /** The room identity just (re)confirmed: re-issue every held rejoin QR from the
+     *  CURRENT room. One raised while the room was gone gets its code, and a room
+     *  replaced underneath a kept match stops advertising the dead room's claim URL
+     *  (which 404s). Web refreshDisconnectQRs / tvOS roomLinkRestored do the same. */
+    private suspend fun refreshDisconnectQrs() {
+        for (id in disconnectedBoards) output.setDisconnected(id, rejoinUrl(id))
     }
 
     private suspend fun onPeerJoined(index: Int) {
@@ -601,6 +693,10 @@ class DisplayCoordinator(
             // reaches the remaining controllers.
             publishAs(RoomCoreClient.PUBLISH_NOW)
         }
+        // Lobby ghost slots: a controller silent past the (much longer) linger
+        // window departs through the ordinary peer-left path — the cleanup a
+        // killed tab never triggers on its own. Web and tvOS run the same rule.
+        for (id in res.departed) onPeerLeft(id)
         // The late-joiner grace deadline (armed on the event path by
         // checkAllParticipantsDisconnected) fired: return to the lobby for them.
         if (res.graceFired) returnToLobby()
@@ -708,7 +804,7 @@ class DisplayCoordinator(
             Msg.SET_COLOR -> handleSetColor(from, msg)
             Msg.SET_NAME -> handleSetName(from, msg)
             Msg.SET_DISPLAY_MUTE -> handleSetMute(from, msg)
-            Msg.PING -> transport.sendTo(from, OutboundMessage.pong(msg.t))
+            Msg.PING -> sendToPeer(from, OutboundMessage.pong(msg.t))
             else -> {}
         }
         // Auto-resume AFTER processing, so the reconnecting controller has already been sent
@@ -728,7 +824,7 @@ class DisplayCoordinator(
         // The room half of a claim moved inside the room core; the game half is ours.
         if (res.claimed) res.oldPeerIndex?.let { applyReconnectClaim(it, from) }
         if (!res.accepted) {
-            if (res.roomFull) transport.sendTo(from, OutboundMessage.error("Room is full"))
+            if (res.roomFull) sendToPeer(from, OutboundMessage.error("Room is full"))
             return
         }
         // One publish settles everything a HELLO can move: this controller's own identity
@@ -977,24 +1073,61 @@ class DisplayCoordinator(
             livenessAccumMs = 0.0
             checkLiveness()
         }
+        // Before the state switch, because a pad joins, picks a colour and steps
+        // its level in the LOBBY, where none of the branches below run any input.
+        // The unpaused PLAYING tick is the exception: it fuses the pad poll into
+        // its frame crossing below (framePads) — one evaluate for mapping, input
+        // and frame together.
+        padSeats?.let {
+            padClockMs += deltaMs
+            if (!(state == RoomState.PLAYING && !paused)) {
+                it.poll(padClockMs, playing = false)
+            }
+        }
         when (state) {
             RoomState.COUNTDOWN -> advanceCountdown(deltaMs)
             RoomState.PLAYING -> {
                 if (paused) return
-                val e = engine ?: return
+                if (engine == null) return
                 frameClockMs += deltaMs
+                val padStates = padSeats?.collectStates() ?: JsonArray(emptyList())
+                // collectStates is not a pure read: it routes pad joins and LEAVEs
+                // (retireVanished), and unplugging the last pad can end the match
+                // under us (grace -> returnToLobby). Re-check before framing what
+                // is then a dead engine — the frame would push a board and RESULTS
+                // over the lobby that was just shown. tvOS re-checks the same way.
+                if (state != RoomState.PLAYING || paused) return
+                val e = engine ?: return
+                var padResultsJson: String? = null
                 val frame = try {
                     // Inputs that landed after this frame's render-on-input pull (or all
                     // of them, if none did) ride into the tick, so they are simulated in
                     // the frame they arrived in — same as the web applying each input
                     // synchronously ahead of the next rAF update — for one crossing
-                    // rather than two.
-                    e.frame(frameClockMs, takeInputs())
+                    // rather than two. With a pad seated the pad mapping and ITS input
+                    // ride the same call too (framePadsPacked).
+                    if (padStates.isNotEmpty()) {
+                        val (header, fused) = e.framePads(
+                            frameClockMs, takeInputs(), padStates.toString(), padClockMs)
+                        padResultsJson = header
+                        fused
+                    } else {
+                        e.frame(frameClockMs, takeInputs())
+                    }
                 } catch (t: Throwable) {
                     onError("frame", t)
                     return
                 }
-                for (ev in frame.events) output.handleGameEvent(ev) // board animations
+                padResultsJson?.let { header ->
+                    padSeats?.route(
+                        EngineJson.json.parseToJsonElement(header).jsonArray, playing = true)
+                }
+                for (ev in frame.events) {
+                    output.handleGameEvent(ev) // board animations
+                    // The same fan-out, for the effect that happens in a player's
+                    // hands rather than on screen.
+                    padSeats?.handle(ev)
+                }
                 // Omitted (null) when the frame is render-identical to the last
                 // delivered one (shim scene signature): keep the retained snapshot
                 // instead of re-rendering a pixel-identical full screen.
@@ -1056,7 +1189,7 @@ class DisplayCoordinator(
                     // `player_ko` form sends nothing here (PlayerStateCommand in
                     // server/PartyCore.d.ts has why).
                     if (c.lines != null) {
-                        transport.sendTo(pid, OutboundMessage.playerState(c.lines))
+                        sendToPeer(pid, OutboundMessage.playerState(c.lines))
                     }
                 }
                 CommandType.PLAYER_ELIMINATED -> c.playerId?.let {
@@ -1131,8 +1264,32 @@ class DisplayCoordinator(
      */
     private suspend fun onRelayError(message: String) {
         if (message != "Room not found" && message != "Room is full") return
-        resetSession()
+        // See [isLocalOnlyMatch]: a pad-only match outlives its room, because it was
+        // never played through one.
+        if (!isLocalOnlyMatch()) resetSession()
         transport.createFresh() // handleCreated re-arms the room code + QR when `created` lands
+    }
+
+    /**
+     * A match whose every player is a pad attached to this box. Such a match has no
+     * presence at the relay AT ALL — local seats never join a room — so the relay
+     * retires the room as soon as the display's own socket goes, which is exactly what
+     * backgrounding does. The rejoin then answers "Room not found" and the recovery
+     * path throws away a match the display is still holding, for a player who never
+     * left the sofa.
+     *
+     * The premise of that recovery — a roster cannot follow the room, because those
+     * players were never in the new one — holds for relay members and not for local
+     * seats, which were never in the OLD room either. So the room is replaced
+     * underneath the match and only the QR changes.
+     *
+     * Requires a pad to still HOLD its seat: with the controller gone there is nobody
+     * left to carry the match for, and the ordinary reset is right.
+     */
+    private fun isLocalOnlyMatch(): Boolean {
+        if (roomCore.state == RoomState.LOBBY || !hasPadSeats) return false
+        val active = room.participants
+        return active.isNotEmpty() && active.all { PadSeats.isLocalSeat(it) }
     }
 
     /**
@@ -1190,8 +1347,14 @@ class DisplayCoordinator(
 
     /** The remote's pause key (and Back / Menu during a game). No state guard: the room
      *  core refuses a freeze outside a running game, and the AUTO branch below is
-     *  reachable only while one is already in force, which implies running. */
-    private suspend fun togglePause() {
+     *  reachable only while one is already in force, which implies running.
+     *
+     *  Internal, not private, because [PadSeats] runs INSIDE the action consumer
+     *  (its poll is part of the tick) and must call this directly: going through
+     *  [remoteTogglePause] from there enqueues an action and awaits an ack the
+     *  consumer itself can never process — a self-deadlock that froze the whole
+     *  game thread on a pad's Start press during the countdown. */
+    internal suspend fun togglePause() {
         when (pauseReason) {
             PauseReason.MANUAL -> resumeGame()
             // Nothing left to pause — but the overlay carries New Game, and with every

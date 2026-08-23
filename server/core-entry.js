@@ -23,3 +23,8 @@ exports.RoomCore = require('./RoomCore.js').RoomCore;
 // exact snapshots the web gallery shows. Small (data + a scripted-drop
 // builder) and pure, so it rides along rather than needing a second bundle.
 exports.GalleryFixtures = require('./GalleryFixtures.js').GalleryFixtures;
+// Gamepad mapping. A pad plugged into the display is a player on all three
+// platforms, and DAS/ARR, the soft-drop ramp and the button table decide how the
+// game FEELS, so they cannot be per-shell. The shells keep only what needs a host
+// API: reading the pad, rumble, and their own menu focus.
+exports.PadMapper = require('./PadMapper.js');

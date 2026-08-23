@@ -211,6 +211,117 @@ const OPS = [
   // And their seat comes back the moment they speak, QR flag and all.
   { m: 'onSeen', a: [20, 51000] },
   { m: 'isExpired', a: [20, 51000] },
+
+  // --- Relative steps, which a gamepad seat uses instead of a picker ---------
+  // These resolve a step into a value; the caller then sends the ordinary
+  // SET_LEVEL / SET_COLOR. Pinned here because all three displays read them out
+  // of this module, so "which slot is next" must not become a per-platform
+  // answer. peer 20 is the only player left, peer 21 was pruned above.
+  { m: 'setLevel', a: [20, 5] },
+  { m: 'levelAfterStep', a: [20, 1] },
+  { m: 'levelAfterStep', a: [20, -1] },
+  { m: 'levelAfterStep', a: [99, 1] },           // no such seat
+  // One player, so every other slot is free: stepping wraps through all of them.
+  { m: 'colorAfterStep', a: [20, 1] },
+  { m: 'colorAfterStep', a: [20, -1] },          // wraps to the top slot
+  { m: 'colorAfterStep', a: [99, 1] },           // no such seat
+  // With the room full there is exactly one free slot (this seat's own), so
+  // there is nowhere to step to and the answer is null rather than a collision.
+  { m: 'peerJoined', a: [30, 52000] },
+  { m: 'peerJoined', a: [31, 52000] },
+  { m: 'peerJoined', a: [32, 52000] },
+  { m: 'peerJoined', a: [33, 52000] },
+  { m: 'peerJoined', a: [34, 52000] },
+  { m: 'peerJoined', a: [35, 52000] },
+  { m: 'peerJoined', a: [36, 52000] },
+  { m: 'colorAfterStep', a: [20, 1] },
+
+  // --- A relay peer claiming a LOCAL (gamepad) seat takes the board, not host --
+  // The sticky slot follows a RETURNING player (peer 20's own path above), but a
+  // phone scanning a dropped PAD's rejoin QR is a TAKEOVER: the pad player did
+  // not come back on a new device, a different device kind took the seat over.
+  // Board, name, colour and results follow the claim; host duty stays with
+  // whoever has been holding it since the pad dropped.
+  { m: 'peerLeft', a: [30] },
+  { m: 'peerLeft', a: [31] },
+  { m: 'peerLeft', a: [32] },
+  { m: 'peerLeft', a: [33] },
+  { m: 'peerLeft', a: [34] },
+  { m: 'peerLeft', a: [35] },
+  { m: 'peerLeft', a: [36] },
+  { m: 'peerLeft', a: [20] },                   // empty the room: the pads found it
+  { m: 'peerJoined', a: [900, 60000] },         // first pad in -> sticky host
+  { m: 'hello', a: [900, { name: 'Xbox', autoName: false }, 60000] },
+  { m: 'peerJoined', a: [901, 60100] },
+  { m: 'hello', a: [901, { name: 'PlayStation', autoName: false }, 60100] },
+  { g: 'host' },                                // the first pad
+  { m: 'freezeParticipantOrder', a: [] },
+  { m: 'transitionTo', a: ['countdown'] },
+  { m: 'transitionTo', a: ['playing'] },
+  { m: 'markDisconnected', a: [900] },          // the host pad unplugs mid-game
+  { g: 'host' },                                // duty falls to the other pad...
+  { m: 'peerJoined', a: [7, 61000] },
+  { m: 'hello', a: [7, { name: 'Phone', rejoinToken: 900 }, 61000] },
+  { g: 'host' },                                // ...and STAYS there after the claim
+  { m: 'transitionTo', a: ['results'] },
+  { m: 'transitionTo', a: ['lobby'] },
+  { g: 'host' },                                // next round: still the pad's
+
+  // --- Host duty survives a pad sleeping through the lobby -------------------
+  // A pad's OS-level disconnect in LOBBY/RESULTS is usually SLEEP, not a
+  // decision to leave: the row drops (roster hygiene, as a closed phone tab
+  // does), but the same seat id waking up and rejoining takes the sticky slot
+  // back. A relay peer can never return under its old index, so this is
+  // inherently the local seat's path.
+  { m: 'peerLeft', a: [901] },                  // the host pad sleeps
+  { g: 'host' },                                // duty passes to the phone...
+  { m: 'peerJoined', a: [901, 70000] },
+  { m: 'hello', a: [901, { name: 'PlayStation', autoName: false }, 70000] },
+  { g: 'host' },                                // ...and returns when it wakes
+
+  // ...but lapses once a round starts without them: the party moved on.
+  { m: 'peerLeft', a: [901] },
+  { g: 'host' },
+  { m: 'freezeParticipantOrder', a: [] },
+  { m: 'transitionTo', a: ['countdown'] },
+  { m: 'transitionTo', a: ['playing'] },
+  { m: 'transitionTo', a: ['results'] },
+  { m: 'transitionTo', a: ['lobby'] },
+  { m: 'peerJoined', a: [901, 80000] },
+  { m: 'hello', a: [901, { name: 'PlayStation', autoName: false }, 80000] },
+  { g: 'host' },                                // stays the phone's
+
+  // --- ...and survives unrelated roster churn while the pad is asleep --------
+  // Only a LOCAL seat's departure records a claim (a relay peer can never
+  // return under its old index), so an interim host closing their tab must not
+  // erase the sleeping pad's outstanding claim.
+  { m: 'peerJoined', a: [8, 90000] },
+  { m: 'hello', a: [8, { name: 'Rex', autoName: false }, 90000] },
+  { m: 'peerLeft', a: [7] },                    // the phone host leaves for good
+  { g: 'host' },                                // duty passes to the pad
+  { m: 'peerLeft', a: [901] },                  // the host pad sleeps
+  { g: 'host' },                                // duty passes to Rex...
+  { m: 'peerJoined', a: [9, 91000] },
+  { m: 'hello', a: [9, { name: 'Kim', autoName: false }, 91000] },
+  { m: 'peerLeft', a: [8] },                    // ...who then closes their tab
+  { g: 'host' },                                // duty passes to Kim...
+  { m: 'peerJoined', a: [901, 92000] },
+  { m: 'hello', a: [901, { name: 'PlayStation', autoName: false }, 92000] },
+  { g: 'host' },                                // ...but the waking pad reclaims it
+
+  // --- The lobby frees a ghost slot on its own -------------------------------
+  // A killed tab sends no peer_left, and expiredPeers deliberately sits out the
+  // LOBBY (a locked phone must keep its card) — so nothing ever removed the row.
+  // lingeringPeers is the long-clock cleanup: silence past LOBBY_LINGER_MS is no
+  // longer a locked phone waiting. The shell routes each id through its ordinary
+  // peer-left path (the peerLeft op below models that). The idle PAD is exempt:
+  // its presence is the pad poll's business, never the clock's.
+  { m: 'peerJoined', a: [13, 100000] },
+  { m: 'hello', a: [13, { name: 'Ghost', autoName: false }, 100000] },
+  { m: 'tick', a: [110000, [9]] },              // 10s silent: under the linger bar
+  { m: 'tick', a: [116000, [9]] },              // 16s: departed names 13 — not the pad
+  { m: 'peerLeft', a: [13] },
+  { g: 'host' },
 ];
 
 module.exports = { INIT, OPS };

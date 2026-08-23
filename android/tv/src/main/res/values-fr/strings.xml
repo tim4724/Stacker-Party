@@ -12,6 +12,8 @@
     <string name="triple_clear">TRIPLE !</string>
 
     <string name="scan_hint">Scanne le code avec ton téléphone</string>
+
+    <string name="gamepad_join_hint">Appuie sur une touche de ta manette</string>
     <string name="waiting_for_players">En attente de joueurs</string>
     <string name="level_heading">Niveau</string>
 

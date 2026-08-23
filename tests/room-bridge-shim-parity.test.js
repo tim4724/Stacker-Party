@@ -59,7 +59,7 @@ const PLATFORM_ONLY = {
   Android: [],
 };
 
-for (const name of ['ENGINE-SHIM', 'ENGINE-API', 'ROOM-API']) {
+for (const name of ['ENGINE-SHIM', 'ENGINE-API', 'ROOM-API', 'PAD-API']) {
   test(`${name} is identical in the tvOS and Android shims`, () => {
     assert.equal(
       normalize(block(SWIFT, name, 'EngineBridge.swift')),
@@ -89,7 +89,7 @@ test('every shim method is either shared or a declared platform-only one', () =>
   // shim exposes that isn't in a shared block is drift unless it's declared.
   const methods = (src) => [...src.matchAll(/^\s+(\w+): function/gm)].map((m) => m[1]);
   const shared = new Set(
-    ['ENGINE-API', 'ROOM-API'].flatMap((n) => methods(block(SWIFT, n, 'EngineBridge.swift'))));
+    ['ENGINE-API', 'ROOM-API', 'PAD-API'].flatMap((n) => methods(block(SWIFT, n, 'EngineBridge.swift'))));
   for (const [platform, getShim] of Object.entries(SHIMS)) {
     const extra = methods(getShim()).filter((m) => !shared.has(m));
     assert.deepEqual(extra.sort(), [...PLATFORM_ONLY[platform]].sort(),
@@ -177,6 +177,98 @@ for (const [platform, getShim] of Object.entries(SHIMS)) {
       'control char stripped, quote and backslash preserved');
 
     assert.throws(() => vm.runInContext('Bridge.roomCall("noSuchMethod", "[]")', ctx), /no method/);
+  });
+}
+
+for (const [platform, getShim] of Object.entries(SHIMS)) {
+  test(`the ${platform} shim maps gamepads against the real bundle in a bare VM`, async () => {
+    const ctx = vm.createContext({});
+    vm.runInContext(await bundleCore(), ctx);
+    vm.runInContext(getShim(), ctx);
+
+    const poll = (pads, nowMs, playing) => JSON.parse(vm.runInContext(
+      `Bridge.padPollJSON(${JSON.stringify(JSON.stringify(pads))}, ${nowMs}, ${playing})`, ctx));
+    const buttons = (...down) => {
+      const b = new Array(17).fill(false);
+      for (const i of down) b[i] = true;
+      return b;
+    };
+
+    // Two pads in one call, which is the whole point of the batch: their
+    // mappers must be independent, and the seat has to come back with the
+    // result or the shell cannot tell whose edges it is holding. Game input
+    // never crosses back at all — the shim feeds it to the engine itself
+    // (with no game yet it is dropped, exactly as the web drops input with
+    // no game running) — so what returns is the edges and the rumble flag.
+    const first = poll([
+      { seat: 900, buttons: buttons(1), axes: [0, 0] },   // right face: rotate CW
+      { seat: 901, buttons: buttons(12), axes: [0, 0] },  // D-pad up: hard drop
+    ], 0, true);
+    assert.deepEqual(first.map((r) => r.seat), [900, 901]);
+    assert.equal(first[0].messages, undefined);
+    assert.deepEqual(first[0].pressed, [1]);
+    assert.equal(first[0].hardDrop, false);
+    assert.deepEqual(first[1].pressed, [12]);
+    assert.equal(first[1].hardDrop, true);
+
+    // Held, not re-pressed: edge detection has to survive between calls, which
+    // is what the per-seat mapper in the shim's `pads` map is for.
+    assert.deepEqual(poll([
+      { seat: 900, buttons: buttons(1), axes: [0, 0] },
+    ], 16, true)[0].pressed, []);
+
+    // Outside play a press yields its raw index, so the shell can route it to
+    // the room instead of the board.
+    const menu = poll([{ seat: 900, buttons: buttons(9), axes: [0, 0] }], 32, false);
+    assert.deepEqual(menu[0].pressed, [9]);
+
+    // A pad that stops being reported is forgotten, so its held state cannot
+    // resurface on whoever lands in that seat next.
+    poll([], 48, true);
+    assert.deepEqual(
+      poll([{ seat: 900, buttons: buttons(1), axes: [0, 0] }], 64, true)[0].pressed,
+      [1],
+      'a re-seated pad starts from a clean baseline, so the held button reads as a fresh press'
+    );
+
+    assert.equal(
+      vm.runInContext('Bridge.padName("Xbox Wireless Controller (Vendor: 045e Product: 0b13)")', ctx),
+      'Xbox');
+  });
+}
+
+for (const [platform, getShim] of Object.entries(SHIMS)) {
+  test(`the ${platform} shim fuses pad mapping into the frame crossing`, async () => {
+    const ctx = vm.createContext({});
+    vm.runInContext(await bundleCore(), ctx);
+    vm.runInContext(getShim(), ctx);
+    vm.runInContext('Bridge.create([[900, 1]], 42)', ctx);
+
+    const buttons = new Array(17).fill(false);
+    buttons[12] = true;   // D-pad up: hard drop
+    const combined = vm.runInContext(
+      `Bridge.framePadsPacked(16, [], ${JSON.stringify(JSON.stringify([
+        { seat: 900, buttons, axes: [0, 0] },
+      ]))}, 16)`, ctx);
+
+    // The pad results ride ahead of the packed frame as a length-prefixed JSON
+    // header (the packed body admits no separator after it).
+    const colon = combined.indexOf(':');
+    const len = Number(combined.slice(0, colon));
+    const pads = JSON.parse(combined.slice(colon + 1, colon + 1 + len));
+    const packed = combined.slice(colon + 1 + len);
+    assert.deepEqual(pads, [{ seat: 900, pressed: [12], nav: [], hardDrop: true }]);
+
+    // The input was consumed inside the same call, BEFORE the frame ran: the
+    // frame that comes back already shows the consequence of the press.
+    const unpacked = JSON.parse(vm.runInContext(
+      `JSON.stringify((function () {
+         var f = HexCore.PartyCore.unpackFrame(${JSON.stringify(packed)});
+         return { events: f.events.map(function (e) { return e.type; }), hasSnapshot: !!f.snapshot };
+       })())`, ctx));
+    assert.ok(unpacked.events.includes('piece_lock'),
+      `expected the hard drop's piece_lock in the same frame, saw ${unpacked.events}`);
+    assert.ok(unpacked.hasSnapshot, 'the first frame carries a snapshot');
   });
 }
 

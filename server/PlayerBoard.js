@@ -49,6 +49,8 @@ class PlayerBoard {
     this.softDropSpeed = SOFT_DROP_MULTIPLIER;
     this.softDropDeadlineMs = 0;   // counts down while soft-dropping; auto-ends on expiry (lost SOFT_DROP_END recovery)
     this.pendingGarbage = [];
+    // Rows shoved in since the Game last drained this. See _applyPendingGarbage.
+    this.garbageAppliedSinceDrain = 0;
     this.clearingCells = null;
     this.clearingTimer = null;
     this.gridVersion = 0;   // bumped on lock/clear/garbage for dirty tracking
@@ -212,10 +214,17 @@ class PlayerBoard {
   }
 
   _applyPendingGarbage() {
+    let total = 0;
     for (const { lines, gapColumn } of this.pendingGarbage) {
       this.applyGarbage(lines, gapColumn);
+      total += lines;
     }
     this.pendingGarbage = [];
+    // Accumulated rather than reported, because this runs from two places (the
+    // no-clear lock path and the end of a line-clear animation) and only one of
+    // them returns anything to the Game. The Game drains it; see
+    // _drainGarbageApplied there for why the moment is worth an event at all.
+    if (total > 0) this.garbageAppliedSinceDrain += total;
   }
 
   getStackHeight() {

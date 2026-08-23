@@ -42,6 +42,50 @@ internal object EngineBootstrap {
         if (!core) throw new Error('no game: create() not called');
         return core;
       }
+      // One GamepadMapper per seated pad, keyed by seat id. The mapper is a
+      // state machine (previous buttons, DAS deadline, soft-drop keepalive), so
+      // it has to survive between polls, and it lives here rather than native
+      // side for the same reason the room does: one implementation.
+      var pads = {};
+      // Map one poll's pad states and feed the game input they produce straight
+      // to the engine. The mapper only ever emits engine input (input /
+      // soft_drop / soft_drop_end) — every other pad action is built by the
+      // shell from `pressed`/`nav` — so no message needs to cross back at all:
+      // what returns is the menu edges and a hardDrop flag for the
+      // press-synchronous rumble. With no core to feed (lobby, results) the
+      // input has no board to move and is dropped, exactly as the web drops it
+      // with no game running. The step count `n` needs no clamp here: it is our
+      // own mapper's, already capped at the source (PAD_MAX_STEPS_PER_POLL).
+      function mapPads(padsJson, nowMs, playing) {
+        var input = JSON.parse(padsJson);
+        var live = {};
+        var out = [];
+        for (var i = 0; i < input.length; i++) {
+          var p = input[i];
+          live[p.seat] = true;
+          if (!pads[p.seat]) pads[p.seat] = new HexCore.PadMapper.GamepadMapper();
+          var r = pads[p.seat].poll(p.buttons || [], p.axes || [], nowMs, !!playing);
+          var hardDrop = false;
+          for (var m = 0; m < r.messages.length; m++) {
+            var msg = r.messages[m];
+            if (msg.type === 'input') {
+              if (msg.action === 'hard_drop') hardDrop = true;
+              var n = msg.n > 1 ? msg.n : 1;
+              for (var s = 0; s < n; s++) { if (core) core.processInput(p.seat, msg.action); }
+            } else if (msg.type === 'soft_drop') {
+              if (core) core.handleSoftDropStart(p.seat, msg.speed === undefined ? null : msg.speed);
+            } else if (msg.type === 'soft_drop_end') {
+              if (core) core.handleSoftDropEnd(p.seat);
+            }
+          }
+          out.push({ seat: p.seat, pressed: r.pressed, nav: r.nav, hardDrop: hardDrop });
+        }
+        // Forget mappers for pads that are gone, so an unplugged pad cannot
+        // leave a held direction or a live soft drop behind for whoever takes
+        // the slot next.
+        for (var k in pads) { if (!live[k]) delete pads[k]; }
+        return out;
+      }
       // ENGINE-SHIM-END
       return {
         // ENGINE-API-BEGIN
@@ -111,8 +155,55 @@ internal object EngineBootstrap {
           var v = roomOrThrow()[prop];
           return JSON.stringify(v === undefined ? null : v);
         },
-        roomSnapshotJSON: function () { return roomOrThrow().snapshotJSON(); }
+        roomSnapshotJSON: function () { return roomOrThrow().snapshotJSON(); },
         // ROOM-API-END
+        // PAD-API-BEGIN
+        // Gamepads plugged into the TV itself. HexCore.PadMapper is the same
+        // module the web display runs, so what a press means does not depend on
+        // which shell read the pad.
+        //
+        // EVERY pad rides one call: a second evaluate per pad would cost more
+        // than the mapping does (see processInputs above on the per-call parse
+        // floor). The game input the mapping produces is fed to the engine
+        // inside the same call (see mapPads) — outside play, the only crossing
+        // a tick makes is this one. `pads` is an array of
+        // { seat, buttons: [bool], axes: [number] }.
+        padPollJSON: function (padsJson, nowMs, playing) {
+          return JSON.stringify(mapPads(padsJson, nowMs, playing));
+        },
+        // The whole playing tick in ONE crossing: map the pads, feed their
+        // input, apply the controllers' batch, then run the frame all of it
+        // belongs to — the same fusion framePacked already does for the batch
+        // alone. `padNow` is the pad clock, which keeps running while the frame
+        // clock is paused, so the two ride separately. The pad results return
+        // as a length-prefixed JSON header AHEAD of the packed frame: the
+        // packed body can contain any code unit, so no separator is safe after
+        // it, while a leading digit run + ':' cannot be confused with anything.
+        framePadsPacked: function (now, batch, padsJson, padNow) {
+          var results = mapPads(padsJson, padNow, true);
+          var c = gameOrThrow();
+          applyInputs(batch);
+          var header = JSON.stringify(results);
+          return header.length + ':' + header + c.deliverFramePacked(now);
+        },
+        // The pad's product string, cleaned up to fit the room core's name cap.
+        // Shared so one controller is named the same on every platform, and the
+        // cap is read from RoomCore here rather than passed in, so no shell has
+        // to carry a copy of a number that already has one definition. The
+        // roster's names ride along so a second identical pad comes out
+        // numbered rather than indistinguishable from the first.
+        padName: function (rawId) {
+          var taken = room ? room.list().map(function (p) { return p.playerName; }) : [];
+          return HexCore.PadMapper.gamepadDisplayName(rawId, HexCore.RoomCore.NAME_MAX_LEN, taken);
+        },
+        // One rumble effect from the shared table, so how the game FEELS in a
+        // player's hands is decided once rather than in three shells. `lines` is
+        // ignored by the effects that do not scale.
+        padRumbleJSON: function (kind, lines) {
+          var fn = HexCore.PadMapper.RUMBLE[kind];
+          return fn ? JSON.stringify(fn(lines || 0)) : 'null';
+        }
+        // PAD-API-END
       };
     })();
     """.trimIndent()

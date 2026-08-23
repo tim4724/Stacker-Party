@@ -170,7 +170,19 @@ function connectAndCreateRoom() {
           if (party) party.failAttempt();
         } else if (msg.message === 'Room not found' || msg.message === 'Room is full') {
           console.error('Party-Server error:', msg.message);
-          resetToWelcome();
+          if (isLocalOnlyMatch()) {
+            // A pad-only match outlives its room, because it was never played
+            // through one (see isLocalOnlyMatch). Ask for a fresh room on the
+            // open socket — applyRoomCreated keeps the match, only the QR
+            // changes. Unpin first so a drop mid-create creates again instead
+            // of rejoining the dead room.
+            lastRoomCode = null;
+            lastInstance = null;
+            party.create(9, controllerUrlTemplate());
+            armCreateTimeout();
+          } else {
+            resetToWelcome();
+          }
         } else {
           console.warn('Party-Server:', msg.message);
         }
@@ -270,10 +282,14 @@ function renderJoinUrl(url) {
 }
 
 function applyRoomCreated(partyRoomCode, newJoinUrl) {
+  // The room-gone recovery path replaces the room UNDERNEATH a pad-only match
+  // (see isLocalOnlyMatch): the match, roster and screen stay, only the room
+  // identity and the join URL change.
+  var keepMatch = isLocalOnlyMatch();
   roomCode = partyRoomCode;
   lastRoomCode = partyRoomCode;
   // Ensure we're in LOBBY (may already be if coming from welcome screen)
-  if (roomState !== ROOM_STATE.LOBBY) setRoomState(ROOM_STATE.LOBBY);
+  if (!keepMatch && roomState !== ROOM_STATE.LOBBY) setRoomState(ROOM_STATE.LOBBY);
 
   joinUrl = newJoinUrl;
   renderJoinUrl(joinUrl);
@@ -289,7 +305,7 @@ function applyRoomCreated(partyRoomCode, newJoinUrl) {
       // Pin the URL while the toast is up so the user sees what landed
       // in their clipboard (the hint cycle also skips data-copied ticks).
       var jl = document.getElementById('join-line');
-      if (jl) jl.classList.remove('show-hint');
+      if (jl) jl.classList.remove('show-hint', 'show-pad-hint');
       joinUrlEl.setAttribute('data-copied-label', copiedLabel);
       joinUrlEl.setAttribute('data-copied', '1');
       // Reflect the success state for screen readers — the ::after toast
@@ -329,23 +345,28 @@ function applyRoomCreated(partyRoomCode, newJoinUrl) {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); copyToClipboard(); }
     });
 
-    // Alternate the join line between the URL and the localized "scan to
-    // join" hint. Starts on the URL so the address is the first thing a
-    // player can act on; holds the URL while the copied toast is visible.
+    // Rotate the join line through the URL and the two localized join hints
+    // (scan with a phone, press a button on a controller). Starts on the URL
+    // so the address is the first thing a player can act on; holds the URL
+    // while the copied toast is visible, and resumes from it afterwards.
     var joinLineEl = document.getElementById('join-line');
     if (joinLineEl) {
+      var joinLineStep = 0;
       setInterval(function() {
         if (joinUrlEl.hasAttribute('data-copied')) {
-          joinLineEl.classList.remove('show-hint');
+          joinLineEl.classList.remove('show-hint', 'show-pad-hint');
+          joinLineStep = 0;
           return;
         }
-        joinLineEl.classList.toggle('show-hint');
+        joinLineStep = (joinLineStep + 1) % 3;
+        joinLineEl.classList.toggle('show-hint', joinLineStep === 1);
+        joinLineEl.classList.toggle('show-pad-hint', joinLineStep === 2);
       }, 4500);
     }
   }
 
   // Reset local state
-  resetRoomData();
+  if (!keepMatch) resetRoomData();
 
   // Held for as long as the room exists, lobby included: a screensaver over the
   // lobby hides the QR and the room code, and on a display that gets no input of
@@ -353,9 +374,15 @@ function applyRoomCreated(partyRoomCode, newJoinUrl) {
   // the room is torn down (resetToWelcome). Mirrors tvOS isIdleTimerDisabled and
   // Android FLAG_KEEP_SCREEN_ON, which hold for the same span.
   acquireWakeLock();
-  showScreen(SCREEN.LOBBY);
+  if (!keepMatch) showScreen(SCREEN.LOBBY);
   updateStartButton();
   startLivenessCheck();
+  // The relay answered: the link is back. Lifts ONLY a link-drop freeze (see
+  // connectionResume), which the kept match is otherwise stuck in — the fresh
+  // room's lobby never shows, so nothing else would thaw it. Mirrors tvOS
+  // roomLinkRestored / Android handleCreated.
+  connectionResume();
+  refreshDisconnectQRs();
 
   // Generate + paint the QR synchronously so it's on screen the instant the
   // lobby is revealed — reading the canvas box inside renderQR forces the one
@@ -378,6 +405,11 @@ function onDisplayRejoined(partyRoomCode, peers) {
   var connectedSet = new Set(peers || []);
   var disconnectedIds = [];
   for (const pEntry of players) {
+    // A local (gamepad) seat was never in the relay's room, so its absence from
+    // the peer list says nothing: its presence is proven by the pad poll
+    // (GamepadInput stamps onSeen), not by the relay. Counting it as gone here
+    // dropped every pad seat on a display reconnect.
+    if (isLocalSeat(pEntry[0])) continue;
     if (connectedSet.has(pEntry[0])) {
       roomCore.onSeen(pEntry[0], now);
     } else {
@@ -416,6 +448,7 @@ function onDisplayRejoined(partyRoomCode, peers) {
     // do too now that the state machine is shared.
     connectionResume();
   });
+  refreshDisconnectQRs();
 
   if (roomState === ROOM_STATE.LOBBY) {
     showScreen(SCREEN.LOBBY);
@@ -736,6 +769,14 @@ function showDisconnectQR(peerIndex) {
   var offscreen = document.createElement('canvas');
   renderQR(offscreen, qrMatrix, 512);
   disconnectedQRs.set(peerIndex, offscreen);
+}
+
+// The room identity just (re)confirmed: rebuild every held rejoin QR from the
+// CURRENT joinUrl. A QR raised while the room was gone gets its code, and a
+// room replaced underneath a kept match stops advertising the dead room's
+// claim URL (which 404s).
+function refreshDisconnectQRs() {
+  for (var entry of disconnectedQRs) showDisconnectQR(entry[0]);
 }
 
 // renderQR() lives in DisplayUI.js (rendering helper)

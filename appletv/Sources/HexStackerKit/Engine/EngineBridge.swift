@@ -245,6 +245,120 @@ public final class EngineBridge {
         try roomString("roomSnapshotJSON", [], label: "roomSnapshotJSON")
     }
 
+    // MARK: - Gamepad seats
+
+    /// One pad's raw state for a poll. Encoded as-is, so the field names are the
+    /// shim's contract.
+    public struct PadState: Encodable {
+        public let seat: Int
+        public let buttons: [Bool]
+        public let axes: [Double]
+
+        public init(seat: Int, buttons: [Bool], axes: [Double]) {
+            self.seat = seat
+            self.buttons = buttons
+            self.axes = axes
+        }
+    }
+
+    /// What one pad's press produced. Game input never crosses back — the shim
+    /// feeds it to the engine inside the same call — so a result is only the
+    /// menu edges (`pressed`, `nav`) and the flag for the press-synchronous
+    /// hard-drop rumble.
+    public struct PadResult {
+        public let seat: Int
+        public let pressed: [Int]
+        public let nav: [String]
+        public let hardDrop: Bool
+    }
+
+    /// Map EVERY seated pad in one crossing (see the shim's PAD-API note on why
+    /// the batch matters). The mapper state lives in JS and is keyed by seat, so
+    /// a pad left out of the batch is forgotten and starts clean if it comes back.
+    public func padPoll(_ pads: [PadState], nowMs: Double, playing: Bool) throws -> [PadResult] {
+        let json = String(data: try JSONEncoder().encode(pads), encoding: .utf8) ?? "[]"
+        let tree = try jsonObject(method: "padPollJSON", args: [json, nowMs, playing])
+        return try Self.padResults(tree, label: "padPollJSON")
+    }
+
+    private static func padResults(_ tree: Any, label: String) throws -> [PadResult] {
+        guard let rows = tree as? [[String: Any]] else {
+            throw EngineError.decode("\(label): expected an array of results")
+        }
+        return rows.compactMap { row in
+            guard let seat = row["seat"] as? Int else { return nil }
+            return PadResult(
+                seat: seat,
+                pressed: row["pressed"] as? [Int] ?? [],
+                nav: row["nav"] as? [String] ?? [],
+                hardDrop: row["hardDrop"] as? Bool ?? false
+            )
+        }
+    }
+
+    /// The whole playing tick in ONE crossing: pad mapping, the pads' input, the
+    /// controllers' input batch and the frame they all belong to. Splitting this
+    /// into padPoll + frame costs a second evaluate per tick for no ordering
+    /// gain. `padNowMs` is the pad clock, which keeps running while the frame
+    /// clock is paused, so the two ride separately.
+    ///
+    /// The combined payload is `<len>:<pad results JSON><packed frame>` — the
+    /// packed body can contain any code unit, so the header leads and is
+    /// length-prefixed instead of separated. The split walks UTF-16 units, which
+    /// is the length JS's `.length` counts (the header is ASCII).
+    public func framePads(nowMs: Double,
+                          inputs: [(playerId: Int, action: String)],
+                          pads: [PadState],
+                          padNowMs: Double) throws -> (pads: [PadResult], frame: FrameResult) {
+        let json = String(data: try JSONEncoder().encode(pads), encoding: .utf8) ?? "[]"
+        let combined = try packedString(
+            method: "framePadsPacked", args: [nowMs, Self.inputsArg(inputs), json, padNowMs])
+        let units = Array(combined.utf16)
+        var at = 0
+        var len = 0
+        while at < units.count, units[at] >= 0x30, units[at] <= 0x39 {
+            len = len * 10 + Int(units[at] - 0x30)
+            at += 1
+        }
+        guard at > 0, at < units.count, units[at] == 0x3a, at + 1 + len <= units.count else {
+            throw EngineError.decode("framePadsPacked: malformed header")
+        }
+        let header = String(utf16CodeUnits: Array(units[(at + 1)..<(at + 1 + len)]), count: len)
+        let packed = String(utf16CodeUnits: Array(units[(at + 1 + len)...]), count: units.count - at - 1 - len)
+        guard let data = header.data(using: .utf8) else {
+            throw EngineError.decode("framePadsPacked: header not UTF-8")
+        }
+        let results = try Self.padResults(try JSONSerialization.jsonObject(with: data),
+                                          label: "framePadsPacked")
+        do { return (results, try PackedFrame.frameResult(packed, gridCache: &gridCache)) }
+        catch { throw EngineError.decode("framePadsPacked: \(error)") }
+    }
+
+    /// The pad's product string cleaned up into a room-legal name, by the same
+    /// rules the web display uses and against the room core's own cap.
+    public func padName(_ rawId: String) -> String {
+        invoke("padName", [rawId])?.toString() ?? "Gamepad"
+    }
+
+    /// One rumble effect from the shared table. `weak`/`strong` are the two
+    /// motors of a dual-rumble pad.
+    public struct PadRumble {
+        public let durationMs: Double
+        public let weak: Double
+        public let strong: Double
+    }
+
+    /// Callers should cache: this crosses the bridge, and the answer for a given
+    /// (kind, lines) never changes.
+    public func padRumble(_ kind: String, lines: Int) -> PadRumble? {
+        guard let tree = try? jsonObject(method: "padRumbleJSON", args: [kind, lines]),
+              let row = tree as? [String: Any],
+              let duration = row["durationMs"] as? Double,
+              let weak = row["weak"] as? Double,
+              let strong = row["strong"] as? Double else { return nil }
+        return PadRumble(durationMs: duration, weak: weak, strong: strong)
+    }
+
     /// Typed convenience over `roomCallJSON`.
     public func roomCall<T: Decodable>(_ type: T.Type, _ method: String, _ argsJSON: String = "[]") throws -> T {
         try decodeRoom(type, json: try roomCallJSON(method, argsJSON), label: "roomCall(\(method))")
@@ -439,6 +553,50 @@ public final class EngineBridge {
         if (!core) throw new Error('no game: create() not called');
         return core;
       }
+      // One GamepadMapper per seated pad, keyed by seat id. The mapper is a
+      // state machine (previous buttons, DAS deadline, soft-drop keepalive), so
+      // it has to survive between polls, and it lives here rather than native
+      // side for the same reason the room does: one implementation.
+      var pads = {};
+      // Map one poll's pad states and feed the game input they produce straight
+      // to the engine. The mapper only ever emits engine input (input /
+      // soft_drop / soft_drop_end) — every other pad action is built by the
+      // shell from `pressed`/`nav` — so no message needs to cross back at all:
+      // what returns is the menu edges and a hardDrop flag for the
+      // press-synchronous rumble. With no core to feed (lobby, results) the
+      // input has no board to move and is dropped, exactly as the web drops it
+      // with no game running. The step count `n` needs no clamp here: it is our
+      // own mapper's, already capped at the source (PAD_MAX_STEPS_PER_POLL).
+      function mapPads(padsJson, nowMs, playing) {
+        var input = JSON.parse(padsJson);
+        var live = {};
+        var out = [];
+        for (var i = 0; i < input.length; i++) {
+          var p = input[i];
+          live[p.seat] = true;
+          if (!pads[p.seat]) pads[p.seat] = new HexCore.PadMapper.GamepadMapper();
+          var r = pads[p.seat].poll(p.buttons || [], p.axes || [], nowMs, !!playing);
+          var hardDrop = false;
+          for (var m = 0; m < r.messages.length; m++) {
+            var msg = r.messages[m];
+            if (msg.type === 'input') {
+              if (msg.action === 'hard_drop') hardDrop = true;
+              var n = msg.n > 1 ? msg.n : 1;
+              for (var s = 0; s < n; s++) { if (core) core.processInput(p.seat, msg.action); }
+            } else if (msg.type === 'soft_drop') {
+              if (core) core.handleSoftDropStart(p.seat, msg.speed === undefined ? null : msg.speed);
+            } else if (msg.type === 'soft_drop_end') {
+              if (core) core.handleSoftDropEnd(p.seat);
+            }
+          }
+          out.push({ seat: p.seat, pressed: r.pressed, nav: r.nav, hardDrop: hardDrop });
+        }
+        // Forget mappers for pads that are gone, so an unplugged pad cannot
+        // leave a held direction or a live soft drop behind for whoever takes
+        // the slot next.
+        for (var k in pads) { if (!live[k]) delete pads[k]; }
+        return out;
+      }
       // ENGINE-SHIM-END
       return {
         // ENGINE-API-BEGIN
@@ -510,6 +668,53 @@ public final class EngineBridge {
         },
         roomSnapshotJSON: function () { return roomOrThrow().snapshotJSON(); },
         // ROOM-API-END
+        // PAD-API-BEGIN
+        // Gamepads plugged into the TV itself. HexCore.PadMapper is the same
+        // module the web display runs, so what a press means does not depend on
+        // which shell read the pad.
+        //
+        // EVERY pad rides one call: a second evaluate per pad would cost more
+        // than the mapping does (see processInputs above on the per-call parse
+        // floor). The game input the mapping produces is fed to the engine
+        // inside the same call (see mapPads) — outside play, the only crossing
+        // a tick makes is this one. `pads` is an array of
+        // { seat, buttons: [bool], axes: [number] }.
+        padPollJSON: function (padsJson, nowMs, playing) {
+          return JSON.stringify(mapPads(padsJson, nowMs, playing));
+        },
+        // The whole playing tick in ONE crossing: map the pads, feed their
+        // input, apply the controllers' batch, then run the frame all of it
+        // belongs to — the same fusion framePacked already does for the batch
+        // alone. `padNow` is the pad clock, which keeps running while the frame
+        // clock is paused, so the two ride separately. The pad results return
+        // as a length-prefixed JSON header AHEAD of the packed frame: the
+        // packed body can contain any code unit, so no separator is safe after
+        // it, while a leading digit run + ':' cannot be confused with anything.
+        framePadsPacked: function (now, batch, padsJson, padNow) {
+          var results = mapPads(padsJson, padNow, true);
+          var c = gameOrThrow();
+          applyInputs(batch);
+          var header = JSON.stringify(results);
+          return header.length + ':' + header + c.deliverFramePacked(now);
+        },
+        // The pad's product string, cleaned up to fit the room core's name cap.
+        // Shared so one controller is named the same on every platform, and the
+        // cap is read from RoomCore here rather than passed in, so no shell has
+        // to carry a copy of a number that already has one definition. The
+        // roster's names ride along so a second identical pad comes out
+        // numbered rather than indistinguishable from the first.
+        padName: function (rawId) {
+          var taken = room ? room.list().map(function (p) { return p.playerName; }) : [];
+          return HexCore.PadMapper.gamepadDisplayName(rawId, HexCore.RoomCore.NAME_MAX_LEN, taken);
+        },
+        // One rumble effect from the shared table, so how the game FEELS in a
+        // player's hands is decided once rather than in three shells. `lines` is
+        // ignored by the effects that do not scale.
+        padRumbleJSON: function (kind, lines) {
+          var fn = HexCore.PadMapper.RUMBLE[kind];
+          return fn ? JSON.stringify(fn(lines || 0)) : 'null';
+        },
+        // PAD-API-END
         // tvOS-only below (declared in tests/room-bridge-shim-parity.test.js).
         //
         // Granular tick, for driving the engine deterministically without

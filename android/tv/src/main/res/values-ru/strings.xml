@@ -13,6 +13,8 @@
     <string name="triple_clear">TRIPLE!</string>
 
     <string name="scan_hint">Сканируй код телефоном</string>
+
+    <string name="gamepad_join_hint">Нажми любую кнопку на геймпаде</string>
     <string name="waiting_for_players">Ждём игроков</string>
     <string name="level_heading">Уровень</string>
 

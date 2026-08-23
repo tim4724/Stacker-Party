@@ -144,6 +144,19 @@ targets:
         script: |
           "${PROJECT_DIR}/scripts/sync-engine.sh" \
             "${PROJECT_DIR}/Sources/HexStackerTV/Generated/engine"
+    postBuildScripts:
+      # The folder-reference copy of Generated/engine is decided from a snapshot
+      # taken BEFORE the pre-build sync above runs, so an incremental build can
+      # ship a bundle whose engine JS is one build stale (it did: a device got
+      # yesterday's room logic under today's Swift). Force-sync into the built
+      # product on every build; this phase still precedes code signing, so the
+      # signature covers the fresh copy. CI is unaffected (always builds clean).
+      - name: Force-fresh bundled engine JS
+        basedOnDependencyAnalysis: false
+        script: |
+          rsync -a --delete \
+            "${PROJECT_DIR}/Sources/HexStackerTV/Generated/engine/" \
+            "${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/engine/"
 
   # XCUITest bundle: launches the app (via the HEXSHOT / HEXDEMO hooks set through
   # launchEnvironment) to capture per-screen screenshots and drive the Siri Remote.

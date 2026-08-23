@@ -13,6 +13,8 @@
     <string name="triple_clear">三连消!</string>
 
     <string name="scan_hint">用手机扫描二维码</string>
+
+    <string name="gamepad_join_hint">按手柄上的任意键</string>
     <string name="waiting_for_players">等待玩家加入</string>
     <string name="level_heading">等级</string>
 

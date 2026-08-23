@@ -257,6 +257,41 @@ function getHostPeerIndex() {
   return roomCore.host;
 }
 
+// A seat filled by a gamepad plugged into THIS machine (GamepadInput.js). It is
+// a player like any other to the room core, but it has no peer on the relay, so
+// every party.sendTo must skip it. The id range is the shared module's, because
+// the TVs have a hard constraint on it that web-only code never meets: see
+// LOCAL_SEAT_BASE in server/PadMapper.js.
+// PadMapper is stripped from the AirConsole bundle along with GamepadInput, so
+// the lookup is guarded the same way its other call sites are: with no pad
+// support in the build there are no local seats, and false is the whole truth.
+function isLocalSeat(peerIndex) {
+  var padMapper = window.GameEngine && window.GameEngine.PadMapper;
+  return !!padMapper && padMapper.isLocalSeat(peerIndex);
+}
+
+// A match whose every participant is a pad on this machine. Such a match has no
+// presence at the relay AT ALL — local seats never join a room — so the relay
+// retires the room the moment the display's own socket drops (a sleep, a network
+// blip), and the rejoin answers "Room not found". The recovery's premise — a
+// roster cannot follow the room, because those players were never in the new one
+// — holds for relay members and fails for local seats, which were never in the
+// OLD room either. So the room is replaced underneath the match and only the QR
+// changes (DisplayConnection's error handler + applyRoomCreated), exactly as the
+// two TV coordinators do. Requires a pad to still HOLD its seat, not merely to
+// have held one: with the controller gone there is nobody left to carry the
+// match for, and the ordinary reset is right.
+function isLocalOnlyMatch() {
+  if (roomState === ROOM_STATE.LOBBY) return false;
+  if (typeof GamepadInput === 'undefined' || !GamepadInput.hasSeats()) return false;
+  var active = roomCore.participants;
+  if (!active.length) return false;
+  for (var i = 0; i < active.length; i++) {
+    if (!isLocalSeat(active[i])) return false;
+  }
+  return true;
+}
+
 // --- DOM References ---
 var welcomeScreen = document.getElementById('welcome-screen');
 var newGameBtn = document.getElementById('new-game-btn');
@@ -282,19 +317,18 @@ var reconnectOverlay = document.getElementById('reconnect-overlay');
 var reconnectHeading = document.getElementById('reconnect-heading');
 var reconnectStatus = document.getElementById('reconnect-status');
 var reconnectBtn = document.getElementById('reconnect-btn');
-var muteBtn = document.getElementById('mute-btn');
+var musicSwitch = document.getElementById('pause-music-btn');
 var relayChip = document.getElementById('relay-chip');
 var relayChipRegion = document.getElementById('relay-chip-region');
 var relayChipDot = document.getElementById('relay-chip-dot');
 var relayReportBtn = document.getElementById('relay-report-btn');
 
-// Reflect stored mute state on the toolbar's mute button immediately —
-// the HTML default (aria-checked="true", sound-waves visible) matches
-// the unmuted case; for a user with stacker_muted=1 persisted, this
-// syncs the DOM before AT reads it and before the toolbar is revealed.
-if (muteBtn) {
-  if (muted) muteBtn.querySelector('.sound-waves').style.display = 'none';
-  muteBtn.setAttribute('aria-checked', muted ? 'false' : 'true');
+// Reflect stored mute state on the pause overlay's music switch immediately —
+// the HTML default (aria-checked="true") matches the unmuted case; for a user
+// with stacker_muted=1 persisted, this syncs the DOM before AT reads it and
+// before the overlay is ever raised.
+if (musicSwitch) {
+  musicSwitch.setAttribute('aria-checked', muted ? 'false' : 'true');
 }
 
 // --- Overlay dismissal fade ---
@@ -406,12 +440,6 @@ function showScreen(name) {
     resultsScreen.classList.remove('results-screen--ready');
   }
   gameToolbar.classList.toggle('hidden', name === SCREEN.WELCOME);
-  // Hide mute on lobby in AirConsole mode only — it would overlap with the
-  // version label shown in that mode.
-  muteBtn.classList.toggle(
-    'hidden',
-    name === SCREEN.LOBBY && document.body.classList.contains('airconsole')
-  );
   pauseBtn.classList.toggle('hidden', name !== SCREEN.GAME);
   if (name !== SCREEN.GAME) {
     // A game-screen exit fade uncovers these gradually, so a visible overlay

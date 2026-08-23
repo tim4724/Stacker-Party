@@ -1,3 +1,4 @@
+import GameController
 import SwiftUI
 
 @main
@@ -22,11 +23,30 @@ private struct RootHost: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: PressHostController, context: Context) {}
 }
 
-final class PressHostController: UIViewController {
+/// A GCEventViewController so the app can decide, per screen, whether a gamepad's
+/// presses drive the focus engine or go only to the game. See
+/// DisplayModel.syncPadInputOwnership for the rule and why it is not the same as
+/// making the views unfocusable.
+final class PressHostController: GCEventViewController {
     private let model = DisplayModel()
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        model.setPadOwnsInput = { [weak self] padOwns in
+            // The property is phrased the other way round: it asks whether
+            // controller input should still reach the UI. Written only on change:
+            // the sync runs from the render tick, and this is an input-routing
+            // switch, not a plain flag.
+            guard let self, self.controllerUserInteractionEnabled != !padOwns else { return }
+            self.controllerUserInteractionEnabled = !padOwns
+        }
+        GCController.controllers().forEach(bindRemoteMenu)
+        menuBinding = NotificationCenter.default.addObserver(
+            forName: .GCControllerDidConnect, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let controller = note.object as? GCController else { return }
+            self?.bindRemoteMenu(controller)
+        }
         // Pin Dynamic Type: the chrome is a fixed proportional canvas (Dimens.swift's
         // Vp), so text that scales independently of it has nowhere to go. tvOS ships no
         // text-size control today, which makes this a no-op, and that is the point. It
@@ -47,6 +67,45 @@ final class PressHostController: UIViewController {
         host.didMove(toParent: self)
     }
 
+    private var menuBinding: NSObjectProtocol?
+
+    deinit {
+        if let menuBinding { NotificationCenter.default.removeObserver(menuBinding) }
+    }
+
+    /// The Siri Remote is itself a game controller, so suppressing controller
+    /// UIEvents takes ITS Menu button away along with the pad's and `pressesBegan`
+    /// simply stops firing — which left no way out of a running match. Menu is
+    /// therefore read straight from GameController for the remote, identified as
+    /// the controller with no `extendedGamepad`, the same test by which
+    /// `GameControllerPadSource` decides what is not a pad.
+    ///
+    /// Gated on us actually owning input, because otherwise the press ALSO
+    /// arrives as a `.menu` UIPress below and the pause would toggle twice.
+    private func bindRemoteMenu(_ controller: GCController) {
+        guard controller.extendedGamepad == nil else { return }
+        controller.microGamepad?.buttonMenu.pressedChangedHandler = { [weak self] _, _, pressed in
+            guard let self, pressed, !self.controllerUserInteractionEnabled,
+                  !self.model.galleryMode else { return }
+            _ = self.menu()
+        }
+    }
+
+    /// ONE press, from whichever of the two doors it arrives at. Ownership decides
+    /// which door that should be, but it cannot be the whole guard: `handleMenu`
+    /// resuming a paused match flips ownership synchronously, so a press that came
+    /// in as a UIPress lands in the GameController handler a moment later with the
+    /// flag now saying "ours" — and dismissing the pause overlay immediately put it
+    /// straight back up. The two deliveries are the same physical press, so the
+    /// second is dropped on time rather than on state.
+    private var lastMenuAt: CFTimeInterval = 0
+    private func menu() -> Bool {
+        let now = CACurrentMediaTime()
+        guard now - lastMenuAt > 0.3 else { return true }
+        lastMenuAt = now
+        return model.handleMenu()
+    }
+
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
         guard !model.galleryMode else {
             // Gallery: Play/Pause advances the carousel; everything else is
@@ -63,7 +122,7 @@ final class PressHostController: UIViewController {
             case .menu:
                 // At the top level handleMenu() declines and the press falls
                 // through to super for the default exit to the home screen.
-                handled = model.handleMenu()
+                handled = menu()
             default:
                 break
             }

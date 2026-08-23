@@ -470,6 +470,10 @@ struct JoinLineView: View {
     let joinURL: String
     let fontSize: CGFloat
 
+    /// URL and scan hint only. The web's third step — "press any button on your
+    /// controller" — is a JOIN instruction, and on tvOS a pad joins by CONNECTING
+    /// (PadSeats.seat(for:)): there is no joining press, and the press the hint
+    /// invites would click the focused START and begin the round instead.
     @State private var showHint: Bool
     private let beat = Timer.publish(every: 4.5, on: .main, in: .common).autoconnect()
 

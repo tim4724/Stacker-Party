@@ -202,3 +202,27 @@ test('the controller-URL template registered on create mirrors the web shape', (
   );
   assert.strictEqual(swiftStringConsts(swiftEnum('Protocol')).defaultControllerBaseURL, 'https://hexstacker.com');
 });
+
+test('the local-seat base is the same number on all three platforms', () => {
+  // A pad seat needs an id the relay will never hand out, and it has to be a
+  // HIGH POSITIVE one: a player id crosses to the natives inside PartyCore's
+  // packed frame, where every integer is one UTF-16 code unit, so a negative id
+  // is unencodable and packFrame throws on the first frame of a match with a pad
+  // seated. That failure is invisible from the web, which never packs a frame,
+  // which is exactly why the number is pinned here rather than left to a shell.
+  const { LOCAL_SEAT_BASE } = require('../server/PadMapper.js');
+
+  assert.ok(LOCAL_SEAT_BASE > constants.MAX_PLAYERS,
+    'a local seat could collide with a relay peer index');
+  assert.ok(LOCAL_SEAT_BASE > 0, 'a negative local seat cannot be packed');
+
+  const swift = read('appletv/Sources/HexStackerKit/Game/PadSeats.swift')
+    .match(/static let localSeatBase = (\d+)/);
+  assert.ok(swift, 'Swift localSeatBase not found');
+  assert.strictEqual(Number(swift[1]), LOCAL_SEAT_BASE);
+
+  const kotlin = read('android/core/src/commonMain/kotlin/com/hexstacker/core/display/PadSeats.kt')
+    .match(/const val LOCAL_SEAT_BASE = (\d+)/);
+  assert.ok(kotlin, 'Kotlin LOCAL_SEAT_BASE not found');
+  assert.strictEqual(Number(kotlin[1]), LOCAL_SEAT_BASE);
+});

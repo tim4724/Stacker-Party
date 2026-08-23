@@ -2286,6 +2286,11 @@
             ]
           ],
           "typeId": 3
+        },
+        {
+          "type": "garbage_applied",
+          "playerId": "p1",
+          "lines": 2
         }
       ]
     },
@@ -2946,6 +2951,11 @@
             ]
           ],
           "typeId": 3
+        },
+        {
+          "type": "garbage_applied",
+          "playerId": "p2",
+          "lines": 3
         }
       ]
     },

@@ -100,6 +100,21 @@ class RoomCoreClient private constructor(private val bridge: EngineBridge) {
     suspend fun setName(peerIndex: Int, name: String?): Changed =
         mutate(call("setName", num(peerIndex), str(name)))
 
+    /**
+     * Relative steps, for a seat holding a D-pad instead of a picker. Both RESOLVE
+     * a step into the concrete value and stop; the caller then sends the ordinary
+     * setLevel/setColor, so a pad keeps flowing through the one path that already
+     * publishes and re-renders. Null when the seat is unknown, or (for colour)
+     * when every other slot is taken and there is nowhere to step to.
+     *
+     * Not `mutate`: they change nothing, so there is no snapshot to re-read.
+     */
+    suspend fun levelAfterStep(peerIndex: Int, delta: Int): Int? =
+        call("levelAfterStep", num(peerIndex), num(delta)).toIntOrNull()
+
+    suspend fun colorAfterStep(peerIndex: Int, step: Int): Int? =
+        call("colorAfterStep", num(peerIndex), num(step)).toIntOrNull()
+
     // =====================================================================
     // Snapshot inputs the display owns
     // =====================================================================
@@ -296,6 +311,8 @@ class RoomCoreClient private constructor(private val bridge: EngineBridge) {
     @Serializable
     data class LivenessTick(
         val expired: List<Int> = emptyList(),
+        /** Lobby ghost slots past the linger window: route through the peer-left path. */
+        val departed: List<Int> = emptyList(),
         /** The late-joiner grace window elapsed: return to the lobby. */
         val graceFired: Boolean = false,
     )

@@ -36,6 +36,7 @@
     this.state = STATES.LOBBY;
     this.players = new Map();        // peerIndex -> player record
     this.hostPeerIndex = null;       // sticky host slot (raw; see `host` getter for effective)
+    this._exHost = null;             // departed sticky host awaiting a same-index return
     this._joinSeq = 0;               // monotonic joinedAt source (wall-clock ms collide within a tick)
     this._disconnected = new Set();  // peerIndices currently in the disconnect window
     this._order = [];                // active participants (snapshotted on COUNTDOWN, or via setActiveOrder)
@@ -45,11 +46,12 @@
     // predicate the host calls with an injected nowMs. The detectors NEVER
     // mutate _disconnected and never _emit — the host applies a detected expiry
     // through the existing markDisconnected path, keeping the single-writer
-    // invariant intact. opts.liveness?: { timeoutMs, graceMs, enabledProvider }.
+    // invariant intact. opts.liveness?: { timeoutMs, graceMs, lingerMs, enabledProvider }.
     var liveness = opts.liveness || {};
     this._lastSeen = new Map();      // peerIndex -> last nowMs we heard from it
     this._livenessTimeoutMs = liveness.timeoutMs != null ? liveness.timeoutMs : Infinity;
     this._graceMs = liveness.graceMs || 0;
+    this._lingerMs = liveness.lingerMs != null ? liveness.lingerMs : Infinity;
     // Optional () => boolean. When it returns false, liveness expiry is
     // suppressed (e.g. AirConsole, where the SDK owns connection tracking). Read
     // live so a host that sets it up after construction is detected correctly.
@@ -123,9 +125,12 @@
     });
     this.players.set(peerIndex, player);
     // First joiner owns the sticky host slot. Also covers the "room emptied
-    // then someone joined" case (hostPeerIndex was reset to null).
-    if (this.hostPeerIndex == null) {
+    // then someone joined" case (hostPeerIndex was reset to null). A remembered
+    // ex-host returning under the SAME index (see removePlayer's rememberHost)
+    // takes the slot back — host duty survives an involuntary disconnect.
+    if (this.hostPeerIndex == null || peerIndex === this._exHost) {
       this.hostPeerIndex = peerIndex;
+      this._exHost = null;
       this._emit('hostchange', { hostPeerIndex: this.host });
     }
     this._emit('playerjoin', { player: player });
@@ -139,7 +144,11 @@
   // meanwhile). hostchange fires whenever the EFFECTIVE host changes — including
   // a mid-game departure where the sticky slot stays put but the getter's
   // fallback shifts to a present player.
-  RoomFlow.prototype.removePlayer = function (peerIndex) {
+  // opts.rememberHost: the departure is involuntary and the same peer index can
+  // return (the game layer decides which is which — a relay peer never can, its
+  // indexes are never reissued). A remembered host gets the slot back if that
+  // index rejoins before a round starts without them (see addPlayer).
+  RoomFlow.prototype.removePlayer = function (peerIndex, opts) {
     if (!this.players.has(peerIndex)) return;
     var prevHost = this.host;
     var wasHost = peerIndex === this.hostPeerIndex;
@@ -150,7 +159,11 @@
     if (oi >= 0) this._order.splice(oi, 1);
     if (wasHost && (this.state === STATES.LOBBY || this.state === STATES.RESULTS)) {
       this.hostPeerIndex = this._electNextHost(peerIndex);
+      // Not cleared on other departures: an unreturnable holder leaving in the
+      // meantime must not erase a remembered host's outstanding claim.
+      if (opts && opts.rememberHost) this._exHost = peerIndex;
     }
+    if (this.players.size === 0) this._exHost = null; // a fresh party owes them nothing
     if (this.host !== prevHost) this._emit('hostchange', { hostPeerIndex: this.host });
     this._emit('playerleave', { peerIndex: peerIndex });
     this._emit('rosterchange', { players: this.list() });
@@ -161,7 +174,12 @@
   // still-present slot and gets a new peerIndex from the relay. A same-client
   // reconnect keeps its index (the relay keys slots by clientId) and never needs
   // this. Preserves the record (incl. joinedAt) and rekeys host slot + order.
-  RoomFlow.prototype.rekey = function (oldId, newId) {
+  // opts.inheritHost (default true): whether the sticky host slot follows the
+  // claim. False for a claim that REPLACES the seat's device rather than
+  // returning it (the game layer decides which is which): the board and
+  // identity still move, but host duty passes to the next eligible player, as
+  // if the old holder had left.
+  RoomFlow.prototype.rekey = function (oldId, newId, opts) {
     if (oldId === newId) return false;
     var rec = this.players.get(oldId);
     if (!rec) return false;
@@ -195,7 +213,16 @@
     // (when there's no sticky host, the `host` getter's oldest-eligible
     // fallback already picks the right player).
     if (this.hostPeerIndex === oldId) {
-      this.hostPeerIndex = newId;
+      // Excluding newId matters for the non-inheriting case: the record (and its
+      // early joinedAt) just moved onto newId, so an open election would hand
+      // the claimer the slot right back through the age tiebreak. _electNextHost
+      // (not a raw open election) for the same reason removePlayer uses it: a
+      // claim only happens mid-round, where candidates must come from _order —
+      // an open election could seat a late joiner the getter then rejects,
+      // falling back to... the claimer.
+      this.hostPeerIndex = (opts && opts.inheritHost === false)
+        ? this._electNextHost(newId)
+        : newId;
     }
     if (this.host !== prevHost) this._emit('hostchange', { hostPeerIndex: this.host });
     this._emit('rosterchange', { players: this.list() });
@@ -363,6 +390,9 @@
     }
     this.state = to;
     if (to !== STATES.PLAYING) this._graceDeadline = null;
+    // A round starting without the departed ex-host is the party moving on:
+    // their claim to the sticky slot lapses (see removePlayer).
+    if (to === STATES.COUNTDOWN) this._exHost = null;
     if (to === STATES.COUNTDOWN) this._snapshotOrder();
     if (to === STATES.LOBBY) this._order = [];
     if (to === STATES.LOBBY || to === STATES.RESULTS) this._reconcileStickyHost();
@@ -419,6 +449,24 @@
     for (var id of this.players.keys()) {
       if (this._disconnected.has(id)) continue;
       if (this.isExpired(id, nowMs)) out.push(id);
+    }
+    return out;
+  };
+
+  // The LOBBY's cleanup, on a far longer clock than expiredPeers. The lobby
+  // gate above protects a phone merely locked for a moment (mid-game that state
+  // earns a held row and a rejoin QR; in the lobby removal is for good) — but
+  // with no bound at all, a controller whose peer_left never arrives (a killed
+  // tab, a relay hiccup) parks a ghost card in the lobby forever. Silence past
+  // lingerMs is no longer a locked phone waiting: they left. The caller routes
+  // these through its ordinary peer-left path; this only names them.
+  RoomFlow.prototype.lingeringPeers = function (nowMs) {
+    if (this.state !== STATES.LOBBY) return [];
+    if (this._lingerMs === Infinity) return [];
+    if (this._livenessEnabledProvider && !this._livenessEnabledProvider()) return [];
+    var out = [];
+    for (var id of this.players.keys()) {
+      if (this._lastSeen.has(id) && nowMs - this._lastSeen.get(id) > this._lingerMs) out.push(id);
     }
     return out;
   };
@@ -503,6 +551,7 @@
     this.players.clear();
     this._disconnected.clear();
     this._lastSeen.clear();
+    this._exHost = null;
     this._graceDeadline = null;
     this._order = [];
     this.hostPeerIndex = null;

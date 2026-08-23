@@ -809,6 +809,15 @@ function initScenario(opts) {
 
   if (scenario === 'pause') {
     window.__TEST__.injectPause();
+    // ?focus=music seeds the gamepad ring on the Game Music switch for the
+    // gallery's pause-music row. GamepadInput never runs under the harness (no
+    // pad may join a fixture roster), so the class it would add is applied
+    // directly — the same trick the TV shells' focusMusicForShot seeds do,
+    // and for the same reason: the real focus can't be driven in a capture.
+    if (urlParams.get('focus') === 'music') {
+      var musicEl = document.getElementById('pause-music-btn');
+      if (musicEl) musicEl.classList.add('pad-focus');
+    }
     return;
   }
   if (scenario === 'ko') {
